@@ -21,3 +21,4 @@ tests/api/.state.json
 tests/e2e/.auth.json
 test-results/
 playwright-report/
+dist-server/

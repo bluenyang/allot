@@ -31,6 +31,9 @@ services:
   api:
     build: { context: .., dockerfile: docker/Dockerfile }
     command: ["pnpm", "exec", "tsx", "watch", "server/index.ts"]
+    environment:
+      # Only the web service (Vite proxy) reaches the api, and it overwrites this header.
+      TRUSTED_PROXY_IP_HEADER: x-allot-client-ip
     env_file: [.env.dev]
     volumes:
       - ..:/app

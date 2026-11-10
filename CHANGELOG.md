@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.0 — 2026-11-11
+
+First stable release. Intent 004 (`.agents/intent/004_release-image/`).
+
+### Added
+- Production image `ghcr.io/bluenyang/allot` (linux/amd64): one Node process serves the built front end and the API, applies migrations on start; `docker/compose.prod.yaml` example with an external PostgreSQL 16.
+- Manual release workflow (GitHub Actions, `workflow_dispatch`): version → tag → gates → image → draft Release.
+
+### Changed
+- The server sets the client IP for the login rate limit itself: the socket address, or `TRUSTED_PROXY_IP_HEADER` behind a trusted reverse proxy. Client-sent headers are never trusted otherwise.
+- `docker/.env.example`: database user and name `allot`; production settings.
+
 ## 0.1.0-rc.3 — 2026-11-10
 
 Intent 003 (`.agents/intent/003_public-cleanup/`). Prepares the repository for a public origin.
