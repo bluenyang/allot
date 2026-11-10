@@ -4,7 +4,7 @@ Only items the user has settled are listed here. Ideas live in each developer's 
 
 ## v0.1 — persistence, login, editing, Docker dev
 
-Status: **0.1.0-rc.1** (2026-11-10). See `CHANGELOG.md`.
+Status: **0.1.0 released** (2026-11-11). See `CHANGELOG.md`.
 
 Settled with the user on 2026-11-10 (user's words, Korean):
 
@@ -32,6 +32,13 @@ Added to the roadmap after the work started (audit 0.1.0-rc3, A-1). User's decis
 
 - Allocation targets, per-phase amounts and the remainder split are data; no account names in code or copy.
 - The public history starts at 0.1.0-rc.3; the earlier history stays local.
+
+### 0.1.0 — stable, release image
+
+Added to the roadmap after the work started (audit 0.1.0-stable, A-1). User's words (2026-11-11): "일단 stable 릴리스좀 해봐. ghcr.io 쓰고, env example 같은데에도 money 대신 allot 쓰고" (intent 004).
+
+- Production image `ghcr.io/bluenyang/allot` (linux/amd64) and a manual release workflow.
+- Status: **released** 2026-11-11 — https://github.com/bluenyang/allot/releases/tag/v0.1.0
 
 ## v0.2 — MCP server, OAuth and passkey login
 

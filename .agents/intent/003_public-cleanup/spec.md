@@ -78,7 +78,7 @@ summary_for_user: |
 - [x] W-1 DB: 스키마, 마이그레이션 0002–0004, API(`targets`, 구간 `amounts`, `remainder-split`, `subRound`), 검증·규칙, 서버 시드 실행기(새 SeedData 형식). (S-1)
 - [x] W-2 계산·화면: `calc.ts`·`types.ts`·`store.ts`, 분배 대상 편집기, 구간 편집기 금액, 이름·문구 일반화, 개발 탭 정리. (S-1, S-2, S-3)
 - [x] W-3 테스트·문서: API 검사·E2E를 새 구조에 맞추고 대상 편집기 E2E 추가, README·AGENTS.md·CHANGELOG(rc.3). (S-1, S-2)
-- [ ] W-4 이력 정리: 위 "새 .git" 절차, `.agents/history-archive.md`. (S-4)
+- [x] W-4 이력 정리: 위 "새 .git" 절차, `.agents/history-archive.md`. (S-4)
 
 ## 검증 기준
 원본 출력은 `.loctx/reports/0.1.0/rc3/`에 남긴다. 모호하면 실패다. `<dev>`는 `docker compose -f docker/compose.dev.yaml`이다.

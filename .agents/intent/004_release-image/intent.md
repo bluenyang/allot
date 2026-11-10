@@ -11,6 +11,13 @@ approvals:
     words: "승인"
     rev: 3102cf8
     note: "열린 질문 1(아키텍처)은 승인 시점에 미결: 사용자 \"왜 필요한지 설명할 때까지 선택 못함\" → 설명 후 다시 질문."
+  - role: user
+    kind: permission
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "2 맞음"
+    rev: 20ada51
+    note: "감사 0.1.0-stable 뒤 확인: 처음 요청 \"일단 stable 릴리스좀 해봐\"가 브랜치 푸시, PR #1 생성·머지, 릴리스 워크플로 실행(dry-run과 v0.1.0), Release 공개까지 포함한다. 푸시·PR·머지는 이 확인 전에 했다(사후 확인)."
 waivers: []
 supersedes: null
 ---
