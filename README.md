@@ -1,4 +1,4 @@
-# Allot (0.1.0-rc.3)
+# Allot (0.1.0)
 
 월급 분배·구독·플랜 전환 일정 관리. 한 사람이 쓰는 웹앱.
 Vue 3.5 + Vite 8 + TypeScript 6 / Hono API / PostgreSQL 16 (Drizzle ORM) / Better Auth 로그인.
@@ -22,6 +22,28 @@ docker compose -f docker/compose.yaml exec api pnpm db:seed   # 처음 데이터
 - web 컨테이너에는 프론트 파일(`index.html`, `vite.config.ts`, `tsconfig.json`, `src/`)만 마운트한다. Vite는 LAN의 누구에게나 root 아래 파일을 보여 주기 때문이다.
 - 테스트용 스택은 `docker/compose.dev.yaml`(값은 `docker/.env.dev`, 별도 DB 볼륨). 두 스택은 같은 포트를 쓰므로 하나씩 띄운다.
 
+## 운영 배포 (이미지)
+
+릴리스 이미지는 `ghcr.io/bluenyang/allot:<버전>`(정식 버전은 `latest`도)이고, linux/amd64용이다. Node 프로세스 하나가 화면과 API를 함께 서빙하며 포트는 3000이다. 시작할 때 마이그레이션을 적용한다. DB(PostgreSQL 16)는 따로 둔다.
+
+```bash
+cp docker/.env.example docker/.env   # DATABASE_URL, BETTER_AUTH_SECRET/URL, 운영 항목
+docker compose -f docker/compose.prod.yaml up -d
+```
+
+- `BETTER_AUTH_URL`은 브라우저로 여는 실제 주소다(예: `https://allot.example.com`).
+- 로그인 시도 제한은 클라이언트 IP로 센다. 앱에 직접 접속하면 `TRUSTED_PROXY_IP_HEADER`를 비워 둔다(소켓 주소를 쓰고, 클라이언트가 보낸 헤더는 무시한다). 리버스 프록시 뒤라면 그 프록시가 덮어쓰는 헤더(예: `X-Real-IP`)를 적는다. 비워 둔 채 프록시 뒤에 두면 모든 접속이 프록시 IP 하나로 묶여 제한이 함께 걸린다.
+- 첫 데이터: 스키마는 앱이 시작할 때 만들어진다. 그다음 시드 SQL(`targets`, `phases`, 계정 등)을 `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <파일>`로 넣는다. 또는 개발 환경에서 `DATABASE_URL`을 운영 DB로 두고 `pnpm db:seed <데이터 파일>`을 실행한다.
+- 패키지가 비공개로 만들어졌다면, 서버에서 `docker login ghcr.io`를 하거나 GitHub 패키지 설정에서 공개로 바꾼다.
+
+## 릴리스
+
+GitHub Actions → **Allot Release** → Run workflow(수동 실행).
+
+- 입력: `release_type`(patch·minor·major·rc), `version`(정확한 버전, 비우면 올림), `version_suffix`(예: `rc.1`), `dry_run`.
+- 순서: 버전 계산 → (바뀌었을 때만) `package.json` 커밋 → 태그 → 게이트 → 이미지 푸시 → Release 초안.
+- 먼저 `dry_run`으로 돌려 보고, 초안 Release를 확인한 뒤 공개한다.
+
 ## 분배 구조
 
 월급이 어디로 가는지는 코드가 아니라 데이터로 정한다(분배 화면 → 구간 탭).
@@ -40,6 +62,7 @@ docker compose -f docker/compose.yaml exec api pnpm db:seed   # 처음 데이터
 pnpm install       # 의존성 설치 (CI: pnpm install --frozen-lockfile), git 훅(lefthook) 설치
 pnpm typecheck     # vue-tsc + 서버 tsc — 게이트
 pnpm build         # vite build → dist/ — 게이트
+pnpm build:server  # 서버 번들 → dist-server/ (운영 이미지)
 pnpm dev           # Vite만 (호스트에서), /api는 localhost:3000으로
 pnpm dev:api       # API만 (호스트에서, DATABASE_URL 등 env 필요)
 pnpm db:generate   # 스키마 변경 → drizzle/ 마이그레이션 생성

@@ -34,6 +34,9 @@ Allot — a personal web app for splitting the monthly salary across accounts, t
 | `pnpm db:migrate` / `pnpm db:seed [file]` | apply migrations / upsert seed data and the login account |
 | `pnpm e2e` | Playwright E2E against a running stack (`BASE`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`) |
 | `node tests/api/crud.mjs create\|verify\|cleanup` | API check (restart api between create and verify) |
+| `pnpm build:server` | esbuild bundle of the API → `dist-server/` (production image) |
+| `docker build -t allot:test .` | production image (root `Dockerfile`, linux/amd64) |
+| Actions → **Allot Release** | manual release: version → tag → gates → `ghcr.io/bluenyang/allot` → draft Release; try `dry_run` first; running it needs the user's instruction |
 
 Gates (`.agents/harness/gates.yaml`, order: typecheck → build) run on every commit through **lefthook** (`lefthook.yml`, pre-commit). Gates are check-only; never add a command that rewrites files.
 - `gates.yaml` has no reins path for root gates yet (`reins config gates` only appends subdirectory proposals; re-detection is planned for reins 0.3.1). Change it only on the user's instruction, in a dedicated `config(gates): …` commit that touches nothing else.

@@ -67,7 +67,7 @@ summary_for_user: |
 - [x] W-1 서버: 정적 서빙과 SPA 폴백, 클라이언트 IP 미들웨어, `build:server` 스크립트, 개발 compose의 `TRUSTED_PROXY_IP_HEADER`. (S-1, S-2)
 - [x] W-2 이미지: 루트 `Dockerfile`, `.dockerignore` 정리, `docker/compose.prod.yaml`, `docker/.env.example`의 money → allot과 운영 항목. 에이전트 테스트 값도 allot으로 바꾸고 테스트 DB를 다시 만든다. (S-1, S-4)
 - [x] W-3 워크플로: `.github/workflows/release.yml`. (S-3)
-- [ ] W-4 문서: README(운영 배포, 릴리스 절차), AGENTS.md(릴리스 명령), CHANGELOG 0.1.0. (S-1, S-3, S-5)
+- [x] W-4 문서: README(운영 배포, 릴리스 절차), AGENTS.md(릴리스 명령), CHANGELOG 0.1.0. (S-1, S-3, S-5)
 
 ## 검증 기준
 원본 출력은 `.loctx/reports/0.1.0/stable/`에 남긴다. 모호하면 실패다.
