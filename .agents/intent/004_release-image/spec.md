@@ -1,7 +1,13 @@
 ---
 intent: "004"
-status: reviewed
-approvals: []
+status: accepted
+approvals:
+  - role: user
+    kind: summary
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "진행"
+    rev: d390f3c
 summary_for_user: |
   운영 이미지 ghcr.io/bluenyang/allot(linux/amd64 하나)을 만듭니다. Node 프로세스 하나가 빌드된 화면과 API를 함께 서빙하고, 시작할 때 마이그레이션을 적용하며, DB는 DATABASE_URL로 외부에 연결합니다.
   로그인 시도 제한용 클라이언트 IP는 서버가 직접 정합니다(기본은 소켓 주소, 설정하면 신뢰하는 프록시 헤더 하나만).
