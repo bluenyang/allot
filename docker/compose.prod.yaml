@@ -8,5 +8,8 @@ services:
   app:
     image: ghcr.io/bluenyang/allot:${ALLOT_VERSION:-latest}
     env_file: [.env]
-    ports: ["${APP_PORT:-3000}:3000"]
+    # Loopback by default: a reverse proxy on this host reaches it, nothing else does.
+    # Set APP_BIND=0.0.0.0 only when clients connect to the app directly — and then keep
+    # TRUSTED_PROXY_IP_HEADER empty, or anyone could pick their own rate-limit bucket.
+    ports: ["${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"]
     restart: unless-stopped

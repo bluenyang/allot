@@ -32,7 +32,10 @@ docker compose -f docker/compose.prod.yaml up -d
 ```
 
 - `BETTER_AUTH_URL`은 브라우저로 여는 실제 주소다(예: `https://allot.example.com`).
-- 로그인 시도 제한은 클라이언트 IP로 센다. 앱에 직접 접속하면 `TRUSTED_PROXY_IP_HEADER`를 비워 둔다(소켓 주소를 쓰고, 클라이언트가 보낸 헤더는 무시한다). 리버스 프록시 뒤라면 그 프록시가 덮어쓰는 헤더(예: `X-Real-IP`)를 적는다. 비워 둔 채 프록시 뒤에 두면 모든 접속이 프록시 IP 하나로 묶여 제한이 함께 걸린다.
+- 로그인 시도 제한은 클라이언트 IP로 센다.
+  - **리버스 프록시 뒤(권장):** `APP_BIND=127.0.0.1`(기본값)로 두어 프록시만 앱에 닿게 하고, `TRUSTED_PROXY_IP_HEADER`에 그 프록시가 덮어쓰는 헤더(예: `X-Real-IP`)를 적는다. 프록시가 컨테이너라면 앱 포트를 공개하지 말고 같은 내부 네트워크로 연결한다.
+  - **직접 접속:** `APP_BIND=0.0.0.0`으로 열고 `TRUSTED_PROXY_IP_HEADER`는 **비워 둔다**. 소켓 주소를 쓰고, 클라이언트가 보낸 헤더는 무시한다. 헤더를 믿도록 설정한 채 포트를 열면 누구나 헤더를 바꿔 제한을 피할 수 있다.
+  - 프록시 뒤인데 헤더를 비워 두면 모든 접속이 프록시 IP 하나로 묶여 제한이 함께 걸린다(안전한 쪽).
 - 첫 데이터: 스키마는 앱이 시작할 때 만들어진다. 그다음 시드 SQL(`targets`, `phases`, 계정 등)을 `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <파일>`로 넣는다. 또는 개발 환경에서 `DATABASE_URL`을 운영 DB로 두고 `pnpm db:seed <데이터 파일>`을 실행한다.
 - 패키지가 비공개로 만들어졌다면, 서버에서 `docker login ghcr.io`를 하거나 GitHub 패키지 설정에서 공개로 바꾼다.
 
