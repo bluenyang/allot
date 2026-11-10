@@ -2,9 +2,15 @@
 id: "004"
 slug: release-image
 version: 0.1.0
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "승인"
+    rev: 3102cf8
+    note: "열린 질문 1(아키텍처)은 승인 시점에 미결: 사용자 \"왜 필요한지 설명할 때까지 선택 못함\" → 설명 후 다시 질문."
 waivers: []
 supersedes: null
 ---
