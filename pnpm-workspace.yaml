@@ -1,0 +1,10 @@
+# pnpm 12 settings (single package; no workspace packages).
+# Build scripts are denied unless listed true. lefthook's postinstall is not needed:
+# the `prepare` script runs `lefthook install`.
+allowBuilds:
+  esbuild: true # tsx's bundler; postinstall checks the platform binary
+  lefthook: false
+engineStrict: true
+# Fail instead of silently adding minimumReleaseAgeExclude entries when a pinned
+# version is younger than the release-age cutoff.
+minimumReleaseAgeStrict: true

@@ -1,0 +1,9 @@
+# Runs the gates from .agents/harness/gates.yaml before each commit, in that order.
+# Check-only commands; nothing here may rewrite files (mutating_forbidden).
+pre-commit:
+  piped: true
+  jobs:
+    - name: typecheck
+      run: pnpm typecheck
+    - name: build
+      run: pnpm build

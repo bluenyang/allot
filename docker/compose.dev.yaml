@@ -1,0 +1,58 @@
+# Test / development stack — same services as compose.yaml, separate data,
+# test values from docker/.env.dev (gitignored; copied from .env.example).
+#   docker compose -f docker/compose.dev.yaml up -d --build -V --wait
+# Uses the same host port as compose.yaml, so run one stack at a time.
+name: allot-dev
+
+services:
+  web:
+    build: { context: .., dockerfile: docker/Dockerfile }
+    command: ["pnpm", "exec", "vite", "--host", "0.0.0.0", "--port", "15173", "--strictPort"]
+    ports: ["0.0.0.0:15173:15173"]
+    env_file: [.env.dev]
+    environment:
+      API_URL: http://api:3000
+    # Vite serves every file under its root to anyone on the LAN, so the web container
+    # gets only the front end — never .loctx/, server/, tests/ or docker/.
+    volumes:
+      - ../index.html:/app/index.html:ro
+      - ../vite.config.ts:/app/vite.config.ts:ro
+      - ../tsconfig.json:/app/tsconfig.json:ro
+      - ../src:/app/src:ro
+      - /app/node_modules  # anonymous: renewed from the image by `up --build -V`
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:15173/ >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      api: { condition: service_healthy }
+
+  api:
+    build: { context: .., dockerfile: docker/Dockerfile }
+    command: ["pnpm", "exec", "tsx", "watch", "server/index.ts"]
+    env_file: [.env.dev]
+    volumes:
+      - ..:/app
+      - /app/node_modules
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/healthz >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      db: { condition: service_healthy }
+    # no ports: only the web service (Vite proxy) reaches it
+
+  db:
+    image: postgres:16.15-alpine3.24
+    env_file: [.env.dev]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

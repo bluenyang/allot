@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.loctx
+.agents
+.claude
+.stfolder
+.stignore
+docker/.env
+docker/.env.*
+!docker/.env.example

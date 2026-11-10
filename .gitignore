@@ -1,0 +1,23 @@
+
+# reins local workspace
+.loctx/
+
+# dependencies / build
+node_modules/
+dist/
+*.log
+
+# syncthing
+.stfolder/
+.stignore
+
+# docker env (real values / agent test values)
+docker/.env
+docker/.env.*
+!docker/.env.example
+
+# api check scratch
+tests/api/.state.json
+tests/e2e/.auth.json
+test-results/
+playwright-report/
