@@ -46,7 +46,8 @@ supersedes: null
 - 개발 스택(`docker/compose.yaml`, `compose.dev.yaml`)은 지금처럼 동작한다.
 
 ## 열린 질문
-1. 이미지 아키텍처: 운영 서버가 x86_64면 `amd64`만, ARM이면 `arm64`도 필요하다. (pipit-bot은 amd64만 만든다.)
+없음. 2026-11-11 사용자 답: "amd64만 해봐 그럼." (설명 뒤)
+1. 이미지 아키텍처: **linux/amd64**만. ARM 서버로 옮기면 그때 워크플로에 arm64를 추가한다.
 
 ## 질의서 기록
 —
