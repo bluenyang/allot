@@ -9,3 +9,10 @@ dist
 docker/.env
 docker/.env.*
 !docker/.env.example
+tests
+dist-server
+test-results
+playwright-report
+.github
+*.md
+!README.md

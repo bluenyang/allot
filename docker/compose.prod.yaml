@@ -1,0 +1,12 @@
+# Allot production example: the released image only; PostgreSQL 16 is yours (DATABASE_URL).
+#   cp docker/.env.example docker/.env   # DATABASE_URL, BETTER_AUTH_*, production section
+#   docker compose -f docker/compose.prod.yaml up -d
+# Migrations are applied when the app starts. First data: see README ("운영 배포").
+name: allot
+
+services:
+  app:
+    image: ghcr.io/bluenyang/allot:${ALLOT_VERSION:-latest}
+    env_file: [.env]
+    ports: ["${APP_PORT:-3000}:3000"]
+    restart: unless-stopped
