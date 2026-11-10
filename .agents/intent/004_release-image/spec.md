@@ -8,6 +8,13 @@ approvals:
     at: "2026-11-11"
     words: "진행"
     rev: d390f3c
+  - role: user
+    kind: change
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "1 예, 2 맞음, 3 추천대로"
+    rev: 20ada51
+    note: "감사 0.1.0-stable A-2 뒤: V-8 예외에 intent·spec 004 기록(사용자 인용과 이 변경의 설명)을 더한다. 처음 판정은 기준 밖 통과였고(위반 유지), 고친 기준으로 다시 검사했다(.loctx/reports/0.1.0/stable/test/V-8-recheck.log)."
 summary_for_user: |
   운영 이미지 ghcr.io/bluenyang/allot(linux/amd64 하나)을 만듭니다. Node 프로세스 하나가 빌드된 화면과 API를 함께 서빙하고, 시작할 때 마이그레이션을 적용하며, DB는 DATABASE_URL로 외부에 연결합니다.
   로그인 시도 제한용 클라이언트 IP는 서버가 직접 정합니다(기본은 소켓 주소, 설정하면 신뢰하는 프록시 헤더 하나만).
@@ -43,7 +50,7 @@ summary_for_user: |
 - 포트: `API_PORT`(기본 3000).
 
 **운영 compose 예시 (`docker/compose.prod.yaml`)**
-- 서비스 `app` 하나: `image: ghcr.io/bluenyang/allot:${ALLOT_VERSION:-latest}`, `env_file: .env`, 포트 `${APP_PORT:-3000}:3000`, `restart: unless-stopped`.
+- 서비스 `app` 하나: `image: ghcr.io/bluenyang/allot:${ALLOT_VERSION:-latest}`, `env_file: .env`, 포트 `${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000`, `restart: unless-stopped`. (리뷰 #2 수정 0ebc99e로 기본 바인딩을 loopback으로 바꿨다. 직접 공개할 때만 `APP_BIND=0.0.0.0`, 그때 `TRUSTED_PROXY_IP_HEADER`는 비운다.)
 - DB는 외부(운영 서버의 PostgreSQL 16, pgvector 이미지여도 됨)를 `DATABASE_URL`로 연결한다.
 - 첫 데이터는 사용자의 로컬 SQL(`.loctx/scripts/seed-data.sql`)을 `psql`로 넣는다(README에 순서를 적음).
 
@@ -80,7 +87,7 @@ summary_for_user: |
 - V-5 개발 스택 회귀: 테스트 스택(새 DB 값 allot)을 다시 만들고 시드한 뒤 `tests/api/crud.mjs` 4단계 exit 0, `pnpm e2e` 전부 통과.
 - V-6 워크플로 dry-run: 머지 후 Actions에서 `dry_run=true`로 실행해 성공한다. 태그·커밋·푸시·Release가 생기지 않는다.
 - V-7 릴리스: `version=0.1.0`으로 실행해 성공한다. `ghcr.io/bluenyang/allot:0.1.0`·`:latest`를 받아 V-3과 같은 확인을 통과한다. Release 초안 `v0.1.0`이 있다. 확인한 뒤 초안을 공개하고, `git ls-remote --tags origin`에 `v0.1.0`이 있다.
-- V-8 이름·공개 정리: `git grep -nI money`가 과거 기록(`.agents/intent/001_*`, `.agents/audit/`, `CHANGELOG.md`의 rc 절, `.agents/history-archive.md`) 밖에서 0건이다. `.loctx` 금지어 검사가 새 파일에서 실제 개인 정보 0건이다.
+- V-8 이름·공개 정리: `git grep -nI money`가 과거 기록(`.agents/intent/001_*`~`003_*`, 이 intent·spec 004의 사용자 인용과 변경 설명, `.agents/audit/`, `CHANGELOG.md`의 rc 절, `.agents/history-archive.md`) 밖에서 0건이다. (2026-11-11 변경: 004 기록 추가, approvals `kind: change`) `.loctx` 금지어 검사가 새 파일에서 실제 개인 정보 0건이다.
 
 ## 우려
 - 워크플로는 원격에서만 끝까지 검증할 수 있다(V-6, V-7). 로컬에서는 구조만 확인하고, dry-run으로 먼저 돌린다.
