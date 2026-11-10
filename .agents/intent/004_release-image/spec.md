@@ -64,7 +64,7 @@ summary_for_user: |
 - `X-Forwarded-For`처럼 여러 값이 오는 헤더는 마지막 값(신뢰하는 프록시가 붙인 값)을 쓴다.
 
 ## 작업 단위
-- [ ] W-1 서버: 정적 서빙과 SPA 폴백, 클라이언트 IP 미들웨어, `build:server` 스크립트, 개발 compose의 `TRUSTED_PROXY_IP_HEADER`. (S-1, S-2)
+- [x] W-1 서버: 정적 서빙과 SPA 폴백, 클라이언트 IP 미들웨어, `build:server` 스크립트, 개발 compose의 `TRUSTED_PROXY_IP_HEADER`. (S-1, S-2)
 - [ ] W-2 이미지: 루트 `Dockerfile`, `.dockerignore` 정리, `docker/compose.prod.yaml`, `docker/.env.example`의 money → allot과 운영 항목. 에이전트 테스트 값도 allot으로 바꾸고 테스트 DB를 다시 만든다. (S-1, S-4)
 - [ ] W-3 워크플로: `.github/workflows/release.yml`. (S-3)
 - [ ] W-4 문서: README(운영 배포, 릴리스 절차), AGENTS.md(릴리스 명령), CHANGELOG 0.1.0. (S-1, S-3, S-5)
