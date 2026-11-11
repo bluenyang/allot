@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 — unreleased
+## 0.1.1-rc.1 — 2026-11-11
 
 Security foundation. Intent 005 (`.agents/intent/005_security-foundation/`). The screens and the distribution stay the same.
 

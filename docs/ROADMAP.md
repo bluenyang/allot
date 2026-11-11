@@ -61,7 +61,7 @@ Decisions from the committee review (2026-11-11), accepted by the user ("그렇�
 
 | Patch | Scope |
 |---|---|
-| 0.1.1 | Security foundation: `user_id` on every table (existing data kept for the current user), row-level security, change sets with revert, explicit trusted origins, HTTPS in the production example |
+| 0.1.1 (rc.1 2026-11-11) | Security foundation: `user_id` on every table (existing data kept for the current user), row-level security, change sets with revert, explicit trusted origins, HTTPS in the production example |
 | 0.1.2 | Login and admin: generic OIDC, GitHub, Google and password, each on/off; per-provider sign-up policy (admin-created, approval, or group/organization/domain rules); admin menu; initial admin from env (email or OIDC subject); encryption module; auth that a future mobile app can use (bearer tokens, deep-link return) |
 | 0.1.3 | MCP read: API keys (hashed, scoped, expiring, revocable), key management page, read tools |
 | 0.1.4 | MCP write: write tools, preview before confirm, revert of AI change sets |
