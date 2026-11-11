@@ -3,7 +3,7 @@
 // new set). Recording is in the app, not in triggers, so the rows are stored exactly as the
 // API reads them and the revert writes them back through the same rules.
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, getTableName, inArray, lt, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, getTableName, inArray, lt, or, sql, type SQL } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type { Db } from './db/client'
 import { hasIdentity, OWNED, type OwnedTable } from './db/owned'
@@ -174,9 +174,18 @@ async function checkRules(q: Db, uid: string, hadRemainder: number) {
 }
 
 // ── Listing ──
-export async function listSets(q: Db, uid: string, before: string | undefined, limit: number) {
-  const where = before ? and(eq(t.changeSet.userId, uid), lt(t.changeSet.at, before)) : eq(t.changeSet.userId, uid)
-  const sets = await q.select().from(t.changeSet).where(where).orderBy(desc(t.changeSet.at), desc(t.changeSet.id)).limit(limit)
+/** A page cursor: the last set shown (its time and id; sets are ordered by both). */
+export interface Cursor { at: string; id: string }
+
+export async function listSets(q: Db, uid: string, before: Cursor | undefined, limit: number) {
+  const cs = t.changeSet
+  const mine = eq(cs.userId, uid)
+  const where = before ? and(mine, or(lt(cs.at, before.at), and(eq(cs.at, before.at), lt(cs.id, before.id)))) : mine
+  const sets = await q.select().from(cs).where(where).orderBy(desc(cs.at), desc(cs.id)).limit(limit)
+  return withLogs(q, uid, sets)
+}
+
+async function withLogs(q: Db, uid: string, sets: (typeof t.changeSet.$inferSelect)[]) {
   if (!sets.length) return []
   const logs = await q.select().from(t.changeLog)
     .where(and(eq(t.changeLog.userId, uid), inArray(t.changeLog.setId, sets.map((s) => s.id)))).orderBy(t.changeLog.id)

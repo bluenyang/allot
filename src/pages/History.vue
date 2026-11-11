@@ -45,7 +45,8 @@ async function load(reset = true) {
   busy.value = true
   error.value = ''
   try {
-    const before = !reset && sets.value.length ? `&before=${encodeURIComponent(sets.value.at(-1)!.at)}` : ''
+    const last = sets.value.at(-1)
+    const before = !reset && last ? `&before=${encodeURIComponent(last.at)}&beforeId=${encodeURIComponent(last.id)}` : ''
     const page = await api<ChangeSet[]>('GET', `/api/changes?limit=${PAGE}${before}`)
     sets.value = reset ? page : [...sets.value, ...page]
     more.value = page.length === PAGE

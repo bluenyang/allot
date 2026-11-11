@@ -355,14 +355,17 @@ crud(routes, '/targets', t.allocationTarget, v.target, {
 })
 
 // ── Change sets (spec 005 S-3) ──
-//   GET  /api/changes?before=<at>&limit=50   newest first, with their row changes
+//   GET  /api/changes?before=<at>&beforeId=<id>&limit=50   newest first, with their row changes;
+//        the next page starts after the last set shown (its at and id)
 //   POST /api/changes/:id/revert             the opposite change, as a new set
 routes.get('/changes', async (c) => {
   const uid = uidOf(c)
-  const before = c.req.query('before') || undefined
-  if (before && Number.isNaN(Date.parse(before))) return c.json({ error: 'before는 시각이어야 해요.' }, 400)
+  const at = c.req.query('before') || undefined
+  const id = c.req.query('beforeId') || undefined
+  if (at && Number.isNaN(Date.parse(at))) return c.json({ error: 'before는 시각이어야 해요.' }, 400)
+  if (!!at !== !!id) return c.json({ error: 'before와 beforeId는 함께 보내야 해요.' }, 400)
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50) || 50, 1), 200)
-  return c.json(await asUser(uid, (q) => listSets(q, uid, before, limit)))
+  return c.json(await asUser(uid, (q) => listSets(q, uid, at && id ? { at, id } : undefined, limit)))
 })
 
 routes.post('/changes/:id/revert', async (c) => {
