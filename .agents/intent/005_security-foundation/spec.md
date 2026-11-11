@@ -98,7 +98,7 @@ summary_for_user: |
 - V-10 회귀: `node tests/api/crud.mjs create` → api 재시작 → `verify` → `cleanup` 모두 exit 0. `pnpm e2e` 전부 통과(변경 내역 테스트 포함).
 - V-11 출처: 운영 모드(`TRUSTED_ORIGINS=https://allot.example`)에서 `Origin: https://evil.example`로 sign-in → 거부(403), 목록의 출처 → 200. 개발 스택은 지금처럼 LAN 주소에서 로그인 200.
 - V-12 운영 compose: `docker compose -f docker/compose.prod.yaml --env-file docker/.env.example config --no-env-resolution` exit 0(`--no-env-resolution`: `docker/.env`의 실제 값을 풀어 쓰지 않게, 2026-11-11 W-5 사고 뒤 추가. 기대 결과 불변). 로컬에서 빌드한 이미지를 `read_only`·`cap_drop` 설정 그대로 테스트 DB에 붙여 시작 → 마이그레이션 적용, `/healthz` 200, 로그인 200. Traefik 라벨이 설정 출력에 있다.
-- V-13 공개 저장소 검사: 브랜치 전체 diff에 `.loctx/public-cleanup/banned.txt`의 금지어가 없다(grep exit 1). 맞는 줄이 있으면 실패, 판정 근거와 함께 기록.
+- V-13 공개 저장소 검사: 브랜치 diff(`git diff master...HEAD`)와 커밋 메시지(`git log master..HEAD --format=%B`, Co-Authored-By 줄 제외)에서 `.loctx/public-cleanup/banned.txt`의 금지어를 대소문자 구분·단어 단위(`grep -w -F`)로 찾는다. 남은 일치마다 사유를 기록한다. 사용자의 실제 데이터(계좌·상품·기관 이름, 금액, 개인 사정)이면 실패, 일반 단어나 도구 이름이면 통과. (2026-11-11 변경: 처음 기준은 대소문자 무시 부분 일치이고 "맞는 줄이 있으면 실패"였다. 그 기준의 첫 판정은 실패로 남는다.)
 
 ## 우려
 1. **손으로 쓴 SQL** — 결정(사용자 2026-11-11, "RLS는 A안으로 갈까", "진행"): `--custom` 마이그레이션에는 FORCE RLS 구문만 둔다. 정책은 스키마에서 생성한다. 새 테이블을 더할 때 FORCE 한 줄을 빠뜨리는 위험은 시작 검사(2)와 V-6b가 잡는다. 대안(소유자 롤·앱 롤 분리)은 운영자 손 SQL과 `DATABASE_URL` 두 개가 필요해 고르지 않았다.
