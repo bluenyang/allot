@@ -237,10 +237,12 @@ routes.put('/settings', body(v.settings), async (c) => {
   const input = c.req.valid('json')
   try {
     const [row] = await asUser(uid, async (q) => {
-      const before = await readRow(q, t.settings, uid, { userId: uid })
+      // The row may not exist yet: lock first, so two first saves cannot both see "no row".
+      await lockFor(q, 'settings', uid)
+      const before = await readRow(q, t.settings, uid, {})
       const written = await q.insert(t.settings).values({ userId: uid, ...input })
         .onConflictDoUpdate({ target: t.settings.userId, set: input }).returning()
-      await recorderFor(c, q).record(t.settings, { userId: uid }, before ? 'update' : 'insert', before, written[0] as Row)
+      await recorderFor(c, q).record(t.settings, {}, before ? 'update' : 'insert', before, written[0] as Row)
       return written
     })
     const { userId: _id, ...rest } = row!
@@ -255,10 +257,12 @@ routes.put('/living', body(v.living), async (c) => {
   const input = c.req.valid('json')
   try {
     const [row] = await asUser(uid, async (q) => {
-      const before = await readRow(q, t.living, uid, { userId: uid })
+      // The row may not exist yet: lock first, so two first saves cannot both see "no row".
+      await lockFor(q, 'living', uid)
+      const before = await readRow(q, t.living, uid, {})
       const written = await q.insert(t.living).values({ userId: uid, ...input })
         .onConflictDoUpdate({ target: t.living.userId, set: input }).returning()
-      await recorderFor(c, q).record(t.living, { userId: uid }, before ? 'update' : 'insert', before, written[0] as Row)
+      await recorderFor(c, q).record(t.living, {}, before ? 'update' : 'insert', before, written[0] as Row)
       return written
     })
     const { userId: _id, ...rest } = row!
