@@ -1,6 +1,7 @@
 // Data API. Every route sits behind the session check in app.ts and works on the session user's
 // rows only: every select, update and delete is filtered by user_id, and inserts set it here
-// (a client never sends it).
+// (a client never sends it). Each request runs in one transaction as that user, so the
+// row-level security policies check the same thing again in the database.
 //   GET    /api/state                 everything the app shows, lists in insertion order
 //   PUT    /api/settings | /api/living  the single-row records
 //   POST   /api/<resource>            create (server assigns the id)
@@ -13,7 +14,8 @@ import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import { Hono, type Context } from 'hono'
 import type { z } from 'zod'
 import type { AppEnv } from './app-env'
-import { db, type Db } from './db/client'
+import type { Db } from './db/client'
+import { asUser } from './db/scope'
 import * as t from './db/schema'
 import * as v from './validation'
 
@@ -91,8 +93,7 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
 
   /** check + write in one transaction; a failed check rolls back and becomes a 400. */
   const guarded = async <R>(uid: string, input: z.infer<S>, id: string | undefined, write: (q: Db) => Promise<R>) =>
-    db.transaction(async (tx) => {
-      const q = tx as unknown as Db
+    asUser(uid, async (q) => {
       if (o.lock) await lockFor(q, name, uid)
       const problem = await o.check?.(q, uid, input, id)
       if (problem) throw new Rejected(problem)
@@ -140,8 +141,7 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
     const uid = uidOf(c)
     const id = c.req.param('id')
     try {
-      const rows = await db.transaction(async (tx) => {
-        const q = tx as unknown as Db
+      const rows = await asUser(uid, async (q) => {
         if (o.lock) await lockFor(q, name, uid)
         const problem = await o.beforeDelete?.(q, uid, id)
         if (problem) throw new Rejected(problem)
@@ -160,11 +160,13 @@ export const routes = new Hono<AppEnv>()
 
 routes.get('/state', async (c) => {
   const uid = uidOf(c)
+  // One transaction (one connection) as the user; the queries run one after another on it.
+  const [[settings], [living], subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, targets, amounts] = await asUser(uid, (q) => {
   const list = <T extends ListTable>(table: T) =>
-    db.select().from(table as never).where(eq(table.userId, uid)).orderBy(asc(table.seq)) as unknown as Promise<T['$inferSelect'][]>
-  const [[settings], [living], subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, targets, amounts] = await Promise.all([
-    db.select().from(t.settings).where(eq(t.settings.userId, uid)),
-    db.select().from(t.living).where(eq(t.living.userId, uid)),
+    q.select().from(table as never).where(eq(table.userId, uid)).orderBy(asc(table.seq)) as unknown as Promise<T['$inferSelect'][]>
+  return Promise.all([
+    q.select().from(t.settings).where(eq(t.settings.userId, uid)),
+    q.select().from(t.living).where(eq(t.living.userId, uid)),
     list(t.subscription),
     list(t.planChange),
     list(t.phase),
@@ -174,8 +176,9 @@ routes.get('/state', async (c) => {
     list(t.debt),
     list(t.remainderSplit),
     list(t.allocationTarget),
-    db.select().from(t.phaseAmount).where(eq(t.phaseAmount.userId, uid)),
+    q.select().from(t.phaseAmount).where(eq(t.phaseAmount.userId, uid)),
   ])
+  })
   const amountsOf = (phaseId: string) =>
     Object.fromEntries(amounts.filter((a) => a.phaseId === phaseId).map((a) => [a.targetId, a.amount]))
   if (!settings || !living) return c.json({ error: '설정이 비어 있어요. pnpm db:seed로 처음 데이터를 넣어 주세요.' }, 409)
@@ -200,8 +203,8 @@ routes.put('/settings', body(v.settings), async (c) => {
   const uid = uidOf(c)
   const input = c.req.valid('json')
   try {
-    const [row] = await db.insert(t.settings).values({ userId: uid, ...input })
-      .onConflictDoUpdate({ target: t.settings.userId, set: input }).returning()
+    const [row] = await asUser(uid, (q) => q.insert(t.settings).values({ userId: uid, ...input })
+      .onConflictDoUpdate({ target: t.settings.userId, set: input }).returning())
     const { userId: _id, ...rest } = row!
     return c.json(rest)
   } catch (e) {
@@ -213,8 +216,8 @@ routes.put('/living', body(v.living), async (c) => {
   const uid = uidOf(c)
   const input = c.req.valid('json')
   try {
-    const [row] = await db.insert(t.living).values({ userId: uid, ...input })
-      .onConflictDoUpdate({ target: t.living.userId, set: input }).returning()
+    const [row] = await asUser(uid, (q) => q.insert(t.living).values({ userId: uid, ...input })
+      .onConflictDoUpdate({ target: t.living.userId, set: input }).returning())
     const { userId: _id, ...rest } = row!
     return c.json(rest)
   } catch (e) {

@@ -64,6 +64,20 @@
       "when": 1794373482972,
       "tag": "0008_user_scoped_refs",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794373726187,
+      "tag": "0009_row_level_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794373735167,
+      "tag": "0010_force_row_level_security",
+      "breakpoints": true
     }
   ]
 }

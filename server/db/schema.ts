@@ -5,7 +5,7 @@
 // Ids are text: seed ids ('claude', 'p1', ...) are kept, new rows use crypto.randomUUID().
 // `seq` keeps insertion order for lists.
 import { sql } from 'drizzle-orm'
-import { boolean, check, date, foreignKey, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, smallint, text, unique, uniqueIndex } from 'drizzle-orm/pg-core'
+import { boolean, check, date, foreignKey, integer, jsonb, numeric, pgEnum, pgPolicy, pgTable, primaryKey, smallint, text, unique, uniqueIndex, type PgColumn } from 'drizzle-orm/pg-core'
 import type { Plan } from '../../src/data/types'
 import { user } from './auth-schema'
 
@@ -19,6 +19,19 @@ export const eventState = pgEnum('event_state', ['done', 'doing', 'todo'])
 export const allocationKind = pgEnum('allocation_kind', ['living', 'subscriptions', 'fixed', 'remainder'])
 
 const seq = () => integer('seq').generatedAlwaysAsIdentity()
+/**
+ * Row-level security for a user's table: a row is visible and writable only when its user_id is
+ * the transaction's app.user_id (server/db/scope.ts). Every owned table gets exactly this policy;
+ * its FORCE (the policy applies to the table owner too) is in a custom migration, because
+ * Drizzle cannot express it. The server warns at start if a table with user_id lacks either.
+ */
+const userScoped = (userId: PgColumn) =>
+  pgPolicy('allot_owner', {
+    for: 'all',
+    using: sql`${userId} = current_setting('app.user_id', true)`,
+    withCheck: sql`${userId} = current_setting('app.user_id', true)`,
+  })
+
 /** Owner of the row (Better Auth user.id). */
 const owner = () => text('user_id').notNull().references(() => user.id, { onDelete: 'restrict' })
 const ym = (name: string) => text(name)
@@ -32,14 +45,14 @@ export const settings = pgTable('settings', {
   transferDay: smallint('transfer_day').notNull(),
   billingDay: smallint('billing_day').notNull(),
   subRound: integer('sub_round').notNull().default(10_000),
-})
+}, (t) => [userScoped(t.userId)])
 
 export const living = pgTable('living', {
   userId: owner().primaryKey(),
   food: integer('food').notNull(),
   transit: integer('transit').notNull(),
   allowance: integer('allowance').notNull(),
-})
+}, (t) => [userScoped(t.userId)])
 
 export const subscription = pgTable('subscription', {
   userId: owner(),
@@ -58,6 +71,7 @@ export const subscription = pgTable('subscription', {
   verified: boolean('verified').notNull().default(false),
   note: text('note'),
 }, (t) => [
+  userScoped(t.userId),
   unique('subscription_user_id_id').on(t.userId, t.id),
   check('subscription_amount_nonneg', sql`${t.amount} >= 0`),
 ])
@@ -71,6 +85,7 @@ export const planChange = pgTable('plan_change', {
   to: jsonb('patch').$type<Partial<Plan>>().notNull(),
   note: text('note').notNull().default(''),
 }, (t) => [
+  userScoped(t.userId),
   unique('plan_change_user_id_id').on(t.userId, t.id),
   foreignKey({ name: 'plan_change_sub_fk', columns: [t.userId, t.subId], foreignColumns: [subscription.userId, subscription.id] }).onDelete('cascade'),
   check('plan_change_patch_object', sql`jsonb_typeof(${t.to}) = 'object'`),
@@ -86,6 +101,7 @@ export const phase = pgTable('phase', {
   to: ym('to_month'),
   note: text('note'),
 }, (t) => [
+  userScoped(t.userId),
   unique('phase_user_id_id').on(t.userId, t.id),
   check('phase_from_ym', sql`${t.from} ~ '^[0-9]{4}-[0-9]{2}$'`),
   check('phase_to_ym', sql`${t.to} is null or ${t.to} ~ '^[0-9]{4}-[0-9]{2}$'`),
@@ -99,7 +115,7 @@ export const planEvent = pgTable('plan_event', {
   kind: text('kind').notNull(),
   title: text('title').notNull(),
   state: eventState('state').notNull().default('todo'),
-}, (t) => [unique('plan_event_user_id_id').on(t.userId, t.id)])
+}, (t) => [unique('plan_event_user_id_id').on(t.userId, t.id), userScoped(t.userId)])
 
 export const checkItem = pgTable('check_item', {
   userId: owner(),
@@ -107,7 +123,7 @@ export const checkItem = pgTable('check_item', {
   seq: seq(),
   text: text('text').notNull(),
   done: boolean('done').notNull().default(false),
-}, (t) => [unique('check_item_user_id_id').on(t.userId, t.id)])
+}, (t) => [unique('check_item_user_id_id').on(t.userId, t.id), userScoped(t.userId)])
 
 export const bankAccount = pgTable('bank_account', {
   userId: owner(),
@@ -117,7 +133,7 @@ export const bankAccount = pgTable('bank_account', {
   role: text('role').notNull().default(''),
   inflow: text('inflow').notNull().default(''),
   outflow: text('outflow').notNull().default(''),
-}, (t) => [unique('bank_account_user_id_id').on(t.userId, t.id)])
+}, (t) => [unique('bank_account_user_id_id').on(t.userId, t.id), userScoped(t.userId)])
 
 export const debt = pgTable('debt', {
   userId: owner(),
@@ -128,7 +144,7 @@ export const debt = pgTable('debt', {
   rate: text('rate').notNull().default(''),
   method: text('method').notNull().default(''),
   plan: text('plan').notNull().default(''),
-}, (t) => [unique('debt_user_id_id').on(t.userId, t.id)])
+}, (t) => [unique('debt_user_id_id').on(t.userId, t.id), userScoped(t.userId)])
 
 /** Where the monthly pay goes. Names are the user's data, never code. */
 export const allocationTarget = pgTable('allocation_target', {
@@ -139,6 +155,7 @@ export const allocationTarget = pgTable('allocation_target', {
   kind: allocationKind('kind').notNull(),
   note: text('note'),
 }, (t) => [
+  userScoped(t.userId),
   unique('allocation_target_user_id_id').on(t.userId, t.id),
   // living, subscriptions and remainder exist at most once each, per user
   uniqueIndex('allocation_target_single_kind').on(t.userId, t.kind).where(sql`${t.kind} <> 'fixed'`),
@@ -151,6 +168,7 @@ export const phaseAmount = pgTable('phase_amount', {
   targetId: text('target_id').notNull(),
   amount: integer('amount').notNull(),
 }, (t) => [
+  userScoped(t.userId),
   primaryKey({ columns: [t.phaseId, t.targetId] }),
   foreignKey({ name: 'phase_amount_phase_fk', columns: [t.userId, t.phaseId], foreignColumns: [phase.userId, phase.id] }).onDelete('cascade'),
   foreignKey({ name: 'phase_amount_target_fk', columns: [t.userId, t.targetId], foreignColumns: [allocationTarget.userId, allocationTarget.id] }).onDelete('cascade'),
@@ -166,6 +184,7 @@ export const remainderSplit = pgTable('remainder_split', {
   code: text('code').notNull().default(''),
   ratio: numeric('ratio', { precision: 5, scale: 4, mode: 'number' }).notNull(),
 }, (t) => [
+  userScoped(t.userId),
   unique('remainder_split_user_id_id').on(t.userId, t.id),
   check('remainder_split_ratio_range', sql`${t.ratio} >= 0 and ${t.ratio} <= 1`),
 ])

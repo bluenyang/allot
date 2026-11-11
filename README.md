@@ -39,6 +39,18 @@ docker compose -f docker/compose.prod.yaml up -d
 - 첫 데이터: 스키마는 앱이 시작할 때 만들어진다. 그다음 시드 SQL(`targets`, `phases`, 계정 등)을 `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <파일>`로 넣는다. 또는 개발 환경에서 `DATABASE_URL`을 운영 DB로 두고 `pnpm db:seed <데이터 파일>`을 실행한다.
 - 패키지가 비공개로 만들어졌다면, 서버에서 `docker login ghcr.io`를 하거나 GitHub 패키지 설정에서 공개로 바꾼다.
 
+### 전용 DB 롤
+
+사용자 데이터는 앱의 조건과 PostgreSQL 행 수준 보안(RLS) 두 겹으로 사용자별로 나뉜다. RLS는 슈퍼유저나 `BYPASSRLS` 롤에는 적용되지 않는다. 앱은 그런 롤로 접속하면 시작할 때 `WARNING`을 남기고 그대로 동작한다(보호가 한 겹만 남는다). 다른 앱과 같이 쓰는 DB 서버라면 특히, Allot 전용 롤과 database를 둔다.
+
+```sql
+-- 슈퍼유저로 한 번 실행. 비밀번호는 직접 정한다.
+CREATE ROLE allot LOGIN PASSWORD '<password>' NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
+CREATE DATABASE allot OWNER allot;
+```
+
+`DATABASE_URL=postgres://allot:<password>@<host>:5432/allot`. 앱이 이 롤로 테이블을 만들고(소유자), 마이그레이션이 RLS를 소유자에게도 강제(FORCE)한다. 이미 다른 롤로 만든 DB라면 `ALTER DATABASE allot OWNER TO allot;`과 각 테이블의 `ALTER TABLE … OWNER TO allot;`으로 옮긴다.
+
 ## 릴리스
 
 GitHub Actions → **Allot Release** → Run workflow(수동 실행).

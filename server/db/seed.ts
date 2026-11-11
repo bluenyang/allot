@@ -18,6 +18,7 @@ import { auth } from '../auth'
 import * as t from './schema'
 import * as authSchema from './auth-schema'
 import { moveOwner } from './owned'
+import { asUser } from './scope'
 
 export interface SeedData {
   settings: Settings
@@ -56,8 +57,7 @@ async function upsert<T extends PgTable & { id: PgColumn; userId: PgColumn }>(tx
 }
 
 export async function seed(data: SeedData, uid: string, tx: Db = db) {
-  await tx.transaction(async (q) => {
-    const d = q as unknown as Db
+  await asUser(uid, async (d) => {
     await d.insert(t.settings).values({ userId: uid, ...data.settings }).onConflictDoUpdate({ target: t.settings.userId, set: data.settings })
     await d.insert(t.living).values({ userId: uid, ...data.living }).onConflictDoUpdate({ target: t.living.userId, set: data.living })
     await upsert(d, uid, t.subscription, data.subscriptions.map((s) => ({ ...s, note: s.note ?? null })))
@@ -80,7 +80,7 @@ export async function seed(data: SeedData, uid: string, tx: Db = db) {
     await upsert(d, uid, t.bankAccount, data.accounts as never)
     await upsert(d, uid, t.debt, data.debts as never)
     await upsert(d, uid, t.remainderSplit, data.remainderSplit as never)
-  })
+  }, tx)
 }
 
 /**
@@ -140,7 +140,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   if (!email || !password || password.length < 8) throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD (8+ chars) must be set')
   const admin = await ensureAdmin(email, password, replaceAdmin)
   await seed(data, admin.userId)
-  const counts = await db.execute<{ t: string; n: number }>(sql`
+  const counts = await asUser(admin.userId, (q) => q.execute<{ t: string; n: number }>(sql`
     select 'subscription' t, count(*)::int n from subscription union all
     select 'plan_change', count(*)::int from plan_change union all
     select 'phase', count(*)::int from phase union all
@@ -150,7 +150,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     select 'debt', count(*)::int from debt union all
     select 'remainder_split', count(*)::int from remainder_split union all
     select 'allocation_target', count(*)::int from allocation_target union all
-    select 'phase_amount', count(*)::int from phase_amount`)
+    select 'phase_amount', count(*)::int from phase_amount`))
   console.log(`admin account ${email}: ${admin.status}`)
   console.log(`seeded from ${file}`)
   for (const r of counts) console.log(`  ${r.t}: ${r.n}`)
