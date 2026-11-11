@@ -56,7 +56,7 @@ Decisions from the committee review (2026-11-11), accepted by the user ("그렇�
 
 - The backend stays on Hono / Node / TypeScript (shared `calc.ts`, auth as Better Auth plugins, a stable MCP TypeScript SDK).
 - One image serves the front end and the API; production compose adds a TLS reverse proxy example.
-- Tenant isolation in the app and with PostgreSQL row-level security; Allot uses its own database and a non-owner role.
+- Tenant isolation in the app and with PostgreSQL row-level security; Allot uses its own database and a dedicated role that is not a superuser; row-level security is forced on the table owner (spec 005, option A).
 - Envelope encryption (AES-256-GCM, per-user data keys wrapped by a master key) for secrets first: OAuth tokens, API credentials, later notes and names.
 
 | Patch | Scope |

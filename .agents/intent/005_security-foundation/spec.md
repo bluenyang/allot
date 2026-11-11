@@ -69,7 +69,7 @@ summary_for_user: |
   1. 묶음의 로그를 거꾸로 돌며, 각 행의 현재 값이 그 로그의 `after`와 같은지 본다(insert면 현재 행 = after, delete면 현재 행 없음). 하나라도 다르면 409 "이후에 바뀐 항목이 있어 되돌릴 수 없어요"와 해당 항목.
   2. 반대 변경을 적용한다(insert → delete, delete → insert(seq 포함 원래 값), update → before로). DB 제약과 앱 규칙(구간 겹침, 대상 종류·나머지 대상)을 다시 검사하고, 어기면 400으로 전체 롤백.
   3. 새 묶음(`revert_of` = 원래 묶음)으로 기록하고 원래 묶음의 `reverted_by`를 채운다. 되돌린 묶음을 다시 되돌리면 다시 적용된다.
-- 읽기 `GET /api/changes?before=<at>&limit=50`(최신순, 로그 포함), `GET /api/changes/:id`.
+- 읽기 `GET /api/changes?before=<at>&beforeId=<id>&limit=50`(최신순, 로그 포함; 다음 페이지는 마지막 묶음의 at과 id를 함께 보낸다 — 리뷰 #5 수정 73747a8에 맞춤, 감사 0.1.1 A-5), `GET /api/changes/:id`.
 - 보관: `CHANGE_LOG_RETENTION_DAYS`(비어 있으면 끔). 켜면 시작할 때와 하루 한 번, 그보다 오래된 묶음(로그 포함)을 지운다. 지우는 일 자체는 묶음으로 남기지 않는다.
 
 ### 화면 (S-3)
