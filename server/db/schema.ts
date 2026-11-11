@@ -5,7 +5,7 @@
 // Ids are text: seed ids ('claude', 'p1', ...) are kept, new rows use crypto.randomUUID().
 // `seq` keeps insertion order for lists.
 import { sql } from 'drizzle-orm'
-import { boolean, check, date, foreignKey, integer, jsonb, numeric, pgEnum, pgPolicy, pgTable, primaryKey, smallint, text, unique, uniqueIndex, type PgColumn } from 'drizzle-orm/pg-core'
+import { bigint, boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgEnum, pgPolicy, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, type PgColumn } from 'drizzle-orm/pg-core'
 import type { Plan } from '../../src/data/types'
 import { user } from './auth-schema'
 
@@ -187,4 +187,42 @@ export const remainderSplit = pgTable('remainder_split', {
   userScoped(t.userId),
   unique('remainder_split_user_id_id').on(t.userId, t.id),
   check('remainder_split_ratio_range', sql`${t.ratio} >= 0 and ${t.ratio} <= 1`),
+])
+
+// ── Change sets: one write request = one set, like a commit (spec 005 S-3) ──
+export const actorKind = pgEnum('actor_kind', ['user', 'api_key'])
+export const changeOp = pgEnum('change_op', ['insert', 'update', 'delete'])
+
+export const changeSet = pgTable('change_set', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  at: timestamp('at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  actorKind: actorKind('actor_kind').notNull(),
+  actorId: text('actor_id').notNull(),
+  method: text('method').notNull(),
+  path: text('path').notNull(),
+  /** This set undoes that one. */
+  revertOf: text('revert_of'),
+  /** That set undid this one. */
+  revertedBy: text('reverted_by'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('change_set_user_id_id').on(t.userId, t.id),
+  index('change_set_user_at').on(t.userId, t.at),
+])
+
+/** One row change. `before`/`after` are the whole row as the API reads it (null for insert/delete). */
+export const changeLog = pgTable('change_log', {
+  userId: owner(),
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  setId: text('set_id').notNull(),
+  tableName: text('table_name').notNull(),
+  rowKey: jsonb('row_key').$type<Record<string, string>>().notNull(),
+  op: changeOp('op').notNull(),
+  before: jsonb('before').$type<Record<string, unknown>>(),
+  after: jsonb('after').$type<Record<string, unknown>>(),
+}, (t) => [
+  userScoped(t.userId),
+  foreignKey({ name: 'change_log_set_fk', columns: [t.userId, t.setId], foreignColumns: [changeSet.userId, changeSet.id] }).onDelete('cascade'),
+  index('change_log_set').on(t.setId),
 ])

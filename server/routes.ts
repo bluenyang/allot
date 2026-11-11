@@ -11,6 +11,8 @@ import { randomUUID } from 'node:crypto'
 import { zValidator } from '@hono/zod-validator'
 import { and, asc, eq, getTableName, inArray, ne, sql } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
+import { childrenOf, Conflict, keyOf, listSets, NotFound, readRow, Recorder, revert, RuleBroken, whereKey, type RowKey } from './changes'
+import type { OwnedTable } from './db/owned'
 import { Hono, type Context } from 'hono'
 import type { z } from 'zod'
 import type { AppEnv } from './app-env'
@@ -73,6 +75,27 @@ export async function lockFor(q: Db, table: string, uid: string) {
 
 const uidOf = (c: Context<AppEnv>) => c.get('session').user.id
 
+/** The change set of this request (spec 005 S-3): one write request = one set. */
+const recorderFor = (c: Context<AppEnv>, q: Db) =>
+  new Recorder(q, uidOf(c), { kind: 'user', id: uidOf(c) }, { method: c.req.method, path: new URL(c.req.url).pathname })
+
+type Row = Record<string, unknown>
+
+/** Delete one row and log it (callers delete its children first, so cascades never fire unlogged). */
+async function deleteLogged(q: Db, rec: Recorder, table: OwnedTable, uid: string, key: RowKey) {
+  const [gone] = await q.delete(table).where(whereKey(table, uid, key)).returning()
+  if (gone) await rec.record(table, key, 'delete', gone as Row, null)
+  return gone as Row | undefined
+}
+
+/** Delete, with logs, every row that references `id` in `table` (plan changes of a subscription, amounts of a phase or target). */
+async function deleteChildren(q: Db, rec: Recorder, uid: string, table: PgTable, id: string) {
+  for (const [child, fk] of childrenOf(table)) {
+    const rows = await q.delete(child).where(and(eq(child.userId, uid), eq(fk, id))).returning()
+    for (const r of rows as Row[]) await rec.record(child, keyOf(child, r), 'delete', r, null)
+  }
+}
+
 interface CrudOptions<S extends z.ZodType> {
   optional?: string[]
   /** Runs in the same transaction as the write; with `lock`, the table is locked first so checks cannot race. */
@@ -80,7 +103,7 @@ interface CrudOptions<S extends z.ZodType> {
   lock?: boolean
   toRow?: (input: z.infer<S>) => Record<string, unknown>
   /** Same transaction, after the row is written; returns extra fields for the response (e.g. phase amounts). */
-  afterWrite?: (q: Db, uid: string, id: string, input: z.infer<S>) => Promise<Record<string, unknown>>
+  afterWrite?: (q: Db, rec: Recorder, uid: string, id: string, input: z.infer<S>) => Promise<Record<string, unknown>>
   /** Same transaction (and lock) as the delete; a message refuses it with 400. */
   beforeDelete?: (q: Db, uid: string, id: string) => Promise<string | null>
 }
@@ -89,24 +112,29 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
   const toRow = o.toRow ?? ((x: z.infer<S>) => x as Record<string, unknown>)
   const shape = (row: unknown) => out(row as Record<string, unknown>, o.optional)
   const name = getTableName(table)
+  const owned = table as unknown as OwnedTable
   const own = (uid: string, id: string) => and(eq(table.userId, uid), eq(table.id, id))
 
   /** check + write in one transaction; a failed check rolls back and becomes a 400. */
-  const guarded = async <R>(uid: string, input: z.infer<S>, id: string | undefined, write: (q: Db) => Promise<R>) =>
-    asUser(uid, async (q) => {
+  const guarded = async <R>(c: Context<AppEnv>, input: z.infer<S>, id: string | undefined, write: (q: Db, rec: Recorder) => Promise<R>) => {
+    const uid = uidOf(c)
+    return asUser(uid, async (q) => {
       if (o.lock) await lockFor(q, name, uid)
       const problem = await o.check?.(q, uid, input, id)
       if (problem) throw new Rejected(problem)
-      return write(q)
+      return write(q, recorderFor(c, q))
     })
+  }
 
   r.post(path, body(schema), async (c) => {
     const uid = uidOf(c)
     const input = c.req.valid('json' as never) as z.infer<S>
     try {
-      const row = await guarded(uid, input, undefined, async (q) => {
+      const row = await guarded(c, input, undefined, async (q, rec) => {
         const [written] = await q.insert(table).values({ ...toRow(input), id: randomUUID(), userId: uid } as T['$inferInsert']).returning()
-        const extra = o.afterWrite ? await o.afterWrite(q, uid, (written as { id: string }).id, input) : {}
+        const id = (written as { id: string }).id
+        await rec.record(table, { id }, 'insert', null, written as Row)
+        const extra = o.afterWrite ? await o.afterWrite(q, rec, uid, id, input) : {}
         return { ...shape(written), ...extra }
       })
       return c.json(row, 201)
@@ -123,10 +151,12 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
     try {
       // Clear optional fields the client left out, so "deleting" a note sticks.
       const cleared = Object.fromEntries((o.optional ?? []).map((k) => [k, null]))
-      const row = await guarded(uid, input, id, async (q) => {
+      const row = await guarded(c, input, id, async (q, rec) => {
+        const before = await readRow(q, owned, uid, { id })
+        if (!before) return null
         const [written] = await q.update(table).set({ ...cleared, ...toRow(input) } as never).where(own(uid, id)).returning()
-        if (!written) return null
-        const extra = o.afterWrite ? await o.afterWrite(q, uid, id, input) : {}
+        await rec.record(table, { id }, 'update', before, written as Row)
+        const extra = o.afterWrite ? await o.afterWrite(q, rec, uid, id, input) : {}
         return { ...shape(written), ...extra }
       })
       if (!row) return c.json({ error: '항목을 찾을 수 없어요.' }, 404)
@@ -141,13 +171,16 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
     const uid = uidOf(c)
     const id = c.req.param('id')
     try {
-      const rows = await asUser(uid, async (q) => {
+      const gone = await asUser(uid, async (q) => {
         if (o.lock) await lockFor(q, name, uid)
         const problem = await o.beforeDelete?.(q, uid, id)
         if (problem) throw new Rejected(problem)
-        return q.delete(table).where(own(uid, id)).returning({ id: table.id })
+        if (!(await readRow(q, owned, uid, { id }))) return undefined
+        const rec = recorderFor(c, q)
+        await deleteChildren(q, rec, uid, table, id)
+        return deleteLogged(q, rec, owned, uid, { id })
       })
-      if (rows.length === 0) return c.json({ error: '항목을 찾을 수 없어요.' }, 404)
+      if (!gone) return c.json({ error: '항목을 찾을 수 없어요.' }, 404)
       return c.body(null, 204)
     } catch (e) {
       if (e instanceof Rejected) return c.json({ error: e.message }, 400)
@@ -203,8 +236,13 @@ routes.put('/settings', body(v.settings), async (c) => {
   const uid = uidOf(c)
   const input = c.req.valid('json')
   try {
-    const [row] = await asUser(uid, (q) => q.insert(t.settings).values({ userId: uid, ...input })
-      .onConflictDoUpdate({ target: t.settings.userId, set: input }).returning())
+    const [row] = await asUser(uid, async (q) => {
+      const before = await readRow(q, t.settings, uid, { userId: uid })
+      const written = await q.insert(t.settings).values({ userId: uid, ...input })
+        .onConflictDoUpdate({ target: t.settings.userId, set: input }).returning()
+      await recorderFor(c, q).record(t.settings, { userId: uid }, before ? 'update' : 'insert', before, written[0] as Row)
+      return written
+    })
     const { userId: _id, ...rest } = row!
     return c.json(rest)
   } catch (e) {
@@ -216,8 +254,13 @@ routes.put('/living', body(v.living), async (c) => {
   const uid = uidOf(c)
   const input = c.req.valid('json')
   try {
-    const [row] = await asUser(uid, (q) => q.insert(t.living).values({ userId: uid, ...input })
-      .onConflictDoUpdate({ target: t.living.userId, set: input }).returning())
+    const [row] = await asUser(uid, async (q) => {
+      const before = await readRow(q, t.living, uid, { userId: uid })
+      const written = await q.insert(t.living).values({ userId: uid, ...input })
+        .onConflictDoUpdate({ target: t.living.userId, set: input }).returning()
+      await recorderFor(c, q).record(t.living, { userId: uid }, before ? 'update' : 'insert', before, written[0] as Row)
+      return written
+    })
     const { userId: _id, ...rest } = row!
     return c.json(rest)
   } catch (e) {
@@ -237,9 +280,10 @@ crud(routes, '/plan-changes', t.planChange, v.planChange)
  * change kind between this check and the insert. Lock order is always phase → allocation_target
  * (target writes never take the phase lock), so the two cannot deadlock.
  */
-async function writeAmounts(q: Db, uid: string, phaseId: string, amounts: Record<string, number>) {
+async function writeAmounts(q: Db, rec: Recorder, uid: string, phaseId: string, amounts: Record<string, number>) {
   await lockFor(q, 'allocation_target', uid)
-  const ids = Object.keys(amounts)
+  const want = Object.fromEntries(Object.entries(amounts).filter(([, v]) => v !== 0))
+  const ids = Object.keys(want)
   if (ids.length) {
     const fixed = await q.select({ id: t.allocationTarget.id }).from(t.allocationTarget)
       .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), eq(t.allocationTarget.kind, 'fixed')))
@@ -247,10 +291,23 @@ async function writeAmounts(q: Db, uid: string, phaseId: string, amounts: Record
     const bad = ids.filter((i) => !ok.has(i))
     if (bad.length) throw new Rejected('구간 금액은 고정 대상에만 넣을 수 있어요.')
   }
-  await q.delete(t.phaseAmount).where(and(eq(t.phaseAmount.userId, uid), eq(t.phaseAmount.phaseId, phaseId)))
-  const rows = Object.entries(amounts).filter(([, v]) => v !== 0).map(([targetId, amount]) => ({ userId: uid, phaseId, targetId, amount }))
-  if (rows.length) await q.insert(t.phaseAmount).values(rows)
-  return { amounts: Object.fromEntries(rows.map((r) => [r.targetId, r.amount])) }
+  // Only what differs is written (and logged): removed, changed, added.
+  const pa = t.phaseAmount
+  const have = await q.select().from(pa).where(and(eq(pa.userId, uid), eq(pa.phaseId, phaseId)))
+  for (const old of have) {
+    const key = { phaseId, targetId: old.targetId }
+    if (!(old.targetId in want)) await deleteLogged(q, rec, pa, uid, key)
+    else if (want[old.targetId] !== old.amount) {
+      const [written] = await q.update(pa).set({ amount: want[old.targetId]! }).where(whereKey(pa, uid, key)).returning()
+      await rec.record(pa, key, 'update', old, written as Row)
+    }
+  }
+  for (const [targetId, amount] of Object.entries(want)) {
+    if (have.some((h) => h.targetId === targetId)) continue
+    const [written] = await q.insert(pa).values({ userId: uid, phaseId, targetId, amount }).returning()
+    await rec.record(pa, { phaseId, targetId }, 'insert', null, written as Row)
+  }
+  return { amounts: want }
 }
 
 crud(routes, '/phases', t.phase, v.phase, {
@@ -258,7 +315,7 @@ crud(routes, '/phases', t.phase, v.phase, {
   lock: true,
   check: (q, uid, p, id) => phaseOverlap(q, uid, p, id),
   toRow: ({ amounts: _a, ...p }) => ({ ...p, note: p.note || null }),
-  afterWrite: (q, uid, id, p) => writeAmounts(q, uid, id, p.amounts),
+  afterWrite: (q, rec, uid, id, p) => writeAmounts(q, rec, uid, id, p.amounts),
 })
 crud(routes, '/events', t.planEvent, v.planEvent)
 crud(routes, '/checks', t.checkItem, v.checkItem)
@@ -281,12 +338,41 @@ crud(routes, '/targets', t.allocationTarget, v.target, {
     return null
   },
   // A target that is no longer 'fixed' keeps no phase amounts.
-  afterWrite: async (q, uid, id, x) => {
-    if (x.kind !== 'fixed') await q.delete(t.phaseAmount).where(and(eq(t.phaseAmount.userId, uid), eq(t.phaseAmount.targetId, id)))
+  afterWrite: async (q, rec, uid, id, x) => {
+    if (x.kind !== 'fixed') await deleteChildren(q, rec, uid, t.allocationTarget, id)
     return {}
   },
   beforeDelete: async (q, uid, id) => {
     const [row] = await q.select().from(t.allocationTarget).where(and(eq(t.allocationTarget.userId, uid), eq(t.allocationTarget.id, id)))
     return row?.kind === 'remainder' ? '나머지 대상은 지울 수 없어요. 나머지를 받을 곳이 하나는 있어야 해요.' : null
   },
+})
+
+// ── Change sets (spec 005 S-3) ──
+//   GET  /api/changes?before=<at>&limit=50   newest first, with their row changes
+//   POST /api/changes/:id/revert             the opposite change, as a new set
+routes.get('/changes', async (c) => {
+  const uid = uidOf(c)
+  const before = c.req.query('before') || undefined
+  if (before && Number.isNaN(Date.parse(before))) return c.json({ error: 'before는 시각이어야 해요.' }, 400)
+  const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50) || 50, 1), 200)
+  return c.json(await asUser(uid, (q) => listSets(q, uid, before, limit)))
+})
+
+routes.post('/changes/:id/revert', async (c) => {
+  const uid = uidOf(c)
+  const id = c.req.param('id')
+  try {
+    const setId = await asUser(uid, async (q) => {
+      const rec = new Recorder(q, uid, { kind: 'user', id: uid }, { method: c.req.method, path: new URL(c.req.url).pathname, revertOf: id })
+      await revert(q, uid, id, rec)
+      return rec.id
+    })
+    return c.json({ reverted: id, changeSet: setId })
+  } catch (e) {
+    if (e instanceof NotFound) return c.json({ error: e.message }, 404)
+    if (e instanceof Conflict) return c.json({ error: e.message, table: e.table, key: e.key }, 409)
+    if (e instanceof RuleBroken) return c.json({ error: e.message }, 400)
+    return dbError(c, e)
+  }
 })
