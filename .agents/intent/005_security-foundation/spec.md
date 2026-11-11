@@ -7,7 +7,7 @@ summary_for_user: |
   격리는 두 겹입니다. 앱이 세션 사용자로 거르고, PostgreSQL RLS가 다시 거릅니다. 테이블 사이 참조도 같은 사용자끼리만 됩니다.
   저장 한 번이 변경 묶음 하나로 기록되고, 변경 내역 화면에서 커밋 되돌리기처럼 되돌릴 수 있습니다(뒤에 같은 행이 바뀌었으면 거부).
   운영은 TRUSTED_ORIGINS env, Traefik HTTPS 예시, 읽기 전용 컨테이너. RLS 우회 롤이면 시작할 때 경고합니다.
-  확인 필요: RLS를 테이블 소유자에게도 걸려면(FORCE) Drizzle이 못 만드는 SQL이 한 줄 필요해서 --custom 마이그레이션을 씁니다.
+  RLS 정책은 스키마(userScoped 헬퍼)에 두고, Drizzle이 못 만드는 FORCE 구문만 --custom 마이그레이션에 둡니다. 시작 검사와 테스트가 빠진 테이블을 잡습니다.
 ---
 ## 요구 해석
 - S-1 "모든 사용자 데이터 테이블에 `user_id`가 있고, 기존 데이터는 지금 계정의 것으로 그대로 남는다. 화면과 계산 결과는 바뀌지 않는다." → 데이터 테이블 12개(settings, living, subscription, plan_change, phase, plan_event, check_item, bank_account, debt, allocation_target, phase_amount, remainder_split) 모두 `user_id`. 업그레이드 전후 `/api/state`와 월별 분배가 같아야 한다.
@@ -32,9 +32,9 @@ summary_for_user: |
 - 요청마다 `withUser(userId, fn)`: 트랜잭션을 열고 `select set_config('app.user_id', $1, true)` 뒤에 `fn`. `/api/state`도 이 트랜잭션 안에서 읽는다(지금의 `Promise.all`은 같은 트랜잭션 연결에서 순서대로 실행).
 - 앱 조건: `crud()`의 select·update·delete와 검사 함수(구간 겹침, 대상 종류)에 `user_id = 세션 사용자`. insert는 `user_id`를 서버가 채운다(클라이언트 값은 받지 않는다).
 - 표 잠금(`lock table`)은 사용자 단위 advisory lock(`pg_advisory_xact_lock(hashtext('allot:<table>:' || user_id))`)으로 바꾼다. 잠금 순서(phase → allocation_target)는 그대로.
-- RLS: 각 데이터 테이블에 Drizzle `pgPolicy`(`for all`, `using`·`with check`: `user_id = current_setting('app.user_id', true)`)와 `enableRLS`. 설정값이 없으면 `null`이라 아무 행도 보이지 않는다(닫힌 쪽으로 실패).
-- 소유자 적용: 앱이 테이블 소유자 롤로 접속하므로 `alter table … force row level security`가 필요하다. Drizzle 0.45는 이것을 만들지 못한다 → `--custom` 마이그레이션 하나에 12줄. (우려 1)
-- 시작 검사: `select rolsuper, rolbypassrls from pg_roles where rolname = current_user`. 둘 중 하나가 참이면 `console.warn`으로 "RLS가 적용되지 않는다, README의 전용 롤 절 참고"를 남기고 계속 시작한다.
+- RLS: 각 데이터 테이블에 헬퍼 `userScoped(t)`(정책 정의 하나)로 Drizzle `pgPolicy`(`for all`, `using`·`with check`: `user_id = current_setting('app.user_id', true)`)와 `enableRLS`. 설정값이 없으면 `null`이라 아무 행도 보이지 않는다(닫힌 쪽으로 실패).
+- 소유자 적용: 앱이 테이블 소유자 롤로 접속하므로 `alter table … force row level security`가 필요하다. Drizzle 0.45는 이것을 만들지 못한다 → `--custom` 마이그레이션에 FORCE 구문만 둔다(테이블당 한 줄). 정책·ENABLE은 스키마가 만든다. (우려 1, 사용자 결정 A안)
+- 시작 검사: (1) `select rolsuper, rolbypassrls from pg_roles where rolname = current_user`. 둘 중 하나가 참이면 `console.warn`으로 "RLS가 적용되지 않는다, README의 전용 롤 절 참고". (2) `user_id` 열이 있는 public 테이블 중 `pg_class.relrowsecurity`나 `relforcerowsecurity`가 거짓인 것이 있으면 테이블 이름과 함께 경고. 둘 다 경고만 하고 계속 시작한다.
 - Better Auth 테이블(`user`, `session`, `account`, `verification`)에는 RLS를 걸지 않는다. 로그인 전(사용자를 모를 때) 읽어야 한다.
 
 ### 변경 묶음 (S-3, S-4)
@@ -67,7 +67,7 @@ summary_for_user: |
 
 ## 작업 단위
 - [ ] W-1 사용자 범위 스키마와 앱 조건: 12개 테이블 `user_id`, `unique (user_id, id)`, 복합 외래 키, settings·living 기본 키, 사용자별 유일 인덱스, 마이그레이션(생성 + custom 귀속), `crud()`·`/api/state`·settings·living·검사 함수의 사용자 조건, 사용자 단위 advisory lock, 시드(계정 먼저, `--replace-admin` 데이터 이동). (S-1, S-2, S-8)
-- [ ] W-2 RLS: `pgPolicy`·`enableRLS`, custom 마이그레이션 `force row level security`, `withUser` + `set_config`, 시작 시 롤 검사 경고, README 전용 롤 절. (S-2, S-7)
+- [ ] W-2 RLS: `userScoped()` 헬퍼로 `pgPolicy`·`enableRLS`, custom 마이그레이션 `force row level security`(FORCE만), `withUser` + `set_config`, 시작 시 롤·RLS 누락 검사 경고, README 전용 롤 절. (S-2, S-7)
 - [ ] W-3 변경 묶음 서버: `change_set`·`change_log`(+RLS), 쓰기 경로 기록, 앱이 먼저 지우는 연쇄 삭제, 되돌리기 API(충돌 409, 규칙 400), 목록·상세 API, 보관 기간 정리. (S-3, S-4)
 - [ ] W-4 변경 내역 화면: 페이지, 펼치기, 되돌리기 확인, 저장소 갱신, E2E 하나. (S-3)
 - [ ] W-5 출처·운영: `TRUSTED_ORIGINS`, compose.prod Traefik 라벨·권한 축소, `.env.example` 운영 절, README·CHANGELOG. (S-5, S-6)
@@ -84,6 +84,7 @@ summary_for_user: |
 - V-4 새 DB와 시드: 새 DB에 `pnpm db:seed` 2회 exit 0, 행 수 = 시드 파일, 로그인 200, `/api/state` 200. `--replace-admin`으로 다른 이메일 → 데이터 행 수 그대로, 모두 새 계정 소유, 옛 계정 없음.
 - V-5 앱 격리(API): 테스트 DB에 사용자 B를 만든다. B의 `/api/state`는 409(설정 없음). B가 A의 id로 PUT·DELETE → 404, A의 데이터 그대로. B가 A의 구독 id로 요금 변경 생성 → 400. B가 만든 행은 A에게 보이지 않는다.
 - V-6 RLS(DB): 앱 롤로 `app.user_id` 없이 각 데이터 테이블 select → 0행. A로 설정 → A의 행만. A로 설정하고 `user_id = B` insert → 정책 위반 오류. 음성 대조: `crud()`의 사용자 조건 하나를 지운 임시 빌드로 V-5의 B → A PUT을 다시 하면 여전히 404(RLS가 막음); 같은 임시 빌드에서 RLS를 끈 DB로 하면 A의 행이 바뀐다(검사가 실제로 잡는다는 증거). 임시 변경은 커밋하지 않는다.
+- V-6b RLS 누락 검사: 테스트 DB에서 `user_id` 열이 있는 테이블 전부 `relrowsecurity = true`이고 `relforcerowsecurity = true`(질의 결과 0행이 기대). 음성 대조: 한 테이블에 `no force row level security`를 걸고 시작하면 그 테이블 이름으로 경고, 질의는 1행. 
 - V-7 롤 경고: 슈퍼유저 롤로 시작하면 경고 한 줄, 슈퍼유저가 아닌 전용 롤로 시작하면 경고 없음. 둘 다 `/healthz` 200.
 - V-8 변경 묶음: (a) 생성·수정·삭제 각각 묶음 1개와 맞는 로그(op, before, after). (b) 수정 되돌리기 → 값이 before로, 새 묶음 `revert_of`. (c) 요금 변경이 딸린 구독 삭제를 되돌리기 → 구독과 요금 변경 모두 원래 값·순서로. (d) 묶음 뒤에 같은 행을 다시 바꾼 경우 되돌리기 → 409, 데이터 그대로. (e) 되돌린 묶음을 다시 되돌리기 → 다시 적용. (f) 되돌리면 구간이 겹치게 되는 경우 → 400, 데이터 그대로. (g) 400·404 요청은 묶음을 남기지 않는다. (h) B는 A의 묶음을 보지도 되돌리지도 못한다(404).
 - V-9 보관: `CHANGE_LOG_RETENTION_DAYS=1`에서 2일 전으로 만든 묶음이 시작 후 지워지고 최근 묶음은 남는다. 값이 없으면 아무것도 지우지 않는다.
@@ -93,7 +94,7 @@ summary_for_user: |
 - V-13 공개 저장소 검사: 브랜치 전체 diff에 `.loctx/public-cleanup/banned.txt`의 금지어가 없다(grep exit 1). 맞는 줄이 있으면 실패, 판정 근거와 함께 기록.
 
 ## 우려
-1. **손으로 쓴 SQL**: AGENTS.md는 스키마 변경을 `pnpm db:generate`로, `--custom`은 "스키마 diff가 표현하지 못하는 데이터 이동"에만 쓰라고 한다. `force row level security`는 데이터 이동이 아니지만 Drizzle 0.45가 만들지 못한다. 안: `--custom` 마이그레이션 하나에 FORCE 12줄만 둔다(spec이 그 범위를 정한다). 대안: 마이그레이션용 소유자 롤과 앱 전용 롤을 나누면 FORCE가 필요 없지만, 롤 생성·GRANT가 운영자의 손 SQL이 되고 `DATABASE_URL`이 두 개가 된다. → 사용자 확인.
+1. **손으로 쓴 SQL** — 결정(사용자 2026-11-11, "RLS는 A안으로 갈까", "진행"): `--custom` 마이그레이션에는 FORCE RLS 구문만 둔다. 정책은 스키마에서 생성한다. 새 테이블을 더할 때 FORCE 한 줄을 빠뜨리는 위험은 시작 검사(2)와 V-6b가 잡는다. 대안(소유자 롤·앱 롤 분리)은 운영자 손 SQL과 `DATABASE_URL` 두 개가 필요해 고르지 않았다.
 2. 외래 키 검사와 `on delete cascade`는 RLS를 거치지 않는다. 그래서 복합 외래 키로 같은 사용자 안에서만 참조하게 했다. 연쇄는 앱이 먼저 지워서 실제로는 일어나지 않게 한다.
 3. 시드 id(`'p1'` 같은 값)는 전체에서 유일한 기본 키라, 두 번째 사용자에게 같은 시드를 넣을 수 없다. 0.1.1에서는 시드 계정이 하나라 문제없다. 0.1.2에서 사용자별 시드가 필요해지면 다시 본다.
 4. 앱 수준 기록이라, 앱을 거치지 않은 DB 직접 변경(관리자 SQL)은 기록되지 않는다. 되돌리기의 충돌 검사가 그런 변경을 "이후에 바뀜"으로 잡아 덮어쓰지 않는다.
