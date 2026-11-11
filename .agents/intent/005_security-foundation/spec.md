@@ -71,7 +71,7 @@ summary_for_user: |
 
 ### 출처·운영 (S-5, S-6)
 - `TRUSTED_ORIGINS`(쉼표 구분)가 있으면 그 목록만 믿는다. 없으면 지금처럼 Host에서 유도한다(개발). 운영 예시 `.env`에 이 값을 넣고, README에 "운영에서는 반드시 설정"으로 적는다.
-- `docker/compose.prod.yaml`: Traefik 라벨(`websecure` 엔트리포인트, TLS certresolver 이름은 변수, `Host()` 규칙), 외부 네트워크 이름 변수, `TRUSTED_PROXY_IP_HEADER=X-Real-IP`의 조건 설명. `read_only: true`, `tmpfs: [/tmp]`, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`. Traefik을 쓰지 않는 경우를 위해 지금의 loopback 포트 바인딩 예시는 주석으로 남긴다.
+- `docker/compose.yaml`(운영 예시; 2026-11-11 변경 전에는 `compose.prod.yaml`): Traefik 라벨(`websecure` 엔트리포인트, TLS certresolver 이름은 변수, `Host()` 규칙), 외부 네트워크 이름 변수, `TRUSTED_PROXY_IP_HEADER=X-Real-IP`의 조건 설명. `read_only: true`, `tmpfs: [/tmp]`, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`. Traefik을 쓰지 않는 경우를 위해 지금의 loopback 포트 바인딩 예시는 주석으로 남긴다.
 - README "운영 배포"에 전용 DB 롤 만들기(슈퍼유저 아님, 전용 database의 소유자)를 SQL 예시로.
 
 ### 시드 (S-8)
@@ -84,7 +84,7 @@ summary_for_user: |
 - [x] W-2 RLS: `userScoped()` 헬퍼로 `pgPolicy`·`enableRLS`, custom 마이그레이션 `force row level security`(FORCE만), `withUser` + `set_config`, 시작 시 롤·RLS 누락 검사 경고, README 전용 롤 절. (S-2, S-7)
 - [x] W-3 변경 묶음 서버: `change_set`·`change_log`(+RLS), 쓰기 경로 기록, 앱이 먼저 지우는 연쇄 삭제, 되돌리기 API(충돌 409, 규칙 400), 목록·상세 API, 보관 기간 정리. (S-3, S-4)
 - [x] W-4 변경 내역 화면: 페이지, 펼치기, 되돌리기 확인, 저장소 갱신, E2E 하나. (S-3)
-- [x] W-5 출처·운영: `TRUSTED_ORIGINS`, compose.prod Traefik 라벨·권한 축소, `.env.example` 운영 절, README·CHANGELOG. (S-5, S-6)
+- [ ] W-5 출처·운영: `TRUSTED_ORIGINS`, 운영 compose Traefik 라벨·권한 축소, 운영 예시를 `docker/compose.yaml`로 옮기고 `compose.prod.yaml` 삭제, 로컬 개발·테스트는 `compose.dev.yaml`만(README·`.env.example`·AGENTS.md 명령), `.env.example` 운영 절, README·CHANGELOG. (S-5, S-6)
 - [x] W-6 로컬 SQL 시드 생성기 갱신(저장소 밖, 커밋 없음; 결과를 history에 기록). (S-8)
 
 각 W는 게이트를 통과하는 커밋으로 끝난다. W-2는 W-1 위에, W-3·W-4는 W-2 위에 선다. W-5는 다른 W와 독립.
@@ -104,7 +104,7 @@ summary_for_user: |
 - V-9 보관: `CHANGE_LOG_RETENTION_DAYS=1`에서 2일 전으로 만든 묶음이 시작 후 지워지고 최근 묶음은 남는다. 값이 없으면 아무것도 지우지 않는다.
 - V-10 회귀: `node tests/api/crud.mjs create` → api 재시작 → `verify` → `cleanup` 모두 exit 0. `pnpm e2e` 전부 통과(변경 내역 테스트 포함).
 - V-11 출처: 운영 모드(`TRUSTED_ORIGINS=https://allot.example`)에서 `Origin: https://evil.example`로 sign-in → 거부(403), 목록의 출처 → 200. 개발 스택은 지금처럼 LAN 주소에서 로그인 200.
-- V-12 운영 compose: `docker compose -f docker/compose.prod.yaml --env-file docker/.env.example config --no-env-resolution` exit 0(`--no-env-resolution`: `docker/.env`의 실제 값을 풀어 쓰지 않게, 2026-11-11 W-5 사고 뒤 추가. 기대 결과 불변). 로컬에서 빌드한 이미지를 `read_only`·`cap_drop` 설정 그대로 테스트 DB에 붙여 시작 → 마이그레이션 적용, `/healthz` 200, 로그인 200. Traefik 라벨이 설정 출력에 있다.
+- V-12 운영 compose: `docker compose -f docker/compose.yaml --env-file docker/.env.example config --no-env-resolution`(2026-11-11 파일 이동 뒤) exit 0(`--no-env-resolution`: `docker/.env`의 실제 값을 풀어 쓰지 않게, 2026-11-11 W-5 사고 뒤 추가. 기대 결과 불변). 로컬에서 빌드한 이미지를 `read_only`·`cap_drop` 설정 그대로 테스트 DB에 붙여 시작 → 마이그레이션 적용, `/healthz` 200, 로그인 200. Traefik 라벨이 설정 출력에 있다.
 - V-13 공개 저장소 검사: 브랜치 diff(`git diff master...HEAD`)와 커밋 메시지(`git log master..HEAD --format=%B`, Co-Authored-By 줄 제외)에서 `.loctx/public-cleanup/banned.txt`의 금지어를 대소문자 구분·단어 단위(`grep -w -F`)로 찾는다. 남은 일치마다 사유를 기록한다. 사용자의 실제 데이터(계좌·상품·기관 이름, 금액, 개인 사정)이면 실패, 일반 단어나 도구 이름이면 통과. (2026-11-11 변경: 처음 기준은 대소문자 무시 부분 일치이고 "맞는 줄이 있으면 실패"였다. 그 기준의 첫 판정은 실패로 남는다.)
 
 ## 우려
