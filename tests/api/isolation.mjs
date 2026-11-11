@@ -67,7 +67,9 @@ const bCheck = await B('POST', '/api/checks', { text: MARK, done: false })
 const aSees = (await A('GET', '/api/state')).json
 ok(bCheck.status === 201 && !JSON.stringify(aSees).includes(MARK), "B's new rows do not show up for A")
 
-// (h) change sets are per user
+// (h) change sets are per user. A needs a set of its own first: toggle a check and back.
+await A('PUT', `/api/checks/${aCheck.id}`, { text: aCheck.text, done: !aCheck.done })
+await A('PUT', `/api/checks/${aCheck.id}`, { text: aCheck.text, done: aCheck.done })
 const aSets = (await A('GET', '/api/changes?limit=200')).json
 const bSets = (await B('GET', '/api/changes?limit=200')).json
 ok(Array.isArray(bSets) && bSets.length >= 2 && bSets.every((s) => !aSets.some((x) => x.id === s.id)), `B lists only its own change sets (${bSets.length})`)
