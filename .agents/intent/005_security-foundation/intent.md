@@ -2,9 +2,14 @@
 id: "005"
 slug: security-foundation
 version: 0.1.1
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "승인"
+    rev: 4e772c9
 waivers: []
 supersedes: null
 ---
