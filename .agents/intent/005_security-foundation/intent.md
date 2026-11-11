@@ -10,6 +10,13 @@ approvals:
     at: "2026-11-11"
     words: "승인"
     rev: 4e772c9
+  - role: user
+    kind: change
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "RLS는 A안으로 갈까 … 진행"
+    rev: cbefcd8
+    note: "제약 변경: FORCE RLS 구문만 --custom 마이그레이션에 손 SQL로 둔다."
 waivers: []
 supersedes: null
 ---
