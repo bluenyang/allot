@@ -24,6 +24,13 @@ approvals:
     words: "시작해. 내 승인은 intent와 spec이야. 이후 구현, 테스트, PR, CI는 연속 동작으로 보고 진행해."
     rev: 574da7e
     note: "범위: 구현·리뷰·테스트, 브랜치 푸시, PR 생성, CI 확인까지. 머지·감사·rc·릴리스는 포함하지 않는다."
+  - role: user
+    kind: permission
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "머지하고, flow 따라서 진행해봐"
+    rev: 885454d
+    note: "범위: PR #4 머지, 감사, rc(태그·워크플로·이미지). stable 릴리스는 포함하지 않는다(AGENTS.md: stable은 사용자의 명시 지시)."
 waivers: []
 supersedes: null
 ---
