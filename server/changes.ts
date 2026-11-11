@@ -56,15 +56,21 @@ export function same(a: Row | null | undefined, b: Row | null | undefined): bool
 const byName = new Map<string, OwnedTable>(OWNED.map((x) => [getTableName(x), x]))
 const col = (table: PgTable, k: string) => (table as unknown as Record<string, PgColumn>)[k]!
 
-/** The key of a row in its table: id, or userId (settings, living), or phaseId+targetId (phase_amount). */
+/**
+ * The key of a row in its table, without the owner (the owner is the user doing the request):
+ * id, or phaseId+targetId (phase_amount), or nothing for the one-per-user rows (settings, living).
+ * So history keeps pointing at the right row when data moves to another account.
+ */
 export function keyOf(table: PgTable, row: Row): RowKey {
   if (table === t.phaseAmount) return { phaseId: String(row.phaseId), targetId: String(row.targetId) }
-  if (table === t.settings || table === t.living) return { userId: String(row.userId) }
+  if (table === t.settings || table === t.living) return {}
   return { id: String(row.id) }
 }
 
 export function whereKey(table: OwnedTable, uid: string, key: RowKey): SQL {
-  return and(eq(table.userId, uid), ...Object.entries(key).map(([k, v]) => eq(col(table, k), v)))!
+  // userId in a key is the owner, which is always `uid` here (keys written before 0.1.1 shipped had it).
+  const rest = Object.entries(key).filter(([k]) => k !== 'userId')
+  return and(eq(table.userId, uid), ...rest.map(([k, v]) => eq(col(table, k), v)))!
 }
 
 export async function readRow(q: Db, table: OwnedTable, uid: string, key: RowKey): Promise<Row | null> {
