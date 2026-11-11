@@ -18,7 +18,7 @@ docker compose -f docker/compose.dev.yaml exec api pnpm db:seed   # 처음 데�
 - 의존성이 바뀌면 `up -d --build -V`로 이미지와 `node_modules`를 새로 받는다.
 - 마이그레이션은 api가 시작할 때 자동으로 적용된다.
 - `pnpm db:seed [파일]`은 데이터 파일(기본 `.loctx/scripts/seed-data.ts`, 로컬 전용)을 id 기준으로 upsert하고, `ADMIN_EMAIL`/`ADMIN_PASSWORD`로 로그인 계정을 만든다(이미 있으면 비밀번호를 바꾸고 기존 세션을 끊는다). 회원가입은 막혀 있다.
-- 계정은 하나뿐이다. 다른 이메일로 바꾸려면 `pnpm db:seed --replace-admin` — 예전 계정과 그 세션을 지운다.
+- 시드 계정은 하나뿐이다. 다른 이메일로 바꾸려면 `pnpm db:seed --replace-admin` — 데이터와 변경 내역을 새 계정으로 옮긴 뒤 예전 계정과 그 세션을 지운다.
 - web 컨테이너에는 프론트 파일(`index.html`, `vite.config.ts`, `tsconfig.json`, `src/`)만 마운트한다. Vite는 LAN의 누구에게나 root 아래 파일을 보여 주기 때문이다.
 - 개발과 테스트는 이 스택 하나로 한다. `docker/compose.yaml`은 운영 예시다(아래).
 
