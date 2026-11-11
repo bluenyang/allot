@@ -16,8 +16,11 @@ if (found) {
   console.log(`exists ${found.id}`)
 } else {
   const id = randomUUID()
-  await db.insert(a.user).values({ id, email: email.toLowerCase(), name: 'Test', emailVerified: true })
-  await db.insert(a.account).values({ id: randomUUID(), userId: id, providerId: 'credential', accountId: id, password: hash })
+  // one transaction: never a user without its credential
+  await db.transaction(async (q) => {
+    await q.insert(a.user).values({ id, email: email.toLowerCase(), name: 'Test', emailVerified: true })
+    await q.insert(a.account).values({ id: randomUUID(), userId: id, providerId: 'credential', accountId: id, password: hash })
+  })
   console.log(`created ${id}`)
 }
 await sqlClient.end()
