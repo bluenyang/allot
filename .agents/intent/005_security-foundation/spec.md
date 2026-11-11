@@ -73,7 +73,7 @@ summary_for_user: |
 - 로컬 SQL 시드(`.loctx/scripts/make-seed-sql.ts`, 저장소 밖): 생성 SQL이 계정 → 데이터 순서로 `user_id`를 넣고 `set_config`를 건다. 커밋하지 않는다.
 
 ## 작업 단위
-- [ ] W-1 사용자 범위 스키마와 앱 조건: 12개 테이블 `user_id`, `unique (user_id, id)`, 복합 외래 키, settings·living 기본 키, 사용자별 유일 인덱스, 마이그레이션(생성 + custom 귀속), `crud()`·`/api/state`·settings·living·검사 함수의 사용자 조건, 사용자 단위 advisory lock, 시드(계정 먼저, `--replace-admin` 데이터 이동). (S-1, S-2, S-8)
+- [x] W-1 사용자 범위 스키마와 앱 조건: 12개 테이블 `user_id`, `unique (user_id, id)`, 복합 외래 키, settings·living 기본 키, 사용자별 유일 인덱스, 마이그레이션(생성 + custom 귀속), `crud()`·`/api/state`·settings·living·검사 함수의 사용자 조건, 사용자 단위 advisory lock, 시드(계정 먼저, `--replace-admin` 데이터 이동). (S-1, S-2, S-8)
 - [ ] W-2 RLS: `userScoped()` 헬퍼로 `pgPolicy`·`enableRLS`, custom 마이그레이션 `force row level security`(FORCE만), `withUser` + `set_config`, 시작 시 롤·RLS 누락 검사 경고, README 전용 롤 절. (S-2, S-7)
 - [ ] W-3 변경 묶음 서버: `change_set`·`change_log`(+RLS), 쓰기 경로 기록, 앱이 먼저 지우는 연쇄 삭제, 되돌리기 API(충돌 409, 규칙 400), 목록·상세 API, 보관 기간 정리. (S-3, S-4)
 - [ ] W-4 변경 내역 화면: 페이지, 펼치기, 되돌리기 확인, 저장소 갱신, E2E 하나. (S-3)

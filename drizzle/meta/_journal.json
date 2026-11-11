@@ -36,6 +36,34 @@
       "when": 1794306957981,
       "tag": "0004_drop_hardwired_allocation",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794373140104,
+      "tag": "0005_user_id_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794373151412,
+      "tag": "0006_assign_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794373350967,
+      "tag": "0007_user_scoped_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794373482972,
+      "tag": "0008_user_scoped_refs",
+      "breakpoints": true
     }
   ]
 }
