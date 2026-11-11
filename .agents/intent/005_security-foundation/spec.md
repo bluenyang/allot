@@ -77,7 +77,7 @@ summary_for_user: |
 - [x] W-2 RLS: `userScoped()` 헬퍼로 `pgPolicy`·`enableRLS`, custom 마이그레이션 `force row level security`(FORCE만), `withUser` + `set_config`, 시작 시 롤·RLS 누락 검사 경고, README 전용 롤 절. (S-2, S-7)
 - [x] W-3 변경 묶음 서버: `change_set`·`change_log`(+RLS), 쓰기 경로 기록, 앱이 먼저 지우는 연쇄 삭제, 되돌리기 API(충돌 409, 규칙 400), 목록·상세 API, 보관 기간 정리. (S-3, S-4)
 - [x] W-4 변경 내역 화면: 페이지, 펼치기, 되돌리기 확인, 저장소 갱신, E2E 하나. (S-3)
-- [ ] W-5 출처·운영: `TRUSTED_ORIGINS`, compose.prod Traefik 라벨·권한 축소, `.env.example` 운영 절, README·CHANGELOG. (S-5, S-6)
+- [x] W-5 출처·운영: `TRUSTED_ORIGINS`, compose.prod Traefik 라벨·권한 축소, `.env.example` 운영 절, README·CHANGELOG. (S-5, S-6)
 - [ ] W-6 로컬 SQL 시드 생성기 갱신(저장소 밖, 커밋 없음; 결과를 history에 기록). (S-8)
 
 각 W는 게이트를 통과하는 커밋으로 끝난다. W-2는 W-1 위에, W-3·W-4는 W-2 위에 선다. W-5는 다른 W와 독립.
@@ -97,7 +97,7 @@ summary_for_user: |
 - V-9 보관: `CHANGE_LOG_RETENTION_DAYS=1`에서 2일 전으로 만든 묶음이 시작 후 지워지고 최근 묶음은 남는다. 값이 없으면 아무것도 지우지 않는다.
 - V-10 회귀: `node tests/api/crud.mjs create` → api 재시작 → `verify` → `cleanup` 모두 exit 0. `pnpm e2e` 전부 통과(변경 내역 테스트 포함).
 - V-11 출처: 운영 모드(`TRUSTED_ORIGINS=https://allot.example`)에서 `Origin: https://evil.example`로 sign-in → 거부(403), 목록의 출처 → 200. 개발 스택은 지금처럼 LAN 주소에서 로그인 200.
-- V-12 운영 compose: `docker compose -f docker/compose.prod.yaml config` exit 0. 로컬에서 빌드한 이미지를 `read_only`·`cap_drop` 설정 그대로 테스트 DB에 붙여 시작 → 마이그레이션 적용, `/healthz` 200, 로그인 200. Traefik 라벨이 설정 출력에 있다.
+- V-12 운영 compose: `docker compose -f docker/compose.prod.yaml --env-file docker/.env.example config --no-env-resolution` exit 0(`--no-env-resolution`: `docker/.env`의 실제 값을 풀어 쓰지 않게, 2026-11-11 W-5 사고 뒤 추가. 기대 결과 불변). 로컬에서 빌드한 이미지를 `read_only`·`cap_drop` 설정 그대로 테스트 DB에 붙여 시작 → 마이그레이션 적용, `/healthz` 200, 로그인 200. Traefik 라벨이 설정 출력에 있다.
 - V-13 공개 저장소 검사: 브랜치 전체 diff에 `.loctx/public-cleanup/banned.txt`의 금지어가 없다(grep exit 1). 맞는 줄이 있으면 실패, 판정 근거와 함께 기록.
 
 ## 우려
