@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard.vue'
 import Subscriptions from './pages/Subscriptions.vue'
 import Payroll from './pages/Payroll.vue'
 import Timeline from './pages/Timeline.vue'
+import History from './pages/History.vue'
 import Dev from './pages/Dev.vue'
 import { status, store } from './lib/store'
 import { authClient } from './lib/auth-client'
@@ -15,6 +16,7 @@ const pages = [
   { id: 'subs', label: '구독', comp: Subscriptions },
   { id: 'pay', label: '분배', comp: Payroll },
   { id: 'events', label: '일정', comp: Timeline },
+  { id: 'history', label: '내역', comp: History },
   { id: 'dev', label: '개발', comp: Dev },
 ]
 const ids = pages.map((p) => p.id)

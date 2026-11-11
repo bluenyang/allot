@@ -1,6 +1,6 @@
 # Production image: ghcr.io/bluenyang/allot
 # One Node process serves the built front end and the API, and applies migrations on start.
-# The database is external (DATABASE_URL). See docker/compose.prod.yaml.
+# The database is external (DATABASE_URL). See docker/compose.yaml.
 
 FROM node:26.13.0-alpine AS builder
 RUN npm install -g pnpm@12.18.0

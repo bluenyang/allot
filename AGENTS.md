@@ -5,12 +5,13 @@
 
 ## Project
 
-Allot — a personal web app for splitting the monthly salary across accounts, tracking subscriptions, and scheduling plan changes. Vue front end, Hono API, PostgreSQL, Better Auth login (v0.1).
+Allot — a self-hosted web app for personal money management: splitting the monthly salary across accounts, tracking subscriptions and payments, and scheduling plan changes. Vue front end, Hono API, PostgreSQL, Better Auth.
 
 ## Goals and scope
 
-- Personal use, single user. Sign-up is closed; the one account comes from the seed.
-- v0.1: data in PostgreSQL, login, every item editable, Docker dev stack. v0.2 (roadmap): MCP server, OAuth and passkey login — added as Better Auth plugins on `server/auth.ts`.
+- Self-hosted and open source. It holds personal financial data: security and privacy come before features.
+- Versions, plans and their scope live in `docs/ROADMAP.md` and the intents, never in this file.
+- Login and access features are Better Auth plugins on `server/auth.ts`.
 - `src/lib/calc.ts` stays pure: the server imports it (`server/ → src/lib, src/data`, never the reverse).
 - The user's real data lives only in `.loctx/scripts/seed-data.ts` (local) and the database; there is no data file in `src/`.
 
@@ -21,8 +22,8 @@ Allot — a personal web app for splitting the monthly salary across accounts, t
 - Dependencies are pinned to exact versions (`pnpm add -E`). The lockfile changes in the same commit as `package.json`; CI-style check: `pnpm install --frozen-lockfile`.
 - Build scripts are denied unless set to `true` under `allowBuilds` in `pnpm-workspace.yaml`; add a package there only when it needs one.
 - pnpm's `minimumReleaseAge` rejects versions published less than a day ago. Pick the newest version that passes; never add `minimumReleaseAgeExclude` entries to get around it. `minimumReleaseAgeStrict: true` makes `pnpm add` fail instead of adding them silently.
-- **Development runs in Docker** (every version): `docker compose -f docker/compose.yaml up -d --build -V`, open `http://<host>:15173` (LAN). Only 15173 is published; api and db stay on the compose network. Rebuild with `-V` after dependency changes.
-- Agent tests use `docker/compose.dev.yaml` with `docker/.env.dev` (test values copied from `.env.example`, gitignored). `docker/.env` holds the user's real values: never create or read it.
+- **Development and every local test server run in Docker with `docker/compose.dev.yaml`** (values in `docker/.env.dev`: test values copied from `.env.example`, gitignored): `docker compose -f docker/compose.dev.yaml up -d --build -V --wait`, open `http://<host>:15173` (LAN). Only 15173 is published; api and db stay on the compose network. Rebuild with `-V` after dependency changes.
+- `docker/compose.yaml` is the production example (released image, Traefik) and uses `docker/.env`, the user's real values: never create or read that file, and never start `compose.yaml` locally.
 
 | Command | What |
 |---|---|
@@ -44,7 +45,7 @@ Gates (`.agents/harness/gates.yaml`, order: typecheck → build) run on every co
 ## Conventions
 
 - Default branch: **`master`** (there is no `main`). Work on `type/topic` branches and merge into `master`; never commit to `master` directly.
-- From the version after 0.1.0, merges go through a **GitHub PR** on origin (user, 2026-11-10: "GitHub PR로"). Push, PR and merge each need the user's instruction. There is no CI yet: put the local gate output (typecheck, build) and the test summary in the PR body.
+- Merges go through a **GitHub PR** on origin (user, 2026-11-10: "GitHub PR로"). Push, PR and merge each need the user's instruction. There is no CI yet: put the local gate output (typecheck, build) and the test summary in the PR body.
 - Delegated roles (review, committee, audit) follow `.loctx/delegation.local.md` when it exists; the gates in `gates.yaml` are the same for every role.
 - Commit messages: `<type>: <summary>` (e.g. `init:`, `chore:`, `feat:`, `fix:`), English.
 - Pure calculation goes in `src/lib/calc.ts`; types in `src/data/types.ts`; pages in `src/pages/`, shared UI in `src/components/`.
