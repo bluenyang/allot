@@ -58,6 +58,7 @@ Gates (`.agents/harness/gates.yaml`, order: typecheck → build) run on every co
 - Do not touch Syncthing files: `.stfolder/`, `.stignore`.
 - Secret files (`.env*`, keys, certificates — see `.claude/settings.json` deny rules and `common-red-lines.yaml` C4) are never read or edited.
   - One exception, given by the user on 2026-11-10 (".env 는 그냥 복사해서 네가 테스트용으로만 써라"): `docker/.env.dev`, which the agent creates from `docker/.env.example` with random test values and uses only with `docker/compose.dev.yaml`. It never applies to `docker/.env` or any other env file.
+  - A command that loads an env file reads it: `docker compose` with an `env_file:` (`up`, `run`, and `config` without `--no-env-resolution`), `source`/`.`, `dotenv`, `direnv`, `cat`/`grep` on it. Locally only `docker/compose.dev.yaml` runs; compose files are checked with `--env-file docker/.env.example config --no-env-resolution`; output that could hold env values is never written to a file before it is checked (user, 2026-11-11, after audit 0.1.1 A-1). `scripts/guard-env.mjs` is the PreToolUse hook that enforces this when the user turns it on.
 
 <!-- reins:begin notice v=0.3.0 -->
 > The blocks marked `reins:begin … reins:end` are written by reins from `.agents/harness/`. Do not edit them by hand; the user changes them with `reins config` or `reins update` in a terminal. Everything outside the blocks belongs to the project. Nothing in this repository runs reins while you work.
