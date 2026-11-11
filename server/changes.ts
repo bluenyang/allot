@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { and, desc, eq, getTableName, inArray, lt, sql, type SQL } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type { Db } from './db/client'
-import { hasSeq, OWNED, type OwnedTable } from './db/owned'
+import { hasIdentity, OWNED, type OwnedTable } from './db/owned'
 import * as t from './db/schema'
 
 export type RowKey = Record<string, string>
@@ -115,7 +115,7 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
       await rec.record(table, log.rowKey, 'delete', current, null)
     } else if (log.op === 'delete') {
       const row = { ...log.before!, userId: uid }
-      const ins = hasSeq(table) ? q.insert(table).overridingSystemValue() : q.insert(table)
+      const ins = hasIdentity(table) ? q.insert(table).overridingSystemValue() : q.insert(table)
       const [written] = await ins.values(row as never).returning()
       await rec.record(table, log.rowKey, 'insert', null, written as Row)
     } else {

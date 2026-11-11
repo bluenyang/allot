@@ -16,8 +16,11 @@ export const OWNED: OwnedTable[] = [
 /** Moved with the data when an account is replaced: the data tables, then the change history. */
 const MOVED: OwnedTable[] = [...OWNED, t.changeSet, t.changeLog]
 
-/** Has an identity `seq` column: re-inserting a row keeps its order only with OVERRIDING SYSTEM VALUE. */
-export const hasSeq = (table: PgTable) => 'seq' in getTableColumns(table)
+/**
+ * Has a GENERATED ALWAYS identity column (`seq`, change_log.id): re-inserting a row with its
+ * own value needs OVERRIDING SYSTEM VALUE.
+ */
+export const hasIdentity = (table: PgTable) => Object.values(getTableColumns(table)).some((c) => c.generatedIdentity !== undefined)
 
 /**
  * Move every row of one user to another (same transaction as the caller). Row-level security
@@ -32,7 +35,7 @@ export async function moveOwner(q: Db, from: string, to: string) {
   for (const table of MOVED) {
     const list = rows.get(table)!.map((r) => ({ ...r, userId: to }))
     if (!list.length) continue
-    const ins = hasSeq(table) ? q.insert(table).overridingSystemValue() : q.insert(table)
+    const ins = hasIdentity(table) ? q.insert(table).overridingSystemValue() : q.insert(table)
     await ins.values(list as never)
   }
 }
