@@ -9,6 +9,13 @@ approvals:
     words: "진행"
     rev: cbefcd8
     note: "RLS 결정 \"RLS는 A안으로 갈까\" 포함. 승인 대상 rev는 A안·V-6b 반영 커밋."
+  - role: user
+    kind: change
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "진행해."
+    rev: 5a79a09
+    note: "V-13 기준 변경(단어 단위·대소문자 구분·일치마다 판정). 처음 기준의 판정은 실패로 남는다."
 summary_for_user: |
   0.1.1은 화면이 거의 그대로이고 안쪽만 바뀝니다. 모든 데이터에 user_id가 붙고 지금 데이터는 지금 계정 것으로 남습니다.
   격리는 두 겹입니다. 앱이 세션 사용자로 거르고, PostgreSQL RLS가 다시 거릅니다. 테이블 사이 참조도 같은 사용자끼리만 됩니다.
