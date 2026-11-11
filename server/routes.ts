@@ -48,6 +48,8 @@ function pgCode(e: unknown): string | undefined {
 function dbError(c: Context, e: unknown) {
   const code = pgCode(e)
   if (code === '23503') return c.json({ error: '연결된 항목을 찾을 수 없어요.' }, 400)
+  // unique violation, e.g. a second 'living' target (also when a revert would bring one back)
+  if (code === '23505') return c.json({ error: '같은 항목이 이미 있어요. 하나만 둘 수 있는 항목이에요.' }, 400)
   // check violation, bad text repr, numeric/integer overflow, bad or out-of-range date
   if (['23514', '22P02', '22003', '22007', '22008'].includes(code ?? '')) return c.json({ error: '입력값이 허용 범위를 벗어났어요.' }, 400)
   throw e
