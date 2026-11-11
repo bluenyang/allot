@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-11-12
+
+Stable. Same application code as 0.1.1-rc.1; adds the env-file guard (`scripts/guard-env.mjs`, PR #7).
+
 ## 0.1.1-rc.1 — 2026-11-11
 
 Security foundation. Intent 005 (`.agents/intent/005_security-foundation/`). The screens and the distribution stay the same.
