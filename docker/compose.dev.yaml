@@ -1,7 +1,7 @@
-# Test / development stack — same services as compose.yaml, separate data,
-# test values from docker/.env.dev (gitignored; copied from .env.example).
+# Local development / test stack: Vite dev server (15173 on the LAN), api, PostgreSQL 16.
+# Values from docker/.env.dev (gitignored; copy docker/.env.example and fill in test values).
 #   docker compose -f docker/compose.dev.yaml up -d --build -V --wait
-# Uses the same host port as compose.yaml, so run one stack at a time.
+# The production example is docker/compose.yaml (the released image).
 name: allot-dev
 
 services:

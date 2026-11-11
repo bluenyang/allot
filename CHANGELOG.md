@@ -8,9 +8,10 @@ Security foundation. Intent 005 (`.agents/intent/005_security-foundation/`). The
 - Every row has an owner (`user_id`); existing data goes to the existing account on upgrade (migration 0006 refuses when that is ambiguous). References between tables only reach rows of the same user.
 - PostgreSQL row-level security on every owned table, forced for the table owner; each request runs as its user. The server warns at start when its database role bypasses it or a table lacks it.
 - Change history: every save is a change set; the new 내역 tab lists them and reverts one like a commit (refused when the rows changed since). `CHANGE_LOG_RETENTION_DAYS` prunes old sets (off by default).
-- `TRUSTED_ORIGINS` for production; `docker/compose.prod.yaml` now routes through Traefik (HTTPS) and runs read-only without Linux capabilities.
+- `TRUSTED_ORIGINS` for production; the production example routes through Traefik (HTTPS) and runs read-only without Linux capabilities.
 
 ### Changed
+- `docker/compose.yaml` is now the production example (was `compose.prod.yaml`, removed); local development and tests use `docker/compose.dev.yaml` with `docker/.env.dev`.
 - `pnpm db:seed` writes the account first; `--replace-admin` moves the data to the new account instead of losing it.
 - Locks are per user (advisory locks) instead of table locks.
 

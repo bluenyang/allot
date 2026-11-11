@@ -22,8 +22,8 @@ Allot — a self-hosted web app for personal money management: splitting the mon
 - Dependencies are pinned to exact versions (`pnpm add -E`). The lockfile changes in the same commit as `package.json`; CI-style check: `pnpm install --frozen-lockfile`.
 - Build scripts are denied unless set to `true` under `allowBuilds` in `pnpm-workspace.yaml`; add a package there only when it needs one.
 - pnpm's `minimumReleaseAge` rejects versions published less than a day ago. Pick the newest version that passes; never add `minimumReleaseAgeExclude` entries to get around it. `minimumReleaseAgeStrict: true` makes `pnpm add` fail instead of adding them silently.
-- **Development runs in Docker** (every version): `docker compose -f docker/compose.yaml up -d --build -V`, open `http://<host>:15173` (LAN). Only 15173 is published; api and db stay on the compose network. Rebuild with `-V` after dependency changes.
-- Agent tests use `docker/compose.dev.yaml` with `docker/.env.dev` (test values copied from `.env.example`, gitignored). `docker/.env` holds the user's real values: never create or read it.
+- **Development and every local test server run in Docker with `docker/compose.dev.yaml`** (values in `docker/.env.dev`: test values copied from `.env.example`, gitignored): `docker compose -f docker/compose.dev.yaml up -d --build -V --wait`, open `http://<host>:15173` (LAN). Only 15173 is published; api and db stay on the compose network. Rebuild with `-V` after dependency changes.
+- `docker/compose.yaml` is the production example (released image, Traefik) and uses `docker/.env`, the user's real values: never create or read that file, and never start `compose.yaml` locally.
 
 | Command | What |
 |---|---|

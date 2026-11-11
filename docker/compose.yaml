@@ -1,57 +1,43 @@
-# Allot development stack.
-#   cp docker/.env.example docker/.env   # fill in real values
-#   docker compose -f docker/compose.yaml up -d --build -V   # -V: fresh node_modules after dependency changes
-#   open http://<this machine>:15173 (published on all interfaces, LAN included)
+# Allot production example: the released image only; PostgreSQL 16 is yours (DATABASE_URL).
+# Local development and tests use docker/compose.dev.yaml instead.
+#   cp docker/.env.example docker/.env   # DATABASE_URL, BETTER_AUTH_*, TRUSTED_ORIGINS, production section
+#   docker compose -f docker/compose.yaml up -d
+# Migrations are applied when the app starts. First data and the database role: README ("운영 배포").
+#
+# HTTPS through Traefik (a Traefik that already runs on this host, docker provider): the app
+# publishes no port and joins Traefik's network; Traefik terminates TLS for ALLOT_HOST.
+# Traefik sets X-Real-Ip from the client address, so TRUSTED_PROXY_IP_HEADER=X-Real-IP is
+# right here, as long as only Traefik can reach the app (no published port) and Traefik's
+# entrypoint does not trust forwarded headers from the internet.
 name: allot
 
 services:
-  web:
-    build: { context: .., dockerfile: docker/Dockerfile }
-    command: ["pnpm", "exec", "vite", "--host", "0.0.0.0", "--port", "15173", "--strictPort"]
-    ports: ["0.0.0.0:${WEB_PORT:-15173}:15173"]
-    env_file: [{ path: .env, required: false }]
-    environment:
-      API_URL: http://api:3000
-    # Vite serves every file under its root to anyone on the LAN, so the web container
-    # gets only the front end — never .loctx/, server/, tests/ or docker/.
-    volumes:
-      - ../index.html:/app/index.html:ro
-      - ../vite.config.ts:/app/vite.config.ts:ro
-      - ../tsconfig.json:/app/tsconfig.json:ro
-      - ../src:/app/src:ro
-      - /app/node_modules  # anonymous: renewed from the image by `up --build -V`
-    depends_on:
-      api: { condition: service_healthy }
+  app:
+    image: ghcr.io/bluenyang/allot:${ALLOT_VERSION:-latest}
+    env_file: [.env]
+    restart: unless-stopped
+    # Least privilege: nothing on disk changes at run time, no Linux capabilities needed.
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [proxy]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
+      traefik.http.routers.allot.rule: Host(`${ALLOT_HOST:?set ALLOT_HOST}`)
+      traefik.http.routers.allot.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.allot.tls: "true"
+      traefik.http.routers.allot.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.services.allot.loadbalancer.server.port: "3000"
+    # Without Traefik: remove `networks` and `labels`, and publish on loopback for a proxy on
+    # this host (keep TRUSTED_PROXY_IP_HEADER to the header that proxy overwrites), or on
+    # 0.0.0.0 for direct clients (then TRUSTED_PROXY_IP_HEADER must stay empty):
+    # ports: ["${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"]
 
-  api:
-    build: { context: .., dockerfile: docker/Dockerfile }
-    command: ["pnpm", "exec", "tsx", "watch", "server/index.ts"]
-    environment:
-      # Only the web service (Vite proxy) reaches the api, and it overwrites this header.
-      TRUSTED_PROXY_IP_HEADER: x-allot-client-ip
-    env_file: [{ path: .env, required: false }]
-    volumes:
-      - ..:/app
-      - /app/node_modules
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/healthz >/dev/null"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-    depends_on:
-      db: { condition: service_healthy }
-    # no ports: only the web service (Vite proxy) reaches it
-
-  db:
-    image: postgres:16.15-alpine3.24
-    env_file: [{ path: .env, required: false }]
-    volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-    # no ports: reachable only inside the compose network
-
-volumes:
-  pgdata:
+networks:
+  # Traefik's network, created outside this file. If PostgreSQL runs in a container on another
+  # network, add that network here and to the service as well.
+  proxy:
+    name: ${TRAEFIK_NETWORK:-traefik}
+    external: true

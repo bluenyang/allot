@@ -8,9 +8,9 @@ Vue 3.5 + Vite 8 + TypeScript 6 / Hono API / PostgreSQL 16 (Drizzle ORM) / Bette
 모든 버전은 Docker로 개발 서버를 띄운다. 브라우저에서 `http://<이 컴퓨터 IP>:15173`으로 연다(같은 네트워크의 폰에서도 열린다).
 
 ```bash
-cp docker/.env.example docker/.env      # 값 채우기 (비밀번호·BETTER_AUTH_SECRET 등)
-docker compose -f docker/compose.yaml up -d --build -V
-docker compose -f docker/compose.yaml exec api pnpm db:seed   # 처음 데이터 + 로그인 계정
+cp docker/.env.example docker/.env.dev  # 테스트 값 채우기 (비밀번호·BETTER_AUTH_SECRET 등)
+docker compose -f docker/compose.dev.yaml up -d --build -V --wait
+docker compose -f docker/compose.dev.yaml exec api pnpm db:seed   # 처음 데이터 + 로그인 계정
 ```
 
 - 서비스: `web`(Vite, 15173 공개), `api`(Hono, 내부 3000), `db`(PostgreSQL 16, 내부). 외부에 열리는 포트는 15173 하나다.
@@ -20,15 +20,15 @@ docker compose -f docker/compose.yaml exec api pnpm db:seed   # 처음 데이터
 - `pnpm db:seed [파일]`은 데이터 파일(기본 `.loctx/scripts/seed-data.ts`, 로컬 전용)을 id 기준으로 upsert하고, `ADMIN_EMAIL`/`ADMIN_PASSWORD`로 로그인 계정을 만든다(이미 있으면 비밀번호를 바꾸고 기존 세션을 끊는다). 회원가입은 막혀 있다.
 - 계정은 하나뿐이다. 다른 이메일로 바꾸려면 `pnpm db:seed --replace-admin` — 예전 계정과 그 세션을 지운다.
 - web 컨테이너에는 프론트 파일(`index.html`, `vite.config.ts`, `tsconfig.json`, `src/`)만 마운트한다. Vite는 LAN의 누구에게나 root 아래 파일을 보여 주기 때문이다.
-- 테스트용 스택은 `docker/compose.dev.yaml`(값은 `docker/.env.dev`, 별도 DB 볼륨). 두 스택은 같은 포트를 쓰므로 하나씩 띄운다.
+- 개발과 테스트는 이 스택 하나로 한다. `docker/compose.yaml`은 운영 예시다(아래).
 
 ## 운영 배포 (이미지)
 
 릴리스 이미지는 `ghcr.io/bluenyang/allot:<버전>`(정식 버전은 `latest`도)이고, linux/amd64용이다. Node 프로세스 하나가 화면과 API를 함께 서빙하며 포트는 3000이다. 시작할 때 마이그레이션을 적용한다. DB(PostgreSQL 16)는 따로 둔다.
 
 ```bash
-cp docker/.env.example docker/.env   # DATABASE_URL, BETTER_AUTH_SECRET/URL, 운영 항목
-docker compose -f docker/compose.prod.yaml up -d
+cp docker/.env.example docker/.env   # DATABASE_URL, BETTER_AUTH_SECRET/URL, TRUSTED_ORIGINS, 운영 항목
+docker compose -f docker/compose.yaml up -d
 ```
 
 - `BETTER_AUTH_URL`은 브라우저로 여는 실제 주소다(예: `https://allot.example.com`).
