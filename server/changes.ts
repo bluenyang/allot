@@ -8,6 +8,7 @@ import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type { Db } from './db/client'
 import { hasIdentity, OWNED, type OwnedTable } from './db/owned'
 import * as t from './db/schema'
+import { lockFor } from './db/scope'
 
 export type RowKey = Record<string, string>
 type Row = Record<string, unknown>
@@ -85,11 +86,12 @@ export class Conflict extends Error {
 export class NotFound extends Error {}
 export class RuleBroken extends Error {}
 
-/** Locks every write path takes, in their order (phase → allocation_target), so a revert cannot race them. */
+/**
+ * Every lock the write paths take, in their order, so a revert cannot race them (a missing
+ * settings/living row cannot be locked by FOR UPDATE; the advisory lock covers it).
+ */
 async function lockAll(q: Db, uid: string) {
-  for (const name of ['phase', 'allocation_target']) {
-    await q.execute(sql`select pg_advisory_xact_lock(hashtext(${`allot:${name}:`} || ${uid}))`)
-  }
+  for (const name of ['phase', 'allocation_target', 'settings', 'living']) await lockFor(q, name, uid)
 }
 
 /**

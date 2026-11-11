@@ -16,3 +16,11 @@ export function asUser<R>(uid: string, fn: (q: Db) => Promise<R>, q: Db = db): P
     return fn(t)
   })
 }
+
+/**
+ * Serialise writes to one kind of row for one user (advisory lock, released at commit).
+ * Order, wherever more than one is taken: phase → allocation_target → settings → living.
+ */
+export async function lockFor(q: Db, name: 'phase' | 'allocation_target' | 'settings' | 'living' | string, uid: string) {
+  await q.execute(sql`select pg_advisory_xact_lock(hashtext(${`allot:${name}:`} || ${uid}))`)
+}

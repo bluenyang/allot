@@ -17,7 +17,7 @@ import { Hono, type Context } from 'hono'
 import type { z } from 'zod'
 import type { AppEnv } from './app-env'
 import type { Db } from './db/client'
-import { asUser } from './db/scope'
+import { asUser, lockFor } from './db/scope'
 import * as t from './db/schema'
 import * as v from './validation'
 
@@ -66,14 +66,6 @@ export async function phaseOverlap(q: Db, uid: string, p: { from: string; to: st
 
 /** A rule the request breaks: the transaction rolls back and the client gets 400 with this message. */
 export class Rejected extends Error {}
-
-/**
- * Serialise writes to one table for one user (replaces table-wide locks: users do not wait for
- * each other). Taken at the start of the transaction; the order phase → allocation_target holds.
- */
-export async function lockFor(q: Db, table: string, uid: string) {
-  await q.execute(sql`select pg_advisory_xact_lock(hashtext(${`allot:${table}:`} || ${uid}))`)
-}
 
 const uidOf = (c: Context<AppEnv>) => c.get('session').user.id
 
