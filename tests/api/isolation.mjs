@@ -40,7 +40,9 @@ ok(!!aSub && !!aCheck && !!aTarget && !!aPhase, 'A has a subscription, a check, 
 
 // B sees nothing of A
 const bState = await B('GET', '/api/state')
-ok(bState.status === 409, `B GET /api/state → ${bState.status} (want 409: no settings of its own)`)
+const aIds = [aSub.id, aCheck.id, aTarget.id, aPhase.id]
+ok(bState.status === 409 || (bState.status === 200 && !aIds.some((id) => JSON.stringify(bState.json).includes(id))),
+  `B GET /api/state → ${bState.status} (want 409 for a new account, or 200 without any of A's rows)`)
 
 // B cannot change or delete A's rows by id
 for (const [path, body] of [
@@ -54,6 +56,11 @@ for (const [path, body] of [
 }
 const aAfter = (await A('GET', '/api/state')).json
 ok(JSON.stringify(aAfter) === JSON.stringify(aState), "A's data is unchanged")
+
+// B gets settings and living of its own, so its /api/state answers 200 and the final cleanup check can see its rows.
+const bSettings = await B('PUT', '/api/settings', { netPay: 1, fxRate: 1, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10000 })
+const bLiving = await B('PUT', '/api/living', { food: 0, transit: 0, allowance: 0 })
+ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings and living → ${bSettings.status}, ${bLiving.status}`)
 
 // Everything B creates is tracked and removed in `finally`, also when a check throws.
 const created = [] // [path, id]
@@ -81,7 +88,7 @@ try {
   const back = (await A('GET', '/api/state')).json.checks.find((x) => x.id === aCheck.id)
   ok(t1.status === 200 && t2.status === 200 && back?.done === aCheck.done && aSet?.changes?.[0]?.rowKey?.id === aCheck.id,
     `A toggles its check and back (${t1.status}, ${t2.status}); restored; the first toggle is A's set`)
-  if (t2.status === 200) aRestore = null
+  if (t2.status === 200 && back?.done === aCheck.done) aRestore = null // only when the value really is back
   const aSets = (await A('GET', '/api/changes?limit=200')).json
   const bSets = (await B('GET', '/api/changes?limit=200')).json
   ok(Array.isArray(bSets) && bSets.length >= 2 && bSets.every((x) => !aSets.some((y) => y.id === x.id)), `B lists only its own change sets (${bSets.length})`)
@@ -92,18 +99,29 @@ try {
     ok(rv.status === 404, `B revert of A's change set → ${rv.status} (want 404)`)
   } else ok(false, 'A has a change set to try')
 } finally {
-  // cleanup: every row B created, each deletion checked, then nothing of MARK left for B
+  // cleanup: try every step even when one throws; report each, then look at B's rows for the marker
+  const step = async (name, run) => {
+    try { await run() } catch (e) { ok(false, `cleanup ${name} threw: ${e?.message ?? e}`) }
+  }
   for (const [path, id] of created.reverse()) {
-    const d = await B('DELETE', `${path}/${id}`)
-    ok(d.status === 204, `cleanup DELETE ${path}/<id> → ${d.status}`)
+    await step(`DELETE ${path}`, async () => {
+      const d = await B('DELETE', `${path}/${id}`)
+      ok(d.status === 204, `cleanup DELETE ${path}/<id> → ${d.status}`)
+    })
   }
   if (aRestore) {
-    const r = await A('PUT', `/api/checks/${aRestore.id}`, aRestore.body)
-    ok(r.status === 200, `cleanup: A's check restored → ${r.status}`)
+    await step("restore A's check", async () => {
+      const r = await A('PUT', `/api/checks/${aRestore.id}`, aRestore.body)
+      const now = (await A('GET', '/api/state')).json.checks.find((x) => x.id === aRestore.id)
+      ok(r.status === 200 && now?.done === aRestore.body.done, `cleanup: A's check restored → ${r.status}, value ${now?.done === aRestore.body.done ? 'back' : 'NOT back'}`)
+    })
   }
-  const bState = await B('GET', '/api/changes?limit=1')
-  const bRows = await B('GET', '/api/state')
-  ok(bState.status === 200 && !JSON.stringify(bRows.json ?? '').includes(MARK), "cleanup: none of B's marker rows left (B's change history and the account stay; use a disposable database)")
+  await step('final look', async () => {
+    const bRows = await B('GET', '/api/state')
+    const lists = bRows.json && ['subscriptions', 'planChanges', 'phases', 'events', 'checks', 'accounts', 'debts', 'targets', 'remainderSplit'].every((k) => Array.isArray(bRows.json[k]))
+    ok(bRows.status === 200 && lists && !JSON.stringify(bRows.json).includes(MARK),
+      `cleanup: B's state readable (${bRows.status}) and no marker row left (B's settings, change history and the account stay; use a disposable database)`)
+  })
 }
 
 console.log(failed ? `${failed} FAILED` : 'ALL PASS')
