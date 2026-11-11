@@ -16,6 +16,13 @@ approvals:
     words: "진행해."
     rev: 5a79a09
     note: "V-13 기준 변경(단어 단위·대소문자 구분·일치마다 판정). 처음 기준의 판정은 실패로 남는다."
+  - role: user
+    kind: change
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "compose.yaml은 운영? example? 느낌이거든. prod.yaml은 지워도 되고, 로컬에 올리는 테스트 서버는 항상 compose.dev.yaml 써주면 됨 / compose.yaml = 운영 예시 / PR #4에 포함"
+    rev: b19de3c
+    note: "W-5 범위 확대(운영 예시 파일 이동·삭제, 개발 명령), V-12 명령의 파일 이름."
 summary_for_user: |
   0.1.1은 화면이 거의 그대로이고 안쪽만 바뀝니다. 모든 데이터에 user_id가 붙고 지금 데이터는 지금 계정 것으로 남습니다.
   격리는 두 겹입니다. 앱이 세션 사용자로 거르고, PostgreSQL RLS가 다시 거릅니다. 테이블 사이 참조도 같은 사용자끼리만 됩니다.
