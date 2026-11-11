@@ -41,7 +41,9 @@ ok(!!aSub && !!aCheck && !!aTarget && !!aPhase, 'A has a subscription, a check, 
 // B sees nothing of A
 const bState = await B('GET', '/api/state')
 const aIds = [aSub.id, aCheck.id, aTarget.id, aPhase.id]
-ok(bState.status === 409 || (bState.status === 200 && !aIds.some((id) => JSON.stringify(bState.json).includes(id))),
+const LISTS = ['subscriptions', 'planChanges', 'phases', 'events', 'checks', 'accounts', 'debts', 'targets', 'remainderSplit']
+const isState = (j) => !!j && LISTS.every((k) => Array.isArray(j[k]))
+ok(bState.status === 409 || (bState.status === 200 && isState(bState.json) && !aIds.some((id) => JSON.stringify(bState.json).includes(id))),
   `B GET /api/state → ${bState.status} (want 409 for a new account, or 200 without any of A's rows)`)
 
 // B cannot change or delete A's rows by id
@@ -118,8 +120,7 @@ try {
   }
   await step('final look', async () => {
     const bRows = await B('GET', '/api/state')
-    const lists = bRows.json && ['subscriptions', 'planChanges', 'phases', 'events', 'checks', 'accounts', 'debts', 'targets', 'remainderSplit'].every((k) => Array.isArray(bRows.json[k]))
-    ok(bRows.status === 200 && lists && !JSON.stringify(bRows.json).includes(MARK),
+    ok(bRows.status === 200 && isState(bRows.json) && !JSON.stringify(bRows.json).includes(MARK),
       `cleanup: B's state readable (${bRows.status}) and no marker row left (B's settings, change history and the account stay; use a disposable database)`)
   })
 }
