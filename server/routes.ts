@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { zValidator } from '@hono/zod-validator'
 import { and, asc, eq, getTableName, inArray, ne, sql } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
-import { childrenOf, Conflict, keyOf, listSets, NotFound, readRow, Recorder, revert, RuleBroken, whereKey, type RowKey } from './changes'
+import { childrenOf, Conflict, getSet, keyOf, listSets, NotFound, readRow, Recorder, revert, RuleBroken, whereKey, type RowKey } from './changes'
 import type { OwnedTable } from './db/owned'
 import { Hono, type Context } from 'hono'
 import type { z } from 'zod'
@@ -357,6 +357,7 @@ crud(routes, '/targets', t.allocationTarget, v.target, {
 // ── Change sets (spec 005 S-3) ──
 //   GET  /api/changes?before=<at>&beforeId=<id>&limit=50   newest first, with their row changes;
 //        the next page starts after the last set shown (its at and id)
+//   GET  /api/changes/:id                    one set
 //   POST /api/changes/:id/revert             the opposite change, as a new set
 routes.get('/changes', async (c) => {
   const uid = uidOf(c)
@@ -366,6 +367,12 @@ routes.get('/changes', async (c) => {
   if (!!at !== !!id) return c.json({ error: 'before와 beforeId는 함께 보내야 해요.' }, 400)
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50) || 50, 1), 200)
   return c.json(await asUser(uid, (q) => listSets(q, uid, at && id ? { at, id } : undefined, limit)))
+})
+
+routes.get('/changes/:id', async (c) => {
+  const uid = uidOf(c)
+  const set = await asUser(uid, (q) => getSet(q, uid, c.req.param('id')))
+  return set ? c.json(set) : c.json({ error: '변경 묶음을 찾을 수 없어요.' }, 404)
 })
 
 routes.post('/changes/:id/revert', async (c) => {

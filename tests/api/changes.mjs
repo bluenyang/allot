@@ -1,4 +1,4 @@
-// API check for spec 005 V-8 (a–g): change sets and revert.
+// API check for spec 005 V-8 (a–g, plus review: i detail, j paging, k unique rule): change sets and revert.
 //   BASE=http://<host>:15173 ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/changes.mjs
 // Works on marker rows only and removes them at the end (open-ended phases are closed for the
 // overlap check and restored). Exit code 0 only when every check passed.
@@ -96,6 +96,39 @@ const bad = await api('POST', '/api/phases', { label: 'V', name: `${MARK}-c`, fr
 const missing = await api('PUT', '/api/checks/no-such-id', { text: 'x', done: false })
 const missingSet = await api('POST', '/api/changes/no-such-set/revert')
 ok(bad.status === 400 && missing.status === 404 && missingSet.status === 404 && (await latest()).id === head, `(g) 400/404/404 → no new set`)
+
+// (i) one set by id; another id → 404
+const one = await api('GET', `/api/changes/${head}`)
+const none = await api('GET', '/api/changes/no-such-set')
+ok(one.status === 200 && one.json.id === head && Array.isArray(one.json.changes) && none.status === 404, `(i) GET /api/changes/:id → ${one.status}, unknown → ${none.status}`)
+
+// (j) paging one by one with the (at, id) cursor gives the same sets, in order, as one page
+const all = (await api('GET', '/api/changes?limit=8')).json
+const walked = []
+let cur = ''
+for (let i = 0; i < 8; i++) {
+  const page = (await api('GET', `/api/changes?limit=1${cur}`)).json
+  if (!page.length) break
+  walked.push(page[0].id)
+  cur = `&before=${encodeURIComponent(page[0].at)}&beforeId=${encodeURIComponent(page[0].id)}`
+}
+ok(walked.join() === all.map((x) => x.id).join(), `(j) paging by cursor = one page (${walked.length} sets)`)
+const half = await api('GET', `/api/changes?before=${encodeURIComponent(all[0].at)}`)
+ok(half.status === 400, `(j) before without beforeId → ${half.status} (want 400)`)
+
+// (k) a revert that would bring back a second 'living' target → 400, nothing changes
+const living = (await state()).targets.find((x) => x.kind === 'living')
+if (living) {
+  const delLiving = await api('DELETE', `/api/targets/${living.id}`)
+  const delSet = (await latest()).id
+  const other = await api('POST', '/api/targets', { name: `${MARK}-living`, kind: 'living' })
+  const twoLiving = await api('POST', `/api/changes/${delSet}/revert`)
+  ok(delLiving.status === 204 && other.status === 201 && twoLiving.status === 400, `(k) revert into a second living target → ${twoLiving.status} (want 400)`)
+  await api('DELETE', `/api/targets/${other.json.id}`)
+  const back = await api('POST', `/api/changes/${delSet}/revert`)
+  const lv = (await state()).targets.find((x) => x.kind === 'living')
+  ok(back.status === 200 && lv?.id === living.id && lv.name === living.name, `(k) after removing the new one the revert works → ${back.status}, original target back`)
+} else ok(false, '(k) the data has a living target')
 
 // cleanup: markers out, open phases back
 await api('DELETE', `/api/phases/${pb.json.id}`)

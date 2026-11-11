@@ -185,6 +185,11 @@ export async function listSets(q: Db, uid: string, before: Cursor | undefined, l
   return withLogs(q, uid, sets)
 }
 
+export async function getSet(q: Db, uid: string, id: string) {
+  const sets = await q.select().from(t.changeSet).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id)))
+  return (await withLogs(q, uid, sets))[0] ?? null
+}
+
 async function withLogs(q: Db, uid: string, sets: (typeof t.changeSet.$inferSelect)[]) {
   if (!sets.length) return []
   const logs = await q.select().from(t.changeLog)
