@@ -31,6 +31,13 @@ approvals:
     words: "머지하고, flow 따라서 진행해봐"
     rev: 885454d
     note: "범위: PR #4 머지, 감사, rc(태그·워크플로·이미지). stable 릴리스는 포함하지 않는다(AGENTS.md: stable은 사용자의 명시 지시)."
+  - role: user
+    kind: permission
+    by: BlueNyang
+    at: "2026-11-12"
+    words: "stable로 진행."
+    rev: d8b1c86
+    note: "범위: stable 릴리스 노트 PR·머지, 워크플로 v0.1.1(dry run 먼저), 받은 이미지 확인, Release 공개(v0.1.1이 Latest)."
 waivers: []
 supersedes: null
 ---

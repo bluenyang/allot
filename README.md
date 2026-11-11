@@ -1,4 +1,4 @@
-# Allot (0.1.0)
+# Allot (0.1.1)
 
 월급 분배·구독·플랜 전환 일정 관리. 한 사람이 쓰는 웹앱.
 Vue 3.5 + Vite 8 + TypeScript 6 / Hono API / PostgreSQL 16 (Drizzle ORM) / Better Auth 로그인.

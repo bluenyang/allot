@@ -42,7 +42,7 @@ Added to the roadmap after the work started (audit 0.1.0-stable, A-1). User's wo
 
 ## v0.1.x — security, login, MCP, and money management (patch releases)
 
-Status: planned. Settled with the user on 2026-11-11. The former v0.2 (MCP server, OAuth and passkey login) moves down into patch releases of v0.1 — user's words: "v0.2 쪼개기: 응. 쪼개라. 각 patch 버전으로 쪼개고, 버전 v0.2에서 v0.1.x로 내려." Each patch ships on its own.
+Status: 0.1.1 released (2026-11-12); 0.1.2 next. Settled with the user on 2026-11-11. The former v0.2 (MCP server, OAuth and passkey login) moves down into patch releases of v0.1 — user's words: "v0.2 쪼개기: 응. 쪼개라. 각 patch 버전으로 쪼개고, 버전 v0.2에서 v0.1.x로 내려." Each patch ships on its own.
 
 Direction (user's words, Korean, 2026-11-11):
 
@@ -61,7 +61,7 @@ Decisions from the committee review (2026-11-11), accepted by the user ("그렇�
 
 | Patch | Scope |
 |---|---|
-| 0.1.1 (rc.1 2026-11-11) | Security foundation: `user_id` on every table (existing data kept for the current user), row-level security, change sets with revert, explicit trusted origins, HTTPS in the production example |
+| 0.1.1 (released 2026-11-12) | Security foundation: `user_id` on every table (existing data kept for the current user), row-level security, change sets with revert, explicit trusted origins, HTTPS in the production example |
 | 0.1.2 | Login and admin: generic OIDC, GitHub, Google and password, each on/off; per-provider sign-up policy (admin-created, approval, or group/organization/domain rules); admin menu; initial admin from env (email or OIDC subject); encryption module; auth that a future mobile app can use (bearer tokens, deep-link return) |
 | 0.1.3 | MCP read: API keys (hashed, scoped, expiring, revocable), key management page, read tools |
 | 0.1.4 | MCP write: write tools, preview before confirm, revert of AI change sets |
