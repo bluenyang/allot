@@ -78,7 +78,7 @@ summary_for_user: |
 - [x] W-3 변경 묶음 서버: `change_set`·`change_log`(+RLS), 쓰기 경로 기록, 앱이 먼저 지우는 연쇄 삭제, 되돌리기 API(충돌 409, 규칙 400), 목록·상세 API, 보관 기간 정리. (S-3, S-4)
 - [x] W-4 변경 내역 화면: 페이지, 펼치기, 되돌리기 확인, 저장소 갱신, E2E 하나. (S-3)
 - [x] W-5 출처·운영: `TRUSTED_ORIGINS`, compose.prod Traefik 라벨·권한 축소, `.env.example` 운영 절, README·CHANGELOG. (S-5, S-6)
-- [ ] W-6 로컬 SQL 시드 생성기 갱신(저장소 밖, 커밋 없음; 결과를 history에 기록). (S-8)
+- [x] W-6 로컬 SQL 시드 생성기 갱신(저장소 밖, 커밋 없음; 결과를 history에 기록). (S-8)
 
 각 W는 게이트를 통과하는 커밋으로 끝난다. W-2는 W-1 위에, W-3·W-4는 W-2 위에 선다. W-5는 다른 W와 독립.
 
