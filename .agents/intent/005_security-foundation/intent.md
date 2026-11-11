@@ -17,6 +17,13 @@ approvals:
     words: "RLS는 A안으로 갈까 … 진행"
     rev: cbefcd8
     note: "제약 변경: FORCE RLS 구문만 --custom 마이그레이션에 손 SQL로 둔다."
+  - role: user
+    kind: permission
+    by: BlueNyang
+    at: "2026-11-11"
+    words: "시작해. 내 승인은 intent와 spec이야. 이후 구현, 테스트, PR, CI는 연속 동작으로 보고 진행해."
+    rev: 574da7e
+    note: "범위: 구현·리뷰·테스트, 브랜치 푸시, PR 생성, CI 확인까지. 머지·감사·rc·릴리스는 포함하지 않는다."
 waivers: []
 supersedes: null
 ---
