@@ -11,7 +11,7 @@ import { Hono, type Context } from 'hono'
 import type { z } from 'zod'
 import { adminCanSignInWithout, assertNotLastAdmin, isActiveAdmin, logAdmin } from './admin'
 import type { AppEnv } from './app-env'
-import { getAuthConfig, reloadAuth } from './auth'
+import { getAuthConfig, reloadAuth, withAuthLock } from './auth'
 import {
   EXTERNAL, PROVIDERS, problemOf, readProviderRow, RULES_OF, secretRef, usable,
   type AuthConfig, type Field, type ProviderConfig, type ProviderId, type RuleKind,
@@ -87,7 +87,8 @@ function apply(p: ProviderConfig, u: Update): ProviderConfig {
   return next
 }
 
-adminRoutes.put('/providers/:id', body(v.providerUpdate), async (c) => {
+adminRoutes.put('/providers/:id', body(v.providerUpdate), (c) => withAuthLock(async () => {
+  // Read, check, write, rebuild and (on failure) restore as one step (review 1, R2).
   const id = c.req.param('id') as ProviderId
   if (!PROVIDERS.includes(id)) return c.json({ error: '없는 로그인 방식이에요.' }, 404)
   const u = c.req.valid('json')
@@ -154,7 +155,7 @@ adminRoutes.put('/providers/:id', body(v.providerUpdate), async (c) => {
   }
   logAdmin(uidOf(c), `provider ${id} (${fields.join(', ')})`, id)
   return c.json(view(getAuthConfig(), id))
-})
+}))
 
 /** Delete every row of `uid` (children first), then the account itself; one transaction. */
 async function deleteAccount(uid: string) {

@@ -212,17 +212,40 @@ async function build(): Promise<{ auth: Auth; cfg: AuthConfig }> {
   return { auth, cfg }
 }
 
-/** First build at start. Problems with an enabled provider are logged; that provider stays off. */
-export async function initAuth() {
-  const { auth, cfg } = await build()
-  for (const [id, why] of Object.entries(cfg.problems)) console.warn(`WARNING: login method ${id} is enabled but cannot be used: ${why}`)
-  current = auth
-  currentConfig = cfg
+// Saving the configuration, rebuilding and swapping the instance, and restoring after a failed
+// rebuild run one at a time (review 1, R2): two admins saving at once cannot overwrite each other
+// or install a build made from older settings. Every build takes a generation number and is only
+// installed if no later build started meanwhile.
+let chain: Promise<unknown> = Promise.resolve()
+let generation = 0
+
+/** Run `fn` while no other configuration change or rebuild runs (one process). */
+export function withAuthLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = chain.then(fn, fn)
+  chain = run.catch(() => undefined)
+  return run
 }
 
-/** Rebuild after the configuration changed. On failure the current instance stays and the error is thrown. */
-export async function reloadAuth() {
+async function buildAndInstall(): Promise<AuthConfig> {
+  const gen = ++generation
   const { auth, cfg } = await build()
-  current = auth
-  currentConfig = cfg
+  if (gen === generation) {
+    current = auth
+    currentConfig = cfg
+  }
+  return cfg
+}
+
+/** First build at start. Problems with an enabled provider are logged; that provider stays off. */
+export async function initAuth() {
+  const cfg = await withAuthLock(buildAndInstall)
+  for (const [id, why] of Object.entries(cfg.problems)) console.warn(`WARNING: login method ${id} is enabled but cannot be used: ${why}`)
+}
+
+/**
+ * Rebuild after the configuration changed. On failure the current instance stays and the error
+ * is thrown. Call it inside withAuthLock when it follows a write to the configuration.
+ */
+export async function reloadAuth() {
+  await buildAndInstall()
 }
