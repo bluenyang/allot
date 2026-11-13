@@ -168,7 +168,7 @@ summary_for_user: |
 - [x] W-3 제공자: genericOAuth(OIDC, issuer+subject 키, idToken 로그인 차단), GitHub(org 조회 `getUserInfo`), Google, 토큰 암호화 훅, 토큰 엔드포인트 닫기, 연결 규칙(`validateUserInfo` link-account), 요청 제한 규칙. (S-1, S-10, S-11)
 - [x] W-4 가입 정책: `status`·`admission` 열과 마이그레이션(기존 사용자 active·seed, 유일 사용자 admin), `validateUserInfo` create·sign-in 규칙, `session.create.before` 승인 대기 거절, 데이터 API 상태 검사, 초기 관리자(시작 시 `ADMIN_EMAIL`, `ADMIN_OIDC_SUBJECT`). (S-2, S-4)
 - [x] W-5 관리자 서버: admin 플러그인, impersonation·remove-user 닫기, 마지막 관리자·자기 자신 보호, 계정 만들기(연결 대기), `/api/admin/*`(제공자 설정, 시크릿 암호화 저장, 완전 삭제). (S-3, S-5, S-8)
-- [ ] W-6 화면: 로그인(방식 목록, 오류 안내), 계정 페이지, 관리 페이지(사용자·로그인 방식), 메뉴, 저장소 연결, E2E. (S-1~S-3, S-8)
+- [x] W-6 화면: 로그인(방식 목록, 오류 안내), 계정 페이지, 관리 페이지(사용자·로그인 방식), 메뉴, 저장소 연결, E2E. (S-1~S-3, S-8)
 - [x] W-7 모바일 대비: bearer, oneTimeToken, `#app-login` 중계 페이지, `ALLOT_APP_RETURN_URLS`와 trustedOrigins scheme. (S-6)
 - [x] W-8 시드·새 사용자: `pnpm db:admin`, `db:seed` 규칙 변경과 `--replace-admin <email>`, `/api/state` 기본값과 `src/data/defaults.ts`, 기존 테스트(`isolation.mjs`의 409 기대 등) 갱신. (S-7)
 - [ ] W-9 개발 Dex와 문서: compose.dev `dex`, `docker/dex/config.yaml`, Vite `/dex` 프록시, `.env.example`, `docker/compose.yaml` env, README, CHANGELOG. (S-9, S-10)

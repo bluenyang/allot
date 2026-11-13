@@ -10,6 +10,8 @@ defineProps<{ name: string }>()
     <template v-else-if="name === 'events'"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></template>
     <template v-else-if="name === 'history'"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2" /></template>
     <template v-else-if="name === 'dev'"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14" /></template>
+    <template v-else-if="name === 'account'"><circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" /></template>
+    <template v-else-if="name === 'admin'"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6l8-3z" /><path d="M9 12l2 2 4-4" /></template>
     <template v-else-if="name === 'prev'"><path d="M15 6l-6 6 6 6" /></template>
     <template v-else-if="name === 'next'"><path d="M9 6l6 6-6 6" /></template>
     <template v-else-if="name === 'plus'"><path d="M12 5v14M5 12h14" /></template>
