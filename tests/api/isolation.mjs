@@ -43,8 +43,9 @@ const bState = await B('GET', '/api/state')
 const aIds = [aSub.id, aCheck.id, aTarget.id, aPhase.id]
 const LISTS = ['subscriptions', 'planChanges', 'phases', 'events', 'checks', 'accounts', 'debts', 'targets', 'remainderSplit']
 const isState = (j) => !!j && LISTS.every((k) => Array.isArray(j[k]))
-ok(bState.status === 409 || (bState.status === 200 && isState(bState.json) && !aIds.some((id) => JSON.stringify(bState.json).includes(id))),
-  `B GET /api/state → ${bState.status} (want 409 for a new account, or 200 without any of A's rows)`)
+// spec 006 S-7: a new account gets the defaults (200) instead of 0.1.1's 409; never any of A's rows.
+ok(bState.status === 200 && isState(bState.json) && !aIds.some((id) => JSON.stringify(bState.json).includes(id)),
+  `B GET /api/state → ${bState.status} (want 200 without any of A's rows)`)
 
 // B cannot change or delete A's rows by id
 for (const [path, body] of [

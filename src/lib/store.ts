@@ -3,6 +3,7 @@ import type {
   Account, AllocationTarget, CheckItem, Debt, Living, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Subscription,
 } from '../data/types'
 import { ApiError, api } from './api'
+import { DEFAULT_LIVING, DEFAULT_SETTINGS } from '../data/defaults'
 
 // App state comes from the API (PostgreSQL). Every change goes to the API first;
 // the store is updated from the server's answer, so what you see is what is saved.
@@ -21,8 +22,8 @@ export interface State {
 }
 
 const empty = (): State => ({
-  settings: { netPay: 0, fxRate: 0, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000 },
-  living: { food: 0, transit: 0, allowance: 0 },
+  settings: { ...DEFAULT_SETTINGS },
+  living: { ...DEFAULT_LIVING },
   targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [],
 })
 
