@@ -138,7 +138,7 @@ BASE=... ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/crud.mjs create      
 ```
 
 - `tests/e2e/auth.spec.ts`는 Dex로 승인 대기 흐름을 확인하므로 `DEX_CLIENT_SECRET`도 env로 준다. 관리 API로 OIDC 설정을 바꾸고 계정을 만들고 지우므로 테스트 DB에서 돌린다.
-- API 검사(`tests/api/`): `admin.mjs`(관리자 권한·동작), `mobile.mjs`(bearer·일회용 토큰, api에 `ALLOT_APP_RETURN_URLS` 필요), `new-account.mjs`(빈 DB에서 `db:admin` 뒤), `isolation.mjs`, `changes.mjs`, `keys.ts`(api 컨테이너 안에서, 키 교체). `admin.mjs`와 `new-account.mjs`는 버려도 되는 DB에서 돌린다.
+- API 검사(`tests/api/`): `admin.mjs`(관리자 권한·동작), `mobile.mjs`(bearer·일회용 토큰, api에 `ALLOT_APP_RETURN_URLS` 필요), `new-account.mjs`(빈 DB에서 `db:admin` 뒤), `isolation.mjs`, `changes.mjs`, `keys.ts`(api 컨테이너 안에서, 키 교체·분실; RLS 검사는 슈퍼유저가 아닌 롤로), `password-guard.mjs`(비밀번호 끄기 안전장치, api 컨테이너 안에서), `rows-of.ts`(계정별 표마다 행 수, 완전 삭제 확인). `admin.mjs`와 `new-account.mjs`는 버려도 되는 DB에서 돌린다.
 
 E2E는 시스템 Chrome(`channel: 'chrome'`)을 쓴다. 로그인 시도는 1분에 5번으로 제한된다.
 
