@@ -131,6 +131,10 @@ ok(badRoleName.status === 400, `set-role owner → ${badRoleName.status} (want 4
 const uSettings = await U('PUT', '/api/settings', { netPay: 1000000, fxRate: 1400, fxBuffer: 3, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10000 })
 const uSub = await U('POST', '/api/subscriptions', { name: 'V8-sub', category: 'tool', plan: 'p', amount: 1, currency: 'USD', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false })
 ok(uSettings.status === 200 && (uSub.status === 200 || uSub.status === 201), `U writes data: settings ${uSettings.status}, subscription ${uSub.status}`)
+// V-7 (d): the admin's own /api/state never holds U's rows
+const aState = await A('GET', '/api/state')
+ok(aState.status === 200 && !aState.text.includes('V8-sub') && !aState.text.includes(uSub.json?.id ?? 'no-id') && aState.json?.settings?.netPay !== 1000000,
+  `(V-7 d) admin /api/state → ${aState.status}, without U's subscription or settings`)
 const reset = await A('POST', '/api/auth/admin/set-user-password', { userId: uId, newPassword: uPw2 })
 ok(reset.status === 200, `set-user-password → ${reset.status}`)
 const afterReset = await U('GET', '/api/me')
