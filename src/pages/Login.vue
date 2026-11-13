@@ -2,6 +2,9 @@
 import { ref } from 'vue'
 import { authClient } from '../lib/auth-client'
 
+/** Opened by a mobile app (#app-login): after signing in, the browser goes back to the app. */
+defineProps<{ appReturn?: boolean }>()
+
 const email = ref('')
 const password = ref('')
 const err = ref('')
@@ -24,6 +27,7 @@ async function submit() {
   <main class="login">
     <form class="panel" @submit.prevent="submit">
       <div class="brand"><span class="logo">A</span><b>Allot</b></div>
+      <p v-if="appReturn" class="note">로그인하면 앱으로 돌아가요.</p>
       <div class="field"><label for="l-email">이메일</label><input id="l-email" v-model="email" class="in" type="email" autocomplete="username" required></div>
       <div class="field"><label for="l-pw">비밀번호</label><input id="l-pw" v-model="password" class="in" type="password" autocomplete="current-password" required></div>
       <p v-if="err" class="err" role="alert">{{ err }}</p>
@@ -38,4 +42,5 @@ async function submit() {
 .brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .brand b{font:700 17px var(--f-num)}
 .err{margin:0;color:var(--neg);font-size:13px}
+.note{margin:0;font-size:13px;color:var(--muted)}
 </style>

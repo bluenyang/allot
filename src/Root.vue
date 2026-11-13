@@ -1,19 +1,39 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 import App from './App.vue'
 import Login from './pages/Login.vue'
 import { authClient } from './lib/auth-client'
-import { onUnauthorized } from './lib/api'
+import { ApiError, api, onUnauthorized } from './lib/api'
 import { loadState, status } from './lib/store'
 
 const session = authClient.useSession()
 // The API said the session is gone (expired or signed out elsewhere): show the login screen.
 onUnauthorized.handler = () => window.location.reload()
 
+// #app-login?return=<app URL> (spec 006 S-6): sign in here, then hand the app a one-time token.
+const appReturn = (() => {
+  const h = window.location.hash
+  if (!h.startsWith('#app-login')) return ''
+  return new URLSearchParams(h.slice(h.indexOf('?') + 1)).get('return') ?? ''
+})()
+const relay = ref<'idle' | 'sending' | 'error'>('idle')
+const relayError = ref('')
+async function handOver() {
+  relay.value = 'sending'
+  try {
+    const { url } = await api<{ url: string }>('POST', '/api/app-login/ticket', { returnTo: appReturn })
+    window.location.href = url
+  } catch (e) {
+    relay.value = 'error'
+    relayError.value = e instanceof ApiError ? e.message : '앱으로 돌아가지 못했어요.'
+  }
+}
+
 watch(
   () => session.value.data?.session.id,
   (id) => {
-    if (id) loadState()
+    if (id && appReturn) handOver()
+    else if (id) loadState()
     else status.loaded = false
   },
   { immediate: true },
@@ -22,7 +42,11 @@ watch(
 
 <template>
   <p v-if="session.isPending" class="muted" style="padding:24px">불러오는 중…</p>
-  <Login v-else-if="!session.data" />
+  <Login v-else-if="!session.data" :app-return="!!appReturn" />
+  <div v-else-if="appReturn" class="boot" role="status">
+    <p v-if="relay === 'error'" class="err" role="alert">{{ relayError }}</p>
+    <p v-else class="muted">앱으로 돌아가는 중…</p>
+  </div>
   <App v-else-if="status.loaded" />
   <div v-else class="boot">
     <p v-if="status.error" class="err" role="alert">{{ status.error }}</p>

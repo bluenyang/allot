@@ -9,9 +9,12 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { admin } from 'better-auth/plugins/admin'
+import { bearer } from 'better-auth/plugins/bearer'
+import { oneTimeToken } from 'better-auth/plugins/one-time-token'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { ADMIN_CLOSED_PATHS, adminCanSignInWithout, afterAdminPath, guardAdminPath } from './admin'
 import { EXTERNAL, loadAuthConfig, usable, type AuthConfig, type ProviderId } from './auth-config'
+import { APP_RETURN_URLS } from './app-login'
 import { afterNewUser, makeValidateUserInfo, newUserFields, refusePending } from './auth-policy'
 import { fetchDiscovery, oidcProviders, socialProviders, type Discovery } from './providers'
 import { dropTokenUpdates, sealNewAccountTokens } from './token-crypto'
@@ -69,9 +72,10 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
     // Development (unset): the app is opened by localhost or a LAN address and the Vite proxy
     // keeps the browser's Host (changeOrigin: false), so trust the origin the request was sent
     // to; a page on another site sends a different Origin and is rejected.
-    trustedOrigins: TRUSTED_ORIGINS ?? ((req) => {
+    // The listed app URLs (ALLOT_APP_RETURN_URLS) are trusted as callback targets too.
+    trustedOrigins: TRUSTED_ORIGINS ? [...TRUSTED_ORIGINS, ...APP_RETURN_URLS] : ((req) => {
       const host = req?.headers.get('host')
-      return host ? [`http://${host}`, `https://${host}`] : []
+      return [...(host ? [`http://${host}`, `https://${host}`] : []), ...APP_RETURN_URLS]
     }),
     // transaction stays off: hooks write data keys in their own transaction after the user row is committed.
     database: drizzleAdapter(db, { provider: 'pg', schema: authSchema }),
@@ -91,6 +95,10 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
       genericOAuth({ config: oidcProviders(cfg, discovery) }),
       // Roles, bans, admin-created accounts. Impersonation and remove-user are closed (server/admin.ts).
       admin({ defaultRole: 'user', adminRoles: ['admin'] }),
+      // A future mobile app (spec 006 S-6): Authorization: Bearer, and one-time tokens that only
+      // the server issues, for a listed app URL (server/app-login.ts).
+      bearer(),
+      oneTimeToken({ expiresIn: 3, disableClientRequest: true }),
     ],
     disabledPaths: [...CLOSED_PATHS, ...ADMIN_CLOSED_PATHS],
     account: {
@@ -132,6 +140,7 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
         '/sign-in/social': { window: 60, max: 10 },
         '/link-social': { window: 60, max: 10 },
         '/callback/*': { window: 60, max: 20 },
+        '/one-time-token/verify': { window: 60, max: 10 },
       },
     },
     hooks: {
@@ -139,6 +148,7 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
       // checked against the latest configuration, also for an instance that is being replaced.
       before: createAuthMiddleware(async (ctx) => {
         await guardAdminPath(ctx)
+        if (ctx.path.startsWith('/one-time-token/') && !APP_RETURN_URLS.length) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         if (CLOSED_PATHS.includes(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         const m = methodOf(ctx)
         if (!m) return

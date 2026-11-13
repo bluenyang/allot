@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { adminRoutes } from './admin-routes'
+import { allowedReturn } from './app-login'
 import { publicMethods } from './auth-config'
 import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
 import type { AppEnv } from './app-env'
@@ -57,6 +58,17 @@ app.use('*', async (c, next) => {
 })
 
 app.get('/me', (c) => c.json({ user: c.get('session').user }))
+
+// spec 006 S-6: a one-time token for a listed app URL, for the signed-in browser (server/app-login.ts).
+app.post('/app-login/ticket', async (c) => {
+  const body = await c.req.json().catch(() => null) as { returnTo?: unknown } | null
+  const to = allowedReturn(body?.returnTo)
+  if (!to) return c.json({ error: '등록되지 않은 앱 주소예요.' }, 400)
+  const { token } = await getAuth().api.generateOneTimeToken({ headers: c.req.raw.headers })
+  const url = new URL(to)
+  url.searchParams.set('ott', token)
+  return c.json({ url: url.toString() })
+})
 app.route('/admin', adminRoutes)
 app.route('/', routes)
 
