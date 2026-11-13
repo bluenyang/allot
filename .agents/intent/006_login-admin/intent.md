@@ -2,9 +2,15 @@
 id: "006"
 slug: login-admin
 version: 0.1.2
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-13"
+    words: "승ㅇ;ㄴ"
+    rev: 2750bd5
+    note: "\"승인\"의 오타(두벌식에서 ㅣ 자리 옆 ;)로 읽었다."
 waivers: []
 supersedes: null
 ---
