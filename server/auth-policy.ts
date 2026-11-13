@@ -89,8 +89,12 @@ export function makeValidateUserInfo(getCfg: () => AuthConfig) {
     if (!row) return refuse('validation_failed', '사용자를 찾을 수 없어요.')
 
     if (src.action === 'sign-in') {
-      // While the provider admits by rules, an account that came in by a rule keeps needing one.
-      if (row.admission === 'rule' && p.signup === 'rules' && !ruleMatch(cfg, id, profile, email, verified)) {
+      // An account that came in by a rule keeps needing one at every external login, whatever the
+      // provider's sign-up policy is now (review 1, R1): taking someone out of the group, or
+      // switching the policy away from rules, ends their access. The admin can still let such an
+      // account in for good by giving it a password or another login (sign-in with those is
+      // not an external rule check).
+      if (row.admission === 'rule' && !ruleMatch(cfg, id, profile, email, verified)) {
         return refuse('NOT_ALLOWED', '허용된 사용자가 아니에요.')
       }
       return
