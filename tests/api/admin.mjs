@@ -48,7 +48,7 @@ const uRow = listed.json?.users?.find((x) => x.id === uId)
 ok(uRow?.status === 'active' && uRow?.admission === 'admin' && uRow?.role === 'user' && uRow?.emailVerified === true,
   `new account: status ${uRow?.status}, admission ${uRow?.admission}, role ${uRow?.role}, emailVerified ${uRow?.emailVerified}`)
 for (const other of (listed.json?.users ?? []).filter((x) => x.role === 'admin' && x.id !== aId)) {
-  const r = await A('POST', '/api/auth/admin/set-role', { userId: other.id, role: 'user' })
+  const r = await A('POST', `/api/admin/users/${other.id}/role`, { role: 'user' })
   ok(r.status === 200, `setup: demote other admin ${other.id} → ${r.status}`)
 }
 const extra = await A('POST', '/api/auth/admin/create-user', { email: `v8x-${Date.now()}@example.com`, name: 'x', data: { status: 'active' } })
@@ -60,9 +60,9 @@ ok(su.status === 200, `U sign-in ${su.status}`)
 for (const [m, p, b] of [
   ['GET', '/api/admin/providers'], ['PUT', '/api/admin/providers/github', { enabled: false }],
   ['DELETE', `/api/admin/users/${aId}`, { confirmEmail: process.env.ADMIN_EMAIL }],
-  ['GET', '/api/auth/admin/list-users'], ['POST', '/api/auth/admin/set-role', { userId: uId, role: 'admin' }],
+  ['GET', '/api/auth/admin/list-users'], ['POST', `/api/admin/users/${uId}/role`, { role: 'admin' }],
   ['POST', '/api/auth/admin/create-user', { email: 'nope@example.com', name: 'n' }],
-  ['POST', '/api/auth/admin/ban-user', { userId: aId }],
+  ['POST', `/api/admin/users/${aId}/ban`, {}], ['POST', '/api/auth/admin/set-user-password', { userId: aId, newPassword: 'nope-nope-1' }],
 ]) {
   const r = await U(m, p, b)
   ok(r.status === 403 || r.status === 401, `U ${m} ${p} → ${r.status} (want 403)`)
@@ -70,8 +70,37 @@ for (const [m, p, b] of [
 const uMe = await U('GET', '/api/me')
 ok(uMe.json?.user?.role === 'user', 'U is still a user')
 
+// ── review 1 R3: two admins demoting each other at the same moment leave one admin ──
+const X = client()
+const xEmail = `v8-admin-${Date.now()}@example.com`
+const xMade = await A('POST', '/api/auth/admin/create-user', { email: xEmail, password: 'v8-admin-pass-1', name: 'V8 admin', role: 'admin' })
+const xId = xMade.json?.user?.id
+const sx = await X.signIn(xEmail, 'v8-admin-pass-1')
+ok(xMade.status === 200 && sx.status === 200, `second admin X: create ${xMade.status}, sign-in ${sx.status}`)
+const [ax, xa] = await Promise.all([
+  A('POST', `/api/admin/users/${xId}/role`, { role: 'user' }),
+  X('POST', `/api/admin/users/${aId}/role`, { role: 'user' }),
+])
+// The loser gets 409 (last admin, checked under the lock) or 403 (it was demoted first and is no
+// longer an admin by the time its request is checked). Never two 200s.
+const winners = [ax.status, xa.status].filter((s) => s === 200).length
+const loser = ax.status === 200 ? xa.status : ax.status
+ok(winners === 1 && (loser === 409 || loser === 403), `A demotes X while X demotes A → ${ax.status}, ${xa.status} (want one 200, the other 409 or 403)`)
+const adminsLeft = (await A('GET', '/api/auth/admin/list-users?limit=500')).json?.users?.filter((x) => x.role === 'admin' && !x.banned).length
+const aIsAdmin = (await A('GET', '/api/me')).json?.user?.role === 'admin'
+ok(adminsLeft === 1, `active admins left: ${adminsLeft} (want 1)`)
+if (!aIsAdmin) {
+  // X won the race: give A the admin role back through X, so the rest of the run is the same
+  const back = await X('POST', `/api/admin/users/${aId}/role`, { role: 'admin' })
+  const xDown = await A('POST', `/api/admin/users/${xId}/role`, { role: 'user' })
+  ok(back.status === 200 && xDown.status === 200, `restore A as the only admin: ${back.status}, ${xDown.status}`)
+}
+const xDel = await A('DELETE', `/api/admin/users/${xId}`, { confirmEmail: xEmail })
+ok(xDel.status === 204, `X removed → ${xDel.status}`)
+
 // ── V-7 (b): closed admin paths, also for the admin ──
-for (const p of ['/api/auth/admin/impersonate-user', '/api/auth/admin/stop-impersonating', '/api/auth/admin/remove-user']) {
+// set-role and ban-user moved to /api/admin (one locked transaction with the last-admin check, review 1 R3)
+for (const p of ['/api/auth/admin/impersonate-user', '/api/auth/admin/stop-impersonating', '/api/auth/admin/remove-user', '/api/auth/admin/set-role', '/api/auth/admin/ban-user']) {
   const r = await A('POST', p, { userId: uId })
   ok(r.status === 404 || r.status === 403, `A POST ${p} → ${r.status} (want 404)`)
 }
@@ -90,10 +119,10 @@ const badStatus = await A('POST', '/api/auth/admin/update-user', { userId: uId, 
 ok(badStatus.status === 400, `update-user status pending → ${badStatus.status} (want 400)`)
 const rename = await A('POST', '/api/auth/admin/update-user', { userId: uId, data: { name: 'V8 renamed' } })
 ok(rename.status === 200 && rename.json?.name === 'V8 renamed', `update-user name → ${rename.status}`)
-const toAdmin = await A('POST', '/api/auth/admin/set-role', { userId: uId, role: 'admin' })
-const toUser = await A('POST', '/api/auth/admin/set-role', { userId: uId, role: 'user' })
+const toAdmin = await A('POST', `/api/admin/users/${uId}/role`, { role: 'admin' })
+const toUser = await A('POST', `/api/admin/users/${uId}/role`, { role: 'user' })
 ok(toAdmin.status === 200 && toUser.status === 200, `set-role admin → user: ${toAdmin.status}, ${toUser.status}`)
-const badRoleName = await A('POST', '/api/auth/admin/set-role', { userId: uId, role: 'owner' })
+const badRoleName = await A('POST', `/api/admin/users/${uId}/role`, { role: 'owner' })
 ok(badRoleName.status === 400, `set-role owner → ${badRoleName.status} (want 400)`)
 // U gets some data, so the delete below has rows to remove
 const uSettings = await U('PUT', '/api/settings', { netPay: 1000000, fxRate: 1400, fxBuffer: 3, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10000 })
@@ -112,7 +141,7 @@ const newPw = await U.signIn(uEmail, uPw2)
 ok(newPw.status === 200, `U new password → ${newPw.status}`)
 
 // ── V-8 (b): ban, unban ──
-const ban = await A('POST', '/api/auth/admin/ban-user', { userId: uId, banReason: 'test' })
+const ban = await A('POST', `/api/admin/users/${uId}/ban`, { reason: 'test' })
 ok(ban.status === 200, `ban-user → ${ban.status}`)
 const bannedSession = await U('GET', '/api/me')
 ok(bannedSession.status === 401, `U session after ban → ${bannedSession.status} (want 401)`)
@@ -124,9 +153,9 @@ const back = await U.signIn(uEmail, uPw2)
 ok(unban.status === 200 && back.status === 200, `unban → ${unban.status}, sign-in → ${back.status}`)
 
 // ── V-8 (c): the last admin and oneself ──
-const demoteLast = await A('POST', '/api/auth/admin/set-role', { userId: aId, role: 'user' })
+const demoteLast = await A('POST', `/api/admin/users/${aId}/role`, { role: 'user' })
 ok(demoteLast.status === 409, `demote the last admin → ${demoteLast.status} (want 409)`)
-const banSelf = await A('POST', '/api/auth/admin/ban-user', { userId: aId })
+const banSelf = await A('POST', `/api/admin/users/${aId}/ban`, {})
 ok(banSelf.status === 409, `ban oneself → ${banSelf.status} (want 409)`)
 const delSelf = await A('DELETE', `/api/admin/users/${aId}`, { confirmEmail: process.env.ADMIN_EMAIL })
 ok(delSelf.status === 409, `delete oneself → ${delSelf.status} (want 409)`)
@@ -139,8 +168,10 @@ ok(pwOff.status === 409, `password off with no admin external login → ${pwOff.
 
 // ── V-4 (e): a bad discovery URL is refused and nothing changes ──
 const before = (await A('GET', '/api/admin/providers')).json.providers.find((p) => p.id === 'oidc')
-const badDisc = await A('PUT', '/api/admin/providers/oidc', { enabled: true, options: { discoveryUrl: 'http://127.0.0.1:9/nothing' } })
-ok(badDisc.status === 400 || badDisc.status === 409, `bad discovery URL → ${badDisc.status} (want 400, or 409 if env-locked)`)
+// complete otherwise, so the discovery fetch is what fails
+const badDisc = await A('PUT', '/api/admin/providers/oidc', { enabled: true, options: { clientId: 'v4e', discoveryUrl: 'http://127.0.0.1:9/nothing' }, clientSecret: 'v4e-secret' })
+// 409 would mean an env lock stopped it before the discovery check ran: that proves nothing (review 1 R7)
+ok(badDisc.status === 400 && badDisc.json?.path === 'options.discoveryUrl', `bad discovery URL → ${badDisc.status} ${badDisc.json?.path ?? ''} (want 400 on options.discoveryUrl)`)
 const afterDisc = (await A('GET', '/api/admin/providers')).json.providers.find((p) => p.id === 'oidc')
 ok(JSON.stringify(before) === JSON.stringify(afterDisc), 'OIDC settings unchanged')
 

@@ -2,40 +2,23 @@
 // not know are enforced here, in a before-hook on its paths:
 //   - impersonation and remove-user are closed (remove-user would half-delete: sessions and
 //     accounts first, then the user row fails on the data's restrict foreign keys)
-//   - the last active admin cannot be demoted, banned or deleted; nobody bans or deletes themself
+//   - set-role and ban-user are closed: server/admin-routes.ts does them, checking "not the last
+//     active admin" and "not yourself" in the same locked transaction as the change
 //   - update-user may only change the name, or approve (status → active)
 //   - create-user takes no extra data; new accounts are active and admitted by the admin
 // The admin never reads another user's data tables: only `user` account columns and the
 // login-method settings. Every admin action is logged as one line (actor, action, target).
 import { APIError, getSessionFromCtx } from 'better-auth/api'
-import { and, count, eq, inArray, ne, or, sql } from 'drizzle-orm'
+import { and, count, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from './db/client'
 import * as a from './db/auth-schema'
 import { oidcAccountKey } from './providers'
 
-export const ADMIN_CLOSED_PATHS = ['/admin/impersonate-user', '/admin/stop-impersonating', '/admin/remove-user']
+// set-role and ban-user live in server/admin-routes.ts, where the last-admin check and the change
+// share one locked transaction (review 1, R3).
+export const ADMIN_CLOSED_PATHS = ['/admin/impersonate-user', '/admin/stop-impersonating', '/admin/remove-user', '/admin/set-role', '/admin/ban-user']
 
-const conflict = (code: string, message: string) => APIError.from('CONFLICT', { code, message })
 const bad = (code: string, message: string) => APIError.from('BAD_REQUEST', { code, message })
-
-/** Active admins other than `except` (not banned, not pending). */
-export async function otherActiveAdmins(except: string): Promise<number> {
-  const [r] = await db.select({ n: count() }).from(a.user)
-    .where(and(eq(a.user.role, 'admin'), eq(a.user.banned, false), eq(a.user.status, 'active'), ne(a.user.id, except)))
-  return r?.n ?? 0
-}
-
-async function isAdmin(id: string) {
-  const [u] = await db.select({ role: a.user.role }).from(a.user).where(eq(a.user.id, id))
-  return u?.role === 'admin'
-}
-
-/** The last active admin is never demoted, banned or deleted. */
-export async function assertNotLastAdmin(target: string) {
-  if (await isAdmin(target) && (await otherActiveAdmins(target)) === 0) {
-    throw conflict('LAST_ADMIN', '마지막 관리자는 바꾸거나 정지하거나 지울 수 없어요.')
-  }
-}
 
 type Ctx = { path: string; body?: unknown; context: unknown; headers?: Headers; request?: Request }
 const bodyOf = (ctx: Ctx) => (ctx.body ?? {}) as Record<string, unknown>
@@ -45,21 +28,10 @@ export async function guardAdminPath(ctx: Ctx) {
   if (!ctx.path.startsWith('/admin/')) return
   if (ADMIN_CLOSED_PATHS.includes(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
   const b = bodyOf(ctx)
-  const target = typeof b.userId === 'string' ? b.userId : undefined
   const me = (await getSessionFromCtx(ctx as never).catch(() => null))?.user.id
   // Not an admin: the plugin refuses with 403; checking anything first would tell them about the target.
   if (!me || !(await isActiveAdmin(me))) return
   switch (ctx.path) {
-    case '/admin/set-role': {
-      if (b.role !== 'admin' && b.role !== 'user') throw bad('BAD_ROLE', "역할은 'admin' 또는 'user'예요.")
-      if (target && b.role === 'user') await assertNotLastAdmin(target)
-      break
-    }
-    case '/admin/ban-user': {
-      if (target && target === me) throw conflict('SELF', '자기 자신은 정지할 수 없어요.')
-      if (target) await assertNotLastAdmin(target)
-      break
-    }
     case '/admin/update-user': {
       const data = (b.data ?? {}) as Record<string, unknown>
       const keys = Object.keys(data)

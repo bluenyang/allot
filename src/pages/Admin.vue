@@ -79,12 +79,12 @@ async function saveUser() {
   const u = e.user
   await act(async () => {
     if (e.name.trim() && e.name.trim() !== u.name) await api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { name: e.name.trim() } })
-    if (e.role !== u.role) await api('POST', '/api/auth/admin/set-role', { userId: u.id, role: e.role })
+    if (e.role !== u.role) await api('POST', `/api/admin/users/${u.id}/role`, { role: e.role })
   }, '저장했어요.')
 }
 const approve = (u: User) => act(() => api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { status: 'active' } }), `${u.email}을(를) 승인했어요.`, !!edit.value)
 const ban = (u: User) => confirm(`${u.email}을(를) 정지할까요? 로그인이 모두 끊겨요.`)
-  && act(() => api('POST', '/api/auth/admin/ban-user', { userId: u.id }), '정지했어요.', true)
+  && act(() => api('POST', `/api/admin/users/${u.id}/ban`, {}), '정지했어요.', true)
 const unban = (u: User) => act(() => api('POST', '/api/auth/admin/unban-user', { userId: u.id }), '정지를 풀었어요.', true)
 const endSessions = (u: User) => act(() => api('POST', '/api/auth/admin/revoke-user-sessions', { userId: u.id }), '로그인을 모두 끊었어요.', true)
 function resetPassword(u: User) {

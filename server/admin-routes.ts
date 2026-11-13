@@ -2,14 +2,16 @@
 //   GET    /api/admin/providers       login methods: values, where each came from, problems
 //                                     (client secrets only as { secretSet })
 //   PUT    /api/admin/providers/:id   change what env does not set; the auth instance is rebuilt
-//   DELETE /api/admin/users/:id       delete an account and all its data ({ confirmEmail })
-// User listing, creation, approval, roles, bans and passwords go through Better Auth's admin
+//   POST   /api/admin/users/:id/role  { role }       — never the last active admin to 'user'
+//   POST   /api/admin/users/:id/ban   { reason? }    — not yourself, never the last active admin
+//   DELETE /api/admin/users/:id       { confirmEmail } — an account and all its data
+// Listing, creation, approval, unban, passwords and sessions go through Better Auth's admin
 // plugin at /api/auth/admin/* (guarded in server/admin.ts).
 import { zValidator } from '@hono/zod-validator'
-import { eq } from 'drizzle-orm'
+import { and, count, eq, ne, sql } from 'drizzle-orm'
 import { Hono, type Context } from 'hono'
 import type { z } from 'zod'
-import { adminCanSignInWithout, assertNotLastAdmin, isActiveAdmin, logAdmin } from './admin'
+import { adminCanSignInWithout, isActiveAdmin, logAdmin } from './admin'
 import type { AppEnv } from './app-env'
 import { getAuthConfig, getOidcIssuer, reloadAuth, withAuthLock } from './auth'
 import {
@@ -159,35 +161,102 @@ adminRoutes.put('/providers/:id', body(v.providerUpdate), (c) => withAuthLock(as
   return c.json(view(getAuthConfig(), id))
 }))
 
-/** Delete every row of `uid` (children first), then the account itself; one transaction. */
-async function deleteAccount(uid: string) {
-  await db.transaction(async (tx) => {
-    const q = tx as unknown as Db
-    await setUser(q, uid)
-    for (const table of [...OWNED].reverse()) await q.delete(table).where(eq(table.userId, uid))
-    await q.delete(t.changeLog).where(eq(t.changeLog.userId, uid))
-    await q.delete(t.changeSet).where(eq(t.changeSet.userId, uid))
-    await q.delete(t.userKey).where(eq(t.userKey.userId, uid))
-    await q.delete(a.user).where(eq(a.user.id, uid)) // sessions and accounts cascade
-  })
-  forgetUserKey(uid)
+// ── Changes that can take away an admin: role, ban, delete (review 1, R3) ──
+// The check ("not the last active admin", "not yourself") and the change run in one transaction
+// under one advisory lock, so two admins demoting each other at the same moment cannot both pass.
+// Better Auth's set-role and ban-user are closed (server/admin.ts) so these are the only ways.
+
+class Refused extends Error {
+  constructor(public status: 400 | 404 | 409, message: string, public path?: string) { super(message) }
 }
+
+/** Run `fn` with the admin lock held, in one transaction. */
+function underAdminLock<R>(fn: (q: Db) => Promise<R>): Promise<R> {
+  return db.transaction(async (tx) => {
+    const q = tx as unknown as Db
+    await q.execute(sql`select pg_advisory_xact_lock(hashtext('allot:admins'))`)
+    return fn(q)
+  })
+}
+
+async function targetOf(q: Db, id: string) {
+  const [u] = await q.select({ id: a.user.id, email: a.user.email, role: a.user.role, banned: a.user.banned, status: a.user.status })
+    .from(a.user).where(eq(a.user.id, id))
+  if (!u) throw new Refused(404, '없는 사용자예요.')
+  return u
+}
+
+/** Refuse when `u` is an active admin and no other active admin would remain. */
+async function keepAnAdmin(q: Db, u: { id: string; role: string; banned: boolean; status: string }, what: string) {
+  if (u.role !== 'admin' || u.banned || u.status !== 'active') return
+  const [r] = await q.select({ n: count() }).from(a.user)
+    .where(and(eq(a.user.role, 'admin'), eq(a.user.banned, false), eq(a.user.status, 'active'), ne(a.user.id, u.id)))
+  if ((r?.n ?? 0) === 0) throw new Refused(409, `마지막 관리자는 ${what} 수 없어요.`)
+}
+
+const refusal = (c: Context<AppEnv>, e: unknown) => {
+  if (e instanceof Refused) return c.json({ error: e.message, ...(e.path ? { path: e.path } : {}) }, e.status)
+  throw e
+}
+
+adminRoutes.post('/users/:id/role', body(v.userRole), async (c) => {
+  const target = c.req.param('id')
+  const { role } = c.req.valid('json')
+  try {
+    await underAdminLock(async (q) => {
+      const u = await targetOf(q, target)
+      if (u.role === role) return
+      if (role === 'user') await keepAnAdmin(q, u, '사용자로 바꿀')
+      await q.update(a.user).set({ role, updatedAt: new Date() }).where(eq(a.user.id, target))
+    })
+  } catch (e) {
+    return refusal(c, e)
+  }
+  logAdmin(uidOf(c), `set-role ${role}`, target)
+  return c.json({ ok: true })
+})
+
+adminRoutes.post('/users/:id/ban', body(v.userBan), async (c) => {
+  const target = c.req.param('id')
+  const me = uidOf(c)
+  if (target === me) return c.json({ error: '자기 자신은 정지할 수 없어요.' }, 409)
+  try {
+    await underAdminLock(async (q) => {
+      const u = await targetOf(q, target)
+      await keepAnAdmin(q, u, '정지할')
+      await q.update(a.user).set({ banned: true, banReason: c.req.valid('json').reason ?? null, banExpires: null, updatedAt: new Date() }).where(eq(a.user.id, target))
+      await q.delete(a.session).where(eq(a.session.userId, target)) // signed out everywhere, now
+    })
+  } catch (e) {
+    return refusal(c, e)
+  }
+  logAdmin(me, 'ban-user', target)
+  return c.json({ ok: true })
+})
 
 adminRoutes.delete('/users/:id', body(v.userDelete), async (c) => {
   const target = c.req.param('id')
   const me = uidOf(c)
   if (target === me) return c.json({ error: '자기 자신은 지울 수 없어요.' }, 409)
-  const [u] = await db.select({ email: a.user.email }).from(a.user).where(eq(a.user.id, target))
-  if (!u) return c.json({ error: '없는 사용자예요.' }, 404)
   try {
-    await assertNotLastAdmin(target)
-  } catch {
-    return c.json({ error: '마지막 관리자는 지울 수 없어요.' }, 409)
+    await underAdminLock(async (q) => {
+      const u = await targetOf(q, target)
+      await keepAnAdmin(q, u, '지울')
+      if (c.req.valid('json').confirmEmail.toLowerCase() !== u.email.toLowerCase()) {
+        throw new Refused(400, '확인 이메일이 그 사용자의 이메일과 달라요.', 'confirmEmail')
+      }
+      // Every row of the user (children first), then the account; sessions and logins cascade.
+      await setUser(q, target)
+      for (const table of [...OWNED].reverse()) await q.delete(table).where(eq(table.userId, target))
+      await q.delete(t.changeLog).where(eq(t.changeLog.userId, target))
+      await q.delete(t.changeSet).where(eq(t.changeSet.userId, target))
+      await q.delete(t.userKey).where(eq(t.userKey.userId, target))
+      await q.delete(a.user).where(eq(a.user.id, target))
+    })
+  } catch (e) {
+    return refusal(c, e)
   }
-  if (c.req.valid('json').confirmEmail.toLowerCase() !== u.email.toLowerCase()) {
-    return c.json({ error: '확인 이메일이 그 사용자의 이메일과 달라요.', path: 'confirmEmail' }, 400)
-  }
-  await deleteAccount(target)
+  forgetUserKey(target)
   logAdmin(me, 'delete-user', target)
   return c.body(null, 204)
 })

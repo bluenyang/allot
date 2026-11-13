@@ -84,11 +84,12 @@ summary_for_user: |
 
 ### 관리자 (S-3, S-8)
 - Better Auth `admin` 플러그인을 쓴다. 정책 훅은 `server/auth.ts`의 `hooks.before`와 `databaseHooks`에 둔다.
-- 쓰는 엔드포인트: `list-users`, `create-user`, `update-user`(승인 = `status: active`, `admission: approval`), `ban-user`(세션도 지운다)·`unban-user`, `set-role`, `set-user-password`(비밀번호 재설정), `revoke-user-sessions`.
-- 막는 엔드포인트: `impersonate-user`·`stop-impersonating`·`remove-user`를 `disabledPaths`로 닫는다. `hooks.before`에서도 던져서 `auth.api` 호출까지 막는다.
+- 쓰는 엔드포인트: `list-users`, `create-user`, `update-user`(승인 = `status: active`, `admission: approval`), `unban-user`, `set-user-password`(비밀번호 재설정), `revoke-user-sessions`.
+  - 리뷰 1 정정(R3): 역할 변경과 정지는 Better Auth의 `set-role`·`ban-user` 대신 우리 API(`POST /api/admin/users/:id/role`, `…/ban`)로 한다. 마지막 관리자 검사와 변경을 advisory lock 아래 한 트랜잭션에서 해야 동시에 서로를 강등해 관리자가 0명이 되는 일을 막을 수 있는데, 플러그인 엔드포인트는 그 트랜잭션 밖에서 바꾸기 때문이다. 정지는 세션도 지운다.
+- 막는 엔드포인트: `impersonate-user`·`stop-impersonating`·`remove-user`, 그리고 리뷰 1 정정으로 `set-role`·`ban-user`를 `disabledPaths`로 닫는다. `hooks.before`에서도 던져서 `auth.api` 호출까지 막는다.
   - `remove-user`를 막는 이유: 세션과 계정을 먼저 지운 뒤 사용자 삭제가 데이터의 restrict 외래 키에 걸려 반쯤 지워진 채로 끝난다.
 - 계정 만들기: 이메일·이름. 비밀번호 로그인이 켜져 있으면 임시 비밀번호를 받는다. 비워 두면 "연결 대기" 계정이 되고, 처음 외부 로그인할 때 연결된다(위). `admission = admin`, `status = active`.
-- 마지막 관리자 보호: 남은 활성 관리자가 한 명이면 그 사람을 강등·정지·삭제할 수 없다(409). 자기 자신도 정지·삭제할 수 없다.
+- 마지막 관리자 보호: 남은 활성 관리자가 한 명이면 그 사람을 강등·정지·삭제할 수 없다(409). 자기 자신도 정지·삭제할 수 없다. 검사와 변경은 같은 잠금·트랜잭션 안에서 한다(리뷰 1 R3).
 - 완전 삭제 `DELETE /api/admin/users/:id`(본문 `{ confirmEmail }`이 그 사용자 이메일과 같아야 한다):
   1. 한 트랜잭션 안에서 그 사용자로 `set_config`(RLS)를 한다.
   2. 데이터 표 12개와 `change_log`·`change_set`, 데이터 키(`user_key`)를 자식부터 지운다(`server/db/owned.ts`의 순서를 거꾸로).

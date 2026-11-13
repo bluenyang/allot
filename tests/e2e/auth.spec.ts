@@ -91,3 +91,26 @@ test('login methods tab: env-free fields are editable, the secret is never shown
   await expect(s.getByLabel(/client secret/)).toHaveAttribute('type', 'password')
   await s.getByRole('button', { name: '취소' }).click()
 })
+
+// V-12 (b), review 1 R7: the browser relay for a mobile app. Needs ALLOT_APP_RETURN_URLS=allot://auth
+// on the api, and runs after the approval test (the Dex user is active by then).
+test('app login relay: sign in through Dex, then a one-time token for the listed app URL only', async ({ browser }) => {
+  for (const [ret, want] of [['allot://auth', 200], ['evil://x', 400]] as const) {
+    const guest = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+    const g = await guest.newPage()
+    await g.goto(`/#app-login?return=${encodeURIComponent(ret)}`)
+    await expect(g.getByText('로그인하면 앱으로 돌아가요.')).toBeVisible()
+    const ticket = g.waitForResponse((r) => r.url().endsWith('/api/app-login/ticket'), { timeout: 20_000 })
+    await dexLogin(g, DEX_USER)
+    const res = await ticket
+    expect(res.status()).toBe(want)
+    if (want === 200) {
+      const url = new URL((await res.json()).url)
+      expect(`${url.protocol}//${url.host}${url.pathname}`).toBe('allot://auth')
+      expect(url.searchParams.get('ott')).toBeTruthy()
+    } else {
+      await expect(g.getByRole('alert')).toContainText('등록되지 않은 앱 주소')
+    }
+    await guest.close()
+  }
+})

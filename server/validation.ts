@@ -111,5 +111,11 @@ export const providerUpdate = z.object({
   clientSecret: z.union([z.string().min(1).max(2000), z.null()]).optional(),
 }).strict()
 
+/** POST /api/admin/users/:id/role */
+export const userRole = z.object({ role: z.enum(['admin', 'user']) }).strict()
+
+/** POST /api/admin/users/:id/ban */
+export const userBan = z.object({ reason: z.string().trim().max(200).optional() }).strict()
+
 /** DELETE /api/admin/users/:id — the user's email, typed again. */
 export const userDelete = z.object({ confirmEmail: z.string().trim().min(1).max(254) }).strict()
