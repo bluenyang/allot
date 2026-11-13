@@ -1,7 +1,13 @@
 ---
 intent: "006"
-status: draft
-approvals: []
+status: accepted
+approvals:
+  - role: user
+    kind: summary
+    by: BlueNyang
+    at: "2026-11-13"
+    words: "진행"
+    rev: 3b36137
 summary_for_user: |
   로그인은 비밀번호·일반 OIDC·GitHub·Google 네 가지입니다. 각각 env나 관리자 화면에서 켜고 끄고, 화면에서 저장하면 재시작 없이 반영됩니다(인증 인스턴스를 다시 만듭니다). env로 정한 값이 우선하고, 화면에는 잠긴 채로 보입니다.
   가입은 제공자마다 닫힘·승인 대기·규칙 중 하나입니다. 승인 대기 사용자는 세션을 받지 못합니다. 규칙으로 들어온 사용자는 로그인할 때마다 규칙을 다시 확인합니다.
