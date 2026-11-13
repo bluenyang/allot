@@ -68,7 +68,9 @@ docker compose -f docker/compose.yaml up -d
 외부 로그인 토큰과 관리 화면에서 넣은 client secret은 AES-256-GCM으로 암호화해 저장한다. 사용자마다 데이터 키가 있고, 데이터 키는 `ALLOT_MASTER_KEY`로 포장된다.
 
 - **교체**: 예전 키를 `ALLOT_MASTER_KEY_PREVIOUS`에, 새 키를 `ALLOT_MASTER_KEY`에 두고 `pnpm keys:rotate`(이미지에서는 `node dist-server/index.mjs keys:rotate`)를 실행한 뒤 예전 키를 지운다. 데이터 키만 다시 포장하고 데이터는 다시 암호화하지 않는다.
-- **분실**: 암호화된 것(외부 로그인 토큰, 화면에서 넣은 client secret)만 못 쓴다. 다시 로그인하고 secret을 다시 넣으면 된다. 금액·이름 같은 데이터는 암호화 대상이 아니라 영향이 없다.
+- **분실**: 암호화된 것(외부 로그인 토큰, 화면에서 넣은 client secret)만 못 쓴다. 금액·이름 같은 데이터는 암호화 대상이 아니라 영향이 없다. 새 키로 바꾸면 앱은 그대로 뜨고, 저장된 secret을 풀 수 없는 제공자만 "쓸 수 없음"으로 보인다(비밀번호 로그인과 관리 화면은 그대로).
+  1. 예전 키를 찾을 수 있으면 `ALLOT_MASTER_KEY_PREVIOUS`에 넣고 위의 교체 순서를 따른다.
+  2. 영영 잃었으면 `pnpm keys:forget-lost`(이미지: `node dist-server/index.mjs keys:forget-lost`)로 지금 키로 열 수 없는 데이터 키를 버린다. 그 키로 암호화된 로그인 토큰과 저장된 client secret이 비워진다. 그다음 관리 화면에서 secret을 다시 넣고, 사용자는 외부 로그인을 한 번 다시 하면 된다. env로 준 secret은 저장된 것보다 우선하므로 env로 다시 넣어도 된다.
 
 ### 모바일 앱
 
@@ -120,6 +122,7 @@ pnpm db:migrate    # 마이그레이션 적용
 pnpm db:admin      # 관리자 계정만 (ADMIN_EMAIL/ADMIN_PASSWORD)
 pnpm db:seed       # 관리자 계정 + 처음 데이터
 pnpm keys:rotate   # 데이터 키를 지금 마스터 키로 다시 포장
+pnpm keys:forget-lost  # 잃어버린 마스터 키의 데이터 키를 버림 (그 암호문을 비움)
 pnpm test:unit     # 단위 테스트 (암호화)
 pnpm e2e           # Playwright E2E (스택이 떠 있어야 함, 아래)
 ```

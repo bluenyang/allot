@@ -128,11 +128,22 @@ async function applyRow(p: ProviderConfig, row: Row): Promise<Field[]> {
     if (Array.isArray(o.scopes) && o.scopes.length) { p.scopes = o.scopes.map(String); set.push('scopes') }
   }
   if (row.clientSecretEnc) {
-    p.clientSecret = await decryptField(SYSTEM, secretRef(p.id), row.clientSecretEnc)
+    // A stored secret that cannot be opened (the master key changed and the old one is not in
+    // ALLOT_MASTER_KEY_PREVIOUS) leaves only this provider unusable; the app still starts, so
+    // password login and the admin screen stay reachable (review 1, R6).
+    try {
+      p.clientSecret = await decryptField(SYSTEM, secretRef(p.id), row.clientSecretEnc)
+    } catch {
+      undecryptable.add(p.id)
+    }
     set.push('clientSecret')
   }
   return set
 }
+
+/** Providers whose stored client secret could not be opened in this load. */
+let undecryptable = new Set<ProviderId>()
+const LOST_SECRET = '저장된 client secret을 풀 수 없어요. 마스터 키가 바뀌었다면 이전 키를 ALLOT_MASTER_KEY_PREVIOUS에 넣거나, secret을 다시 넣어 주세요(README: 암호화 키).'
 
 /** Where a provider's client secret is sealed (AAD). */
 export const secretRef = (id: ProviderId) => ({ table: 'auth_provider', column: 'client_secret', row: id })
@@ -162,6 +173,7 @@ export async function loadAuthConfig(env: Record<string, string | undefined> = p
   const providers = {} as AuthConfig['providers']
   const source = {} as AuthConfig['source']
   const problems: AuthConfig['problems'] = {}
+  undecryptable = new Set()
   for (const id of PROVIDERS) {
     const p = defaults(id)
     const src: Partial<Record<Field, Source>> = {}
@@ -170,7 +182,8 @@ export async function loadAuthConfig(env: Record<string, string | undefined> = p
     for (const f of applyEnv(p, env)) src[f] = 'env'
     providers[id] = p
     source[id] = src
-    const problem = problemOf(p)
+    // An env secret replaces a stored one that cannot be opened.
+    const problem = undecryptable.has(id) && src.clientSecret !== 'env' ? (p.enabled ? LOST_SECRET : undefined) : problemOf(p)
     if (problem) problems[id] = problem
   }
   return { providers, source, problems }

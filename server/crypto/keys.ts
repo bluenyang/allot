@@ -5,7 +5,8 @@ import { eq, sql } from 'drizzle-orm'
 import { db, type Db } from '../db/client'
 import { asUser } from '../db/scope'
 import * as t from '../db/schema'
-import { fieldAad, kidOfSealed, masterKeys, newDataKey, open, seal, unwrapDataKey, wrapDataKey, type FieldRef } from './envelope'
+import * as a from '../db/auth-schema'
+import { CryptoError, fieldAad, kidOfSealed, masterKeys, newDataKey, open, seal, unwrapDataKey, wrapDataKey, type FieldRef, type MasterKeys } from './envelope'
 
 export const SYSTEM = 'system'
 const SYSTEM_KEY_ID = 'default'
@@ -24,7 +25,7 @@ async function userDek(uid: string): Promise<{ id: string; key: Buffer }> {
   const mk = masterKeys()
   const dek = await asUser(uid, async (q) => {
     const [row] = await q.select().from(t.userKey).where(eq(t.userKey.userId, uid))
-    if (row) return { id: row.dekId, key: unwrapDataKey(mk, uid, row.dekId, row.wrapped) }
+    if (row) return { id: row.dekId, key: unwrapDataKeyOrExplain(mk, uid, row.dekId, row.wrapped) }
     const fresh = newDataKey()
     const w = wrapDataKey(mk, uid, fresh.id, fresh.key)
     // Two first uses at once: the second insert does nothing and the stored key wins.
@@ -49,9 +50,51 @@ async function systemDek(): Promise<{ id: string; key: Buffer }> {
     await db.insert(t.systemKey).values({ id: SYSTEM_KEY_ID, dekId: fresh.id, kid: w.kid, wrapped: w.wrapped }).onConflictDoNothing()
     row = await read()
   }
-  const dek = { id: row!.dekId, key: unwrapDataKey(mk, SYSTEM, row!.dekId, row!.wrapped) }
+  const dek = { id: row!.dekId, key: unwrapDataKeyOrExplain(mk, SYSTEM, row!.dekId, row!.wrapped) }
   cache.set(SYSTEM, dek)
   return dek
+}
+
+/** Unwrap, or say what to do when the master key that wrapped it is not known. */
+function unwrapDataKeyOrExplain(mk: MasterKeys, owner: string, dekId: string, wrapped: string): Buffer {
+  try {
+    return unwrapDataKey(mk, owner, dekId, wrapped)
+  } catch (e) {
+    throw new CryptoError(`${(e as Error).message}: a data key cannot be opened with the configured master keys. `
+      + 'Put the old key in ALLOT_MASTER_KEY_PREVIOUS, or give up what it protects with keys:forget-lost (README: 암호화 키).')
+  }
+}
+
+/**
+ * `keys:forget-lost` (review 1, R6): after a master key is lost for good, drop every data key that
+ * no configured master key can open, and clear what those keys sealed — the users' external login
+ * tokens (they sign in again) and the stored client secrets (enter them again). Nothing else is
+ * encrypted. Keys that can be opened are left alone.
+ */
+export async function forgetLostKeys(q: Db = db): Promise<{ users: number; system: number }> {
+  const mk = masterKeys()
+  const known = (kid: string) => mk.byKid.has(kid)
+  let users = 0
+  let system = 0
+  const owners = await q.execute<{ id: string }>(sql`select id from "user"`)
+  for (const { id: uid } of owners) {
+    await asUser(uid, async (tx) => {
+      const [row] = await tx.select().from(t.userKey).where(eq(t.userKey.userId, uid)).for('update')
+      if (!row || known(row.kid)) return
+      await tx.delete(t.userKey).where(eq(t.userKey.userId, uid))
+      await tx.update(a.account).set({ accessToken: null, refreshToken: null, idToken: null }).where(eq(a.account.userId, uid))
+      users++
+    }, q)
+  }
+  await q.transaction(async (tx) => {
+    const [row] = await tx.select().from(t.systemKey).where(eq(t.systemKey.id, SYSTEM_KEY_ID)).for('update')
+    if (!row || known(row.kid)) return
+    await tx.delete(t.systemKey).where(eq(t.systemKey.id, SYSTEM_KEY_ID))
+    await tx.update(t.authProvider).set({ clientSecretEnc: null })
+    system++
+  })
+  clearKeyCache()
+  return { users, system }
 }
 
 const dekFor = (owner: string) => (owner === SYSTEM ? systemDek() : userDek(owner))
