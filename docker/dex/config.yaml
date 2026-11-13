@@ -18,9 +18,9 @@ logger:
   level: info
 
 staticClients:
-  - id: {{ getenv "AUTH_OIDC_CLIENT_ID" "allot-dev" }}
+  - id: {{ getenv "DEX_CLIENT_ID" "allot-dev" }}
     name: Allot (dev)
-    secret: {{ getenv "AUTH_OIDC_CLIENT_SECRET" "allot-dev-oidc-secret" }}
+    secret: {{ getenv "DEX_CLIENT_SECRET" "allot-dev-oidc-secret" }}
     redirectURIs:
       - {{ getenv "BETTER_AUTH_URL" }}/api/auth/callback/oidc
 
