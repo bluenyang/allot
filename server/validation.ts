@@ -86,3 +86,30 @@ export const target = z.object({
   kind: z.enum(['living', 'subscriptions', 'fixed', 'remainder']),
   note: optText,
 })
+
+// ── Admin (spec 006 S-3) ──
+const ruleList = (item: z.ZodString) => z.array(item).max(200)
+const domain = z.string().trim().toLowerCase().regex(/^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$/, '도메인 형식이 아니에요.')
+
+/** PUT /api/admin/providers/:id — only the fields sent change; clientSecret null removes it. */
+export const providerUpdate = z.object({
+  enabled: z.boolean().optional(),
+  signup: z.enum(['closed', 'approval', 'rules']).optional(),
+  rules: z.object({
+    emails: ruleList(z.string().trim().toLowerCase().email('이메일 형식이 아니에요.').max(254)).optional(),
+    groups: ruleList(z.string().trim().min(1).max(200)).optional(),
+    orgs: ruleList(z.string().trim().regex(/^[A-Za-z0-9-]{1,39}$/, 'GitHub organization 이름이 아니에요.')).optional(),
+    domains: ruleList(domain).optional(),
+  }).strict().optional(),
+  options: z.object({
+    name: z.string().trim().min(1).max(40).optional(),
+    clientId: z.string().trim().min(1).max(500).optional(),
+    discoveryUrl: z.string().trim().url('URL 형식이 아니에요.').max(2000).optional(),
+    scopes: z.array(z.string().regex(/^[\x21-\x7e]{1,100}$/, 'scope 형식이 아니에요.')).min(1).max(20).optional(),
+    groupsClaim: z.string().trim().min(1).max(100).optional(),
+  }).strict().optional(),
+  clientSecret: z.union([z.string().min(1).max(2000), z.null()]).optional(),
+}).strict()
+
+/** DELETE /api/admin/users/:id — the user's email, typed again. */
+export const userDelete = z.object({ confirmEmail: z.string().trim().min(1).max(254) }).strict()

@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import { serveStatic } from '@hono/node-server/serve-static'
+import { adminRoutes } from './admin-routes'
 import { publicMethods } from './auth-config'
 import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
 import type { AppEnv } from './app-env'
@@ -56,6 +57,7 @@ app.use('*', async (c, next) => {
 })
 
 app.get('/me', (c) => c.json({ user: c.get('session').user }))
+app.route('/admin', adminRoutes)
 app.route('/', routes)
 
 root.route('/', app)

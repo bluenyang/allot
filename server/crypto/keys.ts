@@ -15,6 +15,9 @@ const cache = new Map<string, { id: string; key: Buffer }>()
 /** For tests and key rotation: forget cached data keys. */
 export const clearKeyCache = () => cache.clear()
 
+/** A deleted user's data key must not linger in memory. */
+export const forgetUserKey = (uid: string) => cache.delete(uid)
+
 async function userDek(uid: string): Promise<{ id: string; key: Buffer }> {
   const hit = cache.get(uid)
   if (hit) return hit

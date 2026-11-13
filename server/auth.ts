@@ -8,8 +8,10 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { admin } from 'better-auth/plugins/admin'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
-import { loadAuthConfig, usable, type AuthConfig, type ProviderId } from './auth-config'
+import { ADMIN_CLOSED_PATHS, adminCanSignInWithout, afterAdminPath, guardAdminPath } from './admin'
+import { EXTERNAL, loadAuthConfig, usable, type AuthConfig, type ProviderId } from './auth-config'
 import { afterNewUser, makeValidateUserInfo, newUserFields, refusePending } from './auth-policy'
 import { fetchDiscovery, oidcProviders, socialProviders, type Discovery } from './providers'
 import { dropTokenUpdates, sealNewAccountTokens } from './token-crypto'
@@ -85,8 +87,12 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
     // OAuth errors (SIGNUP_CLOSED, PENDING_APPROVAL, …) go back to the app's login screen.
     onAPIError: { errorURL: `${(process.env.BETTER_AUTH_URL ?? '').replace(/\/$/, '')}/` },
     socialProviders: socialProviders(cfg),
-    plugins: [genericOAuth({ config: oidcProviders(cfg, discovery) })],
-    disabledPaths: CLOSED_PATHS,
+    plugins: [
+      genericOAuth({ config: oidcProviders(cfg, discovery) }),
+      // Roles, bans, admin-created accounts. Impersonation and remove-user are closed (server/admin.ts).
+      admin({ defaultRole: 'user', adminRoles: ['admin'] }),
+    ],
+    disabledPaths: [...CLOSED_PATHS, ...ADMIN_CLOSED_PATHS],
     account: {
       // Tokens are sealed when an account is linked and never rewritten in clear (token-crypto.ts).
       updateAccountOnSignIn: false,
@@ -104,7 +110,9 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
         create: {
           before: async (u, ctx) => {
             const { status, admission } = newUserFields(ctx)
-            return { data: { ...u, status, admission } }
+            // An account the admin creates is vouched for: its email counts as verified.
+            const verified = admission === 'admin' ? { emailVerified: true } : {}
+            return { data: { ...u, ...verified, status, admission } }
           },
           after: async (u, ctx) => afterNewUser(u, ctx),
         },
@@ -130,6 +138,7 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
       // Second layer (spec 006 S-1): a method that is off is refused on every path it uses,
       // checked against the latest configuration, also for an instance that is being replaced.
       before: createAuthMiddleware(async (ctx) => {
+        await guardAdminPath(ctx)
         if (CLOSED_PATHS.includes(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         const m = methodOf(ctx)
         if (!m) return
@@ -139,6 +148,10 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
         }
         const latest = currentConfig ?? cfg
         if (m === 'unknown' || !usable(latest, m)) throw deny('METHOD_DISABLED', '사용할 수 없는 로그인 방식이에요.')
+      }),
+      // Admin actions: end sessions after a password reset, one log line per action.
+      after: createAuthMiddleware(async (ctx) => {
+        await afterAdminPath(ctx as never)
       }),
     },
     advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] } },
@@ -173,6 +186,15 @@ async function build(): Promise<{ auth: Auth; cfg: AuthConfig }> {
       discovery = await fetchDiscovery(cfg.providers.oidc.discoveryUrl, !!TRUSTED_ORIGINS)
     } catch (e) {
       cfg.problems.oidc = (e as Error).message
+    }
+  }
+  // Password login stays on while no admin could sign in any other way (spec 006 S-11).
+  if (!usable(cfg, 'password')) {
+    const externals = EXTERNAL.filter((x) => usable(cfg, x))
+    if (!(await adminCanSignInWithout(externals))) {
+      cfg.providers.password.enabled = true
+      delete cfg.problems.password
+      console.warn('WARNING: password login is set off, but no active admin has another login method linked: kept on.')
     }
   }
   const auth = buildAuth(cfg, discovery)
