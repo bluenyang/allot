@@ -190,15 +190,17 @@ export function getAuthConfig(): AuthConfig {
 }
 
 /** Build the instance from the stored and env configuration and wait until it is ready. */
-async function build(): Promise<{ auth: Auth; cfg: AuthConfig; issuer?: string }> {
+async function build(): Promise<{ auth: Auth; cfg: AuthConfig; issuer?: string; discoveryFailed: boolean }> {
   const cfg = await loadAuthConfig()
   // The OIDC issuer is part of every OIDC account key: without a valid discovery, OIDC stays off.
   let discovery: Discovery | undefined
+  let discoveryFailed = false
   if (usable(cfg, 'oidc')) {
     try {
       discovery = await fetchDiscovery(cfg.providers.oidc.discoveryUrl, !!TRUSTED_ORIGINS)
     } catch (e) {
       cfg.problems.oidc = (e as Error).message
+      discoveryFailed = true
     }
   }
   // Password login stays on while no admin could sign in any other way (spec 006 S-11).
@@ -212,7 +214,7 @@ async function build(): Promise<{ auth: Auth; cfg: AuthConfig; issuer?: string }
   }
   const auth = buildAuth(cfg, discovery)
   await auth.$context // providers and plugins initialise here; errors surface now
-  return { auth, cfg, issuer: usable(cfg, 'oidc') ? discovery?.issuer : undefined }
+  return { auth, cfg, issuer: usable(cfg, 'oidc') ? discovery?.issuer : undefined, discoveryFailed }
 }
 
 // Saving the configuration, rebuilding and swapping the instance, and restoring after a failed
@@ -231,13 +233,34 @@ export function withAuthLock<T>(fn: () => Promise<T>): Promise<T> {
 
 async function buildAndInstall(): Promise<AuthConfig> {
   const gen = ++generation
-  const { auth, cfg, issuer } = await build()
+  const { auth, cfg, issuer, discoveryFailed } = await build()
   if (gen === generation) {
     current = auth
     currentConfig = cfg
     currentIssuer = issuer
+    retryDiscovery(discoveryFailed)
   }
   return cfg
+}
+
+// OIDC is on but its discovery could not be fetched (the provider was down, or, in development,
+// not reachable yet while the stack starts): try again later instead of staying off until the
+// next restart (review 1, R5). 15 s, doubling, at most every 5 minutes; a successful build stops it.
+let retryTimer: ReturnType<typeof setTimeout> | undefined
+let retryDelay = 15_000
+function retryDiscovery(failed: boolean) {
+  clearTimeout(retryTimer)
+  retryTimer = undefined
+  if (!failed) {
+    if (retryDelay !== 15_000) console.log('auth: OIDC discovery reachable again, OIDC is on')
+    retryDelay = 15_000
+    return
+  }
+  const delay = retryDelay
+  retryDelay = Math.min(retryDelay * 2, 300_000)
+  console.warn(`WARNING: OIDC discovery failed; retrying in ${delay / 1000}s`)
+  retryTimer = setTimeout(() => { withAuthLock(buildAndInstall).catch((e) => console.warn(`auth: rebuild failed: ${(e as Error).message}`)) }, delay)
+  retryTimer.unref()
 }
 
 /** First build at start. Problems with an enabled provider are logged; that provider stays off. */

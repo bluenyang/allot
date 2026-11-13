@@ -27,8 +27,10 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    # Not api healthy: the api's first build fetches OIDC discovery through this proxy (/dex),
+    # so waiting for it would be circular (review 1, R5). The api retries discovery if early.
     depends_on:
-      api: { condition: service_healthy }
+      api: { condition: service_started }
       dex: { condition: service_healthy }
 
   api:
