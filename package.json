@@ -18,7 +18,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx server/db/migrate-cli.ts",
     "db:seed": "tsx server/db/seed.ts",
+    "keys:rotate": "tsx server/index.ts keys:rotate",
     "e2e": "playwright test",
+    "test:unit": "tsx --test tests/unit/*.test.ts",
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node26 --packages=external --outfile=dist-server/index.mjs"
   },
   "dependencies": {

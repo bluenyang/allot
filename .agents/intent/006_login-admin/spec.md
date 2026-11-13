@@ -162,7 +162,7 @@ summary_for_user: |
 - `docker/compose.yaml`: 새 env를 넘긴다.
 
 ## 작업 단위
-- [ ] W-1 암호화 모듈: `server/crypto/envelope.ts`, `user_key`(+RLS·FORCE)·`system_key` 스키마와 마이그레이션, 마스터 키 필수 검사, `pnpm keys:rotate`, 단위 테스트(`tests/unit/` 또는 `tests/api/crypto.mjs`). (S-5)
+- [x] W-1 암호화 모듈: `server/crypto/envelope.ts`, `user_key`(+RLS·FORCE)·`system_key` 스키마와 마이그레이션, 마스터 키 필수 검사, `pnpm keys:rotate`, 단위 테스트(`tests/unit/` 또는 `tests/api/crypto.mjs`). (S-5)
 - [ ] W-2 설정 계층: `auth_provider` 스키마, `loadAuthConfig()`(기본 ← DB ← env, 출처), `getAuth()`/`reloadAuth()`, `hooks.before` 제공자·비밀번호 게이트, `/api/auth-methods`, 비밀번호 끄기 안전장치, 기존 `auth` 사용처를 `getAuth()`로 바꾸기. (S-1, S-11)
 - [ ] W-3 제공자: genericOAuth(OIDC, issuer+subject 키, idToken 로그인 차단), GitHub(org 조회 `getUserInfo`), Google, 토큰 암호화 훅, 토큰 엔드포인트 닫기, 연결 규칙(`validateUserInfo` link-account), 요청 제한 규칙. (S-1, S-10, S-11)
 - [ ] W-4 가입 정책: `status`·`admission` 열과 마이그레이션(기존 사용자 active·seed, 유일 사용자 admin), `validateUserInfo` create·sign-in 규칙, `session.create.before` 승인 대기 거절, 데이터 API 상태 검사, 초기 관리자(시작 시 `ADMIN_EMAIL`, `ADMIN_OIDC_SUBJECT`). (S-2, S-4)

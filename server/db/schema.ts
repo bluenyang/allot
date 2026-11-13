@@ -226,3 +226,22 @@ export const changeLog = pgTable('change_log', {
   foreignKey({ name: 'change_log_set_fk', columns: [t.userId, t.setId], foreignColumns: [changeSet.userId, changeSet.id] }).onDelete('cascade'),
   index('change_log_set').on(t.setId),
 ])
+
+// ── Data keys for envelope encryption (spec 006 S-5, server/crypto/) ──
+/** One data key per user, wrapped by the master key whose id is `kid`. */
+export const userKey = pgTable('user_key', {
+  userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'restrict' }),
+  dekId: text('dek_id').notNull(),
+  kid: text('kid').notNull(),
+  wrapped: text('wrapped').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [userScoped(t.userId)])
+
+/** Data keys that belong to no user (provider client secrets). Not user data: no row-level security. */
+export const systemKey = pgTable('system_key', {
+  id: text('id').primaryKey(),
+  dekId: text('dek_id').notNull(),
+  kid: text('kid').notNull(),
+  wrapped: text('wrapped').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
