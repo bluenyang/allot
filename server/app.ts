@@ -1,7 +1,8 @@
 import { Hono, type Context } from 'hono'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import { serveStatic } from '@hono/node-server/serve-static'
-import { auth, CLIENT_IP_HEADER } from './auth'
+import { publicMethods } from './auth-config'
+import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
 import type { AppEnv } from './app-env'
 import { routes } from './routes'
 
@@ -33,17 +34,20 @@ root.get('/healthz', (c) => c.json({ ok: true }))
 // The Hono app, separate from the Node listener so tests can call app.request().
 export const app = new Hono<AppEnv>().basePath('/api')
 
-// Better Auth handles /api/auth/* (sign-in, sign-out, get-session; sign-up is disabled).
+// Better Auth handles /api/auth/* (sign-in, sign-out, get-session; password sign-up is disabled).
 // The client IP header is always overwritten here, so a client cannot choose its rate-limit bucket.
 app.on(['GET', 'POST'], '/auth/*', (c) => {
   const headers = new Headers(c.req.raw.headers)
   headers.set(CLIENT_IP_HEADER, clientIp(c))
-  return auth.handler(new Request(c.req.raw, { headers }))
+  return getAuth().handler(new Request(c.req.raw, { headers }))
 })
+
+// The login screen's list of methods (spec 006 S-1): ids and display names only, no session needed.
+app.get('/auth-methods', (c) => c.json({ methods: publicMethods(getAuthConfig()) }))
 
 // Everything else under /api needs a session.
 app.use('*', async (c, next) => {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers })
+  const session = await getAuth().api.getSession({ headers: c.req.raw.headers })
   if (!session) return c.json({ error: 'unauthorized' }, 401)
   c.set('session', session)
   await next()

@@ -14,7 +14,7 @@ import type {
 } from '../../src/data/types'
 import { db, sqlClient, type Db } from './client'
 import { runMigrations } from './migrate'
-import { auth } from '../auth'
+import { hashPassword } from 'better-auth/crypto'
 import * as t from './schema'
 import * as authSchema from './auth-schema'
 import { moveOwner } from './owned'
@@ -95,9 +95,8 @@ export async function seed(data: SeedData, uid: string, tx: Db = db) {
  * an account, and a failure part-way leaves the previous account untouched.
  */
 export async function ensureAdmin(email: string, password: string, replace = false) {
-  const ctx = await auth.$context
   const target = email.toLowerCase()
-  const hash = await ctx.password.hash(password) // before anything is written or deleted
+  const hash = await hashPassword(password) // before anything is written or deleted
   const u = authSchema.user
   const a = authSchema.account
   return db.transaction(async (q) => {

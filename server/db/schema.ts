@@ -245,3 +245,23 @@ export const systemKey = pgTable('system_key', {
   wrapped: text('wrapped').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// ── Login methods (spec 006 S-1). Global settings, not user data: no user_id, no row-level
+// security. Read when the auth instance is built; written only through the admin API.
+// Env values win over these (server/auth-config.ts). ──
+export const authProvider = pgTable('auth_provider', {
+  /** password | oidc | github | google */
+  id: text('id').primaryKey(),
+  enabled: boolean('enabled'),
+  /** closed | approval | rules */
+  signup: text('signup'),
+  /** { emails?, groups?, orgs?, domains? } */
+  rules: jsonb('rules').$type<Record<string, string[]>>(),
+  /** { name?, clientId?, discoveryUrl?, scopes?, groupsClaim? } */
+  options: jsonb('options').$type<Record<string, unknown>>(),
+  /** Sealed with the system data key (server/crypto/keys.ts), never returned by the API. */
+  clientSecretEnc: text('client_secret_enc'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text('updated_by'),
+}, (t) => [check('auth_provider_id', sql`${t.id} in ('password', 'oidc', 'github', 'google')`),
+  check('auth_provider_signup', sql`${t.signup} is null or ${t.signup} in ('closed', 'approval', 'rules')`)])
