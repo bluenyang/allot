@@ -111,7 +111,8 @@ summary_for_user: |
   - 시스템용(클라이언트 시크릿): `system_key(id, kid, wrapped)`. 처음 쓸 때 만든다.
 - 교체: `pnpm keys:rotate`가 모든 데이터 키를 지금 마스터 키로 다시 포장한다. 데이터는 다시 암호화하지 않는다.
 - 쓰는 곳:
-  - `account`의 `access_token`·`refresh_token`·`id_token`: `databaseHooks.account.create.before`·`update.before`가 암호화한다. 0.1.2에는 읽는 곳이 없다. 0.1.7(Gmail)이 처음 읽는다.
+  - `account`의 `access_token`·`refresh_token`·`id_token`: `databaseHooks.account.create.before`가 암호화한다. 0.1.2에는 읽는 곳이 없다. 0.1.7(Gmail)이 처음 읽는다.
+    - 구현 중 정정(W-3): `update.before`는 바뀌는 열만 받고 어느 행인지 몰라 소유자 키를 고를 수 없다. 그래서 토큰 갱신은 평문으로 쓰지 않고 버린다. 로그인할 때의 토큰 갱신은 `account.updateAccountOnSignIn: false`로 끈다. 저장된 토큰은 연결할 때 암호화한 값으로 남는다. 갱신 방식은 0.1.7이 정한다.
   - `auth_provider.client_secret_enc`: 시스템 키로 암호화한다. 인증 인스턴스를 만들 때만 푼다.
 - 로그: 평문 시크릿·토큰·마스터 키를 로그나 오류 응답에 쓰지 않는다. 오류는 "복호화 실패(kid …)"까지만 쓴다.
 - 마스터 키를 잃으면 암호화된 토큰과 화면에서 넣은 시크릿만 못 쓴다. 다시 로그인하고 시크릿을 다시 넣으면 된다(README).

@@ -8,7 +8,10 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { loadAuthConfig, usable, type AuthConfig, type ProviderId } from './auth-config'
+import { fetchDiscovery, oidcProviders, socialProviders, type Discovery } from './providers'
+import { dropTokenUpdates, sealNewAccountTokens } from './token-crypto'
 import { db } from './db/client'
 import * as authSchema from './db/auth-schema'
 
@@ -50,7 +53,10 @@ function methodOf(ctx: { path: string; body?: unknown; params?: Record<string, s
   return undefined
 }
 
-export function buildAuth(cfg: AuthConfig) {
+/** Better Auth endpoints that hand out stored provider tokens: nothing uses them in 0.1.2 and the tokens are sealed. */
+const CLOSED_PATHS = ['/get-access-token', '/refresh-token', '/account-info']
+
+export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
   const password = usable(cfg, 'password')
   return betterAuth({
     secret,
@@ -67,6 +73,27 @@ export function buildAuth(cfg: AuthConfig) {
     // transaction stays off: hooks write data keys in their own transaction after the user row is committed.
     database: drizzleAdapter(db, { provider: 'pg', schema: authSchema }),
     emailAndPassword: { enabled: password, disableSignUp: true, minPasswordLength: 8 },
+    socialProviders: socialProviders(cfg),
+    plugins: [genericOAuth({ config: oidcProviders(cfg, discovery) })],
+    disabledPaths: CLOSED_PATHS,
+    account: {
+      // Tokens are sealed when an account is linked and never rewritten in clear (token-crypto.ts).
+      updateAccountOnSignIn: false,
+      accountLinking: {
+        enabled: true,
+        // No provider is trusted to vouch for an email: an existing account is joined only by
+        // the rules in validateUserInfo (link-account), never by a matching email alone.
+        trustedProviders: [],
+        // Linking from the account screen is the signed-in user's own choice.
+        allowDifferentEmails: true,
+      },
+    },
+    databaseHooks: {
+      account: {
+        create: { before: async (acc) => ({ data: await sealNewAccountTokens(acc) }) },
+        update: { before: async (data) => ({ data: dropTokenUpdates(data) }) },
+      },
+    },
     rateLimit: {
       enabled: true,
       window: 60,
@@ -74,14 +101,21 @@ export function buildAuth(cfg: AuthConfig) {
       customRules: {
         '/sign-in/email': { window: 60, max: 5 },
         '/sign-in/social': { window: 60, max: 10 },
+        '/link-social': { window: 60, max: 10 },
+        '/callback/*': { window: 60, max: 20 },
       },
     },
     hooks: {
       // Second layer (spec 006 S-1): a method that is off is refused on every path it uses,
       // checked against the latest configuration, also for an instance that is being replaced.
       before: createAuthMiddleware(async (ctx) => {
+        if (CLOSED_PATHS.includes(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         const m = methodOf(ctx)
         if (!m) return
+        // Code flow only: a client-supplied ID token is never a way in.
+        if (ctx.path === '/sign-in/social' && (ctx.body as { idToken?: unknown } | undefined)?.idToken) {
+          throw deny('ID_TOKEN_SIGN_IN_DISABLED', '이 방식으로는 로그인할 수 없어요.')
+        }
         const latest = currentConfig ?? cfg
         if (m === 'unknown' || !usable(latest, m)) throw deny('METHOD_DISABLED', '사용할 수 없는 로그인 방식이에요.')
       }),
@@ -111,7 +145,16 @@ export function getAuthConfig(): AuthConfig {
 /** Build the instance from the stored and env configuration and wait until it is ready. */
 async function build(): Promise<{ auth: Auth; cfg: AuthConfig }> {
   const cfg = await loadAuthConfig()
-  const auth = buildAuth(cfg)
+  // The OIDC issuer is part of every OIDC account key: without a valid discovery, OIDC stays off.
+  let discovery: Discovery | undefined
+  if (usable(cfg, 'oidc')) {
+    try {
+      discovery = await fetchDiscovery(cfg.providers.oidc.discoveryUrl, !!TRUSTED_ORIGINS)
+    } catch (e) {
+      cfg.problems.oidc = (e as Error).message
+    }
+  }
+  const auth = buildAuth(cfg, discovery)
   await auth.$context // providers and plugins initialise here; errors surface now
   return { auth, cfg }
 }
