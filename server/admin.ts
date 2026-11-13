@@ -8,9 +8,10 @@
 // The admin never reads another user's data tables: only `user` account columns and the
 // login-method settings. Every admin action is logged as one line (actor, action, target).
 import { APIError, getSessionFromCtx } from 'better-auth/api'
-import { and, count, eq, inArray, ne } from 'drizzle-orm'
+import { and, count, eq, inArray, ne, or, sql } from 'drizzle-orm'
 import { db } from './db/client'
 import * as a from './db/auth-schema'
+import { oidcAccountKey } from './providers'
 
 export const ADMIN_CLOSED_PATHS = ['/admin/impersonate-user', '/admin/stop-impersonating', '/admin/remove-user']
 
@@ -97,13 +98,21 @@ export function logAdmin(actor: string, action: string, target: string) {
 
 /**
  * Can the password login be off? Only if some active admin has a linked login on one of the
- * given external providers (spec 006 S-11), so an admin can still get in.
+ * given external providers (spec 006 S-11), so an admin can still get in. An OIDC login counts
+ * only if it belongs to `oidcIssuer`, the issuer that will be in use: OIDC account keys start
+ * with their issuer, and a link made at another issuer does not sign in (review 1, R4).
  */
-export async function adminCanSignInWithout(providers: string[]): Promise<boolean> {
-  if (!providers.length) return false
+export async function adminCanSignInWithout(providers: string[], oidcIssuer?: string): Promise<boolean> {
+  const others = providers.filter((p) => p !== 'oidc')
+  const oidc = providers.includes('oidc') && oidcIssuer ? oidcAccountKey(oidcIssuer, '') : undefined
+  const which = [
+    ...(others.length ? [inArray(a.account.providerId, others)] : []),
+    ...(oidc ? [and(eq(a.account.providerId, 'oidc'), sql`starts_with(${a.account.accountId}, ${oidc})`)] : []),
+  ]
+  if (!which.length) return false
   const rows = await db.select({ n: count() }).from(a.account)
     .innerJoin(a.user, eq(a.user.id, a.account.userId))
-    .where(and(inArray(a.account.providerId, providers), eq(a.user.role, 'admin'), eq(a.user.banned, false), eq(a.user.status, 'active')))
+    .where(and(or(...which), eq(a.user.role, 'admin'), eq(a.user.banned, false), eq(a.user.status, 'active')))
   return (rows[0]?.n ?? 0) > 0
 }
 

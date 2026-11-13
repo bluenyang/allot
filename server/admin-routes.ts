@@ -11,7 +11,7 @@ import { Hono, type Context } from 'hono'
 import type { z } from 'zod'
 import { adminCanSignInWithout, assertNotLastAdmin, isActiveAdmin, logAdmin } from './admin'
 import type { AppEnv } from './app-env'
-import { getAuthConfig, reloadAuth, withAuthLock } from './auth'
+import { getAuthConfig, getOidcIssuer, reloadAuth, withAuthLock } from './auth'
 import {
   EXTERNAL, PROVIDERS, problemOf, readProviderRow, RULES_OF, secretRef, usable,
   type AuthConfig, type Field, type ProviderConfig, type ProviderId, type RuleKind,
@@ -110,9 +110,11 @@ adminRoutes.put('/providers/:id', body(v.providerUpdate), (c) => withAuthLock(as
   const next = apply(cfg.providers[id], u)
   const problem = problemOf(next)
   if (problem) return c.json({ error: problem }, 400)
+  // The OIDC issuer after the change: newly discovered when OIDC is the one being changed.
+  let issuer = id === 'oidc' ? undefined : getOidcIssuer()
   if (id === 'oidc' && next.enabled) {
     try {
-      await fetchDiscovery(next.discoveryUrl, !!process.env.TRUSTED_ORIGINS?.trim())
+      issuer = (await fetchDiscovery(next.discoveryUrl, !!process.env.TRUSTED_ORIGINS?.trim())).issuer
     } catch (e) {
       return c.json({ error: (e as Error).message, path: 'options.discoveryUrl' }, 400)
     }
@@ -122,7 +124,7 @@ adminRoutes.put('/providers/:id', body(v.providerUpdate), (c) => withAuthLock(as
   const passwordAfter = after.providers.password.enabled
   if (!passwordAfter) {
     const externals = EXTERNAL.filter((x) => after.providers[x].enabled && !problemOf(after.providers[x]))
-    if (!(await adminCanSignInWithout(externals))) {
+    if (!(await adminCanSignInWithout(externals, issuer))) {
       return c.json({ error: '비밀번호를 끄면 관리자가 로그인할 방법이 없어요. 관리자 계정에 다른 로그인 방식을 먼저 연결해 주세요.' }, 409)
     }
   }

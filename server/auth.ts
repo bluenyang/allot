@@ -42,6 +42,9 @@ export const CLIENT_IP_HEADER = 'x-allot-client-ip'
 
 /** The configuration the current instance was built from (the hook reads the latest one). */
 let currentConfig: AuthConfig | undefined
+/** The OIDC issuer of the current instance (from discovery), when OIDC is usable. */
+let currentIssuer: string | undefined
+export const getOidcIssuer = () => currentIssuer
 
 const deny = (code: string, message: string) => APIError.from('FORBIDDEN', { code, message })
 
@@ -187,7 +190,7 @@ export function getAuthConfig(): AuthConfig {
 }
 
 /** Build the instance from the stored and env configuration and wait until it is ready. */
-async function build(): Promise<{ auth: Auth; cfg: AuthConfig }> {
+async function build(): Promise<{ auth: Auth; cfg: AuthConfig; issuer?: string }> {
   const cfg = await loadAuthConfig()
   // The OIDC issuer is part of every OIDC account key: without a valid discovery, OIDC stays off.
   let discovery: Discovery | undefined
@@ -201,7 +204,7 @@ async function build(): Promise<{ auth: Auth; cfg: AuthConfig }> {
   // Password login stays on while no admin could sign in any other way (spec 006 S-11).
   if (!usable(cfg, 'password')) {
     const externals = EXTERNAL.filter((x) => usable(cfg, x))
-    if (!(await adminCanSignInWithout(externals))) {
+    if (!(await adminCanSignInWithout(externals, discovery?.issuer))) {
       cfg.providers.password.enabled = true
       delete cfg.problems.password
       console.warn('WARNING: password login is set off, but no active admin has another login method linked: kept on.')
@@ -209,7 +212,7 @@ async function build(): Promise<{ auth: Auth; cfg: AuthConfig }> {
   }
   const auth = buildAuth(cfg, discovery)
   await auth.$context // providers and plugins initialise here; errors surface now
-  return { auth, cfg }
+  return { auth, cfg, issuer: usable(cfg, 'oidc') ? discovery?.issuer : undefined }
 }
 
 // Saving the configuration, rebuilding and swapping the instance, and restoring after a failed
@@ -228,10 +231,11 @@ export function withAuthLock<T>(fn: () => Promise<T>): Promise<T> {
 
 async function buildAndInstall(): Promise<AuthConfig> {
   const gen = ++generation
-  const { auth, cfg } = await build()
+  const { auth, cfg, issuer } = await build()
   if (gen === generation) {
     current = auth
     currentConfig = cfg
+    currentIssuer = issuer
   }
   return cfg
 }
