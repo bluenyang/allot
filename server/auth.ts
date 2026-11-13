@@ -10,6 +10,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { loadAuthConfig, usable, type AuthConfig, type ProviderId } from './auth-config'
+import { afterNewUser, makeValidateUserInfo, newUserFields, refusePending } from './auth-policy'
 import { fetchDiscovery, oidcProviders, socialProviders, type Discovery } from './providers'
 import { dropTokenUpdates, sealNewAccountTokens } from './token-crypto'
 import { db } from './db/client'
@@ -73,6 +74,16 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
     // transaction stays off: hooks write data keys in their own transaction after the user row is committed.
     database: drizzleAdapter(db, { provider: 'pg', schema: authSchema }),
     emailAndPassword: { enabled: password, disableSignUp: true, minPasswordLength: 8 },
+    user: {
+      additionalFields: {
+        status: { type: 'string', input: false, required: false, defaultValue: 'pending' },
+        admission: { type: 'string', input: false, required: false, defaultValue: 'approval' },
+      },
+      // Sign-up policy, rules and linking (server/auth-policy.ts), against the latest configuration.
+      validateUserInfo: makeValidateUserInfo(() => currentConfig ?? cfg),
+    },
+    // OAuth errors (SIGNUP_CLOSED, PENDING_APPROVAL, …) go back to the app's login screen.
+    onAPIError: { errorURL: `${(process.env.BETTER_AUTH_URL ?? '').replace(/\/$/, '')}/` },
     socialProviders: socialProviders(cfg),
     plugins: [genericOAuth({ config: oidcProviders(cfg, discovery) })],
     disabledPaths: CLOSED_PATHS,
@@ -89,6 +100,16 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
       },
     },
     databaseHooks: {
+      user: {
+        create: {
+          before: async (u, ctx) => {
+            const { status, admission } = newUserFields(ctx)
+            return { data: { ...u, status, admission } }
+          },
+          after: async (u, ctx) => afterNewUser(u, ctx),
+        },
+      },
+      session: { create: { before: async (s) => { await refusePending(s) } } },
       account: {
         create: { before: async (acc) => ({ data: await sealNewAccountTokens(acc) }) },
         update: { before: async (data) => ({ data: dropTokenUpdates(data) }) },

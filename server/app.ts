@@ -49,6 +49,8 @@ app.get('/auth-methods', (c) => c.json({ methods: publicMethods(getAuthConfig())
 app.use('*', async (c, next) => {
   const session = await getAuth().api.getSession({ headers: c.req.raw.headers })
   if (!session) return c.json({ error: 'unauthorized' }, 401)
+  // Second layer (spec 006 S-2): a session of an account that is not active never reaches data.
+  if (session.user.status !== 'active') return c.json({ error: '관리자 승인을 기다리고 있어요.', code: 'PENDING_APPROVAL' }, 403)
   c.set('session', session)
   await next()
 })

@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server'
 import { root } from './app'
 import { initAuth } from './auth'
+import { promoteEnvAdmin } from './auth-policy'
 import { masterKeys } from './crypto/envelope'
 import { rotateDataKeys } from './crypto/keys'
 import { sqlClient } from './db/client'
@@ -30,6 +31,7 @@ if (process.argv[2] === 'keys:rotate') {
   process.exit(0)
 }
 
+await promoteEnvAdmin()
 await initAuth()
 for (const w of await checkRowLevelSecurity()) console.warn(`WARNING: ${w}`)
 await startRetention()

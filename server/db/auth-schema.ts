@@ -1,6 +1,7 @@
 // Better Auth core tables (user, session, account, verification) for the Drizzle adapter.
 // Field names follow Better Auth's model; the app's own bank accounts live in `bank_account`.
-import { boolean, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { boolean, check, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
 const at = (name: string) => timestamp(name, { withTimezone: true })
 
@@ -12,7 +13,20 @@ export const user = pgTable('user', {
   image: text('image'),
   createdAt: at('created_at').notNull().defaultNow(),
   updatedAt: at('updated_at').notNull().defaultNow(),
-})
+  // spec 006: sign-up policy (server/auth-policy.ts). active | pending
+  status: text('status').notNull().default('pending'),
+  /** How the account got in: seed | admin | approval | rule | bootstrap */
+  admission: text('admission').notNull().default('approval'),
+  // Better Auth admin plugin
+  role: text('role').notNull().default('user'),
+  banned: boolean('banned').notNull().default(false),
+  banReason: text('ban_reason'),
+  banExpires: at('ban_expires'),
+}, (t) => [
+  check('user_status', sql`${t.status} in ('active', 'pending')`),
+  check('user_admission', sql`${t.admission} in ('seed', 'admin', 'approval', 'rule', 'bootstrap')`),
+  check('user_role', sql`${t.role} in ('admin', 'user')`),
+])
 
 export const session = pgTable('session', {
   id: text('id').primaryKey(),
@@ -23,6 +37,8 @@ export const session = pgTable('session', {
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  // Better Auth admin plugin (impersonation is closed in server/auth.ts; the column is its schema)
+  impersonatedBy: text('impersonated_by'),
 }, (t) => [index('session_user_id_idx').on(t.userId)])
 
 export const account = pgTable('account', {

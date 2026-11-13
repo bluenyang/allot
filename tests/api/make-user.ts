@@ -17,7 +17,7 @@ if (found) {
   const id = randomUUID()
   // one transaction: never a user without its credential
   await db.transaction(async (q) => {
-    await q.insert(a.user).values({ id, email: email.toLowerCase(), name: 'Test', emailVerified: true })
+    await q.insert(a.user).values({ id, email: email.toLowerCase(), name: 'Test', emailVerified: true, status: 'active', admission: 'admin' })
     await q.insert(a.account).values({ id: randomUUID(), userId: id, providerId: 'credential', accountId: id, password: hash })
   })
   console.log(`created ${id}`)

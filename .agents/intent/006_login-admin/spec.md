@@ -165,8 +165,8 @@ summary_for_user: |
 ## 작업 단위
 - [x] W-1 암호화 모듈: `server/crypto/envelope.ts`, `user_key`(+RLS·FORCE)·`system_key` 스키마와 마이그레이션, 마스터 키 필수 검사, `pnpm keys:rotate`, 단위 테스트(`tests/unit/` 또는 `tests/api/crypto.mjs`). (S-5)
 - [ ] W-2 설정 계층: `auth_provider` 스키마, `loadAuthConfig()`(기본 ← DB ← env, 출처), `getAuth()`/`reloadAuth()`, `hooks.before` 제공자·비밀번호 게이트, `/api/auth-methods`, 비밀번호 끄기 안전장치, 기존 `auth` 사용처를 `getAuth()`로 바꾸기. (S-1, S-11)
-- [ ] W-3 제공자: genericOAuth(OIDC, issuer+subject 키, idToken 로그인 차단), GitHub(org 조회 `getUserInfo`), Google, 토큰 암호화 훅, 토큰 엔드포인트 닫기, 연결 규칙(`validateUserInfo` link-account), 요청 제한 규칙. (S-1, S-10, S-11)
-- [ ] W-4 가입 정책: `status`·`admission` 열과 마이그레이션(기존 사용자 active·seed, 유일 사용자 admin), `validateUserInfo` create·sign-in 규칙, `session.create.before` 승인 대기 거절, 데이터 API 상태 검사, 초기 관리자(시작 시 `ADMIN_EMAIL`, `ADMIN_OIDC_SUBJECT`). (S-2, S-4)
+- [x] W-3 제공자: genericOAuth(OIDC, issuer+subject 키, idToken 로그인 차단), GitHub(org 조회 `getUserInfo`), Google, 토큰 암호화 훅, 토큰 엔드포인트 닫기, 연결 규칙(`validateUserInfo` link-account), 요청 제한 규칙. (S-1, S-10, S-11)
+- [x] W-4 가입 정책: `status`·`admission` 열과 마이그레이션(기존 사용자 active·seed, 유일 사용자 admin), `validateUserInfo` create·sign-in 규칙, `session.create.before` 승인 대기 거절, 데이터 API 상태 검사, 초기 관리자(시작 시 `ADMIN_EMAIL`, `ADMIN_OIDC_SUBJECT`). (S-2, S-4)
 - [ ] W-5 관리자 서버: admin 플러그인, impersonation·remove-user 닫기, 마지막 관리자·자기 자신 보호, 계정 만들기(연결 대기), `/api/admin/*`(제공자 설정, 시크릿 암호화 저장, 완전 삭제). (S-3, S-5, S-8)
 - [ ] W-6 화면: 로그인(방식 목록, 오류 안내), 계정 페이지, 관리 페이지(사용자·로그인 방식), 메뉴, 저장소 연결, E2E. (S-1~S-3, S-8)
 - [ ] W-7 모바일 대비: bearer, oneTimeToken, `#app-login` 중계 페이지, `ALLOT_APP_RETURN_URLS`와 trustedOrigins scheme. (S-6)

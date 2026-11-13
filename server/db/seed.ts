@@ -114,9 +114,10 @@ export async function ensureAdmin(email: string, password: string, replace = fal
         .where(and(eq(a.userId, userId), eq(a.providerId, 'credential'))).returning({ id: a.id })
       if (!updated.length) await q.insert(a).values({ id: randomUUID(), userId, providerId: 'credential', accountId: userId, password: hash })
       await q.delete(authSchema.session).where(eq(authSchema.session.userId, userId))
+      await q.update(u).set({ status: 'active', role: 'admin' }).where(eq(u.id, userId))
     } else {
       userId = randomUUID()
-      await q.insert(u).values({ id: userId, email: target, name: 'Allot', emailVerified: true })
+      await q.insert(u).values({ id: userId, email: target, name: 'Allot', emailVerified: true, status: 'active', admission: 'seed', role: 'admin' })
       await q.insert(a).values({ id: randomUUID(), userId, providerId: 'credential', accountId: userId, password: hash })
     }
     // Last, so the old account is only gone once the new one is in place (same transaction).
