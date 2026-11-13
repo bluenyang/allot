@@ -1,7 +1,7 @@
 // spec 006 W-6 / V-5 (b), V-8 (UI): login methods, approval, the admin and account screens.
 // Needs the dev stack with Dex (docker/compose.dev.yaml) and DEX_CLIENT_SECRET in the test's env.
 // It sets the OIDC login method through the admin screen's API, so run it on a test database.
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, request as playwrightRequest, test, type APIRequestContext, type Page } from '@playwright/test'
 
 const DEX_USER = 'dex-alice@example.org'
 const DEX_PASSWORD = 'dex-password'
@@ -107,7 +107,20 @@ test('app login relay: sign in through Dex, then a one-time token for the listed
     if (want === 200) {
       const url = new URL((await res.json()).url)
       expect(`${url.protocol}//${url.host}${url.pathname}`).toBe('allot://auth')
-      expect(url.searchParams.get('ott')).toBeTruthy()
+      const ott = url.searchParams.get('ott')
+      expect(ott).toBeTruthy()
+      // what the app does next: trade the token once for a bearer session (review 2)
+      // like an app: no cookies at all (the test's own login cookie would make Better Auth ask for an Origin)
+      const api = await playwrightRequest.newContext({ baseURL: test.info().project.use.baseURL, storageState: { cookies: [], origins: [] } })
+      const first = await api.post('/api/auth/one-time-token/verify', { data: { token: ott } })
+      expect(first.status(), await first.text()).toBe(200)
+      const bearer = first.headers()['set-auth-token']
+      expect(bearer).toBeTruthy()
+      const state = await api.get('/api/state', { headers: { authorization: `Bearer ${bearer}` } })
+      expect(state.status()).toBe(200)
+      const again = await api.post('/api/auth/one-time-token/verify', { data: { token: ott } })
+      expect(again.status()).toBeGreaterThanOrEqual(400)
+      await api.dispose()
     } else {
       await expect(g.getByRole('alert')).toContainText('등록되지 않은 앱 주소')
     }

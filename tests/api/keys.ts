@@ -79,6 +79,12 @@ if (mode === 'seal') {
   ok(await decryptField(s.uids[0]!, ref('c', 'r1'), s.values.u0!) === 'user zero secret', 'user 0 value opens after rotation')
   ok(await decryptField(s.uids[1]!, ref('c', 'r1'), s.values.u1!) === 'user one secret', 'user 1 value opens after rotation')
   ok(await decryptField(SYSTEM, ref('client_secret', 'oidc'), s.values.sys!) === 'system secret', 'system value opens after rotation')
+  // review 2: forget-lost judges by opening, not by the kid column — a key that opens stays
+  await asUser(s.uids[1]!, (q) => q.update(t.userKey).set({ kid: 'deadbeef' }).where(eq(t.userKey.userId, s.uids[1]!)))
+  const kept = await forgetLostKeys()
+  ok(kept.users === 0 && kept.system === 0, `forget-lost with every key openable (one kid column wrong): ${kept.users}/${kept.system} forgotten (want 0/0)`)
+  ok(await decryptField(s.uids[1]!, ref('c', 'r1'), s.values.u1!) === 'user one secret', 'that key still opens its value')
+  await asUser(s.uids[1]!, (q) => q.update(t.userKey).set({ kid: cur }).where(eq(t.userKey.userId, s.uids[1]!)))
 } else if (mode === 'lost') {
   const s = JSON.parse(readFileSync(file, 'utf8')) as Saved
   // (R6) the configuration still loads: only the provider with the unopenable secret is unusable

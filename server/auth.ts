@@ -259,7 +259,14 @@ function retryDiscovery(failed: boolean) {
   const delay = retryDelay
   retryDelay = Math.min(retryDelay * 2, 300_000)
   console.warn(`WARNING: OIDC discovery failed; retrying in ${delay / 1000}s`)
-  retryTimer = setTimeout(() => { withAuthLock(buildAndInstall).catch((e) => console.warn(`auth: rebuild failed: ${(e as Error).message}`)) }, delay)
+  retryTimer = setTimeout(() => {
+    withAuthLock(buildAndInstall).catch((e) => {
+      // The build itself failed (e.g. the database was briefly unreachable): keep trying on the
+      // same backoff (review 2, R2-1). A later successful build stops the retries.
+      console.warn(`auth: rebuild failed: ${(e as Error).message}`)
+      retryDiscovery(true)
+    })
+  }, delay)
   retryTimer.unref()
 }
 

@@ -86,9 +86,12 @@ const [ax, xa] = await Promise.all([
 const winners = [ax.status, xa.status].filter((s) => s === 200).length
 const loser = ax.status === 200 ? xa.status : ax.status
 ok(winners === 1 && (loser === 409 || loser === 403), `A demotes X while X demotes A → ${ax.status}, ${xa.status} (want one 200, the other 409 or 403)`)
-const adminsLeft = (await A('GET', '/api/auth/admin/list-users?limit=500')).json?.users?.filter((x) => x.role === 'admin' && !x.banned).length
+// Ask as whoever is still the admin (review 2, R2-2).
 const aIsAdmin = (await A('GET', '/api/me')).json?.user?.role === 'admin'
-ok(adminsLeft === 1, `active admins left: ${adminsLeft} (want 1)`)
+const survivor = aIsAdmin ? A : X
+const left = await survivor('GET', '/api/auth/admin/list-users?limit=500')
+const adminsLeft = left.json?.users?.filter((x) => x.role === 'admin' && !x.banned && x.status === 'active').length
+ok(left.status === 200 && adminsLeft === 1, `active admins left: ${adminsLeft} (list → ${left.status}; want 200 and 1, asked as ${aIsAdmin ? 'A' : 'X'})`)
 if (!aIsAdmin) {
   // X won the race: give A the admin role back through X, so the rest of the run is the same
   const back = await X('POST', `/api/admin/users/${aId}/role`, { role: 'admin' })

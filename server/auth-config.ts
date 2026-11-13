@@ -108,8 +108,8 @@ function applyEnv(p: ProviderConfig, env: Record<string, string | undefined>): F
 
 type Row = typeof t.authProvider.$inferSelect
 
-/** Apply one stored row; returns the fields it set. */
-async function applyRow(p: ProviderConfig, row: Row): Promise<Field[]> {
+/** Apply one stored row; returns the fields it set. Adds the provider to `undecryptable` when its stored secret cannot be opened. */
+async function applyRow(p: ProviderConfig, row: Row, undecryptable: Set<ProviderId>): Promise<Field[]> {
   const set: Field[] = []
   if (row.enabled !== null) { p.enabled = row.enabled; set.push('enabled') }
   if (p.id === 'password') return set
@@ -141,8 +141,6 @@ async function applyRow(p: ProviderConfig, row: Row): Promise<Field[]> {
   return set
 }
 
-/** Providers whose stored client secret could not be opened in this load. */
-let undecryptable = new Set<ProviderId>()
 const LOST_SECRET = '저장된 client secret을 풀 수 없어요. 마스터 키가 바뀌었다면 이전 키를 ALLOT_MASTER_KEY_PREVIOUS에 넣거나, secret을 다시 넣어 주세요(README: 암호화 키).'
 
 /** Where a provider's client secret is sealed (AAD). */
@@ -173,12 +171,13 @@ export async function loadAuthConfig(env: Record<string, string | undefined> = p
   const providers = {} as AuthConfig['providers']
   const source = {} as AuthConfig['source']
   const problems: AuthConfig['problems'] = {}
-  undecryptable = new Set()
+  /** Providers whose stored client secret could not be opened in this load. */
+  const undecryptable = new Set<ProviderId>()
   for (const id of PROVIDERS) {
     const p = defaults(id)
     const src: Partial<Record<Field, Source>> = {}
     const row = rows.find((r) => r.id === id)
-    if (row) for (const f of await applyRow(p, row)) src[f] = 'db'
+    if (row) for (const f of await applyRow(p, row, undecryptable)) src[f] = 'db'
     for (const f of applyEnv(p, env)) src[f] = 'env'
     providers[id] = p
     source[id] = src

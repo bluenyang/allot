@@ -73,14 +73,18 @@ function unwrapDataKeyOrExplain(mk: MasterKeys, owner: string, dekId: string, wr
  */
 export async function forgetLostKeys(q: Db = db): Promise<{ users: number; system: number }> {
   const mk = masterKeys()
-  const known = (kid: string) => mk.byKid.has(kid)
+  // Lost means: no configured master key actually opens it — not only "its kid is unknown"
+  // (review 2): a key that still opens is never dropped, whatever its kid column says.
+  const opens = (owner: string, dekId: string, wrapped: string) => {
+    try { unwrapDataKey(mk, owner, dekId, wrapped); return true } catch { return false }
+  }
   let users = 0
   let system = 0
   const owners = await q.execute<{ id: string }>(sql`select id from "user"`)
   for (const { id: uid } of owners) {
     await asUser(uid, async (tx) => {
       const [row] = await tx.select().from(t.userKey).where(eq(t.userKey.userId, uid)).for('update')
-      if (!row || known(row.kid)) return
+      if (!row || opens(uid, row.dekId, row.wrapped)) return
       await tx.delete(t.userKey).where(eq(t.userKey.userId, uid))
       await tx.update(a.account).set({ accessToken: null, refreshToken: null, idToken: null }).where(eq(a.account.userId, uid))
       users++
@@ -88,7 +92,7 @@ export async function forgetLostKeys(q: Db = db): Promise<{ users: number; syste
   }
   await q.transaction(async (tx) => {
     const [row] = await tx.select().from(t.systemKey).where(eq(t.systemKey.id, SYSTEM_KEY_ID)).for('update')
-    if (!row || known(row.kid)) return
+    if (!row || opens(SYSTEM, row.dekId, row.wrapped)) return
     await tx.delete(t.systemKey).where(eq(t.systemKey.id, SYSTEM_KEY_ID))
     await tx.update(t.authProvider).set({ clientSecretEnc: null })
     system++
