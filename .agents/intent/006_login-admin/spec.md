@@ -171,7 +171,7 @@ summary_for_user: |
 - [x] W-6 화면: 로그인(방식 목록, 오류 안내), 계정 페이지, 관리 페이지(사용자·로그인 방식), 메뉴, 저장소 연결, E2E. (S-1~S-3, S-8)
 - [x] W-7 모바일 대비: bearer, oneTimeToken, `#app-login` 중계 페이지, `ALLOT_APP_RETURN_URLS`와 trustedOrigins scheme. (S-6)
 - [x] W-8 시드·새 사용자: `pnpm db:admin`, `db:seed` 규칙 변경과 `--replace-admin <email>`, `/api/state` 기본값과 `src/data/defaults.ts`, 기존 테스트(`isolation.mjs`의 409 기대 등) 갱신. (S-7)
-- [ ] W-9 개발 Dex와 문서: compose.dev `dex`, `docker/dex/config.yaml`, Vite `/dex` 프록시, `.env.example`, `docker/compose.yaml` env, README, CHANGELOG. (S-9, S-10)
+- [x] W-9 개발 Dex와 문서: compose.dev `dex`, `docker/dex/config.yaml`, Vite `/dex` 프록시, `.env.example`, `docker/compose.yaml` env, README, CHANGELOG. (S-9, S-10)
 
 순서: W-1 → W-2 → W-3 → W-4 → W-5 → W-6. W-7은 W-2 뒤면 언제든 된다. W-8은 독립이다. W-9의 Dex 부분은 W-3 검사 전에 먼저 한다. 각 W는 게이트를 통과하는 커밋으로 끝나고, 커밋 메시지에 W 번호를 적는다.
 
