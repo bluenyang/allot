@@ -3,6 +3,8 @@ import vue from '@vitejs/plugin-vue'
 
 // In Docker the api runs as the `api` service; on the host, `pnpm dev:api` on :3000.
 const api = process.env.API_URL ?? 'http://localhost:3000'
+// Development only: the test OIDC provider in docker/compose.dev.yaml (spec 006 W-9).
+const dex = process.env.DEX_URL
 
 export default defineConfig({
   plugins: [vue()],
@@ -24,6 +26,7 @@ export default defineConfig({
           })
         },
       },
+      ...(dex ? { '/dex': { target: dex, changeOrigin: false } } : {}),
     },
   },
 })

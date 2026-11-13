@@ -1,4 +1,5 @@
-# Local development / test stack: Vite dev server (15173 on the LAN), api, PostgreSQL 16.
+# Local development / test stack: Vite dev server (15173 on the LAN), api, PostgreSQL 16,
+# and Dex as a test OIDC provider (reached through the Vite proxy at /dex).
 # Values from docker/.env.dev (gitignored; copy docker/.env.example and fill in test values).
 #   docker compose -f docker/compose.dev.yaml up -d --build -V --wait
 # The production example is docker/compose.yaml (the released image).
@@ -12,6 +13,7 @@ services:
     env_file: [.env.dev]
     environment:
       API_URL: http://api:3000
+      DEX_URL: http://dex:5556
     # Vite serves every file under its root to anyone on the LAN, so the web container
     # gets only the front end — never .loctx/, server/, tests/ or docker/.
     volumes:
@@ -27,6 +29,7 @@ services:
       retries: 30
     depends_on:
       api: { condition: service_healthy }
+      dex: { condition: service_healthy }
 
   api:
     build: { context: .., dockerfile: docker/Dockerfile }
@@ -53,6 +56,21 @@ services:
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Test OIDC provider (spec 006 W-9). Fake users and client only: docker/dex/config.yaml.
+  # Its issuer is BETTER_AUTH_URL + /dex, which the browser and the api both reach through the
+  # web service; Dex itself publishes no port.
+  dex:
+    image: ghcr.io/dexidp/dex:v2.46.1
+    command: ["dex", "serve", "/etc/dex/allot.yaml"]
+    env_file: [.env.dev]
+    volumes:
+      - ./dex/config.yaml:/etc/dex/allot.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5556/dex/.well-known/openid-configuration >/dev/null"]
       interval: 2s
       timeout: 3s
       retries: 30
