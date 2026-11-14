@@ -127,3 +127,47 @@ test('app login relay: sign in through Dex, then a one-time token for the listed
     await guest.close()
   }
 })
+
+// V-6 (c) on the account screen (audit 0.1.2 A-2): link Dex from 계정, unlink it; the last login cannot go.
+test('account screen: link Dex, unlink it, the last login stays', async ({ request, browser }) => {
+  await setOidc(request, 'closed') // explicit linking does not depend on the sign-up policy
+  const DEX_LINK_USER = 'dex-bob@example.org'
+  const listed = (await adminApi(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users as { id: string; email: string }[]
+  const old = listed.find((u) => u.email === DEX_LINK_USER)
+  if (old) expect((await adminApi(request, 'DELETE', `/api/admin/users/${old.id}`, { confirmEmail: DEX_LINK_USER })).status).toBe(204)
+  const email = `e2e-link-${Date.now().toString(36)}@example.com`
+  const made = await adminApi(request, 'POST', '/api/auth/admin/create-user', { email, name: 'E2E link', password: 'e2e-link-pass-1' })
+  expect(made.status).toBe(200)
+
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+  const g = await ctx.newPage()
+  await g.goto('/')
+  await g.getByLabel('이메일').fill(email)
+  await g.getByLabel('비밀번호').fill('e2e-link-pass-1')
+  await g.getByRole('button', { name: '로그인', exact: true }).click()
+  await g.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
+  await g.goto('/#account')
+  const logins = g.locator('.list li')
+  await expect(logins).toHaveCount(1)
+  await g.getByRole('button', { name: 'Dex 연결' }).click()
+  const byEmail = g.getByText('Log in with Email')
+  await g.locator('#login').or(byEmail).first().waitFor()
+  if (await byEmail.count()) await byEmail.click()
+  await g.locator('#login').fill(DEX_LINK_USER)
+  await g.locator('#password').fill(DEX_PASSWORD)
+  await g.locator('#submit-login').click()
+  await g.waitForURL(/#account$/, { timeout: 20_000 })
+  await expect(logins).toHaveCount(2)
+  await expect(logins.filter({ hasText: 'Dex' })).toHaveCount(1)
+
+  g.once('dialog', (d) => d.accept())
+  await logins.filter({ hasText: 'Dex' }).getByRole('button', { name: '해제' }).click()
+  await expect(g.getByRole('status')).toContainText('연결을 해제했어요')
+  await expect(logins).toHaveCount(1)
+  await expect(logins.first()).toContainText('비밀번호')
+  await expect(logins.first().getByRole('button', { name: '해제' })).toBeDisabled()
+  await ctx.close()
+
+  const u = (await adminApi(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users.find((x: { email: string }) => x.email === email)
+  expect((await adminApi(request, 'DELETE', `/api/admin/users/${u.id}`, { confirmEmail: email })).status).toBe(204)
+})
