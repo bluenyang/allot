@@ -63,7 +63,7 @@ Decisions from the committee review (2026-11-11), accepted by the user ("그렇�
 |---|---|
 | 0.1.1 (released 2026-11-12) | Security foundation: `user_id` on every table (existing data kept for the current user), row-level security, change sets with revert, explicit trusted origins, HTTPS in the production example |
 | 0.1.2 | Login and admin: generic OIDC, GitHub, Google and password, each on/off; per-provider sign-up policy (admin-created, approval, or group/organization/domain rules); admin menu; initial admin from env (email or OIDC subject); encryption module; auth that a future mobile app can use (bearer tokens, deep-link return) |
-| 0.1.3 | MCP read: API keys (hashed, scoped, expiring, revocable), key management page, read tools |
+| 0.1.3 | MCP read: API keys (hashed, scoped, expiring, revocable), key management page, read tools; UI language setting (added 2026-11-15: "언어를 빼둔다? 그럼 다음 패치 버전으로 일단 적어놔봐.") |
 | 0.1.4 | MCP write: write tools, preview before confirm, revert of AI change sets |
 | 0.1.5 | One-off expenses: lump sum, split payment, installments |
 | 0.1.6 | Account management: purposes linked to accounts, target amounts (allocation stops at the target), buffers that refill gradually after use |
@@ -77,6 +77,7 @@ Added on 2026-11-15 (intent 007). User's words: "디자인 변경 작업. 계정
 
 - The whole app takes the redesign's tokens, components and shell; behaviour and API stay the same.
 - Per-account settings: theme (colours, corners, density) and general display settings.
+- Weekend and holiday adjustment of the monthly dates, with holidays from rule sets (RRULE) — user's words: "주말, 공휴일은 약간 플러그인??? 형태로 두자. rrule로 된 규칙 세트를 이용한다는 느낌으로."
 - Menus for features that do not exist yet (AI statements, assistant, AI settings) stay hidden until their version.
 
 Later (not scheduled): user-supplied LLM key for parsing and bookkeeping help, year-end tax estimate, passkey login, wider column encryption, auto-payment discovery.
