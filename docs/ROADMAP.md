@@ -78,6 +78,7 @@ Added on 2026-11-15 (intent 007). User's words: "디자인 변경 작업. 계정
 - The whole app takes the redesign's tokens, components and shell; behaviour and API stay the same.
 - Per-account settings: theme (colours, corners, density) and general display settings.
 - Weekend and holiday adjustment of the monthly dates, with holidays from rule sets (RRULE) — user's words: "주말, 공휴일은 약간 플러그인??? 형태로 두자. rrule로 된 규칙 세트를 이용한다는 느낌으로."
+- A month calendar on the schedule page (user: "달력을 full-caleandar나 다른 거 써도 되지 않나").
 - Menus for features that do not exist yet (AI statements, assistant, AI settings) stay hidden until their version.
 
 Later (not scheduled): user-supplied LLM key for parsing and bookkeeping help, year-end tax estimate, passkey login, wider column encryption, auto-payment discovery.
