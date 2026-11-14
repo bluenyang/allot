@@ -20,6 +20,26 @@ async function req(method, path, { body, headers = {}, origin = true } = {}) {
 }
 const creds = { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD }
 
+// V-12 (c), audit 0.1.2 A-2: with ALLOT_APP_RETURN_URLS empty the app-return path is off.
+//   EXPECT_OFF=1 BASE=… node tests/api/mobile.mjs   (the api runs without ALLOT_APP_RETURN_URLS)
+if (process.env.EXPECT_OFF === '1') {
+  const si = await req('POST', '/api/auth/sign-in/email', { body: creds })
+  const cookie = (si.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ')
+  ok(si.status === 200, `sign-in → ${si.status}`)
+  for (const to of [APP, 'allot://auth', 'com.example.app://cb']) {
+    const t = await req('POST', '/api/app-login/ticket', { body: { returnTo: to }, headers: { cookie } })
+    ok(t.status === 400, `ticket for "${to}" with the list empty → ${t.status} (want 400)`)
+  }
+  const v = await req('POST', '/api/auth/one-time-token/verify', { body: { token: 'anything' }, origin: false })
+  ok(v.status === 404, `one-time-token/verify with the list empty → ${v.status} (want 404)`)
+  const g = await req('GET', '/api/auth/one-time-token/generate', { headers: { cookie } })
+  ok(g.status === 404, `one-time-token/generate with the list empty → ${g.status} (want 404)`)
+  const cb = await req('POST', '/api/auth/sign-in/social', { body: { provider: 'oidc', callbackURL: `${APP}/x` }, headers: {} })
+  ok(cb.status === 403 && cb.json?.code === 'INVALID_CALLBACK_URL', `an app URL as callbackURL is not trusted → ${cb.status} ${cb.json?.code ?? ''} (want 403 INVALID_CALLBACK_URL)`)
+  console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed')
+  process.exit(failed ? 1 : 0)
+}
+
 // (a) a bearer token from a password sign-in, as an app would do it (no cookies kept)
 const s = await req('POST', '/api/auth/sign-in/email', { body: creds, origin: false })
 const token = s.headers.get('set-auth-token')
