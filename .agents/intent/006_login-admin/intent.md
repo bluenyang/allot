@@ -11,6 +11,13 @@ approvals:
     words: "승ㅇ;ㄴ"
     rev: 2750bd5
     note: "\"승인\"의 오타(두벌식에서 ㅣ 자리 옆 ;)로 읽었다."
+  - role: user
+    kind: permission
+    by: BlueNyang
+    at: "2026-11-15"
+    words: "잘된다. 이제 진행하자"
+    rev: 2abf3de
+    note: "test(V-1~V-18) 뒤. 범위: 브랜치 푸시와 PR 생성. 머지·감사·rc·릴리스는 포함하지 않는다(머지는 따로 지시)."
 waivers:
   - step: "spec 006 V-13 Google 실제 로그인 확인(사용자 로그인 뒤 계정 행·토큰·정책 검사)"
     words: "google은 그냥 넘겨도 될까? 귀찮아서."
