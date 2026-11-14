@@ -18,6 +18,13 @@ approvals:
     words: "잘된다. 이제 진행하자"
     rev: 2abf3de
     note: "test(V-1~V-18) 뒤. 범위: 브랜치 푸시와 PR 생성. 머지·감사·rc·릴리스는 포함하지 않는다(머지는 따로 지시)."
+  - role: user
+    kind: permission
+    by: BlueNyang
+    at: "2026-11-15"
+    words: "응 머지"
+    rev: e3a3d45
+    note: "범위: PR #10 머지(머지 커밋 ba7ba13). master에 직접 커밋할 수 없어 머지 뒤 감사 브랜치에서 기록한다. 감사는 flow의 필수 단계로 이어서 하고, 감사 기록의 푸시·PR은 따로 지시."
 waivers:
   - step: "spec 006 V-13 Google 실제 로그인 확인(사용자 로그인 뒤 계정 행·토큰·정책 검사)"
     words: "google은 그냥 넘겨도 될까? 귀찮아서."
