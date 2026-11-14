@@ -8,6 +8,13 @@ approvals:
     at: "2026-11-13"
     words: "진행"
     rev: 3b36137
+  - role: user
+    kind: change
+    by: BlueNyang
+    at: "2026-11-15"
+    words: "응 진행"
+    rev: 4c83158
+    note: "V-4(b)·V-13 자동 부분의 \"302\" → \"200과 authorize 주소\", V-17의 \"새 env가 출력에 있다\" → \"출력에 env_file·read_only·cap_drop, 새 env 이름은 .env.example\". 판정 전에 승인받음(그 둘은 판정 보류 상태였다)."
 summary_for_user: |
   로그인은 비밀번호·일반 OIDC·GitHub·Google 네 가지입니다. 각각 env나 관리자 화면에서 켜고 끄고, 화면에서 저장하면 재시작 없이 반영됩니다(인증 인스턴스를 다시 만듭니다). env로 정한 값이 우선하고, 화면에는 잠긴 채로 보입니다.
   가입은 제공자마다 닫힘·승인 대기·규칙 중 하나입니다. 승인 대기 사용자는 세션을 받지 못합니다. 규칙으로 들어온 사용자는 로그인할 때마다 규칙을 다시 확인합니다.
@@ -182,7 +189,7 @@ summary_for_user: |
 - V-1 게이트: `pnpm install --frozen-lockfile && pnpm typecheck && pnpm build && pnpm build:server` 모두 exit 0.
 - V-2 업그레이드 동등성: v0.1.1(마이그레이션 0000~0012)에 로컬 시드를 넣은 DB를 만들고 `/api/state`와 36개월 분배를 저장한다. 새 마이그레이션을 적용하고 같은 것을 다시 저장한다. 기대: 두 JSON 차이 0, 기존 계정이 `role = admin`·`status = active`, 비밀번호 로그인 200.
 - V-3 암호화 단위 테스트: (a) 암호화 → 복호화가 원문과 같다. (b) 암호문·nonce·tag·AAD(행 id, 열, 소유자) 중 하나를 바꾸면 복호화 실패. (c) 모르는 kid는 실패. (d) `ALLOT_MASTER_KEY_PREVIOUS`에 옛 키, 새 키로 `keys:rotate` → 모든 `user_key`·`system_key`의 kid가 새 키, 기존 암호문이 풀린다. (e) 마스터 키가 없거나 32바이트가 아니면 서버가 non-zero로 끝나고 이유를 출력한다.
-- V-4 설정: (a) env 없음·DB 없음 → `/api/auth-methods`가 비밀번호만. (b) DB로 OIDC를 켠다 → 재시작 없이 목록에 나오고 로그인 시작 302. (c) 끈다 → 목록에서 빠지고 `/sign-in/social`·`/callback/oidc`가 403. (d) env로 정한 항목을 관리자 API로 바꾸려 하면 409, DB는 그대로. (e) 잘못된 discovery URL 저장 → 400, 이전 설정 그대로 동작. (f) `/api/auth-methods` 응답에 client id·URL·규칙·시크릿이 없다.
+- V-4 설정: (a) env 없음·DB 없음 → `/api/auth-methods`가 비밀번호만. (b) DB로 OIDC를 켠다 → 재시작 없이 목록에 나오고, 로그인 시작이 200과 그 제공자의 authorize 주소(`url`, `redirect: true`)를 돌려준다(2026-11-15 변경: 처음 문구는 "로그인 시작 302" — Better Auth는 302가 아니라 이렇게 답한다). (c) 끈다 → 목록에서 빠지고 `/sign-in/social`·`/callback/oidc`가 403. (d) env로 정한 항목을 관리자 API로 바꾸려 하면 409, DB는 그대로. (e) 잘못된 discovery URL 저장 → 400, 이전 설정 그대로 동작. (f) `/api/auth-methods` 응답에 client id·URL·규칙·시크릿이 없다.
 - V-5 OIDC(Dex, E2E): (a) `closed` → 새 Dex 사용자 로그인이 `SIGNUP_CLOSED`로 거절, `user` 행 없음. (b) `approval` → 사용자 `pending`, 세션 없음, 로그인 화면에 승인 대기 안내. 관리자가 승인 → 다시 로그인하면 앱이 열린다. (c) `rules` + 맞는 group → `active`·`rule`. 맞지 않는 group → `NOT_ALLOWED`. (d) 규칙을 바꿔 그 group을 뺀다 → 그 사용자의 다음 로그인이 `NOT_ALLOWED`. (e) 저장된 계정 키에 Dex issuer와 subject가 들어 있다. client가 보낸 `idToken`으로 `/sign-in/social` → 거절.
 - V-6 연결: (a) 관리자가 비밀번호 없이 만든 계정(이메일 = Dex 사용자, 확인된 이메일) → 첫 OIDC 로그인으로 연결되고 그 계정으로 로그인된다. (b) 연결 대기가 아닌 기존 계정과 이메일만 같은 Dex 사용자 → `account_not_linked`. (c) 내 계정 화면에서 연결한 뒤 해제할 수 있다. 마지막 방식 해제는 거절. (d) discovery URL을 다른 issuer(두 번째 Dex 설정 또는 issuer만 바꾼 Dex)로 바꾸면 예전 연결로는 그 계정에 로그인되지 않는다.
 - V-7 관리자 권한: (a) 일반 사용자 세션으로 `/api/admin/*`와 `/api/auth/admin/*` 각각 → 403. (b) `impersonate-user`·`stop-impersonating`·`remove-user`는 관리자도 404 또는 403. (c) 관리자 API 응답 전체에 데이터 표 열 이름(`net_pay`, `amount` 등)이 없다. (d) 관리자 세션의 `/api/state`는 관리자 자신의 데이터만 준다(0.1.1 V-5 방식으로 B의 데이터가 안 보임).
@@ -192,14 +199,14 @@ summary_for_user: |
 - V-11 비밀 저장: (a) 관리자 화면으로 넣은 클라이언트 시크릿의 DB 값이 `v1.`로 시작하고 원문을 포함하지 않는다. 읽기 API는 `{ set: true }`만. (b) 외부 로그인 뒤 `account`의 세 토큰 열이 모두 `v1.`로 시작하거나 null이다. 복호화하면 제공자가 준 값과 같다(테스트에서만). (c) 이 검사 동안의 api 로그와 HTTP 응답에서 시크릿 원문과 마스터 키를 찾으면 0건.
 - V-12 모바일: (a) `/sign-in/email` 응답에 `set-auth-token`. 그 토큰을 `Authorization: Bearer`로 `/api/state` → 200, 헤더 없이 → 401. (b) `ALLOT_APP_RETURN_URLS=allot://auth`에서 `#app-login?return=allot://auth` 흐름(Dex) → `allot://auth?ott=…`로 이동. 그 토큰을 verify → bearer 토큰, 두 번째 verify → 실패. (c) `return=evil://x`나 `https://evil.example` → 이동하지 않고 오류. 목록이 비어 있으면 기능이 꺼진다.
 - V-13 GitHub·Google(사용자 값 필요): 사용자가 `docker/.env.dev`에 테스트 앱 값을 넣은 뒤에 한다.
-  - 자동: 각 제공자의 로그인 시작이 그 제공자의 authorize 주소로 302하고, `client_id`와 `redirect_uri`가 기대와 같다.
+  - 자동: 각 제공자의 로그인 시작이 200과 그 제공자의 authorize 주소를 돌려주고, 그 주소의 `client_id`와 `redirect_uri`가 기대와 같다(2026-11-15 변경: 처음 문구는 "authorize 주소로 302").
   - 사용자가 각 제공자로 한 번 로그인한다. Google은 `http://localhost:15173`으로 연다(우려 4).
   - PM이 결과를 검사한다: `account` 행(제공자, 계정 키, 암호화된 토큰), 정책대로의 `status`. GitHub는 org 규칙 맞음·안 맞음 한 번씩.
   - 값이 없거나 사용자 로그인이 없으면 **막힘**으로 기록하고 통과로 치지 않는다.
 - V-14 새 클론: 빈 DB, 데이터 파일 없이 `pnpm db:admin` exit 0 → 로그인 200 → `/api/state` 200, 기본값과 빈 목록. 관리자가 만든 새 사용자도 같은 빈 상태. 새 사용자가 설정을 처음 저장하면 행이 생긴다.
 - V-15 회귀: `node tests/api/crud.mjs create` → api 재시작 → `verify` → `cleanup`, `tests/api/isolation.mjs`, `tests/api/changes.mjs` 모두 exit 0(바뀐 기대는 W-8 커밋에 이유와 함께). `pnpm e2e` 전부 통과.
 - V-16 RLS 시작 검사: 새 표 `user_key`가 RLS·FORCE이고, 시작 검사 경고 0줄. `auth_provider`·`system_key`는 `user_id`가 없어 대상 밖이다.
-- V-17 운영 compose와 이미지: `docker compose -f docker/compose.yaml --env-file docker/.env.example config --no-env-resolution` exit 0, 새 env가 출력에 있다. 로컬에서 빌드한 이미지를 `read_only`·`cap_drop` 그대로 테스트 DB에 붙여 시작 → `/healthz` 200, 로그인 200. 마스터 키 없이 시작 → 실패하고 이유를 출력한다.
+- V-17 운영 compose와 이미지: `docker compose -f docker/compose.yaml --env-file docker/.env.example config --no-env-resolution` exit 0, 출력에 `env_file`·`read_only`·`cap_drop`이 있고 새 env 이름은 `docker/.env.example`에 있다(2026-11-15 변경: 처음 문구는 "새 env가 출력에 있다" — 서비스가 env를 `env_file`로 통째로 받아 출력에 이름이 나오지 않는다). 로컬에서 빌드한 이미지를 `read_only`·`cap_drop` 그대로 테스트 DB에 붙여 시작 → `/healthz` 200, 로그인 200. 마스터 키 없이 시작 → 실패하고 이유를 출력한다.
 - V-18 공개 저장소 검사: 0.1.1 V-13과 같은 방법(`banned.txt`, `grep -w -F`, diff와 커밋 메시지). 실제 제공자 도메인·계정·client id가 없어야 한다.
 
 ## 우려
