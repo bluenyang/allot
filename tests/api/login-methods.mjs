@@ -1,7 +1,8 @@
 // API check for spec 006 V-4: login-method settings (defaults, change without restart, off, env lock,
 // bad discovery, the public list).
 //   BASE=… ADMIN_EMAIL=… ADMIN_PASSWORD=… DISCOVERY=<Dex discovery URL> DEX_CLIENT_SECRET=… \
-//     [LOCKED=github] node tests/api/login-methods.mjs
+//     [LOCKED=github] pnpm exec tsx tests/api/login-methods.mjs
+// (tsx: the env-lock check reads the stored row through the server's database module; run it in the api container)
 // Start the api on a database with no auth_provider rows and no AUTH_* env, except, with LOCKED=github,
 // AUTH_GITHUB_CLIENT_ID set (for the env-lock check). Exit 0 only if every check passed.
 let failed = 0
@@ -23,14 +24,24 @@ const methods = async () => (await (await fetch(BASE + '/api/auth-methods')).jso
 if (process.env.LOCKED === 'github') {
   // (d) env wins and locks: run with AUTH_GITHUB_CLIENT_ID set
   ok((await api('POST', '/api/auth/sign-in/email', { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })).status === 200, 'admin sign-in')
-  const before = (await api('GET', '/api/admin/providers')).json.providers.find((p) => p.id === 'github')
-  ok(before.source.clientId === 'env', `github clientId source: ${before.source.clientId} (want env)`)
-  const r = await api('PUT', '/api/admin/providers/github', { options: { clientId: 'from-the-screen' } })
-  ok(r.status === 409 && JSON.stringify(r.json?.fields) === '["clientId"]', `(d) change an env field → ${r.status} ${JSON.stringify(r.json?.fields ?? null)} (want 409 ["clientId"])`)
-  const after = (await api('GET', '/api/admin/providers')).json.providers.find((p) => p.id === 'github')
-  ok(after.values.clientId === before.values.clientId && after.values.clientId !== 'from-the-screen', '(d) the value is unchanged')
+  // The stored row itself, not the effective value (env would hide a change to the row; review 4).
+  const { db, sqlClient } = await import('../../server/db/client.ts')
+  const { authProvider } = await import('../../server/db/schema.ts')
+  const { eq } = await import('drizzle-orm')
+  const stored = async () => JSON.stringify((await db.select().from(authProvider).where(eq(authProvider.id, 'github')))[0] ?? null)
+  // a field env does not set can still change — and this gives the provider a stored row to compare
   const free = await api('PUT', '/api/admin/providers/github', { signup: 'approval' })
   ok(free.status === 200, `(d) a field env does not set can still change → ${free.status}`)
+  const before = (await api('GET', '/api/admin/providers')).json.providers.find((p) => p.id === 'github')
+  ok(before.source.clientId === 'env', `github clientId source: ${before.source.clientId} (want env)`)
+  const rowBefore = await stored()
+  const r = await api('PUT', '/api/admin/providers/github', { options: { clientId: 'from-the-screen' } })
+  ok(r.status === 409 && JSON.stringify(r.json?.fields) === '["clientId"]', `(d) change an env field → ${r.status} ${JSON.stringify(r.json?.fields ?? null)} (want 409 ["clientId"])`)
+  const rowAfter = await stored()
+  ok(rowBefore !== 'null' && rowAfter === rowBefore && !rowAfter.includes('from-the-screen'), `(d) the stored row exists and is unchanged (${rowBefore === 'null' ? 'no row' : 'whole row compared'})`)
+  const after = (await api('GET', '/api/admin/providers')).json.providers.find((p) => p.id === 'github')
+  ok(after.values.clientId === before.values.clientId && after.values.clientId !== 'from-the-screen', '(d) the effective value is unchanged')
+  await sqlClient.end()
   console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed')
   process.exit(failed ? 1 : 0)
 }
@@ -45,7 +56,10 @@ ok(on.status === 200 && on.json?.usable === true, `(b) turn OIDC on → ${on.sta
 ok((await methods()).includes('oidc'), '(b) OIDC listed without a restart')
 const start = await api('POST', '/api/auth/sign-in/social', { provider: 'oidc', callbackURL: BASE + '/' }, { cookie: '' })
 const authUrl = start.json?.url ? new URL(start.json.url) : null
-console.log(`OBSERVED (b) sign-in start: HTTP ${start.status}, redirect=${start.json?.redirect}, url → ${authUrl ? authUrl.origin + authUrl.pathname : 'none'}`)
+// V-4 (b) as approved on 2026-11-15: the start answers 200 and the provider's authorize address
+const authEndpoint = (await (await fetch(process.env.DISCOVERY)).json()).authorization_endpoint
+ok(start.status === 200 && start.json?.redirect === true && !!authUrl && `${authUrl.origin}${authUrl.pathname}` === authEndpoint,
+  `(b) sign-in start → ${start.status}, redirect ${start.json?.redirect}, to ${authUrl ? authUrl.origin + authUrl.pathname : 'none'} (want 200, true, ${authEndpoint})`)
 const follow = authUrl ? await fetch(authUrl, { redirect: 'manual' }) : null
 console.log(`OBSERVED (b) following that url: HTTP ${follow?.status}`)
 

@@ -138,7 +138,9 @@ const u1 = await unlink(linked.find((x) => x.providerId === 'oidc').id)
 const left = await page.evaluate(async () => (await fetch('/api/auth/list-accounts')).json())
 const u2 = await unlink(left[0]?.id)
 ok(u1.status === 200 && left.length === 1 && left[0].providerId === 'credential', `V-6 (c) unlink OIDC → ${u1.status}, left: ${left.map((x) => x.providerId).join(', ')}`)
-ok(u2.status >= 400, `V-6 (c) unlink the last login → ${u2.status} ${u2.body?.code ?? ''}`)
+const kept = await page.evaluate(async () => (await fetch('/api/auth/list-accounts')).json())
+ok(u2.status === 400 && u2.body?.code === 'FAILED_TO_UNLINK_LAST_ACCOUNT' && kept.length === 1 && kept[0].providerId === 'credential',
+  `V-6 (c) unlink the last login → ${u2.status} ${u2.body?.code ?? ''}, still: ${kept.map((x) => x.providerId).join(', ')}`)
 await ctx.close()
 void bobRow
 
