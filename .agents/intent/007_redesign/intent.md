@@ -2,9 +2,14 @@
 id: "007"
 slug: redesign
 version: 0.1.2
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-15"
+    words: "승인"
+    rev: e28b0c9
 waivers: []
 supersedes: null
 ---
