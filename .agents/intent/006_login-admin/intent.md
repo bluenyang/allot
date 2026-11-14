@@ -11,7 +11,12 @@ approvals:
     words: "승ㅇ;ㄴ"
     rev: 2750bd5
     note: "\"승인\"의 오타(두벌식에서 ㅣ 자리 옆 ;)로 읽었다."
-waivers: []
+waivers:
+  - step: "spec 006 V-13 Google 실제 로그인 확인(사용자 로그인 뒤 계정 행·토큰·정책 검사)"
+    words: "google은 그냥 넘겨도 될까? 귀찮아서."
+    at: "2026-11-15"
+    scope: once
+    note: "자동 부분(authorize 주소, client_id, redirect_uri)은 실행함 — reports/0.1.2/test/V-13-google.log. GitHub는 그대로 진행."
 supersedes: null
 ---
 ## 문제
