@@ -12,5 +12,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["server/**/*.ts", "src/lib/calc.ts", "src/data/types.ts", "drizzle.config.ts", "vite.config.ts", "playwright.config.ts", "tests/e2e/**/*.ts"]
+  "include": ["server/**/*.ts", "src/lib/calc.ts", "src/data/types.ts", "src/data/defaults.ts", "drizzle.config.ts", "vite.config.ts", "playwright.config.ts", "tests/e2e/**/*.ts", "tests/unit/**/*.ts"]
 }

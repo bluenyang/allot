@@ -1,0 +1,47 @@
+{{- /* Dex for local development and tests only (docker/compose.dev.yaml, spec 006 W-9).
+  Rendered by the image's entrypoint (gomplate) from the dev env file. Every user, client and
+  secret here is a fake test value. The issuer is the app's own URL + /dex: the Vite dev
+  server proxies /dex to this container, so the browser and the api both reach it on 15173. */ -}}
+issuer: {{ getenv "BETTER_AUTH_URL" | required "BETTER_AUTH_URL" }}/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  responseTypes: [code]
+  skipApprovalScreen: true
+
+logger:
+  level: info
+
+staticClients:
+  - id: {{ getenv "DEX_CLIENT_ID" "allot-dev" }}
+    name: Allot (dev)
+    secret: {{ getenv "DEX_CLIENT_SECRET" "allot-dev-oidc-secret" }}
+    redirectURIs:
+      - {{ getenv "BETTER_AUTH_URL" }}/api/auth/callback/oidc
+
+# Password users (no groups: Dex static users carry none). Password for all: dex-password
+enablePasswordDB: true
+staticPasswords:
+  - email: dex-alice@example.org
+    username: alice
+    userID: 6f1c1d2e-0a1b-4c3d-8e9f-a1b2c3d4e5f1
+    hash: "$2b$10$m0O5cT.tytVNe/f1UqY7De.ZOLlqoCYL8FwTC9g1.cctGsLeGID7."
+  - email: dex-bob@example.org
+    username: bob
+    userID: 6f1c1d2e-0a1b-4c3d-8e9f-a1b2c3d4e5f2
+    hash: "$2b$10$m0O5cT.tytVNe/f1UqY7De.ZOLlqoCYL8FwTC9g1.cctGsLeGID7."
+  - email: dex-carol@example.org
+    username: carol
+    userID: 6f1c1d2e-0a1b-4c3d-8e9f-a1b2c3d4e5f3
+    hash: "$2b$10$m0O5cT.tytVNe/f1UqY7De.ZOLlqoCYL8FwTC9g1.cctGsLeGID7."
+
+# Group rules: Dex's mock connector signs in one fixed user with groups ["authors"].
+connectors:
+  - type: mockCallback
+    id: mock
+    name: Mock (groups)

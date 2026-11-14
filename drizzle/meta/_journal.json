@@ -92,6 +92,41 @@
       "when": 1794373892852,
       "tag": "0012_force_rls_change_sets",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794581161754,
+      "tag": "0013_data_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794581166477,
+      "tag": "0014_force_rls_user_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1794581384005,
+      "tag": "0015_auth_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794581971185,
+      "tag": "0016_user_status_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794581981603,
+      "tag": "0017_existing_users_active",
+      "breakpoints": true
     }
   ]
 }

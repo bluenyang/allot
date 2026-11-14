@@ -3,14 +3,13 @@
 //   docker compose -f docker/compose.dev.yaml exec -T api pnpm exec tsx tests/api/make-user.ts <email> <password>
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { auth } from '../../server/auth'
+import { hashPassword } from 'better-auth/crypto'
 import { db, sqlClient } from '../../server/db/client'
 import * as a from '../../server/db/auth-schema'
 
 const [email, password] = process.argv.slice(2)
 if (!email || !password || password.length < 8) throw new Error('usage: make-user.ts <email> <password (8+)>')
-const ctx = await auth.$context
-const hash = await ctx.password.hash(password)
+const hash = await hashPassword(password)
 const [found] = await db.select({ id: a.user.id }).from(a.user).where(eq(a.user.email, email.toLowerCase()))
 if (found) {
   console.log(`exists ${found.id}`)
@@ -18,7 +17,7 @@ if (found) {
   const id = randomUUID()
   // one transaction: never a user without its credential
   await db.transaction(async (q) => {
-    await q.insert(a.user).values({ id, email: email.toLowerCase(), name: 'Test', emailVerified: true })
+    await q.insert(a.user).values({ id, email: email.toLowerCase(), name: 'Test', emailVerified: true, status: 'active', admission: 'admin' })
     await q.insert(a.account).values({ id: randomUUID(), userId: id, providerId: 'credential', accountId: id, password: hash })
   })
   console.log(`created ${id}`)

@@ -20,6 +20,7 @@ import type { Db } from './db/client'
 import { asUser, lockFor } from './db/scope'
 import * as t from './db/schema'
 import * as v from './validation'
+import { DEFAULT_LIVING, DEFAULT_SETTINGS } from '../src/data/defaults'
 
 type ListTable = PgTable & { id: PgColumn; seq: PgColumn; userId: PgColumn }
 
@@ -208,9 +209,9 @@ routes.get('/state', async (c) => {
   })
   const amountsOf = (phaseId: string) =>
     Object.fromEntries(amounts.filter((a) => a.phaseId === phaseId).map((a) => [a.targetId, a.amount]))
-  if (!settings || !living) return c.json({ error: '설정이 비어 있어요. pnpm db:seed로 처음 데이터를 넣어 주세요.' }, 409)
-  const { userId: _s, ...s } = settings
-  const { userId: _l, ...l } = living
+  // A new account has no rows yet: it gets the defaults until its first save (spec 006 S-7).
+  const { userId: _s, ...s } = settings ?? { userId: uid, ...DEFAULT_SETTINGS }
+  const { userId: _l, ...l } = living ?? { userId: uid, ...DEFAULT_LIVING }
   return c.json({
     settings: s,
     living: l,

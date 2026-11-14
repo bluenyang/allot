@@ -7,6 +7,9 @@ import Payroll from './pages/Payroll.vue'
 import Timeline from './pages/Timeline.vue'
 import History from './pages/History.vue'
 import Dev from './pages/Dev.vue'
+import Account from './pages/Account.vue'
+import Admin from './pages/Admin.vue'
+import { api } from './lib/api'
 import { status, store } from './lib/store'
 import { authClient } from './lib/auth-client'
 import { man, phaseAt, today, ymOf } from './lib/calc'
@@ -19,7 +22,19 @@ const pages = [
   { id: 'history', label: '내역', comp: History },
   { id: 'dev', label: '개발', comp: Dev },
 ]
-const ids = pages.map((p) => p.id)
+// Reached from the sidebar and the top bar, not the phone's bottom bar (spec 006).
+const extra = [
+  { id: 'account', label: '계정', comp: Account },
+  { id: 'admin', label: '관리', comp: Admin },
+]
+const role = ref<string>('')
+onMounted(async () => {
+  try { role.value = (await api<{ user: { role: string } }>('GET', '/api/me')).user.role } catch { /* the shell works without it */ }
+})
+/** The admin page shows for admins only; the server refuses everyone else anyway. */
+const extraNav = computed(() => extra.filter((p) => p.id !== 'admin' || role.value === 'admin'))
+const all = [...pages, ...extra]
+const ids = all.map((p) => p.id)
 const read = () => {
   const h = location.hash.slice(1)
   return ids.includes(h) ? h : 'home'
@@ -41,6 +56,7 @@ const logout = () => authClient.signOut()
       <div class="brand"><span class="logo">A</span><b>Allot</b></div>
       <nav aria-label="메뉴">
         <a v-for="p in pages" :key="p.id" :href="'#' + p.id" :aria-current="page === p.id ? 'true' : 'false'"><Icon :name="p.id" />{{ p.label }}</a>
+        <a v-for="p in extraNav" :key="p.id" :href="'#' + p.id" :aria-current="page === p.id ? 'true' : 'false'"><Icon :name="p.id" />{{ p.label }}</a>
       </nav>
       <div class="foot">
         <span>월 실수령</span>
@@ -52,9 +68,9 @@ const logout = () => authClient.signOut()
     </aside>
 
     <main class="main">
-      <div class="mtop"><span class="logo">A</span><b>Allot</b><span class="ver">v0.1</span><button class="logout m" type="button" @click="logout">로그아웃</button></div>
+      <div class="mtop"><span class="logo">A</span><b>Allot</b><span class="ver">v0.1</span><a class="acct" href="#account" aria-label="계정"><Icon name="account" /></a><button class="logout m" type="button" @click="logout">로그아웃</button></div>
       <p v-if="status.error" class="save-err" role="alert">{{ status.error }} <button type="button" @click="status.error = ''">닫기</button></p>
-      <KeepAlive><component :is="pages.find((p) => p.id === page)!.comp" /></KeepAlive>
+      <KeepAlive><component :is="all.find((p) => p.id === page)!.comp" /></KeepAlive>
     </main>
 
     <nav class="botnav" aria-label="메뉴">

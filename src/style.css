@@ -196,6 +196,8 @@ pre code{background:none;padding:0;font-size:inherit}
 /* ---------- logout ---------- */
 .logout{margin-top:8px;align-self:flex-start;background:none;border:1px solid var(--side-muted);color:var(--side-fg);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer}
 .logout.m{margin:0 0 0 8px;border-color:var(--line);color:var(--muted)}
+.mtop .acct{display:grid;place-items:center;width:30px;height:30px;margin-left:8px;color:var(--muted);border:1px solid var(--line);border-radius:8px}
+.mtop .acct svg{width:18px;height:18px}
 
 /* ---------- save error ---------- */
 .save-err{position:sticky;top:8px;z-index:40;margin:0 0 12px;padding:10px 14px;border-radius:10px;background:var(--neg-soft);color:var(--neg);font-size:13px;display:flex;gap:10px;align-items:center}

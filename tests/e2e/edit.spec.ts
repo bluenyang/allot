@@ -11,7 +11,7 @@ test.describe('login', () => {
     await page.goto('/')
     await page.getByLabel('이메일').fill(process.env.ADMIN_EMAIL!)
     await page.getByLabel('비밀번호').fill('definitely-wrong')
-    await page.getByRole('button', { name: '로그인' }).click()
+    await page.getByRole('button', { name: '로그인', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText(/맞지 않아요|너무 많아요/)
     await expect(page.getByRole('tab', { name: '이번 달' })).toHaveCount(0)
   })

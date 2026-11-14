@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.2 — unreleased
+
+Login and admin. Intent 006 (`.agents/intent/006_login-admin/`).
+
+### Upgrading from 0.1.1
+- **`ALLOT_MASTER_KEY` is required**: 32 random bytes in base64 (`openssl rand -base64 32`). Without it the app does not start and says why. Keep it apart from database backups.
+- The existing login account stays, with its data, and becomes the admin. Nothing else changes until you turn on another login method.
+
+### Added
+- Login with generic OIDC (one provider, standards only: discovery, PKCE, ID token checked against JWKS; Dex, Authentik, Keycloak by settings), GitHub and Google, next to the password. Each method is switched on and off in the admin screen or by env (`AUTH_<P>_*`; env wins and locks the field); a change applies without a restart.
+- Sign-up policy per provider: admin-created accounts only, approval, or rules (email list, OIDC group, GitHub organization, Google domain). Accounts admitted by a rule are checked again at every login. External accounts link by provider identity (OIDC: issuer + subject), never by a matching email alone.
+- Admin screen: accounts (create, approve, roles, ban, password reset, end sessions, full delete with the email typed again) and login methods. The admin sees account details only, never anyone's financial data; impersonation is off; the last admin cannot be demoted, banned or deleted. Password login cannot be switched off while no admin has another login.
+- First admin from env: `ADMIN_EMAIL`, or `ADMIN_OIDC_SUBJECT` for an OIDC-only start.
+- Account screen: linked logins (link, unlink), password change.
+- Envelope encryption (AES-256-GCM, a data key per user wrapped by `ALLOT_MASTER_KEY`) for external login tokens and client secrets entered in the admin screen; `pnpm keys:rotate` re-wraps the data keys after a master-key change.
+- For a future mobile app: `Authorization: Bearer` sessions, and a return to the app after an external login through a one-time token, only to URLs listed in `ALLOT_APP_RETURN_URLS` (off by default).
+- `pnpm db:admin`: the admin account without any data file (a fresh clone starts here). New accounts start from default settings and empty lists.
+- Development: Dex in `docker/compose.dev.yaml` as the test OIDC provider (behind the Vite proxy at `/dex`).
+
+### Changed
+- Several accounts are normal now: the seed no longer refuses other accounts, and `--replace-admin` takes the old account's email.
+- `/api/state` answers default settings for an account that has saved none yet (was 409).
+- Development `BETTER_AUTH_URL` should be the computer's LAN address, so the api container reaches Dex.
+
 ## 0.1.1 — 2026-11-12
 
 Stable. Same application code as 0.1.1-rc.1; adds the env-file guard (`scripts/guard-env.mjs`, PR #7).

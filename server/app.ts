@@ -1,7 +1,10 @@
 import { Hono, type Context } from 'hono'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import { serveStatic } from '@hono/node-server/serve-static'
-import { auth, CLIENT_IP_HEADER } from './auth'
+import { adminRoutes } from './admin-routes'
+import { allowedReturn } from './app-login'
+import { publicMethods } from './auth-config'
+import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
 import type { AppEnv } from './app-env'
 import { routes } from './routes'
 
@@ -33,23 +36,40 @@ root.get('/healthz', (c) => c.json({ ok: true }))
 // The Hono app, separate from the Node listener so tests can call app.request().
 export const app = new Hono<AppEnv>().basePath('/api')
 
-// Better Auth handles /api/auth/* (sign-in, sign-out, get-session; sign-up is disabled).
+// Better Auth handles /api/auth/* (sign-in, sign-out, get-session; password sign-up is disabled).
 // The client IP header is always overwritten here, so a client cannot choose its rate-limit bucket.
 app.on(['GET', 'POST'], '/auth/*', (c) => {
   const headers = new Headers(c.req.raw.headers)
   headers.set(CLIENT_IP_HEADER, clientIp(c))
-  return auth.handler(new Request(c.req.raw, { headers }))
+  return getAuth().handler(new Request(c.req.raw, { headers }))
 })
+
+// The login screen's list of methods (spec 006 S-1): ids and display names only, no session needed.
+app.get('/auth-methods', (c) => c.json({ methods: publicMethods(getAuthConfig()) }))
 
 // Everything else under /api needs a session.
 app.use('*', async (c, next) => {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers })
+  const session = await getAuth().api.getSession({ headers: c.req.raw.headers })
   if (!session) return c.json({ error: 'unauthorized' }, 401)
+  // Second layer (spec 006 S-2): a session of an account that is not active never reaches data.
+  if (session.user.status !== 'active') return c.json({ error: '관리자 승인을 기다리고 있어요.', code: 'PENDING_APPROVAL' }, 403)
   c.set('session', session)
   await next()
 })
 
 app.get('/me', (c) => c.json({ user: c.get('session').user }))
+
+// spec 006 S-6: a one-time token for a listed app URL, for the signed-in browser (server/app-login.ts).
+app.post('/app-login/ticket', async (c) => {
+  const body = await c.req.json().catch(() => null) as { returnTo?: unknown } | null
+  const to = allowedReturn(body?.returnTo)
+  if (!to) return c.json({ error: '등록되지 않은 앱 주소예요.' }, 400)
+  const { token } = await getAuth().api.generateOneTimeToken({ headers: c.req.raw.headers })
+  const url = new URL(to)
+  url.searchParams.set('ott', token)
+  return c.json({ url: url.toString() })
+})
+app.route('/admin', adminRoutes)
 app.route('/', routes)
 
 root.route('/', app)

@@ -14,7 +14,7 @@ import type {
 } from '../../src/data/types'
 import { db, sqlClient, type Db } from './client'
 import { runMigrations } from './migrate'
-import { auth } from '../auth'
+import { hashPassword } from 'better-auth/crypto'
 import * as t from './schema'
 import * as authSchema from './auth-schema'
 import { moveOwner } from './owned'
@@ -84,30 +84,27 @@ export async function seed(data: SeedData, uid: string, tx: Db = db) {
 }
 
 /**
- * The single login account. Sign-up is closed (disableSignUp), so the seed writes the
+ * The admin login account from ADMIN_EMAIL / ADMIN_PASSWORD (spec 006 S-7). The seed writes the
  * user and its credential row itself, with Better Auth's own password hashing.
- * If the email exists, the password is reset to ADMIN_PASSWORD and its sessions are revoked.
+ * If the email exists, its password is reset, its sessions are revoked, and it is an active admin.
+ * Other accounts are left alone (there may be many since 0.1.2).
  *
- * There is only ever one account: if another email already has one, this fails, unless
- * `replace` is set — then the old account's data moves to this account and the old account
- * is deleted (its sessions and credentials cascade; its data does not, user_id is restrict).
- * Everything runs in one transaction under an advisory lock: two seeds cannot both create
- * an account, and a failure part-way leaves the previous account untouched.
+ * `replaceEmail` (`--replace-admin <old email>`): that account's data moves to this one and the
+ * old account is deleted (its sessions and credentials cascade; its data does not: user_id is
+ * restrict). Everything runs in one transaction under an advisory lock: two seeds cannot both
+ * create the account, and a failure part-way leaves the previous accounts untouched.
  */
-export async function ensureAdmin(email: string, password: string, replace = false) {
-  const ctx = await auth.$context
+export async function ensureAdmin(email: string, password: string, replaceEmail?: string) {
   const target = email.toLowerCase()
-  const hash = await ctx.password.hash(password) // before anything is written or deleted
+  const old = replaceEmail?.toLowerCase()
+  if (old === target) throw new Error('--replace-admin: give the old account\'s email, not ADMIN_EMAIL')
+  const hash = await hashPassword(password) // before anything is written or deleted
   const u = authSchema.user
   const a = authSchema.account
   return db.transaction(async (q) => {
     await q.execute(sql`select pg_advisory_xact_lock(hashtext('allot:admin'))`)
-    const others = await q.select({ id: u.id, email: u.email }).from(u).where(ne(u.email, target))
-    if (others.length && !replace) {
-      throw new Error(`another login account exists (${others.map((o) => o.email).join(', ')}); `
-        + 'rerun with --replace-admin to delete it and use ADMIN_EMAIL instead')
-    }
-    const note = others.length ? ' (old account removed)' : ''
+    const [from] = old ? await q.select({ id: u.id }).from(u).where(eq(u.email, old)) : []
+    if (old && !from) throw new Error(`--replace-admin: no account with the email ${old}`)
     const [found] = await q.select({ id: u.id }).from(u).where(eq(u.email, target))
     let userId = found?.id
     if (userId) {
@@ -115,30 +112,42 @@ export async function ensureAdmin(email: string, password: string, replace = fal
         .where(and(eq(a.userId, userId), eq(a.providerId, 'credential'))).returning({ id: a.id })
       if (!updated.length) await q.insert(a).values({ id: randomUUID(), userId, providerId: 'credential', accountId: userId, password: hash })
       await q.delete(authSchema.session).where(eq(authSchema.session.userId, userId))
+      await q.update(u).set({ status: 'active', role: 'admin', banned: false }).where(eq(u.id, userId))
     } else {
       userId = randomUUID()
-      await q.insert(u).values({ id: userId, email: target, name: 'Allot', emailVerified: true })
+      await q.insert(u).values({ id: userId, email: target, name: 'Allot', emailVerified: true, status: 'active', admission: 'seed', role: 'admin' })
       await q.insert(a).values({ id: randomUUID(), userId, providerId: 'credential', accountId: userId, password: hash })
     }
     // Last, so the old account is only gone once the new one is in place (same transaction).
-    for (const o of others) {
-      await moveOwner(q as unknown as Db, o.id, userId)
-      await q.delete(u).where(eq(u.id, o.id))
+    if (from) {
+      await moveOwner(q as unknown as Db, from.id, userId)
+      await q.execute(sql`select set_config('app.user_id', ${from.id}, true)`)
+      await q.delete(t.userKey).where(eq(t.userKey.userId, from.id))
+      await q.delete(u).where(eq(u.id, from.id))
     }
-    return { status: (found ? 'updated' : 'created') + note, userId }
+    return { status: (found ? 'updated' : 'created') + (from ? ` (data moved from ${old}, old account removed)` : ''), userId }
   })
+}
+
+/** `--replace-admin <old email>` from the arguments. */
+export function replaceArg(args: string[]): string | undefined {
+  const i = args.indexOf('--replace-admin')
+  if (i < 0) return undefined
+  const v = args[i + 1]
+  if (!v || v.startsWith('--')) throw new Error('--replace-admin needs the old account\'s email')
+  return v
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const args = process.argv.slice(2)
-  const replaceAdmin = args.includes('--replace-admin')
-  const file = resolve(args.find((a) => !a.startsWith('--')) ?? '.loctx/scripts/seed-data.ts')
+  const replace = replaceArg(args)
+  const file = resolve(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--replace-admin') ?? '.loctx/scripts/seed-data.ts')
   const data = (await import(pathToFileURL(file).href)) as SeedData
   await runMigrations()
   const email = process.env.ADMIN_EMAIL
   const password = process.env.ADMIN_PASSWORD
   if (!email || !password || password.length < 8) throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD (8+ chars) must be set')
-  const admin = await ensureAdmin(email, password, replaceAdmin)
+  const admin = await ensureAdmin(email, password, replace)
   await seed(data, admin.userId)
   const counts = await asUser(admin.userId, (q) => q.execute<{ t: string; n: number }>(sql`
     select 'subscription' t, count(*)::int n from subscription union all

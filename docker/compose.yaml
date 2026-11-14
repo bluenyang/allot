@@ -1,6 +1,7 @@
 # Allot production example: the released image only; PostgreSQL 16 is yours (DATABASE_URL).
 # Local development and tests use docker/compose.dev.yaml instead.
-#   cp docker/.env.example docker/.env   # DATABASE_URL, BETTER_AUTH_*, TRUSTED_ORIGINS, production section
+#   cp docker/.env.example docker/.env   # DATABASE_URL, BETTER_AUTH_*, ALLOT_MASTER_KEY (required), TRUSTED_ORIGINS,
+#                                        # login methods (AUTH_*), production section — env_file passes them all
 #   docker compose -f docker/compose.yaml up -d
 # Migrations are applied when the app starts. First data and the database role: README ("운영 배포").
 #
