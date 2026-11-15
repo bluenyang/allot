@@ -226,7 +226,7 @@ summary_for_user: |
 ## 작업 단위
 각 W는 혼자 되돌릴 수 있고 커밋마다 게이트(typecheck → build)를 지난다. W가 깨뜨리는 기존 E2E 선택자는 그 W 안에서 고친다. 커밋 메시지에 W 번호를 적는다. 한 커밋에 W 둘을 섞지 않는다(감사 0.1.2 A-1).
 - [x] W-1 토큰·글꼴·기본 컴포넌트: `src/style.css` 다시 쓰기(새 변수, 다크 두 블록, 컴포넌트 클래스), 기존 변수 사용처 이름 바꾸기, `@fontsource` 두 패키지와 `index.html`의 Google Fonts 제거, `SubTabs.vue` 새 탭 모양(아이콘은 선택 prop), `tests/contrast.mjs`를 새 토큰 이름과 짝으로. (S-1)
-- [ ] W-2 셸: `App.vue` 사이드바 묶음·사용자 블록·푸터, `PageHeader.vue`, 휴대폰 위·아래 막대, 해시 라우트(`settings/*`, `account` 별칭), 버전 `define`, 메뉴 이름 변경과 그에 따른 E2E 수정. 이 W의 설정 화면은 빈 자리(로그인·보안 탭만 Account 내용)다. (S-2, S-3, S-12)
+- [x] W-2 셸: `App.vue` 사이드바 묶음·사용자 블록·푸터, `PageHeader.vue`, 휴대폰 위·아래 막대, 해시 라우트(`settings/*`, `account` 별칭), 버전 `define`, 메뉴 이름 변경과 그에 따른 E2E 수정. 이 W의 설정 화면은 빈 자리(로그인·보안 탭만 Account 내용)다. (S-2, S-3, S-12)
 - [ ] W-3 편집 모달: `EditSheet.vue`를 `<dialog>`로(초점, Esc, 640px, 휴대폰 전체 화면, 버튼 배치). 모든 화면의 `EditSheet` 자리를 목록 안에서 모달로. (S-6)
 - [ ] W-4 저장: `preference`·`holiday_set` 스키마, `settings.day_shift`, `pnpm db:generate` 마이그레이션, zod, `/api/preferences`·`/api/holiday-sets`·`/api/state`, `OWNED`, `src/data/types.ts`·`defaults.ts`·`store.ts`, `tests/api/preferences.mjs`, 관리자 완전 삭제 검사의 표 수. 규칙 검증에 `rrule-temporal`·`temporal-polyfill`을 더한다. (S-7, S-8, S-9)
 - [ ] W-5 공휴일: `src/lib/holidays.ts`, `src/data/holidays-kr.ts`(출처 주석), `calc.ts`의 `monthDates`, 단위 테스트 `tests/unit/holidays.test.ts`·`tests/unit/month-dates.test.ts`. 대조용 `korean-lunar-calendar`는 devDependency. (S-9, S-10)
