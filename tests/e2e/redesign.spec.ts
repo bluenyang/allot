@@ -321,3 +321,17 @@ test('(S-17) Saturdays blue and Sundays red on the calendar and the payment date
   expect(colours.sat).toBe(rgb(colours.info))
   expect(colours.sun).toBe(rgb(colours.neg))
 })
+
+test('(V-16) 이번 달 shows every card as the design does; 예정 and 확인할 것 show only theirs', async ({ page }) => {
+  await page.goto('/#home')
+  const h2 = (name: string | RegExp) => page.getByRole('heading', { level: 2, name, exact: typeof name === 'string' })
+  const all = [/자동이체 분배$/, '고정 지출 추이', '결제 예정', '예약된 플랜 전환', '다가오는 일정', '확인할 것']
+  for (const n of all) await expect(h2(n)).toBeVisible()
+  await page.getByRole('tab', { name: /예정/ }).click()
+  await expect(h2('예약된 플랜 전환')).toBeVisible()
+  await expect(h2('다가오는 일정')).toBeVisible()
+  for (const n of ['결제 예정', '확인할 것']) await expect(h2(n)).toHaveCount(0)
+  await page.getByRole('tab', { name: /확인할 것/ }).click()
+  await expect(h2('확인할 것')).toBeVisible()
+  for (const n of ['결제 예정', '예약된 플랜 전환']) await expect(h2(n)).toHaveCount(0)
+})

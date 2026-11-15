@@ -117,6 +117,8 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
     <div>
       <SubTabs v-model="tab" :tabs="tabs" aria-label="현황 보기" />
 
+      <!-- 이번 달 shows every card, as the design canvas does; 예정 and 확인할 것 show only theirs (spec 007 S-19) -->
+      <div class="tabbody">
       <div v-if="tab === 'month'" class="flexcols">
         <div class="col-main">
           <section class="card">
@@ -175,7 +177,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
         </div>
       </div>
 
-      <div v-else-if="tab === 'next'" class="flexcols">
+      <div v-if="tab !== 'checks'" class="flexcols">
         <section class="card half">
           <div class="card-hd"><h2>예약된 플랜 전환</h2><span class="aux">월 환산 차액</span></div>
           <ul class="items">
@@ -205,7 +207,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
         </section>
       </div>
 
-      <section v-else class="card checks">
+      <section v-if="tab !== 'next'" class="card checks">
         <div class="card-hd"><h2>확인할 것</h2><button class="btn sm add" type="button" aria-label="확인할 것 추가" @click="chkEd.open()">+ 추가</button></div>
         <EditSheet v-if="chkEd.item.value" :key="chkEd.item.value.id || 'new'" :title="chkEd.item.value.id ? '확인할 것 수정' : '확인할 것 추가'" :error="chkEd.error.value" :busy="chkEd.busy.value"
           :can-delete="!!chkEd.item.value.id" @save="chkEd.save" @cancel="chkEd.close" @delete="chkEd.remove">
@@ -220,6 +222,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
         </ul>
         <p v-if="!store.checks.length" class="empty">확인할 것이 없어요.</p>
       </section>
+      </div>
     </div>
   </section>
 </template>
@@ -280,6 +283,7 @@ tr.sum td.n{font-weight:700}
 }
 .grow{flex-grow:1}
 .items > li.dim{opacity:.6}
+.tabbody{display:flex;flex-direction:column;gap:20px}
 .checks{max-width:760px}
 .checks .add{height:32px;font-size:13px;color:var(--text);border-color:var(--border-strong)}
 .ck{gap:12px !important;padding:0 18px !important;min-height:48px}
