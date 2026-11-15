@@ -2,37 +2,44 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import App from './App.vue'
 import Login from './pages/Login.vue'
-import { authClient } from './lib/auth-client'
+import { authClient, lastRetryAfter } from './lib/auth-client'
 import { ApiError, api, onUnauthorized } from './lib/api'
 import { loadState, status, store } from './lib/store'
 import { applyTheme } from './lib/theme'
 
 const session = authClient.useSession()
 // Too many session checks (429) is not "signed out": say so and check again when the server says
-// (X-Retry-After), instead of showing the login form (spec 007 S-14). One loop at a time; it stops
-// when the check passes or the root goes away (review 6).
+// (X-Retry-After, from the first refusal on), instead of showing the login form (spec 007 S-14).
+// One loop at a time (reviews 6, 7): it keeps going through network errors and through a refetch
+// that is refused again, and stops when the session check passes or the root goes away.
 const limited = computed(() => !session.value.data && session.value.error?.status === 429)
 let alive = true
 let waiting = false
 let timer: ReturnType<typeof setTimeout> | undefined
 const sleep = (s: number) => new Promise<void>((done) => { timer = setTimeout(done, Math.min(Math.max(s, 1), 120) * 1000) })
-async function waitForSession(firstWait: number) {
+async function waitForSession() {
   if (waiting) return
   waiting = true
   try {
-    let wait = firstWait
-    while (alive && limited.value) {
+    let wait = lastRetryAfter() || 5
+    while (alive) {
       await sleep(wait)
       if (!alive) return
-      const r = await fetch('/api/auth/get-session', { credentials: 'same-origin' })
-      if (r.status !== 429) { await session.value.refetch(); return }
-      wait = Number(r.headers.get('X-Retry-After')) || 5
+      try {
+        const r = await fetch('/api/auth/get-session', { credentials: 'same-origin' })
+        if (r.status === 429) { wait = Number(r.headers.get('X-Retry-After')) || 5; continue }
+        await session.value.refetch()
+        if (!limited.value) return
+        wait = lastRetryAfter() || 5 // refused again between the probe and the refetch
+      } catch {
+        wait = 5 // network error: keep waiting
+      }
     }
   } finally {
     waiting = false
   }
 }
-watch(limited, (on) => { if (on) void waitForSession(5) })
+watch(limited, (on) => { if (on) void waitForSession() })
 onBeforeUnmount(() => { alive = false; clearTimeout(timer) })
 // The user's theme (spec 007 S-7): applied whenever the saved settings change (load, save, revert).
 watch(() => status.loaded && { ...store.preferences }, (p) => { if (p) applyTheme(p) }, { deep: true })

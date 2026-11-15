@@ -200,20 +200,25 @@ test.describe('(V-9 a) phone width', () => {
   })
 })
 
-test('(V-13 b) a 429 on the session check shows a wait note, not the login form; retries follow X-Retry-After; the app comes back', async ({ page }) => {
+test('(V-13 b) a 429 on the session check shows a wait note, not the login form; retries follow X-Retry-After, survive a network error; the app comes back', async ({ page }) => {
   const times: number[] = []
-  let refusals = 3
+  // first check refused for 6 s, then a network error, then refused for 2 s, then through
+  const plan: ('429:6' | 'abort' | '429:2' | 'pass')[] = ['429:6', 'abort', '429:2', 'pass']
   await page.route('**/api/auth/get-session*', (route) => {
     times.push(Date.now())
-    if (refusals-- > 0) return route.fulfill({ status: 429, contentType: 'application/json', headers: { 'X-Retry-After': '2' }, body: '{"message":"Too many requests. Please try again later."}' })
+    const step = plan.shift() ?? 'pass'
+    if (step === 'abort') return route.abort('failed')
+    if (step.startsWith('429')) {
+      return route.fulfill({ status: 429, contentType: 'application/json', headers: { 'X-Retry-After': step.slice(4) }, body: '{"message":"Too many requests. Please try again later."}' })
+    }
     return route.continue()
   })
   await page.goto('/#home')
   await expect(page.getByRole('status').filter({ hasText: '요청이 많아요' })).toBeVisible()
   await expect(page.getByLabel('비밀번호')).toHaveCount(0)
-  await expect(page.locator('header.ph h1')).toContainText('현황', { timeout: 30_000 })
-  // first refusal, then one retry per X-Retry-After (2 s) — never a burst of retries
+  await expect(page.locator('header.ph h1')).toContainText('현황', { timeout: 40_000 })
   const gaps = times.slice(1, 4).map((t, i) => t - times[i]!)
-  expect(gaps.length).toBe(3)
-  for (const g of gaps.slice(1)) expect(g).toBeGreaterThanOrEqual(1900)
+  expect(gaps[0], 'waits the first refusal\'s 6 s').toBeGreaterThanOrEqual(5900)
+  expect(gaps[1], 'after a network error, 5 s').toBeGreaterThanOrEqual(4900)
+  expect(gaps[2], 'then the next refusal\'s 2 s').toBeGreaterThanOrEqual(1900)
 })
