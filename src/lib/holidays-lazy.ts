@@ -22,3 +22,10 @@ export function offDays(sets: HolidaySet[], from: string, to: string): Set<strin
   if (!m) { void loadHolidays(); return null }
   return new Set(m.holidaysIn(m.enabledSets(sets), from, to).map((h) => h.date))
 }
+
+/** The holidays themselves (name, date, substitute), or null until the code is here. */
+export function holidayList(sets: HolidaySet[], from: string, to: string): H.Holiday[] | null {
+  const m = mod.value
+  if (!m) { void loadHolidays(); return null }
+  return m.holidaysIn(m.enabledSets(sets), from, to)
+}

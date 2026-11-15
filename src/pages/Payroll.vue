@@ -215,14 +215,10 @@ async function submitSettings() {
       </div>
       <form class="panel" style="max-width:720px" aria-label="설정" novalidate @submit.prevent="submitSettings">
         <h3 style="margin-top:0">설정</h3>
+        <p class="small muted">월급일·분배일·카드 결제일과 환율은 <a href="#settings/general">설정 › 일반</a>에서 바꿔요.</p>
         <div class="form">
           <div class="field"><label for="st-pay">월 실수령</label><input id="st-pay" v-model.number="set.netPay" class="in" type="number" step="10000" min="0"></div>
-          <div class="field"><label for="st-payday">월급일</label><input id="st-payday" v-model.number="set.payDay" class="in" type="number" min="1" max="31"></div>
-          <div class="field"><label for="st-xfer">분배 이체일</label><input id="st-xfer" v-model.number="set.transferDay" class="in" type="number" min="1" max="31"></div>
-          <div class="field"><label for="st-bill">카드 결제일</label><input id="st-bill" v-model.number="set.billingDay" class="in" type="number" min="1" max="31"></div>
           <div class="field"><label for="st-round">구독 이체 올림 단위</label><input id="st-round" v-model.number="set.subRound" class="in" type="number" step="1000" min="1"></div>
-          <div class="field"><label for="st-fx">환율 (원/$)</label><input id="st-fx" v-model.number="set.fxRate" class="in" type="number" step="any" min="0"></div>
-          <div class="field"><label for="st-buf">환율 여유분 %</label><input id="st-buf" v-model.number="set.fxBuffer" class="in" type="number" step="any" min="0"></div>
         </div>
         <div class="btns">
           <button class="btn pri" type="submit">설정 저장</button>
