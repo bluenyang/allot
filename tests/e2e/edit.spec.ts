@@ -228,10 +228,10 @@ test('checklist: add, toggle, edit, delete', async ({ page }) => {
 
 test('subscriptions and plan changes: add, edit (with memo), delete', async ({ page }) => {
   await go(page, 'subs', '목록')
-  await page.getByRole('button', { name: '+ 구독 추가' }).click()
+  await page.getByRole('button', { name: '구독 추가' }).click()
   const add = sheet(page, '구독 추가')
-  await add.getByLabel('서비스').fill(MARK)
-  await add.getByLabel('결제 금액').fill('9900')
+  await add.getByLabel('서비스 이름').fill(MARK)
+  await add.getByLabel('금액', { exact: true }).fill('9900')
   await add.getByLabel('다음 결제일').fill('2031-01-15')
   await add.getByLabel('메모').fill('메모1')
   await saveSheet(page, '구독 추가')

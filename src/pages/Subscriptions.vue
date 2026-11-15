@@ -4,24 +4,29 @@ import SubTabs from '../components/SubTabs.vue'
 import MonthPicker from '../components/MonthPicker.vue'
 import TransferChart from '../components/TransferChart.vue'
 import EditSheet from '../components/EditSheet.vue'
+import PageHeader from '../components/PageHeader.vue'
+import Icon from '../components/Icon.vue'
 import { removeChange, removeSub, saveSettings, store, subName, upsertChange, upsertSub } from '../lib/store'
+import { fmtDate, fmtMoney } from '../lib/display'
 import {
   addYm, chargeKrw, changesIn, monthlyKrw, nextOccurrence, num, planAt, today, transferAt, usd, won, ymd, ymLabel, ymOf, ymRange,
 } from '../lib/calc'
 import type { PlanChange, Subscription } from '../data/types'
 import { CAT_COLORS, CAT_LABEL } from '../lib/colors'
 
+// 구독 (spec 007 S-4): KPI strip, status/category/path filters, a table, the add/edit modal.
+// Not drawn (S-3): CSV export, AI analysis, "명세서에서 채우기".
 const tab = ref('list')
 const tabs = [
-  { id: 'list', label: '목록' },
-  { id: 'preview', label: '전환 미리보기' },
-  { id: 'changes', label: '변경 일정' },
-  { id: 'calc', label: '이체액 계산' },
+  { id: 'list', label: '목록', icon: 'list' },
+  { id: 'preview', label: '전환 미리보기', icon: 'chart' },
+  { id: 'changes', label: '변경 일정', icon: 'events' },
+  { id: 'calc', label: '이체액 계산', icon: 'pay' },
 ]
 const now = today()
 const ym = ref(ymOf(now))
 
-const PATH: Record<string, string> = { direct: '카드 직접', google: '구글 플레이', apple: '앱스토어', telecom: '통신사 합산' }
+const PATH: Record<string, string> = { direct: '직접 결제', google: 'Google Play', apple: 'App Store', telecom: '통신사' }
 const STATUS: Record<string, string> = { active: '구독 중', cancelled: '해지', company: '회사 지원' }
 
 // ---------- list ----------
@@ -35,6 +40,21 @@ const rows = computed(() =>
     .sort((a, b) => (a.p.status === 'active' ? 0 : 1) - (b.p.status === 'active' ? 0 : 1) || b.monthly - a.monthly),
 )
 const xfer = computed(() => transferAt(store.subscriptions, store.planChanges, store.settings, ym.value))
+const monthlyTotal = computed(() => xfer.value.monthlySum + xfer.value.yearlyMonthly)
+const unverified = computed(() => rows.value.filter((r) => r.p.status === 'active' && !r.p.verified).length)
+
+// Filters: status (as a segmented control, so the page keeps one row of tabs), category, payment path.
+const status = ref<'all' | 'active' | 'company' | 'cancelled'>('all')
+const cat = ref('')
+const path = ref('')
+const STATUS_TABS = computed(() => (['all', 'active', 'company', 'cancelled'] as const).map((id) => ({
+  id, label: { all: '전체', active: '활성', company: '회사 지원', cancelled: '해지' }[id],
+  count: id === 'all' ? rows.value.length : rows.value.filter((r) => r.p.status === id).length,
+})))
+const shown = computed(() => rows.value
+  .filter((r) => (status.value === 'all' || r.p.status === status.value) && (!cat.value || r.p.category === cat.value) && (!path.value || r.p.path === path.value))
+  .sort((a, b) => (a.next && a.p.status === 'active' ? a.next.getTime() : Infinity) - (b.next && b.p.status === 'active' ? b.next.getTime() : Infinity)))
+const charge = (p: Subscription) => p.currency === 'USD' ? `USD ${p.amount.toFixed(2)}${p.vat ? ` +${p.vat}%` : ''}` : `KRW ${num(p.amount)}`
 const subsName = computed(() => store.targets.find((t) => t.kind === 'subscriptions')?.name ?? '구독 이체')
 
 // ---------- editor ----------
@@ -67,10 +87,11 @@ function show(k: (typeof PLAN_KEYS)[number], p: Subscription) {
   if (k === 'vat') return `${p.vat}%`
   return String(p[k] || '—')
 }
+const preview = computed(() => (edit.value ? monthlyKrw({ ...edit.value, amount: Number(edit.value.amount) || 0 }, store.settings) : 0))
 async function save() {
   const s = edit.value!
   if (!s.name.trim()) return (err.value = '서비스 이름을 입력해 주세요.')
-  if (!(s.amount >= 0)) return (err.value = '금액을 숫자로 입력해 주세요.')
+  if (!(s.amount >= 0)) return (err.value = '금액은 숫자만 입력할 수 있어요.')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s.nextDate)) return (err.value = '다음 결제일을 선택해 주세요.')
   if (s.currency === 'KRW') s.vat = 0
   try {
@@ -161,45 +182,55 @@ function describe(c: PlanChange) {
 
 <template>
   <section>
-    <div class="ph">
-      <div><h1>구독</h1><p class="sub">구독 이체로 나가는 구독·통신·보험. 예약한 전환은 해당 월부터 반영돼요.</p></div>
-      <button class="btn pri" type="button" @click="tab = 'list'; openEdit()">+ 구독 추가</button>
-    </div>
+    <PageHeader crumb="관리" title="구독" desc="정기 결제와 플랜 전환을 관리해요. USD 항목은 적용 환율과 VAT로 원화 환산합니다.">
+      <button class="btn pri" type="button" @click="tab = 'list'; openEdit()"><Icon name="plus" />구독 추가</button>
+    </PageHeader>
+
+    <section class="strip" aria-label="구독 요약">
+      <div><span class="l">월 환산 합계</span><span class="v">{{ fmtMoney(monthlyTotal) }}</span><span class="s">{{ ymLabel(ym) }} 기준</span></div>
+      <div><span class="l">연 환산 합계</span><span class="v">{{ fmtMoney(monthlyTotal * 12) }}</span><span class="s">월 환산 × 12</span></div>
+      <div><span class="l">영수증 미확인</span><span class="v" :class="{ sig: unverified > 0 }">{{ unverified }}<small class="unit"> 건</small></span><span class="s">활성 구독 중</span></div>
+      <div><span class="l">적용 환율</span><span class="v">₩{{ num(store.settings.fxRate) }}</span><span class="s">버퍼 {{ store.settings.fxBuffer }}%</span></div>
+    </section>
 
     <SubTabs v-model="tab" :tabs="tabs" />
 
     <!-- 목록 -->
     <div v-if="tab === 'list'">
-      <MonthPicker v-model="ym" label="기준 월" />
-      <div class="strip">
-        <div><div class="l">월 환산 합계</div><div class="v">{{ won(xfer.monthlySum + xfer.yearlyMonthly) }}</div></div>
-        <div><div class="l">필요 이체액</div><div class="v">{{ won(xfer.needed) }}</div><div class="s">환율 여유분 {{ won(xfer.buffer) }} 포함</div></div>
-        <div><div class="l">{{ subsName }}</div><div class="v">{{ won(xfer.transfer) }}</div><div class="s">{{ won(store.settings.subRound) }} 단위 올림</div></div>
+      <div class="filters">
+        <div class="seg" role="group" aria-label="상태">
+          <button v-for="t in STATUS_TABS" :key="t.id" type="button" :aria-pressed="status === t.id" @click="status = t.id">{{ t.label }} <span class="c">{{ t.count }}</span></button>
+        </div>
+        <select v-model="cat" class="in fsel" aria-label="분류"><option value="">분류 전체</option><option v-for="(v, k) in CAT_LABEL" :key="k" :value="k">{{ v }}</option></select>
+        <select v-model="path" class="in fsel" aria-label="결제 경로"><option value="">결제 경로 전체</option><option v-for="(v, k) in PATH" :key="k" :value="k">{{ v }}</option></select>
+        <span class="sp"></span>
+        <MonthPicker v-model="ym" label="기준 월" />
       </div>
 
       <EditSheet v-if="edit" :key="edit.id || 'new'" :title="edit.id ? '구독 수정' : '구독 추가'" :error="err" :can-delete="!!edit.id"
-        @save="save" @cancel="edit = null" @delete="del">
-          <div class="field"><label for="e-name">서비스</label><input id="e-name" v-model="edit.name" class="in"></div>
+        desc="저장하면 서버에 먼저 기록되고 변경 내역에 남아요." @save="save" @cancel="edit = null" @delete="del">
+          <div class="field" style="grid-column:1/-1"><label for="e-name" class="req">서비스 이름</label><input id="e-name" v-model="edit.name" class="in" placeholder="예: 영상 스트리밍" required></div>
+          <div class="field"><label for="e-cat">분류</label>
+            <select id="e-cat" v-model="edit.category" class="in"><option v-for="(v, k) in CAT_LABEL" :key="k" :value="k">{{ v }}</option></select></div>
           <div class="field"><label for="e-plan">플랜</label><input id="e-plan" v-model="edit.plan" class="in"></div>
-          <div class="field"><label for="e-amount">결제 금액</label><input id="e-amount" v-model.number="edit.amount" class="in" type="number" step="any" min="0"></div>
+          <div class="field"><span class="flabel" id="e-cycle-l">결제 주기</span>
+            <div class="seg" role="group" aria-labelledby="e-cycle-l">
+              <button type="button" :aria-pressed="edit.cycle === 'monthly'" @click="edit.cycle = 'monthly'">월간</button>
+              <button type="button" :aria-pressed="edit.cycle === 'yearly'" @click="edit.cycle = 'yearly'">연간</button>
+            </div></div>
+          <div class="field"><label for="e-amount" class="req">금액</label><input id="e-amount" v-model.number="edit.amount" class="in num" type="number" step="any" min="0" required></div>
           <div class="field"><label for="e-cur">통화</label>
-            <select id="e-cur" v-model="edit.currency" class="in"><option value="KRW">원</option><option value="USD">달러</option></select></div>
-          <div v-if="edit.currency === 'USD'" class="field"><label for="e-vat">VAT %</label><input id="e-vat" v-model.number="edit.vat" class="in" type="number" step="any" min="0"></div>
-          <div class="field"><label for="e-cycle">주기</label>
-            <select id="e-cycle" v-model="edit.cycle" class="in"><option value="monthly">월간</option><option value="yearly">연간</option></select></div>
+            <select id="e-cur" v-model="edit.currency" class="in"><option value="KRW">KRW · 원</option><option value="USD">USD · 달러</option></select></div>
+          <div v-if="edit.currency === 'USD'" class="field"><label for="e-vat">VAT (%)</label><input id="e-vat" v-model.number="edit.vat" class="in num" type="number" step="any" min="0"><span class="hint">USD 결제에 붙는 부가세</span></div>
           <div class="field"><label for="e-next">다음 결제일</label><input id="e-next" v-model="edit.nextDate" class="in" type="date"></div>
           <div class="field"><label for="e-path">결제 경로</label>
             <select id="e-path" v-model="edit.path" class="in"><option v-for="(v, k) in PATH" :key="k" :value="k">{{ v }}</option></select></div>
           <div class="field"><label for="e-status">상태</label>
             <select id="e-status" v-model="edit.status" class="in"><option v-for="(v, k) in STATUS" :key="k" :value="k">{{ v }}</option></select></div>
-          <div class="field"><label for="e-cat">분류</label>
-            <select id="e-cat" v-model="edit.category" class="in">
-              <option value="ai">AI</option><option value="telecom">통신</option><option value="content">콘텐츠</option>
-              <option value="tool">도구</option><option value="insurance">보험</option><option value="life">생활</option>
-            </select></div>
           <div class="field" style="grid-column:1/-1"><label for="e-note">메모</label><input id="e-note" v-model="edit.note" class="in"></div>
         <template #after>
-          <label class="chk" style="border:0"><input id="e-ver" v-model="edit.verified" type="checkbox"><span>영수증으로 금액·VAT 확인함</span></label>
+          <label class="chk" style="border:0"><input id="e-ver" v-model="edit.verified" type="checkbox"><span>영수증으로 금액과 VAT를 확인했어요</span></label>
+          <div class="pvw"><span>월 환산 미리보기</span><b>{{ fmtMoney(preview) }}</b></div>
           <div v-if="overridden" class="callout warn" data-testid="override-note">
             <span class="lbl">전환 적용 중</span>
             <p>여기서는 <b>기본값</b>(전환 전)을 고쳐요. {{ ymLabel(ym) }}에는 예약된 전환이 적용돼서 목록에 이렇게 보여요:
@@ -211,26 +242,24 @@ function describe(c: PlanChange) {
         </template>
       </EditSheet>
 
-      <div class="panel">
-        <div class="card-h"><h3>{{ ymLabel(ym) }} 기준 {{ rows.filter((r) => r.p.status === 'active').length }}개</h3><span class="small muted">누르면 수정 · 기준 플랜(전환 전)에 적용</span></div>
-        <div class="rows">
-          <button v-for="r in rows" :key="r.base.id" type="button" class="row" :class="{ dim: r.p.status !== 'active' }" @click="openEdit(r.base)">
-            <span class="av" :style="{ background: CAT_COLORS[r.p.category] }">{{ r.p.name.slice(0, 1) }}</span>
-            <span style="min-width:0">
-              <span class="t" style="display:block">{{ r.p.name }}
-                <span v-if="r.p.status !== 'active'" class="pill mute">{{ STATUS[r.p.status] }}</span>
-                <span v-if="r.pending.length" class="pill warn">전환 예정</span>
-                <span v-if="r.p.verified" class="pill ok">확인</span>
-              </span>
-              <span class="d" style="display:block">{{ r.p.plan || CAT_LABEL[r.p.category] }} · {{ r.p.cycle === 'yearly' ? '매년' : '매월' }} {{ r.next && r.p.status === 'active' ? ymd(r.next).slice(5).replace('-', '/') : '' }} · {{ PATH[r.p.path] }}</span>
-            </span>
-            <span class="r">
-              {{ r.p.status === 'active' ? won(r.monthly) : '—' }}
-              <small v-if="r.p.currency === 'USD'">{{ usd(r.p.amount) }}</small>
-              <small v-else-if="r.p.cycle === 'yearly'">연 {{ won(r.p.amount) }}</small>
-            </span>
-          </button>
-        </div>
+      <p class="small muted count">{{ shown.length }}개 · 다음 결제일 순 · 서비스를 누르면 수정(기준 플랜, 전환 전)</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th scope="col">서비스</th><th scope="col">분류</th><th scope="col">주기</th><th scope="col" class="n">청구 금액</th><th scope="col" class="n">월 환산</th><th scope="col">다음 결제</th><th scope="col">결제 경로</th><th scope="col">영수증</th></tr></thead>
+          <tbody>
+            <tr v-for="r in shown" :key="r.base.id" :class="{ dim: r.p.status !== 'active' }">
+              <td><button type="button" class="svc" @click="openEdit(r.base)"><b>{{ r.p.name }}</b><span>{{ r.p.plan || '—' }}<template v-if="r.pending.length"> · 전환 예정</template></span></button></td>
+              <td><span class="pill tag">{{ CAT_LABEL[r.p.category] }}</span></td>
+              <td>{{ r.p.cycle === 'yearly' ? '연간' : '월간' }}</td>
+              <td class="n mono">{{ r.p.status === 'company' ? '회사 부담' : charge(r.p) }}</td>
+              <td class="n">{{ r.p.status === 'active' ? fmtMoney(r.monthly) : fmtMoney(0) }}</td>
+              <td class="mono">{{ r.next && r.p.status === 'active' ? fmtDate(r.next) : '—' }}</td>
+              <td>{{ r.p.status === 'company' ? '회사' : PATH[r.p.path] }}</td>
+              <td><span v-if="r.p.status !== 'active'" class="pill mute">{{ STATUS[r.p.status] }}</span><span v-else-if="r.p.verified" class="pill ok">확인됨</span><span v-else class="pill warn">미확인</span></td>
+            </tr>
+            <tr v-if="!shown.length"><td colspan="8" class="muted">조건에 맞는 구독이 없어요.</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -242,9 +271,9 @@ function describe(c: PlanChange) {
         <TransferChart :points="series" :selected="pick" @pick="(m) => (pick = m)" />
       </div>
       <div class="strip">
-        <div><div class="l">{{ ymLabel(pickPrev) }}</div><div class="v">{{ won(cmp.a.needed) }}</div></div>
-        <div><div class="l">{{ ymLabel(pick) }}</div><div class="v">{{ won(cmp.b.needed) }}</div></div>
-        <div><div class="l">차이</div><div class="v" :style="{ color: cmp.b.needed > cmp.a.needed ? 'var(--neg-text)' : cmp.b.needed < cmp.a.needed ? 'var(--primary-text)' : '' }">{{ cmp.b.needed - cmp.a.needed > 0 ? '+' : '' }}{{ won(cmp.b.needed - cmp.a.needed) }}</div><div class="s">{{ subsName }} {{ won(cmp.a.transfer) }} → {{ won(cmp.b.transfer) }}</div></div>
+        <div><div class="l">{{ ymLabel(pickPrev) }}</div><div class="v">{{ fmtMoney(cmp.a.needed) }}</div></div>
+        <div><div class="l">{{ ymLabel(pick) }}</div><div class="v">{{ fmtMoney(cmp.b.needed) }}</div></div>
+        <div><div class="l">차이</div><div class="v" :style="{ color: cmp.b.needed > cmp.a.needed ? 'var(--neg-text)' : cmp.b.needed < cmp.a.needed ? 'var(--primary-text)' : '' }">{{ cmp.b.needed - cmp.a.needed > 0 ? '+' : '' }}{{ fmtMoney(cmp.b.needed - cmp.a.needed) }}</div><div class="s">{{ subsName }} {{ fmtMoney(cmp.a.transfer) }} → {{ fmtMoney(cmp.b.transfer) }}</div></div>
       </div>
       <div class="panel"><div class="tbl">
         <table>
@@ -252,9 +281,9 @@ function describe(c: PlanChange) {
           <tbody>
             <tr v-for="r in cmp.list" :key="r.id">
               <td>{{ r.name }}</td>
-              <td class="small">{{ r.before ? `${r.before.sub.plan} · ${won(r.before.monthly)}` : '—' }}</td>
-              <td class="small">{{ r.after ? `${r.after.sub.plan} · ${won(r.after.monthly)}` : '—' }}</td>
-              <td class="n" :class="r.diff > 0 ? 'up' : 'down'">{{ r.diff > 0 ? '+' : '' }}{{ won(r.diff) }}</td>
+              <td class="small">{{ r.before ? `${r.before.sub.plan} · ${fmtMoney(r.before.monthly)}` : '—' }}</td>
+              <td class="small">{{ r.after ? `${r.after.sub.plan} · ${fmtMoney(r.after.monthly)}` : '—' }}</td>
+              <td class="n" :class="r.diff > 0 ? 'up' : 'down'">{{ r.diff > 0 ? '+' : '' }}{{ fmtMoney(r.diff) }}</td>
             </tr>
             <tr v-if="!cmp.list.length"><td colspan="4" class="muted">전월과 같아요.</td></tr>
           </tbody>
@@ -289,7 +318,7 @@ function describe(c: PlanChange) {
           <thead><tr><th>적용일</th><th>구독</th><th>바뀌는 내용</th><th>메모</th></tr></thead>
           <tbody>
             <tr v-for="c in sortedChanges" :key="c.id" class="click" @click="openChange(c)">
-              <td class="mono small">{{ c.effective ?? '날짜 미정' }}</td>
+              <td class="mono">{{ c.effective ? fmtDate(c.effective) : '날짜 미정' }}</td>
               <td>{{ subName(c.subId) }}</td>
               <td>{{ describe(c) }}</td>
               <td class="small muted">{{ c.note }}</td>
@@ -321,11 +350,11 @@ function describe(c: PlanChange) {
           <div class="tbl">
             <table>
               <tbody>
-                <tr><td>월간 구독</td><td class="n">{{ won(xfer.monthlySum) }}</td></tr>
-                <tr><td>연간 구독 ÷ 12</td><td class="n">{{ won(xfer.yearlyMonthly) }}</td></tr>
-                <tr><td>환율 여유분 ({{ store.settings.fxBuffer }}%)</td><td class="n">{{ won(xfer.buffer) }}</td></tr>
-                <tr class="total"><td>필요 이체액</td><td class="n">{{ won(xfer.needed) }}</td></tr>
-                <tr><td>{{ subsName }}</td><td class="n">{{ won(xfer.transfer) }}</td></tr>
+                <tr><td>월간 구독</td><td class="n">{{ fmtMoney(xfer.monthlySum) }}</td></tr>
+                <tr><td>연간 구독 ÷ 12</td><td class="n">{{ fmtMoney(xfer.yearlyMonthly) }}</td></tr>
+                <tr><td>환율 여유분 ({{ store.settings.fxBuffer }}%)</td><td class="n">{{ fmtMoney(xfer.buffer) }}</td></tr>
+                <tr class="total"><td>필요 이체액</td><td class="n">{{ fmtMoney(xfer.needed) }}</td></tr>
+                <tr><td>{{ subsName }}</td><td class="n">{{ fmtMoney(xfer.transfer) }}</td></tr>
               </tbody>
             </table>
           </div>
@@ -337,7 +366,7 @@ function describe(c: PlanChange) {
           <tbody>
             <tr v-for="i in xfer.items" :key="i.sub.id">
               <td>{{ i.sub.name }}</td><td class="small">{{ i.sub.plan }}</td>
-              <td class="n">{{ won(i.monthly) }}</td>
+              <td class="n">{{ fmtMoney(i.monthly) }}</td>
               <td class="n small">{{ Math.round((i.monthly / (xfer.monthlySum + xfer.yearlyMonthly)) * 100) }}%</td>
             </tr>
           </tbody>
@@ -346,3 +375,24 @@ function describe(c: PlanChange) {
     </div>
   </section>
 </template>
+
+<style scoped>
+.unit{font-size:14px;font-weight:500;color:var(--muted)}
+.filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px}
+.filters .ymbar{margin:0}
+.fsel{width:auto;min-width:140px}
+.seg .c{font-size:11px;color:var(--subtle);font-variant-numeric:tabular-nums}
+.sp{flex:1}
+.count{margin:0 0 8px}
+.svc{all:unset;cursor:pointer;display:flex;flex-direction:column;min-width:0}
+.svc b{font-weight:600}
+.svc span{font-size:12px;color:var(--muted)}
+.svc:hover b{text-decoration:underline}
+.svc:focus-visible{outline:2px solid var(--primary-text);outline-offset:2px;border-radius:var(--r-ctl)}
+.req::after{content:" *";color:var(--neg-text)}
+.flabel{font-size:12px;color:var(--text-2);font-weight:600}
+.hint{font-size:12px;color:var(--subtle)}
+.pvw{display:flex;justify-content:space-between;align-items:center;margin:12px 0;padding:12px 14px;border-radius:var(--r-ctl);background:var(--surface-2);border:1px solid var(--border)}
+.pvw span{font-size:13px;color:var(--muted)}
+.pvw b{font-size:18px;font-variant-numeric:tabular-nums}
+</style>
