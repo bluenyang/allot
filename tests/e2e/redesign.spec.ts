@@ -309,12 +309,15 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
   await expect(notice).toContainText('CSV 내보내기')
 })
 
-test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (also of the months around), payment dates, light and dark', async ({ page, request }) => {
-  // A weekend payment inside the next 31 days for each of Saturday and Sunday.
-  const ahead = (dow: number) => { const d = new Date(); d.setHours(12); do d.setDate(d.getDate() + 1); while (d.getDay() !== dow); return d }
+test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (also of the months around), phone list, payment dates, light and dark', async ({ page, request }) => {
+  // A weekend payment on a Saturday and the Sunday after it, both in one month and inside the next 31 days.
+  const sat = new Date(); sat.setHours(12)
+  do sat.setDate(sat.getDate() + 1); while (sat.getDay() !== 6 || new Date(sat.getTime() + 864e5).getMonth() !== sat.getMonth())
+  const sun = new Date(sat.getTime() + 864e5)
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  const made = await Promise.all([6, 0].map((dow) => api(request, 'POST', '/api/subscriptions', {
-    name: `${MARK}-dow${dow}`, category: 'tool', plan: 'p', amount: 1000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: iso(ahead(dow)), path: 'direct', verified: false,
+  const nextMonth = sat.getMonth() !== new Date().getMonth()
+  const made = await Promise.all([sat, sun].map((d) => api(request, 'POST', '/api/subscriptions', {
+    name: `${MARK}-dow${d.getDay()}`, category: 'tool', plan: 'p', amount: 1000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: iso(d), path: 'direct', verified: false,
   })))
   // Every weekend date number and header in the calendar, and the weekend payment boxes: [kind, colour, out of month].
   const read = (root: string) => page.evaluate((sel) => {
@@ -347,6 +350,21 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
       const boxes = (await read('.none')).filter(([, , other]) => !other)
       expect(new Set(boxes.map(([k]) => k)), `${theme}: a Saturday and a Sunday payment box`).toEqual(new Set(['sat', 'sun']))
       for (const [kind, colour] of boxes) expect(colour, `${theme} payment box ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
+    }
+    // Phone: the calendar is a list; each weekend day heading (date and weekday) takes the colour.
+    await page.setViewportSize({ width: 390, height: 844 })
+    for (const theme of ['light', 'dark']) {
+      await page.goto('/#events')
+      const cal = page.getByRole('region', { name: '이번 달 일정 달력' })
+      await cal.waitFor()
+      if (nextMonth) await cal.getByRole('button', { name: '다음' }).click()
+      await expect(cal.locator(`[data-date="${iso(sun)}"].is-sun`)).toBeVisible()
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
+      const v = await vars()
+      const heads = await cal.evaluate((el) => [...el.querySelectorAll('[data-date].is-sat > *, [data-date].is-sun > *')]
+        .map((e) => [e.parentElement!.classList.contains('is-sat') ? 'sat' : 'sun', getComputedStyle(e).color] as [string, string]))
+      expect(new Set(heads.map(([k]) => k)), `${theme}: Saturday and Sunday list headings`).toEqual(new Set(['sat', 'sun']))
+      for (const [kind, colour] of heads) expect(colour, `${theme} list ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
     }
   } finally {
     for (const m of made) await api(request, 'DELETE', `/api/subscriptions/${m.json.id}`)

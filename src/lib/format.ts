@@ -32,12 +32,14 @@ export const moneyClass = (n: number, p: Fmt) => (n < 0 && p.negative === 'red' 
 /**
  * A short label for narrow charts (phone trend bars): under ₩1,000 in won (₩990), then 만 with one
  * decimal below 10만 (0.1만 … 9.9만, 99,500 → 10만), whole 만 from 10만 (51만). Rounding is on whole
- * won counts, so a positive amount never shows as 0. Negatives keep the minus sign.
+ * won counts; an amount that is not 0 but rounds to 0 won (a yearly ₩1 ÷ 12) reads <₩1, so only a real
+ * 0 shows 0. Negatives keep the minus sign.
  */
 export function moneyShort(n: number): string {
-  const a = Math.round(Math.abs(n))
-  if (a === 0) return '0'
+  if (n === 0 || Number.isNaN(n)) return '0'
   const sign = n < 0 ? MINUS : ''
+  const a = Math.round(Math.abs(n))
+  if (a === 0) return `${sign}<₩1`
   if (a < 1000) return `${sign}₩${a}`
   const tenths = Math.round(a / 1000) // 0.1만 steps
   const body = tenths < 100 ? `${Math.floor(tenths / 10)}${tenths % 10 ? `.${tenths % 10}` : ''}만` : `${Math.round(a / 10_000).toLocaleString('ko-KR')}만`
