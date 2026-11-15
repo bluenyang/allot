@@ -23,6 +23,12 @@ approvals:
     words: "캔버스처럼해서 수정하고, Push, PR, 검증되면 머지까지 진행해."
     rev: eb8c6ac
     note: "범위: W-18 뒤 푸시, PR #12 갱신, 검증(게이트·E2E·리뷰) 통과 시 머지. 감사 보충·rc.1은 포함하지 않는다."
+  - role: user
+    by: BlueNyang
+    at: "2026-11-16"
+    words: "감사하고 이후로 다음 intent 전까지 진행해"
+    rev: 77b2b95
+    note: "PR #12 머지 뒤. 범위: 0.1.2 감사 보충(intent 007), 그 뒤 release·retro 단계까지. 각 단계 지침의 멈춤 조건(정식 릴리스 등)은 그대로 따른다."
 waivers: []
 supersedes: null
 ---
