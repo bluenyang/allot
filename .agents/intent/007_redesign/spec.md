@@ -247,7 +247,7 @@ summary_for_user: |
 - [x] W-9 현황: 헤더(조정된 날짜), KPI, 탭, 분배 표, 6개월 막대, 결제 예정, 예정 탭, 확인할 것 탭, 형식 적용. (S-4, S-10)
 - [x] W-10 구독: KPI, 상태·분류·경로 거르개, 표, 추가·편집 모달, 미리보기·전환 탭 모양, 형식 적용. (S-4)
 - [x] W-11 나머지 화면: 월급 분배, 변경 내역, 관리, 로그인, 개발 모양과 형식 적용. (S-5)
-- [ ] W-13 세션 확인 요청 제한: `server/auth.ts` rateLimit customRules `/get-session` 600/60s, `src/Root.vue` 429 처리(로그인 화면 대신 안내, 다시 확인), 검사. (S-14)
+- [x] W-13 세션 확인 요청 제한: `server/auth.ts` rateLimit customRules `/get-session` 600/60s, `src/Root.vue` 429 처리(로그인 화면 대신 안내, 다시 확인), 검사. (S-14)
 - [x] W-12 새 E2E와 문서: `tests/e2e/redesign.spec.ts`(V-6 항목), 휴대폰 폭·외부 요청 검사, `CHANGELOG.md`, README의 화면 설명(캡처를 넣는다면 빈 새 계정 데이터로만). (S-13)
 
 ## 검증 기준

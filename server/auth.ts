@@ -139,6 +139,10 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
       window: 60,
       max: 100,
       customRules: {
+        // The app asks for the session on every load and focus; 100/min per address (the default) was
+        // reached by a family behind one router or many tabs, and the screen then showed the login
+        // form (spec 007 S-14). Still limited, only higher.
+        '/get-session': { window: 60, max: 600 },
         '/sign-in/email': { window: 60, max: 5 },
         '/sign-in/social': { window: 60, max: 10 },
         '/link-social': { window: 60, max: 10 },

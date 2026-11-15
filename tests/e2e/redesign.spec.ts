@@ -199,3 +199,15 @@ test.describe('(V-9 a) phone width', () => {
     }
   })
 })
+
+test('(V-13 b) a 429 on the session check shows a wait note, not the login form, and the app comes back', async ({ page }) => {
+  let block = true
+  await page.route('**/api/auth/get-session*', (route) => (block
+    ? route.fulfill({ status: 429, contentType: 'application/json', headers: { 'X-Retry-After': '5' }, body: '{"message":"Too many requests. Please try again later."}' })
+    : route.continue()))
+  await page.goto('/#home')
+  await expect(page.getByRole('status').filter({ hasText: '요청이 많아요' })).toBeVisible()
+  await expect(page.getByLabel('비밀번호')).toHaveCount(0)
+  block = false
+  await expect(page.locator('header.ph h1')).toContainText('현황', { timeout: 15_000 })
+})

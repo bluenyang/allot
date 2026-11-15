@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import App from './App.vue'
 import Login from './pages/Login.vue'
 import { authClient } from './lib/auth-client'
@@ -8,6 +8,17 @@ import { loadState, status, store } from './lib/store'
 import { applyTheme } from './lib/theme'
 
 const session = authClient.useSession()
+// Too many session checks (429) is not "signed out": say so and check again shortly, instead of
+// showing the login form (spec 007 S-14).
+const limited = computed(() => !session.value.data && session.value.error?.status === 429)
+let retry: ReturnType<typeof setTimeout> | undefined
+watch(limited, (on) => {
+  clearTimeout(retry)
+  if (on) retry = setTimeout(function again() {
+    void session.value.refetch().then(() => { if (limited.value) retry = setTimeout(again, 5_000) })
+  }, 5_000)
+})
+onBeforeUnmount(() => clearTimeout(retry))
 // The user's theme (spec 007 S-7): applied whenever the saved settings change (load, save, revert).
 watch(() => status.loaded && { ...store.preferences }, (p) => { if (p) applyTheme(p) }, { deep: true })
 // The API said the session is gone (expired or signed out elsewhere): show the login screen.
@@ -45,6 +56,7 @@ watch(
 
 <template>
   <p v-if="session.isPending" class="muted" style="padding:24px">불러오는 중…</p>
+  <div v-else-if="limited" class="boot" role="status"><p class="muted">요청이 많아요. 잠시 뒤 다시 확인해요…</p></div>
   <Login v-else-if="!session.data" :app-return="!!appReturn" />
   <div v-else-if="appReturn" class="boot" role="status">
     <p v-if="relay === 'error'" class="err" role="alert">{{ relayError }}</p>
