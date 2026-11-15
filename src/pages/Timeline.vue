@@ -50,7 +50,7 @@ const debtEd = useEditor('debts', () => ({ id: '', name: '', principal: 0, rate:
           <option value="">전체 분류</option>
           <option v-for="k in kinds" :key="k" :value="k">{{ k }}</option>
         </select>
-        <label class="small"><input id="ev-hide" v-model="hideDone" type="checkbox" style="accent-color:var(--accent)"> 완료 숨기기</label>
+        <label class="small"><input id="ev-hide" v-model="hideDone" type="checkbox" style="accent-color:var(--primary)"> 완료 숨기기</label>
         <button class="btn pri" type="button" style="margin-left:auto" @click="evEd.open()">+ 이벤트 추가</button>
       </div>
       <EditSheet v-if="evEd.item.value" :key="evEd.item.value.id || 'new'" :title="evEd.item.value.id ? '이벤트 수정' : '이벤트 추가'" :error="evEd.error.value" :busy="evEd.busy.value"
@@ -66,7 +66,7 @@ const debtEd = useEditor('debts', () => ({ id: '', name: '', principal: 0, rate:
         <h3 style="margin-top:0" class="mono">{{ y }}</h3>
         <ul class="list">
           <li v-for="e in list" :key="e.id" :style="{ opacity: e.state === 'done' ? 0.6 : 1 }">
-            <span class="when" :style="{ color: e.when.slice(0, 7) === now ? 'var(--accent)' : '' }">{{ e.when.slice(5) }}월</span>
+            <span class="when" :style="{ color: e.when.slice(0, 7) === now ? 'var(--primary-text)' : '' }">{{ e.when.slice(5) }}월</span>
             <button type="button" class="ev-t" :aria-label="`${e.title} 수정`" @click="evEd.open(e)"><span class="pill mute">{{ e.kind }}</span> {{ e.title }}</button>
             <button type="button" class="pill" :class="CLS[e.state]" style="border:0;cursor:pointer;font-family:inherit" @click="saveItem('events', { ...e, state: NEXT[e.state] }).catch(() => {})">{{ LABEL[e.state] }}</button>
           </li>

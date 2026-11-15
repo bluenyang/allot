@@ -72,8 +72,8 @@ async function social(id: string) {
 .panel{width:min(360px,100%);display:grid;gap:12px}
 .pw,.ext{display:grid;gap:12px}
 .brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-.brand b{font:700 17px var(--f-num)}
+.brand b{font-weight:700;font-size:17px}
 .or{margin:0;text-align:center;font-size:12px;color:var(--muted)}
-.err{margin:0;color:var(--neg);font-size:13px}
+.err{margin:0;color:var(--neg-text);font-size:13px}
 .note{margin:0;font-size:13px;color:var(--muted)}
 </style>

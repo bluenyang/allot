@@ -28,7 +28,7 @@ function del() {
     <h3 style="margin-top:0">{{ props.title }}</h3>
     <div class="form"><slot /></div>
     <slot name="after" />
-    <p v-if="props.error" class="small" role="alert" style="color:var(--neg);margin:10px 0 0">{{ props.error }}</p>
+    <p v-if="props.error" class="small" role="alert" style="color:var(--neg-text);margin:10px 0 0">{{ props.error }}</p>
     <div class="btns">
       <button class="btn pri" type="submit" :disabled="props.busy">저장</button>
       <button class="btn" type="button" @click="emit('cancel')">취소</button>

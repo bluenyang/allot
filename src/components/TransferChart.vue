@@ -23,16 +23,16 @@ const y = (v: number) => T + (H - T - B) * (1 - v / max.value)
   <div class="chart">
     <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="월별 구독 필요 이체액">
       <g v-for="t in ticks" :key="t">
-        <line :x1="L" :x2="W - R" :y1="y(t)" :y2="y(t)" stroke="var(--line)" stroke-width="1" />
-        <text :x="L - 8" :y="y(t) + 4" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--f-num)">{{ man(t) }}</text>
+        <line :x1="L" :x2="W - R" :y1="y(t)" :y2="y(t)" stroke="var(--border)" stroke-width="1" />
+        <text :x="L - 8" :y="y(t) + 4" text-anchor="end" font-size="11" fill="var(--muted)">{{ man(t) }}</text>
       </g>
       <g v-for="(p, i) in points" :key="p.ym" style="cursor:pointer" @click="$emit('pick', p.ym)">
         <rect :x="L + i * bw" :y="T" :width="bw" :height="H - T - B" fill="transparent" />
         <rect :x="L + i * bw + bw * 0.18" :y="y(p.value)" :width="bw * 0.64" :height="H - B - y(p.value)" rx="5"
-          :fill="p.ym === selected ? 'var(--accent)' : 'var(--c7)'" />
-        <text v-if="p.changed" :x="L + i * bw + bw / 2" :y="y(p.value) - 6" text-anchor="middle" font-size="11" fill="var(--warn)" font-weight="700">변경</text>
+          :fill="p.ym === selected ? 'var(--primary)' : 'var(--c7)'" />
+        <text v-if="p.changed" :x="L + i * bw + bw / 2" :y="y(p.value) - 6" text-anchor="middle" font-size="11" fill="var(--accent-text)" font-weight="700">변경</text>
         <text :x="L + i * bw + bw / 2" :y="H - B + 16" text-anchor="middle" font-size="11"
-          :fill="p.ym === selected ? 'var(--accent)' : 'var(--muted)'" font-family="var(--f-num)">{{ p.ym.slice(2).replace('-', '.') }}</text>
+          :fill="p.ym === selected ? 'var(--primary-text)' : 'var(--muted)'">{{ p.ym.slice(2).replace('-', '.') }}</text>
       </g>
       <line :x1="L" :x2="W - R" :y1="H - B" :y2="H - B" stroke="var(--muted)" stroke-width="1" />
     </svg>

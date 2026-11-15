@@ -57,5 +57,5 @@ watch(
 
 <style scoped>
 .boot{padding:24px;display:grid;gap:10px;justify-items:start}
-.err{margin:0;color:var(--neg)}
+.err{margin:0;color:var(--neg-text)}
 </style>

@@ -83,7 +83,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
           <div v-for="p in pays" :key="p.sub.id + p.date.getTime()" class="row">
             <span class="date"><b>{{ p.date.getDate() }}</b><span>{{ p.date.getMonth() + 1 }}월 {{ WD[p.date.getDay()] }}</span></span>
             <span style="min-width:0"><span class="t" style="display:block">{{ p.sub.name }}</span><span class="d" style="display:block">{{ p.sub.plan || '—' }}</span></span>
-            <span class="r">{{ won(p.krw) }}<small :style="{ color: p.dday <= 3 ? 'var(--warn)' : '' }">D-{{ p.dday }}</small></span>
+            <span class="r">{{ won(p.krw) }}<small :style="{ color: p.dday <= 3 ? 'var(--accent-text)' : '' }">D-{{ p.dday }}</small></span>
           </div>
         </div>
         <p v-if="!pays.length" class="empty">31일 안에 결제할 구독이 없어요.</p>

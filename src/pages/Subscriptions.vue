@@ -244,7 +244,7 @@ function describe(c: PlanChange) {
       <div class="strip">
         <div><div class="l">{{ ymLabel(pickPrev) }}</div><div class="v">{{ won(cmp.a.needed) }}</div></div>
         <div><div class="l">{{ ymLabel(pick) }}</div><div class="v">{{ won(cmp.b.needed) }}</div></div>
-        <div><div class="l">차이</div><div class="v" :style="{ color: cmp.b.needed > cmp.a.needed ? 'var(--neg)' : cmp.b.needed < cmp.a.needed ? 'var(--pos)' : '' }">{{ cmp.b.needed - cmp.a.needed > 0 ? '+' : '' }}{{ won(cmp.b.needed - cmp.a.needed) }}</div><div class="s">{{ subsName }} {{ won(cmp.a.transfer) }} → {{ won(cmp.b.transfer) }}</div></div>
+        <div><div class="l">차이</div><div class="v" :style="{ color: cmp.b.needed > cmp.a.needed ? 'var(--neg-text)' : cmp.b.needed < cmp.a.needed ? 'var(--primary-text)' : '' }">{{ cmp.b.needed - cmp.a.needed > 0 ? '+' : '' }}{{ won(cmp.b.needed - cmp.a.needed) }}</div><div class="s">{{ subsName }} {{ won(cmp.a.transfer) }} → {{ won(cmp.b.transfer) }}</div></div>
       </div>
       <div class="panel"><div class="tbl">
         <table>

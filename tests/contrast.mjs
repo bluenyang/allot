@@ -1,4 +1,4 @@
-// spec 002 V-4: WCAG contrast of the palette in src/style.css, light and dark.
+// spec 002 V-4, spec 007 V-7(a): WCAG contrast of the palette in src/style.css, light and dark.
 //   node tests/contrast.mjs   → exit 0 only when every pair meets its minimum
 // Reads the tokens from the light `:root{…}` block and both dark blocks (which must be identical).
 import { readFileSync } from 'node:fs'
@@ -29,13 +29,14 @@ const lum = (hex) => {
 const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
 
 const PAIRS = [
-  ['fg', 'bg', 7], ['fg', 'surface', 7],
-  ['muted', 'surface', 4.5], ['muted', 'raised', 4.5],
-  ['accent', 'surface', 4.5], ['accent', 'accent-soft', 4.5], ['accent-ink', 'accent', 4.5],
-  ['side-fg', 'side', 7], ['side-muted', 'side', 4.5], ['#ffffff', 'side-active', 7],
-  ['pos', 'pos-soft', 4.5], ['pos', 'surface', 4.5],
-  ['neg', 'neg-soft', 4.5], ['neg', 'surface', 4.5],
-  ['warn', 'warn-soft', 4.5], ['warn', 'surface', 4.5],
+  ['text', 'bg', 7], ['text', 'surface', 7], ['text-2', 'surface', 7],
+  ['muted', 'surface', 4.5], ['muted', 'surface-2', 4.5], ['muted', 'fill', 4.5], ['muted', 'bg', 4.5],
+  ['subtle', 'surface', 4.5], ['subtle', 'surface-2', 4.5], ['subtle', 'bg', 4.5],
+  ['primary-text', 'surface', 4.5], ['primary-text', 'surface-2', 4.5], ['primary-text', 'primary-soft', 4.5], ['primary-ink', 'primary', 4.5],
+  ['accent-text', 'surface', 4.5], ['accent-text', 'accent-soft', 4.5], ['accent-ink', 'accent', 4.5],
+  ['neg-text', 'surface', 4.5], ['neg-text', 'neg-soft', 4.5],
+  ['info-text', 'surface', 4.5], ['info-text', 'info-soft', 4.5],
+  ['border-strong', 'surface', 1.3],
   ...[1, 2, 3, 4, 5, 6].flatMap((i) => [[`c${i}`, 'surface', 3], ['av-ink', `c${i}`, 4.5]]),
 ]
 

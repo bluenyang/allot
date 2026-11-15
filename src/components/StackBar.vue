@@ -13,7 +13,7 @@ const total = computed(() => props.rows.reduce((a, r) => a + Math.max(r.amount, 
         :style="{ flex: r.amount / total, background: allocColor(r.key), borderRadius: '5px' }"></div>
     </div>
     <div class="legend">
-      <span v-for="r in rows" :key="r.key"><i :style="{ background: allocColor(r.key) }"></i>{{ r.name.split(' ')[0] }} <b class="num" style="color:var(--fg)">{{ man(r.amount) }}</b></span>
+      <span v-for="r in rows" :key="r.key"><i :style="{ background: allocColor(r.key) }"></i>{{ r.name.split(' ')[0] }} <b class="num" style="color:var(--text)">{{ man(r.amount) }}</b></span>
     </div>
   </div>
 </template>

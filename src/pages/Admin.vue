@@ -242,7 +242,7 @@ onActivated(load)
         <div v-for="p in providers" :key="p.id" class="panel click" tabindex="0" @click="openProvider(p)" @keydown.enter="openProvider(p)">
           <h3 style="margin-top:0">{{ TITLE[p.id] }}<span v-if="p.id === 'oidc' && p.values.name !== 'OIDC'" class="small muted"> · {{ p.values.name }}</span></h3>
           <p class="small">{{ p.usable ? '켜짐' : p.values.enabled ? '켜졌지만 쓸 수 없음' : '꺼짐' }}<span v-if="p.id !== 'password'"> · 가입: {{ SIGNUP[p.values.signup] }}</span></p>
-          <p v-if="p.problem" class="small" style="color:var(--neg)">{{ p.problem }}</p>
+          <p v-if="p.problem" class="small" style="color:var(--neg-text)">{{ p.problem }}</p>
           <p v-if="Object.values(p.source).includes('env')" class="small muted">일부 항목은 env로 정해져 있어요.</p>
         </div>
       </div>
@@ -283,12 +283,12 @@ onActivated(load)
 .list li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .list li .btn{margin-left:auto}
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
-.tbl th,.tbl td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+.tbl th,.tbl td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--divider)}
 .tbl th{font-weight:500;color:var(--muted);font-size:12.5px}
 .click{cursor:pointer}
-.tbl tr.click:hover td{background:var(--raised)}
+.tbl tr.click:hover td{background:var(--surface-2)}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
-.warnbox{border-color:var(--warn)}
+.warnbox{border-color:var(--accent-text)}
 @media (max-width:640px){.tbl th:nth-child(2),.tbl td:nth-child(2),.tbl th:nth-child(5),.tbl td:nth-child(5){display:none}}
 </style>

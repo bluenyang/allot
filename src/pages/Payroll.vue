@@ -180,7 +180,7 @@ async function submitSettings() {
           </div>
           <div class="btns" style="margin:0 0 10px">
             <button class="btn sm" type="button" @click="splitEd.open()">+ 나머지 분배 추가</button>
-            <span v-if="split.length && ratioSum !== 100" class="small" style="color:var(--warn)">비율 합계 {{ ratioSum }}% (마지막 항목이 남는 금액을 받아요)</span>
+            <span v-if="split.length && ratioSum !== 100" class="small" style="color:var(--accent-text)">비율 합계 {{ ratioSum }}% (마지막 항목이 남는 금액을 받아요)</span>
           </div>
           <p class="small muted" style="margin:0">마지막 항목을 뺀 나머지는 만 원 단위로 반올림하고, 마지막 항목이 남는 금액을 받아요.</p>
         </div>
