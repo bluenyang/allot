@@ -163,7 +163,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
             <div class="card-hd"><h2>결제 예정</h2><a href="#subs" class="aux">구독 전체 보기</a></div>
             <ul class="items pays">
               <li v-for="p in pays" :key="p.sub.id + p.date.getTime()">
-                <span class="dbox"><b>{{ p.date.getDate() }}</b><span>{{ p.date.getMonth() + 1 }}월 {{ WD[p.date.getDay()] }}</span></span>
+                <span class="dbox" :class="{ sat: p.date.getDay() === 6, sun: p.date.getDay() === 0 }"><b>{{ p.date.getDate() }}</b><span>{{ p.date.getMonth() + 1 }}월 {{ WD[p.date.getDay()] }}</span></span>
                 <span class="pn"><b>{{ p.sub.name }}</b><span>{{ p.sub.plan || '—' }}</span></span>
                 <span class="pa"><b>{{ fmtMoney(p.krw) }}</b><span :class="{ soon: p.dday <= 3 }">D-{{ p.dday }}</span></span>
               </li>
@@ -247,6 +247,9 @@ tr.sum td.n{font-weight:700}
 .dbox{width:44px;flex-shrink:0;text-align:center;border:1px solid var(--border);border-radius:var(--r-ctl);padding:3px 0;line-height:1.2}
 .dbox b{display:block;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
 .dbox span{font-size:11px;color:var(--subtle)}
+/* Saturday blue, Sunday red (the user, 2026-11-15) */
+.dbox.sat,.dbox.sat span{color:var(--info-text)}
+.dbox.sun,.dbox.sun span{color:var(--neg-text)}
 .pn{flex-grow:1;display:flex;flex-direction:column;min-width:0}
 .pn b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pn span{font-size:12px;color:var(--subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -288,3 +288,16 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
   await page.getByRole('button', { name: 'CSV 내보내기' }).click()
   await expect(notice).toContainText('CSV 내보내기')
 })
+
+test('(S-17) Saturdays blue and Sundays red on the calendar and the payment dates', async ({ page }) => {
+  await page.goto('/#events')
+  const cal = page.getByRole('region', { name: '이번 달 일정 달력' })
+  await cal.waitFor()
+  const colours = await cal.evaluate((el) => {
+    const pick = (cls: string) => { const e = el.querySelector(`.${cls}`); return e ? getComputedStyle(e).color : null }
+    return { sat: pick('is-sat'), sun: pick('is-sun'), info: getComputedStyle(document.documentElement).getPropertyValue('--info-text').trim(), neg: getComputedStyle(document.documentElement).getPropertyValue('--neg-text').trim() }
+  })
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`
+  expect(colours.sat).toBe(rgb(colours.info))
+  expect(colours.sun).toBe(rgb(colours.neg))
+})

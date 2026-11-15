@@ -34,6 +34,7 @@ watch(
   { deep: true },
 )
 
+const dowClass = (dow: number) => (dow === 6 ? 'is-sat' : dow === 0 ? 'is-sun' : '')
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const options = computed<CalendarOptions>(() => ({
@@ -47,6 +48,10 @@ const options = computed<CalendarOptions>(() => ({
   height: 'auto',
   fixedWeekCount: false,
   dayMaxEvents: 4,
+  // Saturday blue, Sunday red (the user, 2026-11-15): day headers, day cells, the list view's day rows.
+  dayHeaderClass: (i) => dowClass(i.dow),
+  dayCellClass: (i) => dowClass(i.dow),
+  listDayHeaderClass: (i) => dowClass(i.dow),
   // Our order (holiday, pay, transfer, billing, change, subscriptions), not FullCalendar's by title.
   eventOrder: 'order',
   // The events of the visible range, computed by us each time the range changes.
@@ -87,6 +92,8 @@ const options = computed<CalendarOptions>(() => ({
 }
 .cal .fc-toolbar-title, .cal h2{font-size:17px;font-weight:700}
 .cal button{border-radius:var(--r-ctl);font-weight:500}
+.cal .is-sat{color:var(--info-text)}
+.cal .is-sun{color:var(--neg-text)}
 .cal .fc-event{border-radius:var(--r-badge);font-size:12px;font-weight:600;border:0;padding:0 4px}
 .cal .ev-holiday{background:var(--neg-soft) !important;color:var(--neg-text) !important}
 .cal .ev-pay{background:var(--primary-soft) !important;color:var(--primary-text) !important}
