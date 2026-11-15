@@ -27,12 +27,15 @@ export function holidayEvents(sets: HolidaySet[], from: string, to: string): Cal
 /** Every event between from (inclusive) and to (exclusive), YYYY-MM-DD. */
 export function calendarEvents(from: string, to: string): CalEvent[] {
   const last = ymd(new Date(parseDate(to).getTime() - DAY))
-  const hol = holidaysBetween(store.holidaySets, from, last)
-  const off = new Set(hol.map((h) => h.date))
-  const out: CalEvent[] = hol.map((h) => ({ date: h.date, title: h.name, kind: 'holiday' }))
+  // A monthly date can move into the range from the month before or after (review 1, R3), and its
+  // move needs the holidays around it: compute one month more on each side, then keep the range.
+  const firstYm = addYm(ymOf(parseDate(from)), -1)
+  const lastYm = addYm(ymOf(parseDate(last)), 1)
+  const wide = holidaysBetween(store.holidaySets, `${firstYm}-01`, ymd(new Date(parseDate(`${addYm(lastYm, 1)}-01`).getTime() - DAY)))
+  const off = new Set(wide.map((h) => h.date))
+  const out: CalEvent[] = wide.filter((h) => h.date >= from && h.date <= last).map((h) => ({ date: h.date, title: h.name, kind: 'holiday' }))
 
-  // Monthly dates of every month the range touches.
-  for (let ym = ymOf(parseDate(from)); ym <= ymOf(parseDate(last)); ym = addYm(ym, 1)) {
+  for (let ym = firstYm; ym <= lastYm; ym = addYm(ym, 1)) {
     const d = monthDates(ym, store.settings, off)
     const moved = (x: { shifted: string | null }) => (x.shifted === 'before' ? ' (앞당김)' : x.shifted === 'after' ? ' (미룸)' : '')
     for (const [kind, x] of [['pay', d.pay], ['transfer', d.transfer], ['billing', d.billing]] as const) {

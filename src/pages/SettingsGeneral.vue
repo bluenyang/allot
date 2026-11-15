@@ -6,7 +6,7 @@ import { useEditor } from '../lib/useEditor'
 import { dateText, money, moneyClass } from '../lib/format'
 import { holidayList } from '../lib/holidays-lazy'
 import { BUILTIN_SETS, KR_NAME } from '../data/holidays-kr'
-import { monthDates, today, upcomingPayments, ymOf } from '../lib/calc'
+import { addYm, monthDates, today, upcomingPayments, ymOf } from '../lib/calc'
 import type { HolidayRule, HolidaySet, Preferences, Settings } from '../data/types'
 
 // 설정 › 일반 (spec 007 S-8, S-9, S-10): display, exchange rate, monthly dates and their
@@ -73,9 +73,11 @@ const fmt = computed(() => ({ amountUnit: d.value.amountUnit, negative: d.value.
 const ym = ymOf(now)
 const year = now.getFullYear()
 const yearHolidays = computed(() => holidayList(store.holidaySets, `${year}-01-01`, `${year}-12-31`))
+const aroundMonth = computed(() => holidayList(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 2)}-01`))
 const shifted = computed(() => {
   if (d.value.dayShift === 'none') return monthDates(ym, { ...store.settings, ...d.value }, new Set())
-  const list = yearHolidays.value
+  // A shift can cross into the month before or after (review 1, R3).
+  const list = aroundMonth.value
   return list ? monthDates(ym, { ...store.settings, ...d.value }, new Set(list.map((h) => h.date))) : null
 })
 const WD = ['일', '월', '화', '수', '목', '금', '토']

@@ -31,7 +31,8 @@ const pct = (n: number) => (store.settings.netPay > 0 ? `${((n / store.settings.
 // Monthly dates after the weekend/holiday shift; the holiday code loads only when a shift is set.
 const dates = computed(() => {
   if (store.settings.dayShift === 'none') return monthDates(ym, store.settings, new Set())
-  const off = offDays(store.holidaySets, `${year}-01-01`, `${year}-12-31`)
+  // A shift can cross into the month before or after: the holidays of the months around this one.
+  const off = offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 2)}-01`)
   return monthDates(ym, store.settings, off ?? new Set())
 })
 const WD = ['일', '월', '화', '수', '목', '금', '토']
