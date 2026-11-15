@@ -2,7 +2,7 @@
 
 ## 0.1.2 — unreleased
 
-Login and admin. Intent 006 (`.agents/intent/006_login-admin/`).
+Login and admin. Intent 006 (`.agents/intent/006_login-admin/`). Redesign and display settings, intent 007 (`.agents/intent/007_redesign/`).
 
 ### Upgrading from 0.1.1
 - **`ALLOT_MASTER_KEY` is required**: 32 random bytes in base64 (`openssl rand -base64 32`). Without it the app does not start and says why. Keep it apart from database backups.
@@ -18,11 +18,18 @@ Login and admin. Intent 006 (`.agents/intent/006_login-admin/`).
 - For a future mobile app: `Authorization: Bearer` sessions, and a return to the app after an external login through a one-time token, only to URLs listed in `ALLOT_APP_RETURN_URLS` (off by default).
 - `pnpm db:admin`: the admin account without any data file (a fresh clone starts here). New accounts start from default settings and empty lists.
 - Development: Dex in `docker/compose.dev.yaml` as the test OIDC provider (behind the Vite proxy at `/dex`).
+- Redesign: a new look across the app — neutral grounds, green for actions, orange for signals, small corners, tables; IBM Plex Sans KR and Mono bundled with the app (no font CDN); grouped sidebar with the user, page headers, a footer; editors open as a modal.
+- 설정 (per account): 일반 — light/dark/system, date format, amount unit (원·천원·만원), negatives, exchange rate and buffer, pay/transfer/billing days and what to do when one falls on a weekend or holiday; 테마 — primary and accent colours (presets or your own, kept readable at 4.5:1), corners, density. Changes are in the change history and can be reverted.
+- Holidays as rule sets (iCalendar RRULE, Korean lunar dates as `RSCALE=DANGI`, RDATE/EXDATE, substitute holidays). The public holidays of Korea are built in; add your own sets (company days, election days).
+- 일정: a month calendar with the monthly dates, subscription payments, plan changes and holidays (loaded only when opened).
+- 현황: KPI strip, distribution table, the next six months of subscription costs, upcoming payments. 구독: table with status, category and payment-path filters.
 
 ### Changed
 - Several accounts are normal now: the seed no longer refuses other accounts, and `--replace-admin` takes the old account's email.
 - `/api/state` answers default settings for an account that has saved none yet (was 409).
 - Development `BETTER_AUTH_URL` should be the computer's LAN address, so the api container reaches Dex.
+- Menu names: 분배 → 월급 분배, 내역 → 변경 내역; 계정 is now 설정 › 로그인·보안 (`/#account` still opens it). The pay days and exchange rate moved from 월급 분배 to 설정 › 일반.
+- Migrations 0018–0019 add the `preference` and `holiday_set` tables (row-level security forced) and `settings.day_shift` (default: no shift, so every month computes as before).
 
 ## 0.1.1 — 2026-11-12
 
