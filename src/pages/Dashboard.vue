@@ -29,7 +29,8 @@ const pays = computed(() => upcomingPayments(store.subscriptions, store.planChan
 const paysSum = computed(() => pays.value.reduce((a, p) => a + p.krw, 0))
 const split = computed(() => (dist.value.remainderTarget ? splitRemainder(dist.value.remainder, store.remainderSplit) : []))
 const subsMonthly = computed(() => xfer.value.monthlySum + xfer.value.yearlyMonthly)
-const activeSubs = computed(() => store.subscriptions.filter((s) => s.status === 'active').length)
+// Active in the shown month, with scheduled plan changes applied (the same set as the monthly total).
+const activeSubs = computed(() => xfer.value.items.length)
 const pct = (n: number) => (store.settings.netPay > 0 ? `${((n / store.settings.netPay) * 100).toFixed(1)}%` : '—')
 
 // Monthly dates after the weekend/holiday shift; the holiday code loads only when a shift is set.
@@ -93,7 +94,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
         월급 <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="note(dates.pay)">{{ note(dates.pay) }}</small></span>
         · 분배 <span :title="moved(dates.transfer.shifted)">{{ md(dates.transfer.date) }}<small v-if="note(dates.transfer)">{{ note(dates.transfer) }}</small></span>
         · 카드 결제 <span :title="moved(dates.billing.shifted)">{{ md(dates.billing.date) }}<small v-if="note(dates.billing)">{{ note(dates.billing) }}</small></span>
-        · 마지막 동기화 <span title="준비 중">—</span>
+        · <button class="linkish" type="button" @click="notReady('마지막 동기화')">마지막 동기화 —</button>
       </template>
       <button class="btn" type="button" @click="notReady('내보내기')"><Icon name="download" />내보내기</button>
       <button class="btn pri" type="button" @click="notReady('기록 추가')"><Icon name="plus" />기록 추가</button>
@@ -255,6 +256,9 @@ tr.sum td.n{font-weight:700}
 .pa span.soon{color:var(--accent-text)}
 .when{width:52px;flex:none;font:12px var(--f-mono);color:var(--muted)}
 .when.wide{width:auto;min-width:84px}
+.linkish{all:unset;cursor:pointer}
+.linkish:hover{text-decoration:underline}
+.linkish:focus-visible{outline:2px solid var(--primary-text);outline-offset:2px;border-radius:var(--r-ctl)}
 .split{margin:0;padding:12px 18px;border-top:1px solid var(--divider)}
 .mnav{display:none;align-items:center;gap:6px}
 .mnav b{padding:0 6px;font-variant-numeric:tabular-nums}

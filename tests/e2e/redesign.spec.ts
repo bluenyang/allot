@@ -280,6 +280,8 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
     await page.getByRole('button', { name, exact: true }).click()
     await expect(notice).toContainText(what)
   }
+  await page.getByRole('button', { name: '마지막 동기화 —' }).click()
+  await expect(notice).toContainText('마지막 동기화')
   await page.getByRole('searchbox', { name: '검색' }).click()
   await expect(notice).toContainText('검색')
   await page.goto('/#subs')
