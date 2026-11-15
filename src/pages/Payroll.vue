@@ -90,7 +90,7 @@ async function submitSettings() {
 
 <template>
   <section>
-    <PageHeader crumb="관리" title="월급 분배" :desc="`${store.settings.payDay}일 월급 → ${store.settings.transferDay}일 분배. 생활비·구독 이체는 자동으로 계산하고, 고정 금액은 구간마다 정하고, 남는 금액은 전부 '${remainderName}'으로 가요.`" />
+    <PageHeader title="월급 분배" :desc="`${store.settings.payDay}일 월급 → ${store.settings.transferDay}일 분배. 생활비·구독 이체는 자동으로 계산하고, 고정 금액은 구간마다 정하고, 남는 금액은 전부 '${remainderName}'으로 가요.`" />
 
     <SubTabs v-model="tab" :tabs="tabs" />
 

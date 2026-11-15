@@ -10,7 +10,9 @@ import Dev from './pages/Dev.vue'
 import Settings from './pages/Settings.vue'
 import Admin from './pages/Admin.vue'
 import { api } from './lib/api'
-import { status, store } from './lib/store'
+import { savePreferences, status, store } from './lib/store'
+import { notReady, view } from './lib/view'
+import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
 
 // Shell (spec 007 S-2): grouped sidebar with the user at the bottom, a footer on every page;
@@ -57,6 +59,19 @@ onMounted(() => window.addEventListener('hashchange', onHash))
 onBeforeUnmount(() => window.removeEventListener('hashchange', onHash))
 
 const activeSubs = computed(() => store.subscriptions.filter((s) => s.status === 'active').length)
+
+// ── Header bar (spec 007 S-15): where you are (the dashboard: its month and phase), search and
+// notifications as drawn (not there yet → "준비 중"), and the light/dark switch (S-16).
+const GROUP_OF: Record<string, string> = { home: '개요', subs: '관리', pay: '관리', events: '관리', history: '관리', settings: '설정', admin: '설정', dev: '설정' }
+const SETTINGS_TAB: Record<string, string> = { general: '일반', theme: '테마', security: '로그인·보안' }
+const crumbPage = computed(() => (route.value.page === 'settings' ? (SETTINGS_TAB[route.value.sub] ?? '일반') : PAGES[route.value.page]!.label))
+const tools = computed(() => !['settings', 'admin', 'dev'].includes(route.value.page))
+const phase = computed(() => phaseAt(store.phases, view.ym))
+const prefersDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => { prefersDark.value = e.matches })
+const dark = computed(() => store.preferences.themeMode === 'dark' || (store.preferences.themeMode === 'system' && prefersDark.value))
+const flipTheme = () => savePreferences({ ...store.preferences, themeMode: dark.value ? 'light' : 'dark' }).catch(() => {})
+const onSearch = (e: Event) => { e.preventDefault(); notReady('검색') }
 const logout = () => authClient.signOut()
 const version = __APP_VERSION__
 const REPO = 'https://github.com/bluenyang/allot'
@@ -89,9 +104,28 @@ const REPO = 'https://github.com/bluenyang/allot'
     </aside>
 
     <div class="col">
+      <header class="topbar">
+        <div v-if="route.page === 'home'" class="monthnav">
+          <button class="btn icon" type="button" aria-label="이전 달" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
+          <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}</span>
+          <button class="btn icon" type="button" aria-label="다음 달" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
+          <span class="phasebadge">{{ phase ? `${phase.label} · ${phase.name}` : '구간 밖' }}</span>
+        </div>
+        <nav v-else class="crumbs" aria-label="현재 위치"><span>{{ GROUP_OF[route.page] }}</span><Icon name="chev" /><b>{{ crumbPage }}</b></nav>
+        <span class="sp"></span>
+        <form v-if="tools" class="search" role="search" @submit="onSearch">
+          <Icon name="search" />
+          <input type="search" aria-label="검색" placeholder="거래, 구독, 메모 검색" @focus="notReady('검색')">
+          <kbd>/</kbd>
+        </form>
+        <button v-if="tools" class="btn icon tb" type="button" aria-label="알림" @click="notReady('알림')"><Icon name="bell" /><i class="dotn" aria-hidden="true"></i></button>
+        <button class="btn icon tb" type="button" :aria-label="dark ? '라이트 모드로 바꾸기' : '다크 모드로 바꾸기'" :title="dark ? '라이트 모드로' : '다크 모드로'" @click="flipTheme"><Icon :name="dark ? 'sun' : 'moon'" /></button>
+      </header>
+      <p v-if="view.notice" class="toast" role="status">{{ view.notice }}</p>
       <main class="main">
         <div class="mtop">
           <span class="logo" aria-hidden="true">A</span><b>Allot</b><span class="ver">v{{ version }}</span>
+          <button class="acct" type="button" :aria-label="dark ? '라이트 모드로 바꾸기' : '다크 모드로 바꾸기'" @click="flipTheme"><Icon :name="dark ? 'sun' : 'moon'" /></button>
           <a class="acct" href="#settings" aria-label="설정"><Icon name="settings" /></a>
           <button class="logout m" type="button" @click="logout">로그아웃</button>
         </div>
@@ -99,13 +133,14 @@ const REPO = 'https://github.com/bluenyang/allot'
         <KeepAlive><component :is="PAGES[route.page]!.comp" :key="route.page" v-bind="route.page === 'settings' ? { sub: route.sub } : {}" /></KeepAlive>
       </main>
       <footer class="foot-bar">
-        <span><b>Allot</b> v{{ version }} · 셀프 호스팅 개인 재무 관리</span>
-        <nav aria-label="프로젝트 링크">
+        <div class="fl"><b>Allot</b><span class="mono">v{{ version }}</span><span aria-hidden="true">·</span><span>셀프 호스팅 개인 재무 관리</span></div>
+        <nav aria-label="바닥글">
           <a :href="REPO" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a :href="REPO + '/blob/master/CHANGELOG.md'" target="_blank" rel="noopener noreferrer">변경 기록</a>
+          <a :href="REPO + '/releases'" target="_blank" rel="noopener noreferrer">변경 기록</a>
           <a :href="REPO + '/issues'" target="_blank" rel="noopener noreferrer">문제 신고</a>
+          <a href="#" @click.prevent="notReady('API 문서')">API 문서</a>
         </nav>
-        <span class="where">데이터는 이 서버에만 저장됩니다 · 개발 BlueNyang</span>
+        <div class="where"><Icon name="security" /><span>데이터는 이 서버에만 저장됩니다 · 개발 BlueNyang</span></div>
       </footer>
     </div>
 
@@ -131,12 +166,37 @@ const REPO = 'https://github.com/bluenyang/allot'
 .wn small{font-size:12px;color:var(--subtle)}
 .who .btn{color:var(--muted)}
 .col{display:flex;flex-direction:column;min-width:0;min-height:100vh}
+.topbar{display:none}
+.topbar .sp{flex:1}
+@media (min-width:761px){
+  .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 32px;min-height:61px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
+}
+.crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--subtle)}
+.crumbs svg{width:14px;height:14px}
+.crumbs b{color:var(--text);font-weight:600}
+.monthnav{display:flex;align-items:center;gap:4px}
+.monthnav .btn{width:32px;height:32px;color:var(--muted)}
+.monthnav .ml{font-weight:600;padding:0 10px;font-variant-numeric:tabular-nums}
+.phasebadge{margin-left:8px;font-size:12px;color:var(--muted);padding:2px 8px;border:1px solid var(--border);border-radius:var(--r-badge);background:var(--surface-2)}
+.search{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface-2);width:300px;max-width:100%;color:var(--subtle)}
+.search svg{width:16px;height:16px;flex:none}
+.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text)}
+.search kbd{font:11px var(--f-mono);border:1px solid var(--border);border-radius:var(--r-badge);padding:0 5px;background:var(--surface)}
+.tb{width:36px;height:36px;position:relative;color:var(--muted)}
+.tb svg{width:18px;height:18px}
+.dotn{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--accent);border:1.5px solid var(--surface)}
+.toast{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:80;margin:0;padding:8px 14px;border-radius:var(--r-ctl);background:var(--text);color:var(--surface);font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.mtop .acct{background:var(--surface)}
 .col .main{flex:1;width:100%}
-.foot-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:14px max(16px,env(safe-area-inset-right,0px)) calc(96px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border-top:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--subtle)}
-.foot-bar b{color:var(--text-2)}
-.foot-bar nav{display:flex;gap:14px;flex-wrap:wrap}
-.foot-bar a{color:var(--muted)}
-.foot-bar .where{margin-left:auto}
-@media (min-width:761px){.foot-bar{padding:14px 32px}}
-@media (max-width:760px){.col .main{padding-bottom:16px}.foot-bar .where{margin-left:0}}
+.foot-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;padding:16px max(16px,env(safe-area-inset-right,0px)) calc(96px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border-top:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--subtle)}
+.foot-bar .fl{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.foot-bar .fl b{font-weight:700;color:var(--text)}
+.foot-bar .fl .mono{font-size:12px}
+.foot-bar nav{display:flex;gap:16px;flex-wrap:wrap}
+.foot-bar a{color:var(--muted);text-decoration:none}
+.foot-bar a:hover{text-decoration:underline}
+.foot-bar .where{display:flex;align-items:center;gap:6px}
+.foot-bar .where svg{width:14px;height:14px}
+@media (min-width:761px){.foot-bar{padding:16px 32px}}
+@media (max-width:760px){.col .main{padding-bottom:16px}}
 </style>

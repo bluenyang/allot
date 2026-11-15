@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import { saveItem, savePreferences, saveSettings, status, store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
+import { notReady } from '../lib/view'
 import { dateText, money, moneyClass } from '../lib/format'
 import { holidayList } from '../lib/holidays-lazy'
 import { BUILTIN_SETS, KR_NAME } from '../data/holidays-kr'
@@ -82,6 +83,12 @@ const DATES = seg([['iso', '2026-11-14'], ['dot', '2026. 11. 14.'], ['us', '11/1
 const UNITS = seg([['won', '원'], ['thousand', '천원'], ['man', '만원']])
 const NEGS = seg([['minus', '−15,000'], ['paren', '(15,000)'], ['red', '빨간색']])
 const SHIFTS = seg([['before', '앞 영업일로 당김'], ['after', '다음 영업일로 미룸'], ['none', '그대로']])
+// The theme choices drawn as small screens, as in the design: light, dark, and half of each for system.
+const LIGHT = { bg: '#F5F6F5', card: '#FFFFFF', line: '#E2E5E3', ink: '#16201B' }
+const DARK = { bg: '#111315', card: '#1A1C1F', line: '#2F3337', ink: '#E6E8EA' }
+const THEME_CARDS: { id: Preferences['themeMode']; label: string; sides: typeof LIGHT[] }[] = [
+  { id: 'light', label: '라이트', sides: [LIGHT] }, { id: 'dark', label: '다크', sides: [DARK] }, { id: 'system', label: '시스템', sides: [LIGHT, DARK] },
+]
 
 // ── Preview: this month's upcoming payments in the chosen formats (the user's own data) ──
 const now = today()
@@ -133,68 +140,96 @@ const addRow = () => rows.value.push(emptyRow())
 <template>
   <div class="gen">
     <div class="col-form">
-    <form aria-label="일반 설정" novalidate @submit.prevent="save">
-      <section class="panel">
-        <h2>표시</h2>
-        <div class="line">
-          <div class="lt"><b id="g-theme">선호 테마</b><span>누르면 바로 적용돼요. 색상과 모서리는 테마 탭에서 정해요</span></div>
-          <div class="seg" role="group" aria-labelledby="g-theme"><button v-for="[id, label] in THEMES" :key="id" type="button" :aria-pressed="store.preferences.themeMode === id" @click="pickTheme(id)">{{ label }}</button></div>
-          <span v-if="themeMsg" class="small muted tmsg" role="status">{{ themeMsg }}</span>
+    <form class="stack" aria-label="일반 설정" novalidate @submit.prevent="save">
+      <section class="card">
+        <div class="card-hd"><h2>표시</h2></div>
+        <div class="srow">
+          <div class="lt"><label for="g-lang">언어</label><p>메뉴와 안내 문구의 언어</p></div>
+          <div class="rt"><select id="g-lang" class="in w240" disabled title="준비 중"><option>한국어</option></select><span class="soon">다른 언어는 다음 버전에서</span></div>
         </div>
-        <div class="line">
-          <div class="lt"><b id="g-date">날짜 형식</b><span>표, 일정, 목록</span></div>
-          <div class="seg" role="group" aria-labelledby="g-date"><button v-for="[id, label] in DATES" :key="id" type="button" :aria-pressed="d.dateFormat === id" @click="d.dateFormat = id">{{ label }}</button></div>
+        <div class="srow">
+          <div class="lt"><span id="g-theme-l" class="lab">선호 테마</span><p>누르면 바로 적용돼요. 색상과 모서리는 테마 탭에서 정해요</p></div>
+          <div class="rt tcards" role="radiogroup" aria-labelledby="g-theme-l">
+            <button v-for="t in THEME_CARDS" :key="t.id" type="button" role="radio" :aria-checked="store.preferences.themeMode === t.id" :aria-label="t.label" @click="pickTheme(t.id)">
+              <span class="mini" aria-hidden="true">
+                <span v-for="(side, i) in t.sides" :key="i" class="half" :style="{ background: side.bg }"><i :style="{ background: side.ink }"></i><em :style="{ background: side.card, borderColor: side.line }"></em><i class="p"></i></span>
+              </span>
+              <span class="tl"><span class="ring"><span class="dotr"></span></span>{{ t.label }}</span>
+            </button>
+            <span v-if="themeMsg" class="small muted tmsg" role="status">{{ themeMsg }}</span>
+          </div>
         </div>
-        <div class="line">
-          <div class="lt"><b id="g-unit">금액 단위</b><span>요약 카드와 표. 입력칸과 편집 창은 항상 원 단위</span></div>
-          <div class="seg" role="group" aria-labelledby="g-unit"><button v-for="[id, label] in UNITS" :key="id" type="button" :aria-pressed="d.amountUnit === id" @click="d.amountUnit = id">{{ label }}</button></div>
+        <div class="srow">
+          <div class="lt"><span class="lab">날짜 형식</span><p>표, 일정, 목록</p></div>
+          <div class="rt"><div class="seg mono-seg" role="group" aria-label="날짜 형식"><button v-for="[id, label] in DATES" :key="id" type="button" :aria-pressed="d.dateFormat === id" @click="d.dateFormat = id">{{ label }}</button></div></div>
         </div>
-        <div class="line">
-          <div class="lt"><b id="g-neg">음수 표기</b><span>지출과 차감 금액. 빨간색도 − 기호는 남겨요</span></div>
-          <div class="seg" role="group" aria-labelledby="g-neg"><button v-for="[id, label] in NEGS" :key="id" type="button" :aria-pressed="d.negative === id" :class="{ red: id === 'red' }" @click="d.negative = id">{{ label }}</button></div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>환율</h2>
-        <p class="small muted lead">USD 결제를 원화로 환산할 때 써요. 버퍼만큼 넉넉하게 잡아요.</p>
-        <div class="form">
-          <div class="field"><label for="g-fx">USD → KRW</label><input id="g-fx" v-model.number="d.fxRate" class="in" type="number" step="any" min="0"></div>
-          <div class="field"><label for="g-buf">버퍼 (%)</label><input id="g-buf" v-model.number="d.fxBuffer" class="in" type="number" step="any" min="0" max="100"></div>
+        <div class="srow last">
+          <div class="lt"><label for="g-tz">시간대</label><p>결제일과 알림 시각의 기준</p></div>
+          <div class="rt"><select id="g-tz" class="in w240" disabled title="준비 중"><option>Asia/Seoul (UTC+09:00)</option></select><span class="soon">준비 중</span></div>
         </div>
       </section>
 
-      <section class="panel">
-        <h2>기준 일정</h2>
-        <p class="small muted lead">매달 반복되는 날. 현황과 일정 달력에 써요.</p>
-        <div class="form">
-          <div class="field"><label for="g-pay">월급일</label><input id="g-pay" v-model.number="d.payDay" class="in" type="number" min="1" max="31"></div>
-          <div class="field"><label for="g-xfer">분배일</label><input id="g-xfer" v-model.number="d.transferDay" class="in" type="number" min="1" max="31"></div>
-          <div class="field"><label for="g-bill">카드 결제일</label><input id="g-bill" v-model.number="d.billingDay" class="in" type="number" min="1" max="31"></div>
+      <section class="card">
+        <div class="card-hd"><h2>통화 · 단위</h2></div>
+        <div class="srow">
+          <div class="lt"><label for="g-cur">기준 통화</label><p>모든 합계와 분배는 이 통화로 계산해요</p></div>
+          <div class="rt col">
+            <span class="rowx"><select id="g-cur" class="in w240" disabled title="준비 중"><option>KRW · 대한민국 원 (₩)</option></select><span class="soon">준비 중</span></span>
+            <span class="sub-l">함께 쓰는 외화</span>
+            <span class="chips"><span class="chip on"><b>USD</b> 미국 달러</span><span class="soon">다른 외화는 준비 중</span></span>
+          </div>
         </div>
-        <div class="line top">
-          <div class="lt"><b id="g-shift">주말·공휴일이면</b><span>켜 둔 공휴일 세트를 써요</span></div>
-          <div class="seg" role="group" aria-labelledby="g-shift"><button v-for="[id, label] in SHIFTS" :key="id" type="button" :aria-pressed="d.dayShift === id" @click="d.dayShift = id">{{ label }}</button></div>
+        <div class="srow">
+          <div class="lt"><span class="lab">환율</span><p>외화 결제를 원화로 환산할 때. 버퍼만큼 넉넉하게 잡아요</p></div>
+          <div class="rt col">
+            <div class="seg" role="group" aria-label="환율 방식"><button type="button" aria-pressed="false" @click="notReady('환율 자동')">자동</button><button type="button" aria-pressed="true">직접 입력</button></div>
+            <span class="rowx end">
+              <span class="fld"><label for="g-fx">USD → KRW</label><input id="g-fx" v-model.number="d.fxRate" class="in num w140" type="number" step="any" min="0"></span>
+              <span class="fld"><label for="g-buf">버퍼 (%)</label><input id="g-buf" v-model.number="d.fxBuffer" class="in num w80" type="number" step="any" min="0" max="100"></span>
+              <span class="small subtle note">직접 넣은 값은 바꿀 때까지 그대로 써요</span>
+            </span>
+          </div>
         </div>
-        <p class="small muted" role="status">
-          이번 달:
-          <template v-if="shifted">월급 {{ md(shifted.pay.date) }}{{ shifted.pay.unresolved ? ' (옮길 영업일 없음)' : '' }} · 분배 {{ md(shifted.transfer.date) }}{{ shifted.transfer.unresolved ? ' (옮길 영업일 없음)' : '' }} · 카드 결제 {{ md(shifted.billing.date) }}{{ shifted.billing.unresolved ? ' (옮길 영업일 없음)' : '' }}</template>
-          <template v-else>공휴일을 불러오는 중…</template>
-        </p>
+        <div class="srow">
+          <div class="lt"><span class="lab">금액 단위</span><p>요약 카드와 표. 입력칸과 편집 창은 항상 원 단위</p></div>
+          <div class="rt"><div class="seg wide" role="group" aria-label="금액 단위"><button v-for="[id, label] in UNITS" :key="id" type="button" :aria-pressed="d.amountUnit === id" @click="d.amountUnit = id">{{ label }}</button></div></div>
+        </div>
+        <div class="srow last">
+          <div class="lt"><span class="lab">음수 표기</span><p>지출과 차감 금액. 빨간색도 − 기호는 남겨요</p></div>
+          <div class="rt"><div class="seg wide" role="group" aria-label="음수 표기"><button v-for="[id, label] in NEGS" :key="id" type="button" :aria-pressed="d.negative === id" :class="{ red: id === 'red' }" @click="d.negative = id">{{ label }}</button></div></div>
+        </div>
       </section>
 
-      <div class="savebar">
-        <span class="small muted">바꾼 설정은 변경 내역에 남고, 되돌릴 수 있어요.</span>
-        <span class="sp"></span>
-        <span class="small" :class="msg === '저장했어요.' ? 'muted' : 'err'" role="status">{{ msg }}</span>
-        <button class="btn" type="button" :disabled="!dirty" @click="cancel">취소</button>
-        <button class="btn pri" type="submit" :disabled="busy || !dirty">저장</button>
-      </div>
+      <section class="card">
+        <div class="card-hd"><h2>기준 일정</h2></div>
+        <div class="srow last">
+          <div class="lt"><span class="lab">매달 반복되는 날</span><p>현황의 결제 예정과 분배 계산에 써요</p></div>
+          <div class="rt col">
+            <span class="rowx end">
+              <span class="fld"><label for="g-pay">월급일</label><span class="dayin"><input id="g-pay" v-model.number="d.payDay" type="number" min="1" max="31"><span>일</span></span></span>
+              <span class="fld"><label for="g-xfer">분배일</label><span class="dayin"><input id="g-xfer" v-model.number="d.transferDay" type="number" min="1" max="31"><span>일</span></span></span>
+              <span class="fld"><label for="g-bill">카드 결제일</label><span class="dayin"><input id="g-bill" v-model.number="d.billingDay" type="number" min="1" max="31"><span>일</span></span></span>
+              <span class="fld"><label for="g-shift">주말·공휴일이면</label><select id="g-shift" v-model="d.dayShift" class="in" aria-label="주말·공휴일이면"><option v-for="[id, label] in SHIFTS" :key="id" :value="id">{{ label }}</option></select></span>
+            </span>
+            <span class="small subtle" role="status">이번 달:
+              <template v-if="shifted">월급 {{ md(shifted.pay.date) }}{{ shifted.pay.unresolved ? ' (옮길 영업일 없음)' : '' }} · 분배 {{ md(shifted.transfer.date) }}{{ shifted.transfer.unresolved ? ' (옮길 영업일 없음)' : '' }} · 카드 결제 {{ md(shifted.billing.date) }}{{ shifted.billing.unresolved ? ' (옮길 영업일 없음)' : '' }}</template>
+              <template v-else>공휴일을 불러오는 중…</template>
+            </span>
+          </div>
+        </div>
+        <div class="savebar">
+          <span class="grow small subtle">바꾼 설정은 변경 내역에 남고, 되돌릴 수 있어요.</span>
+          <span class="small" :class="msg === '저장했어요.' ? 'subtle' : 'err'" role="status">{{ msg }}</span>
+          <button class="btn" type="button" :disabled="!dirty" @click="cancel">취소</button>
+          <button class="btn pri" type="submit" :disabled="busy || !dirty">저장</button>
+        </div>
+      </section>
     </form>
 
-      <section class="panel" aria-labelledby="g-hol">
-        <div class="card-h"><h2 id="g-hol">공휴일 세트</h2><button class="btn sm" type="button" @click="openSet()">+ 세트 추가</button></div>
-        <p class="small muted lead">반복 규칙(RRULE)으로 정의해요. 음력은 RSCALE=DANGI. 바꾸면 바로 저장돼요.</p>
+      <section class="card" aria-labelledby="g-hol">
+        <div class="card-hd"><h2 id="g-hol">공휴일 세트</h2><button class="btn sm" type="button" @click="openSet()">+ 세트 추가</button></div>
+        <div class="card-bd">
+        <p class="small subtle lead">주말·공휴일 조정에 쓰는 휴일이에요. 반복 규칙(RRULE)으로 정의하고, 음력은 RSCALE=DANGI. 바꾸면 바로 저장돼요.</p>
         <ul class="sets">
           <li>
             <span class="sn"><b>{{ KR_NAME }}</b><span class="pill tag">기본</span><span class="small muted">{{ BUILTIN_SETS.kr!.rules.length }}개 규칙 · 대체공휴일 포함</span></span>
@@ -216,6 +251,7 @@ const addRow = () => rows.value.push(emptyRow())
           <li v-for="h in yearHolidays ?? []" :key="h.date + h.name"><span class="mono">{{ dateText(h.date, fmt) }}</span> {{ h.name }}</li>
         </ul>
         <CalendarView v-if="showCal" class="pcal" source="holidays" :sets="store.holidaySets" label="공휴일 미리보기 달력" />
+        </div>
       </section>
 
       <EditSheet v-if="setEd.item.value" :key="setEd.item.value.id || 'new'" :title="setEd.item.value.id ? '공휴일 세트 수정' : '공휴일 세트 추가'" :error="setEd.error.value" :busy="setEd.busy.value"
@@ -238,39 +274,77 @@ const addRow = () => rows.value.push(emptyRow())
       </EditSheet>
     </div>
 
-    <aside class="panel pv" aria-label="표시 미리보기">
-      <div class="card-h"><h2>표시 미리보기</h2><span class="small muted">단위: {{ UNITS.find((u) => u[0] === d.amountUnit)![1] }}</span></div>
-      <table>
-        <thead><tr><th>일자</th><th>내용</th><th class="n">금액</th></tr></thead>
-        <tbody>
-          <tr v-for="p in preview" :key="p.sub.id + p.date.getTime()"><td class="mono">{{ dateText(p.date, fmt) }}</td><td>{{ p.sub.name }}</td>
-            <td class="n" :class="moneyClass(-p.krw, fmt)">{{ money(-p.krw, fmt) }}</td></tr>
-          <tr v-if="!preview.length"><td colspan="3" class="muted">31일 안에 결제할 구독이 없어요.</td></tr>
-        </tbody>
-        <tfoot><tr class="total"><td colspan="2">합계</td><td class="n" :class="moneyClass(-previewTotal, fmt)">{{ money(-previewTotal, fmt) }}</td></tr></tfoot>
-      </table>
-      <p class="small muted">테마: {{ THEMES.find((t) => t[0] === store.preferences.themeMode)![1] }} · 저장 전 미리보기예요.</p>
+    <aside class="pv" aria-label="표시 미리보기">
+      <span class="pvl">표시 미리보기</span>
+      <div class="card">
+        <div class="pvh"><b>{{ Number(ym.slice(5)) }}월 원장</b><span class="small subtle">단위: {{ UNITS.find((u) => u[0] === d.amountUnit)![1] }}</span></div>
+        <table>
+          <thead><tr><th>일자</th><th>내용</th><th class="n">금액</th></tr></thead>
+          <tbody>
+            <tr v-for="p in preview" :key="p.sub.id + p.date.getTime()"><td class="mono">{{ dateText(p.date, fmt) }}</td><td>{{ p.sub.name }}<div class="mono tiny">{{ p.sub.plan }}</div></td>
+              <td class="n" :class="moneyClass(-p.krw, fmt)">{{ money(-p.krw, fmt) }}</td></tr>
+            <tr v-if="!preview.length"><td colspan="3" class="muted">31일 안에 결제할 구독이 없어요.</td></tr>
+            <tr class="sum"><td colspan="2">합계</td><td class="n" :class="moneyClass(-previewTotal, fmt)">{{ money(-previewTotal, fmt) }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small subtle">테마: {{ THEMES.find((t) => t[0] === store.preferences.themeMode)![1] }} · 외화 1개 사용 · 저장 전 미리보기예요.</p>
     </aside>
   </div>
 </template>
 
 <style scoped>
-.gen{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
-@media (min-width:1180px){.gen{grid-template-columns:minmax(0,1fr) 360px}.pv{position:sticky;top:20px}}
-.col-form{min-width:0}
-h2{margin:0 0 12px}
-.lead{margin:-6px 0 12px}
-.line{display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--divider)}
-.line:first-of-type{border-top:0;padding-top:0}
-.line.top{margin-top:14px}
-.lt{display:flex;flex-direction:column;gap:2px;min-width:0}
-.lt b{font-weight:600}
-.lt span{font-size:12px;color:var(--subtle)}
+.gen{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.col-form{flex:3 1 560px;min-width:0;display:flex;flex-direction:column;gap:20px}
+.stack{display:flex;flex-direction:column;gap:20px}
+.srow{display:flex;flex-wrap:wrap;gap:12px 32px;padding:18px 20px;border-bottom:1px solid var(--divider)}
+.srow.last{border-bottom:0}
+.lt{flex:1 1 180px;display:flex;flex-direction:column;gap:2px}
+.lt label,.lt .lab{font-size:14px;font-weight:600}
+.lt p{margin:0;font-size:12px;color:var(--subtle)}
+.rt{flex:2 1 320px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-width:0}
+.rt.col{flex-direction:column;align-items:flex-start}
+.rowx{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.rowx.end{align-items:flex-end}
+.w240{width:240px;max-width:100%}
+.w140{width:140px;text-align:right}
+.w80{width:80px;text-align:right}
+.soon{font-size:12px;color:var(--subtle)}
+.sub-l{font-size:12px;font-weight:600;color:var(--text-2)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--r-badge);border:1px solid var(--border-strong);font-size:13px}
+.chip.on{border-color:var(--primary-text);background:var(--primary-soft);color:var(--primary-text)}
+.chip b{font:500 13px var(--f-mono)}
+.fld{display:flex;flex-direction:column;gap:6px}
+.fld label{font-size:12px;font-weight:600;color:var(--text-2)}
+.note{padding-bottom:8px}
+.dayin{display:flex;align-items:center;height:36px;width:96px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);padding-right:10px;background:var(--surface)}
+.dayin input{flex:1;min-width:0;border:0;outline:0;padding:0 6px 0 10px;text-align:right;color:var(--text);background:transparent;font-variant-numeric:tabular-nums}
+.dayin span{font-size:13px;color:var(--subtle)}
+.dayin:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
+.seg button{height:36px;font-weight:600;font-size:13px}
+.seg.wide button{min-width:76px;padding:0 14px}
+.mono-seg button{font:500 12px var(--f-mono)}
 .seg .red{color:var(--neg-text)}
-.tmsg{flex-basis:100%;text-align:right}
-.savebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 16px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card)}
-.sp{flex:1}
+.tcards{gap:10px}
+.tcards button{width:118px;padding:8px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);cursor:pointer;display:flex;flex-direction:column;gap:8px;text-align:left;color:var(--text)}
+.tcards button[aria-checked="true"]{border:2px solid var(--primary-text);padding:7px}
+.mini{height:64px;border-radius:var(--r-badge);border:1px solid var(--border);overflow:hidden;display:flex}
+.half{flex:1;padding:6px;display:flex;flex-direction:column;gap:4px}
+.half i{display:block;height:6px;width:60%;border-radius:1px}
+.half em{flex:1;border-radius:2px;border:1px solid}
+.half i.p{width:40%;background:var(--primary)}
+.tl{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+.ring{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--border-strong);display:flex;align-items:center;justify-content:center}
+.dotr{width:6px;height:6px;border-radius:50%}
+.tcards button[aria-checked="true"] .tl{color:var(--primary-text)}
+.tcards button[aria-checked="true"] .ring{border-color:var(--primary-text)}
+.tcards button[aria-checked="true"] .dotr{background:var(--primary-text)}
+.tmsg{flex-basis:100%}
+.savebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid var(--border);background:var(--surface-2);border-radius:0 0 var(--r-card) var(--r-card)}
+.grow{flex-grow:1}
 .err{color:var(--neg-text)}
+.lead{margin:0 0 12px}
 .sets{list-style:none;margin:0 0 10px;padding:0}
 .sets li{display:flex;align-items:center;gap:8px;padding:var(--row-pad) 0;border-bottom:1px solid var(--divider)}
 .sets .sn{flex:1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
@@ -281,6 +355,15 @@ h2{margin:0 0 12px}
 .rule{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;align-items:end;padding:12px 0;border-top:1px solid var(--divider)}
 .rule .wide{grid-column:span 2}
 .rule .rm{align-self:end}
+.pv{flex:2 1 340px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.pvl{font-size:12px;font-weight:600;color:var(--muted)}
+.pvh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
 .pv table{font-size:13px}
-.pv td,.pv th{padding-left:6px;padding-right:6px}
+.pv th{border-top:0}
+.pv td.mono{font-size:12px;color:var(--muted);white-space:nowrap}
+.pv td.n{font-weight:600;white-space:nowrap}
+.pv .tiny{font-size:11px;color:var(--subtle)}
+.pv tr.sum td{font-weight:600;border-bottom:0}
+.pv tr.sum td.n{font-weight:700}
+@media (min-width:1180px){.pv{position:sticky;top:80px}}
 </style>

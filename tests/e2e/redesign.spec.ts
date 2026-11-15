@@ -127,7 +127,8 @@ test('(V-6 d) the calendar shows the monthly dates and the holidays of the sets 
 })
 
 test('(V-6 e) no menu, button or text for features that do not exist', async ({ page }) => {
-  const banned = ['명세서 분석', 'AI 어시스턴트', 'AI·연동', 'AI 분석', 'CSV 내보내기', 'API 문서', '마지막 동기화', '명세서에서 채우기']
+  // AI features stay hidden (the user's choice); controls drawn as in the design are tested in V-14 (c).
+  const banned = ['명세서 분석', 'AI 어시스턴트', 'AI·연동', 'AI 분석', '명세서에서 채우기']
   for (const r of ROUTES) {
     await page.goto(`/#${r}`)
     await page.locator('header.ph h1').waitFor()
@@ -220,4 +221,55 @@ test('(V-13 b) a 429 on the session check shows a wait note, not the login form,
   expect(times.length).toBeGreaterThanOrEqual(3)
   expect(times[1]! - times[0]!, 'the second check waits the 6 s the server gave').toBeGreaterThanOrEqual(5900)
   expect(times[2]! - times[1]!, 'and again').toBeGreaterThanOrEqual(5900)
+})
+
+test('(V-14 a, b) a new account starts light even on a dark OS; the header switch and 선호 테마 apply at once and stay', async ({ request, browser }) => {
+  const email = `e2e-light-${Date.now().toString(36)}@example.com`
+  expect((await api(request, 'POST', '/api/auth/admin/create-user', { email, name: 'E2E light', password: 'e2e-light-pass-1' })).status).toBe(200)
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] }, colorScheme: 'dark' })
+  try {
+    const g = await ctx.newPage()
+    await g.goto('/')
+    await g.getByLabel('이메일').fill(email)
+    await g.getByLabel('비밀번호').fill('e2e-light-pass-1')
+    await g.getByRole('button', { name: '로그인', exact: true }).click()
+    await g.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
+    const bg = () => g.evaluate(() => getComputedStyle(document.body).backgroundColor)
+    await expect.poll(bg).toBe('rgb(245, 246, 245)')
+    // the header switch: dark at once, a neutral grey (R, G, B within 4 of each other), kept after a reload
+    await g.getByRole('button', { name: '다크 모드로 바꾸기' }).click()
+    await expect.poll(bg).toBe('rgb(17, 19, 21)')
+    const [r, gg, b] = (await bg()).match(/\d+/g)!.map(Number)
+    expect(Math.max(r!, gg!, b!) - Math.min(r!, gg!, b!)).toBeLessThanOrEqual(4)
+    await g.reload()
+    await expect.poll(bg).toBe('rgb(17, 19, 21)')
+    // 선호 테마 in settings applies without a save button
+    await g.goto('/#settings/general')
+    await g.getByRole('radio', { name: '라이트' }).click()
+    await expect.poll(bg).toBe('rgb(245, 246, 245)')
+    await g.reload()
+    await expect.poll(bg).toBe('rgb(245, 246, 245)')
+  } finally {
+    await ctx.close()
+    const u = (await api(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users.find((x: { email: string }) => x.email === email)
+    if (u) await api(request, 'DELETE', `/api/admin/users/${u.id}`, { confirmEmail: email })
+  }
+})
+
+test('(V-14 c) every page has the header bar; controls drawn from the design say they are not ready', async ({ page }) => {
+  for (const r of ROUTES) {
+    await page.goto(`/#${r}`)
+    await expect(page.locator('header.topbar'), `#${r}`).toBeVisible()
+  }
+  const notice = page.getByRole('status').filter({ hasText: '준비 중' })
+  await page.goto('/#home')
+  for (const [name, what] of [['알림', '알림'], ['내보내기', '내보내기'], ['기록 추가', '기록 추가']] as const) {
+    await page.getByRole('button', { name, exact: true }).click()
+    await expect(notice).toContainText(what)
+  }
+  await page.getByRole('searchbox', { name: '검색' }).click()
+  await expect(notice).toContainText('검색')
+  await page.goto('/#subs')
+  await page.getByRole('button', { name: 'CSV 내보내기' }).click()
+  await expect(notice).toContainText('CSV 내보내기')
 })

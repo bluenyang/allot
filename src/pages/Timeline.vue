@@ -46,7 +46,7 @@ const debtEd = useEditor('debts', () => ({ id: '', name: '', principal: 0, rate:
 
 <template>
   <section>
-    <PageHeader crumb="관리" title="일정" desc="월급·분배·카드 결제일, 구독 결제, 플랜 전환과 공휴일을 달력으로 보고, 월 단위 계획과 부채를 관리해요." />
+    <PageHeader title="일정" desc="월급·분배·카드 결제일, 구독 결제, 플랜 전환과 공휴일을 달력으로 보고, 월 단위 계획과 부채를 관리해요." />
     <SubTabs v-model="tab" :tabs="tabs" />
 
     <div v-if="tab === 'cal'">

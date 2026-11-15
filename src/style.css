@@ -250,3 +250,28 @@ pre code{background:none;padding:0;font-size:inherit}
 .chk-row .chk{flex:1;min-width:0}
 .neg-amt{color:var(--neg-text)}
 .dot{display:inline-block;width:9px;height:9px;border-radius:var(--r-tag);margin-right:7px;vertical-align:1px}
+
+/* ---------- design cards (spec 007 S-15): a titled card as in the canvas ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);min-width:0}
+.card-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.card-hd h2{margin:0;font-size:15px;font-weight:600}
+.card-hd .aux{font-size:12px;color:var(--subtle)}
+.card-hd a.aux{font-weight:500;text-decoration:none;color:var(--primary-text)}
+.card-bd{padding:18px}
+.card .tbl{border:0;border-radius:0}
+.card table th{border-top:1px solid var(--border)}
+.card table th:first-child,.card table td:first-child{padding-left:18px}
+.card table th:last-child,.card table td:last-child{padding-right:18px}
+.items{list-style:none;margin:0;padding:0}
+.items > li{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--divider)}
+.items > li:last-child{border-bottom:0}
+.items > li:hover{background:var(--surface-2)}
+.page-gap{display:flex;flex-direction:column;gap:20px}
+.flexcols{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.flexcols > *{min-width:0}
+.page-gap > .ph,.page-gap > .strip{margin:0}
+/* Pages not drawn in the canvas get the same titled cards: a panel's first heading row becomes the title strip. */
+.panel > .card-h:first-child,.panel > h3:first-child{margin:-20px -24px 18px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.panel > .card-h:first-child h3,.panel > h3:first-child{font-size:15px;font-weight:600}
+.panel > h3:first-child{display:block}
+@media (max-width:759px){.panel > .card-h:first-child,.panel > h3:first-child{margin:-16px -16px 14px}}

@@ -117,7 +117,7 @@ async function revert(s: ChangeSet) {
 
 <template>
   <section>
-    <PageHeader crumb="관리" title="변경 내역" desc="저장 한 번이 변경 하나로 남아요. 되돌리면 반대 변경이 새로 저장돼요. 그 뒤에 같은 항목이 다시 바뀌었으면 되돌릴 수 없어요." />
+    <PageHeader title="변경 내역" desc="저장 한 번이 변경 하나로 남아요. 되돌리면 반대 변경이 새로 저장돼요. 그 뒤에 같은 항목이 다시 바뀌었으면 되돌릴 수 없어요." />
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
 

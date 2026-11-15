@@ -22,7 +22,7 @@ async function copy() {
 
 <template>
   <section>
-    <PageHeader crumb="설정" title="개발">
+    <PageHeader title="개발">
       <template #desc>데이터는 PostgreSQL에 저장돼요. 처음 데이터는 <code>pnpm db:seed</code>로 넣어요. 스키마는 <code>server/db/schema.ts</code>에 있어요.</template>
     </PageHeader>
     <SubTabs v-model="tab" :tabs="tabs" />

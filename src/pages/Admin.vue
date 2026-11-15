@@ -178,7 +178,7 @@ onActivated(load)
 
 <template>
   <section>
-    <PageHeader crumb="설정" title="관리" desc="계정과 로그인 방식을 관리해요. 다른 사용자의 금융 데이터는 여기서 보이지 않아요." />
+    <PageHeader title="관리" desc="계정과 로그인 방식을 관리해요. 다른 사용자의 금융 데이터는 여기서 보이지 않아요." />
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
     <SubTabs v-model="tab" :tabs="tabs" />

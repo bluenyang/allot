@@ -8,6 +8,7 @@ import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
 import { removeChange, removeSub, saveSettings, store, subName, upsertChange, upsertSub } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
+import { notReady } from '../lib/view'
 import {
   addYm, chargeKrw, changesIn, monthlyKrw, nextOccurrence, num, planAt, today, transferAt, usd, won, ymd, ymLabel, ymOf, ymRange,
 } from '../lib/calc'
@@ -47,12 +48,14 @@ const unverified = computed(() => rows.value.filter((r) => r.p.status === 'activ
 const status = ref<'all' | 'active' | 'company' | 'cancelled'>('all')
 const cat = ref('')
 const path = ref('')
+const q = ref('')
 const STATUS_TABS = computed(() => (['all', 'active', 'company', 'cancelled'] as const).map((id) => ({
   id, label: { all: '전체', active: '활성', company: '회사 지원', cancelled: '해지' }[id],
   count: id === 'all' ? rows.value.length : rows.value.filter((r) => r.p.status === id).length,
 })))
 const shown = computed(() => rows.value
-  .filter((r) => (status.value === 'all' || r.p.status === status.value) && (!cat.value || r.p.category === cat.value) && (!path.value || r.p.path === path.value))
+  .filter((r) => (status.value === 'all' || r.p.status === status.value) && (!cat.value || r.p.category === cat.value) && (!path.value || r.p.path === path.value)
+    && (!q.value.trim() || r.p.name.toLowerCase().includes(q.value.trim().toLowerCase())))
   .sort((a, b) => (a.next && a.p.status === 'active' ? a.next.getTime() : Infinity) - (b.next && b.p.status === 'active' ? b.next.getTime() : Infinity)))
 const charge = (p: Subscription) => p.currency === 'USD' ? `USD ${p.amount.toFixed(2)}${p.vat ? ` +${p.vat}%` : ''}` : `KRW ${num(p.amount)}`
 const subsName = computed(() => store.targets.find((t) => t.kind === 'subscriptions')?.name ?? '구독 이체')
@@ -181,32 +184,36 @@ function describe(c: PlanChange) {
 </script>
 
 <template>
-  <section>
-    <PageHeader crumb="관리" title="구독" desc="정기 결제와 플랜 전환을 관리해요. USD 항목은 적용 환율과 VAT로 원화 환산합니다.">
+  <section class="page-gap">
+    <PageHeader title="구독" desc="정기 결제와 플랜 전환을 관리해요. USD 항목은 적용 환율과 VAT로 원화 환산합니다.">
+      <button class="btn" type="button" @click="notReady('CSV 내보내기')"><Icon name="download" />CSV 내보내기</button>
       <button class="btn pri" type="button" @click="tab = 'list'; openEdit()"><Icon name="plus" />구독 추가</button>
     </PageHeader>
 
-    <section class="strip" aria-label="구독 요약">
-      <div><span class="l">월 환산 합계</span><span class="v">{{ fmtMoney(monthlyTotal) }}</span><span class="s">{{ ymLabel(ym) }} 기준</span></div>
-      <div><span class="l">연 환산 합계</span><span class="v">{{ fmtMoney(monthlyTotal * 12) }}</span><span class="s">월 환산 × 12</span></div>
-      <div><span class="l">영수증 미확인</span><span class="v" :class="{ sig: unverified > 0 }">{{ unverified }}<small class="unit"> 건</small></span><span class="s">활성 구독 중</span></div>
-      <div><span class="l">적용 환율</span><span class="v">₩{{ num(store.settings.fxRate) }}</span><span class="s">버퍼 {{ store.settings.fxBuffer }}%</span></div>
+    <section class="strip slim" aria-label="구독 요약">
+      <div><span class="l">월 환산 합계</span><span class="v">{{ fmtMoney(monthlyTotal) }}</span></div>
+      <div><span class="l">연 환산 합계</span><span class="v">{{ fmtMoney(monthlyTotal * 12) }}</span></div>
+      <div><span class="l">영수증 미확인</span><span class="v" :class="{ sig: unverified > 0 }">{{ unverified }}건</span></div>
+      <div><span class="l">적용 환율</span><span class="v">₩{{ num(store.settings.fxRate) }} <small class="unit">버퍼 {{ store.settings.fxBuffer }}%</small></span></div>
     </section>
 
+    <div>
     <SubTabs v-model="tab" :tabs="tabs" />
 
     <!-- 목록 -->
     <div v-if="tab === 'list'">
-      <div class="filters">
-        <div class="seg" role="group" aria-label="상태">
-          <button v-for="t in STATUS_TABS" :key="t.id" type="button" :aria-pressed="status === t.id" @click="status = t.id">{{ t.label }} <span class="c">{{ t.count }}</span></button>
+      <section class="card">
+        <div class="stabs" role="tablist" aria-label="상태별 구독">
+          <button v-for="t in STATUS_TABS" :key="t.id" type="button" role="tab" :aria-selected="status === t.id ? 'true' : 'false'" @click="status = t.id">{{ t.label }} <span class="cnt">{{ t.count }}</span></button>
         </div>
-        <select v-model="cat" class="in fsel" aria-label="분류"><option value="">분류 전체</option><option v-for="(v, k) in CAT_LABEL" :key="k" :value="k">{{ v }}</option></select>
-        <select v-model="path" class="in fsel" aria-label="결제 경로"><option value="">결제 경로 전체</option><option v-for="(v, k) in PATH" :key="k" :value="k">{{ v }}</option></select>
-        <span class="sp"></span>
-        <MonthPicker v-model="ym" label="기준 월" />
-      </div>
-
+        <div class="frow">
+          <label class="fsearch"><Icon name="search" /><input v-model="q" type="search" aria-label="구독 검색" placeholder="서비스 이름 검색"></label>
+          <select v-model="cat" class="in fsel" aria-label="분류"><option value="">분류 전체</option><option v-for="(v, k) in CAT_LABEL" :key="k" :value="k">{{ v }}</option></select>
+          <select v-model="path" class="in fsel" aria-label="결제 경로"><option value="">결제 경로 전체</option><option v-for="(v, k) in PATH" :key="k" :value="k">{{ v }}</option></select>
+          <span class="sp"></span>
+          <MonthPicker v-model="ym" label="기준 월" />
+          <span class="small subtle count">{{ shown.length }}개 · 다음 결제일 순</span>
+        </div>
       <EditSheet v-if="edit" :key="edit.id || 'new'" :title="edit.id ? '구독 수정' : '구독 추가'" :error="err" :can-delete="!!edit.id"
         desc="저장하면 서버에 먼저 기록되고 변경 내역에 남아요." @save="save" @cancel="edit = null" @delete="del">
           <div class="field" style="grid-column:1/-1"><label for="e-name" class="req">서비스 이름</label><input id="e-name" v-model="edit.name" class="in" placeholder="예: 영상 스트리밍" required></div>
@@ -242,9 +249,8 @@ function describe(c: PlanChange) {
         </template>
       </EditSheet>
 
-      <p class="small muted count">{{ shown.length }}개 · 다음 결제일 순 · 서비스를 누르면 수정(기준 플랜, 전환 전)</p>
       <div class="tbl">
-        <table>
+        <table class="subs-t">
           <thead><tr><th scope="col">서비스</th><th scope="col">분류</th><th scope="col">주기</th><th scope="col" class="n">청구 금액</th><th scope="col" class="n">월 환산</th><th scope="col">다음 결제</th><th scope="col">결제 경로</th><th scope="col">영수증</th></tr></thead>
           <tbody>
             <tr v-for="r in shown" :key="r.base.id" :class="{ dim: r.p.status !== 'active' }">
@@ -261,6 +267,7 @@ function describe(c: PlanChange) {
           </tbody>
         </table>
       </div>
+      </section>
     </div>
 
     <!-- 전환 미리보기 -->
@@ -373,17 +380,29 @@ function describe(c: PlanChange) {
         </table>
       </div></div>
     </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .unit{font-size:14px;font-weight:500;color:var(--muted)}
-.filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px}
-.filters .ymbar{margin:0}
-.fsel{width:auto;min-width:140px}
-.seg .c{font-size:11px;color:var(--subtle);font-variant-numeric:tabular-nums}
+.strip.slim > div{padding:14px 20px;gap:2px}
+.strip.slim .v{font-size:22px}
+.stabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--border);overflow-x:auto}
+.stabs button{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 14px;border:0;border-radius:var(--r-ctl) var(--r-ctl) 0 0;background:transparent;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
+.stabs button[aria-selected="true"]{background:var(--primary-soft);color:var(--primary-text);box-shadow:inset 0 -2px 0 var(--primary-text)}
+.stabs .cnt{font-size:11px;padding:0 6px;border-radius:var(--r-badge);background:var(--fill);color:var(--muted);font-variant-numeric:tabular-nums}
+.stabs button[aria-selected="true"] .cnt{background:var(--primary);color:var(--primary-ink)}
+.frow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.frow .ymbar{margin:0}
+.fsearch{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);flex:1 1 220px;max-width:320px;color:var(--subtle)}
+.fsearch svg{width:16px;height:16px;flex:none}
+.fsearch input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:13px}
+.fsel{width:auto;height:34px;font-size:13px}
 .sp{flex:1}
-.count{margin:0 0 8px}
+.count{align-self:center}
+.subs-t{min-width:920px}
+.subs-t td.n.mono{font-weight:400;color:var(--muted)}
 .svc{all:unset;cursor:pointer;display:flex;flex-direction:column;min-width:0}
 .svc b{font-weight:600}
 .svc span{font-size:12px;color:var(--muted)}
