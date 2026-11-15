@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PageHeader from '../components/PageHeader.vue'
+import { fmtDate } from '../lib/display'
 import { onActivated, onMounted, ref } from 'vue'
 import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
@@ -61,7 +62,8 @@ async function load(reset = true) {
 onMounted(() => load())
 onActivated(() => load())
 
-const fmt = (at: string) => new Date(at).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+// The date follows the display settings (spec 007 S-8, review 1 R10); the time is added after it.
+const fmt = (at: string) => { const d = new Date(at); return `${fmtDate(d)} ${d.toLocaleTimeString('ko-KR', { timeStyle: 'short' })}` }
 /** A subscription's name, also when it has been deleted since (taken from the loaded history). */
 const subLabel = (id: string) => {
   if (store.subscriptions.some((x) => x.id === id)) return subName(id)
