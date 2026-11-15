@@ -10,16 +10,17 @@ import { applyTheme } from './lib/theme'
 const session = authClient.useSession()
 // Too many session checks (429) is not "signed out": say so and check again when the server says
 // (X-Retry-After, from the first refusal on), instead of showing the login form (spec 007 S-14).
-// One loop at a time (reviews 6, 7): it keeps going through network errors and through a refetch
-// that is refused again, and stops when the session check passes or the root goes away.
+// One loop at a time; while it runs the wait note stays (reviews 6–8). After each try it decides
+// from the session state: signed in → done; refused again or a network error → wait and try again;
+// no session and no error → really signed out, so the login form shows.
 const limited = computed(() => !session.value.data && session.value.error?.status === 429)
+const waiting = ref(false)
 let alive = true
-let waiting = false
 let timer: ReturnType<typeof setTimeout> | undefined
 const sleep = (s: number) => new Promise<void>((done) => { timer = setTimeout(done, Math.min(Math.max(s, 1), 120) * 1000) })
 async function waitForSession() {
-  if (waiting) return
-  waiting = true
+  if (waiting.value) return
+  waiting.value = true
   try {
     let wait = lastRetryAfter() || 5
     while (alive) {
@@ -28,15 +29,19 @@ async function waitForSession() {
       try {
         const r = await fetch('/api/auth/get-session', { credentials: 'same-origin' })
         if (r.status === 429) { wait = Number(r.headers.get('X-Retry-After')) || 5; continue }
-        await session.value.refetch()
-        if (!limited.value) return
-        wait = lastRetryAfter() || 5 // refused again between the probe and the refetch
       } catch {
-        wait = 5 // network error: keep waiting
+        wait = 5 // network error on the probe
+        continue
       }
+      await session.value.refetch() // Better Auth keeps its own errors in the state; read them below
+      const st = session.value
+      if (st.data) return
+      if (st.error?.status === 429) { wait = lastRetryAfter() || 5; continue }
+      if (st.error && st.error.status !== 401) { wait = 5; continue } // network or server error
+      return // no session: signed out
     }
   } finally {
-    waiting = false
+    waiting.value = false
   }
 }
 watch(limited, (on) => { if (on) void waitForSession() })
@@ -78,7 +83,7 @@ watch(
 
 <template>
   <p v-if="session.isPending" class="muted" style="padding:24px">불러오는 중…</p>
-  <div v-else-if="limited" class="boot" role="status"><p class="muted">요청이 많아요. 잠시 뒤 다시 확인해요…</p></div>
+  <div v-else-if="limited || waiting" class="boot" role="status"><p class="muted">요청이 많아요. 잠시 뒤 다시 확인해요…</p></div>
   <Login v-else-if="!session.data" :app-return="!!appReturn" />
   <div v-else-if="appReturn" class="boot" role="status">
     <p v-if="relay === 'error'" class="err" role="alert">{{ relayError }}</p>
