@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { computed, onActivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import SubTabs from '../components/SubTabs.vue'
@@ -23,7 +24,7 @@ interface Provider {
 
 const origin = window.location.origin
 const tab = ref('users')
-const tabs = [{ id: 'users', label: '사용자' }, { id: 'methods', label: '로그인 방식' }]
+const tabs = [{ id: 'users', label: '사용자', icon: 'account' }, { id: 'methods', label: '로그인 방식', icon: 'security' }]
 const error = ref('')
 const notice = ref('')
 const busy = ref(false)
@@ -177,8 +178,7 @@ onActivated(load)
 
 <template>
   <section>
-    <h1>관리</h1>
-    <p class="lede">계정과 로그인 방식을 관리해요. 다른 사용자의 금융 데이터는 여기서 보이지 않아요.</p>
+    <PageHeader crumb="설정" title="관리" desc="계정과 로그인 방식을 관리해요. 다른 사용자의 금융 데이터는 여기서 보이지 않아요." />
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
     <SubTabs v-model="tab" :tabs="tabs" />
@@ -282,13 +282,14 @@ onActivated(load)
 .list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .list li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .list li .btn{margin-left:auto}
-.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
-.tbl th,.tbl td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--divider)}
-.tbl th{font-weight:500;color:var(--muted);font-size:12.5px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th,.tbl td{text-align:left;padding:var(--row-pad) 12px;border-bottom:1px solid var(--divider)}
+.tbl th{font-weight:500;color:var(--subtle);font-size:12px;background:var(--surface-2);border-bottom-color:var(--border)}
 .click{cursor:pointer}
 .tbl tr.click:hover td{background:var(--surface-2)}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
-.warnbox{border-color:var(--accent-text)}
+.warnbox{border-color:var(--accent-line);background:var(--accent-soft)}
+.warnbox h3{color:var(--accent-text)}
 @media (max-width:640px){.tbl th:nth-child(2),.tbl td:nth-child(2),.tbl th:nth-child(5),.tbl td:nth-child(5){display:none}}
 </style>

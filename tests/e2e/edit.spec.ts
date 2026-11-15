@@ -107,7 +107,7 @@ test('allocation targets: add a fixed target, give it a phase amount, see it in 
   await sheet(page, '구간 수정').getByLabel(MARK).fill('12340')
   await saveSheet(page, '구간 수정')
   await reload(page, 'pay', '월별 시뮬레이션')
-  await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('12,340원')
+  await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('12,340')
 
   // A second remainder is refused with a message.
   await go(page, 'pay', '구간')

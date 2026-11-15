@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { computed, ref } from 'vue'
 import SubTabs from '../components/SubTabs.vue'
 import { exportJson } from '../lib/store'
 
 // The schema lives in server/db/schema.ts and drizzle/; this tab only shows the data.
 const tab = ref('json')
-const tabs = [{ id: 'json', label: '현재 데이터' }]
+const tabs = [{ id: 'json', label: '현재 데이터', icon: 'dev' }]
 
 const json = computed(() => exportJson())
 const copied = ref('')
@@ -21,8 +22,9 @@ async function copy() {
 
 <template>
   <section>
-    <h1>개발</h1>
-    <p class="lede">데이터는 PostgreSQL에 저장돼요. 처음 데이터는 <code>pnpm db:seed</code>로 넣어요. 스키마는 <code>server/db/schema.ts</code>에 있어요.</p>
+    <PageHeader crumb="설정" title="개발">
+      <template #desc>데이터는 PostgreSQL에 저장돼요. 처음 데이터는 <code>pnpm db:seed</code>로 넣어요. 스키마는 <code>server/db/schema.ts</code>에 있어요.</template>
+    </PageHeader>
     <SubTabs v-model="tab" :tabs="tabs" />
     <div class="btns" style="margin:0 0 12px">
       <button class="btn pri" type="button" @click="copy">JSON 복사</button>

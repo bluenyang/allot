@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { onActivated, onMounted, ref } from 'vue'
 import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
@@ -114,8 +115,7 @@ async function revert(s: ChangeSet) {
 
 <template>
   <section>
-    <h1>변경 내역</h1>
-    <p class="lede">저장 한 번이 변경 하나로 남아요. 되돌리면 반대 변경이 새로 저장돼요. 그 뒤에 같은 항목이 다시 바뀌었으면 되돌릴 수 없어요.</p>
+    <PageHeader crumb="관리" title="변경 내역" desc="저장 한 번이 변경 하나로 남아요. 되돌리면 반대 변경이 새로 저장돼요. 그 뒤에 같은 항목이 다시 바뀌었으면 되돌릴 수 없어요." />
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
 
