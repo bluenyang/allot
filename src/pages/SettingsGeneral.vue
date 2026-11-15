@@ -69,7 +69,7 @@ const seg = <T extends string>(list: [T, string][]) => list
 const THEMES = seg([['light', '라이트'], ['dark', '다크'], ['system', '시스템']])
 const DATES = seg([['iso', '2026-11-14'], ['dot', '2026. 11. 14.'], ['us', '11/14/2026']])
 const UNITS = seg([['won', '원'], ['thousand', '천원'], ['man', '만원']])
-const NEGS = seg([['minus', '−12,000'], ['paren', '(12,000)'], ['red', '빨간색']])
+const NEGS = seg([['minus', '−15,000'], ['paren', '(15,000)'], ['red', '빨간색']])
 const SHIFTS = seg([['before', '앞 영업일로 당김'], ['after', '다음 영업일로 미룸'], ['none', '그대로']])
 
 // ── Preview: this month's upcoming payments in the chosen formats (the user's own data) ──
