@@ -94,6 +94,10 @@ const options = computed<CalendarOptions>(() => ({
 .cal button{border-radius:var(--r-ctl);font-weight:500}
 .cal .is-sat{color:var(--info-text)}
 .cal .is-sun{color:var(--neg-text)}
+/* Dates of the months before and after: FullCalendar 7.1.5 greys them with its own class (fc-classic-taq, set on the
+   number, not inherited), so weekends there take the weekend colour too (review 14). E2E S-17 checks the real colour. */
+.cal .is-sat .fc-classic-taq{color:var(--info-text)}
+.cal .is-sun .fc-classic-taq{color:var(--neg-text)}
 .cal .fc-event{border-radius:var(--r-badge);font-size:12px;font-weight:600;border:0;padding:0 4px}
 .cal .ev-holiday{background:var(--neg-soft) !important;color:var(--neg-text) !important}
 .cal .ev-pay{background:var(--primary-soft) !important;color:var(--primary-text) !important}

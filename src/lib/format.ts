@@ -29,6 +29,21 @@ export function money(n: number, p: Fmt): string {
 /** Class for a negative amount when the user chose red. */
 export const moneyClass = (n: number, p: Fmt) => (n < 0 && p.negative === 'red' ? 'neg-amt' : '')
 
+/**
+ * A short label for narrow charts (phone trend bars): under ₩1,000 in won (₩990), then 만 with one
+ * decimal below 10만 (0.1만 … 9.9만, 99,500 → 10만), whole 만 from 10만 (51만). Rounding is on whole
+ * won counts, so a positive amount never shows as 0. Negatives keep the minus sign.
+ */
+export function moneyShort(n: number): string {
+  const a = Math.round(Math.abs(n))
+  if (a === 0) return '0'
+  const sign = n < 0 ? MINUS : ''
+  if (a < 1000) return `${sign}₩${a}`
+  const tenths = Math.round(a / 1000) // 0.1만 steps
+  const body = tenths < 100 ? `${Math.floor(tenths / 10)}${tenths % 10 ? `.${tenths % 10}` : ''}만` : `${Math.round(a / 10_000).toLocaleString('ko-KR')}만`
+  return sign + body
+}
+
 /** A date (YYYY-MM-DD or Date) as 2026-11-14, 2026. 11. 14. or 11/14/2026. */
 export function dateText(d: string | Date, p: Fmt): string {
   const s = typeof d === 'string' ? d : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

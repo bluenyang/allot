@@ -309,17 +309,48 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
   await expect(notice).toContainText('CSV 내보내기')
 })
 
-test('(S-17) Saturdays blue and Sundays red on the calendar and the payment dates', async ({ page }) => {
-  await page.goto('/#events')
-  const cal = page.getByRole('region', { name: '이번 달 일정 달력' })
-  await cal.waitFor()
-  const colours = await cal.evaluate((el) => {
-    const pick = (cls: string) => { const e = el.querySelector(`.${cls}`); return e ? getComputedStyle(e).color : null }
-    return { sat: pick('is-sat'), sun: pick('is-sun'), info: getComputedStyle(document.documentElement).getPropertyValue('--info-text').trim(), neg: getComputedStyle(document.documentElement).getPropertyValue('--neg-text').trim() }
-  })
-  const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`
-  expect(colours.sat).toBe(rgb(colours.info))
-  expect(colours.sun).toBe(rgb(colours.neg))
+test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (also of the months around), payment dates, light and dark', async ({ page, request }) => {
+  // A weekend payment inside the next 31 days for each of Saturday and Sunday.
+  const ahead = (dow: number) => { const d = new Date(); d.setHours(12); do d.setDate(d.getDate() + 1); while (d.getDay() !== dow); return d }
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const made = await Promise.all([6, 0].map((dow) => api(request, 'POST', '/api/subscriptions', {
+    name: `${MARK}-dow${dow}`, category: 'tool', plan: 'p', amount: 1000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: iso(ahead(dow)), path: 'direct', verified: false,
+  })))
+  // Every weekend date number and header in the calendar, and the weekend payment boxes: [kind, colour, out of month].
+  const read = (root: string) => page.evaluate((sel) => {
+    const out: [string, string, boolean][] = []
+    for (const kind of ['sat', 'sun']) {
+      for (const cell of document.querySelectorAll(`${sel} .is-${kind}`)) {
+        const num = [...cell.querySelectorAll('*')].find((e) => /^\d+일$/.test(e.textContent!.trim()) && !e.children.length)
+        const target = cell.getAttribute('role') === 'columnheader' ? cell : num
+        if (target) out.push([kind, getComputedStyle(target).color, !!num && num.className.includes('taq')])
+      }
+      for (const box of document.querySelectorAll(`.dbox.${kind} b`)) out.push([kind, getComputedStyle(box).color, false])
+    }
+    return out
+  }, root)
+  const want = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`
+  const vars = () => page.evaluate(() => { const c = getComputedStyle(document.documentElement); return { sat: c.getPropertyValue('--info-text').trim(), sun: c.getPropertyValue('--neg-text').trim() } })
+  try {
+    for (const theme of ['light', 'dark']) {
+      await page.goto('/#events')
+      await page.getByRole('region', { name: '이번 달 일정 달력' }).waitFor()
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
+      const v = await vars()
+      const cal = await read('.cal')
+      expect(cal.filter(([, , other]) => other).length, `${theme}: weekend dates of the next month are checked`).toBeGreaterThan(0)
+      expect(cal.length, `${theme}: weekend headers and dates found`).toBeGreaterThanOrEqual(10)
+      for (const [kind, colour] of cal) expect(colour, `${theme} calendar ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
+      await page.goto('/#home')
+      await page.getByRole('heading', { level: 2, name: '결제 예정' }).waitFor()
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
+      const boxes = (await read('.none')).filter(([, , other]) => !other)
+      expect(new Set(boxes.map(([k]) => k)), `${theme}: a Saturday and a Sunday payment box`).toEqual(new Set(['sat', 'sun']))
+      for (const [kind, colour] of boxes) expect(colour, `${theme} payment box ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
+    }
+  } finally {
+    for (const m of made) await api(request, 'DELETE', `/api/subscriptions/${m.json.id}`)
+  }
 })
 
 test('(V-16) 이번 달 shows every card as the design does; 예정 and 확인할 것 show only theirs', async ({ page }) => {

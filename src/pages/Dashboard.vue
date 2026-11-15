@@ -9,6 +9,7 @@ import { useEditor } from '../lib/useEditor'
 import { notReady, view } from '../lib/view'
 import { allocColor } from '../lib/colors'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
+import { moneyShort } from '../lib/format'
 import { offDays } from '../lib/holidays-lazy'
 import {
   addYm, distributionAt, monthDates, splitRemainder, today, transferAt, upcomingPayments, ymOf, ymRange,
@@ -76,8 +77,6 @@ function changeDelta(id: string, eff: string) {
   const after = transferAt(store.subscriptions, store.planChanges, store.settings, eff.slice(0, 7))
   return (after.monthlySum + after.yearlyMonthly) - (before.monthlySum + before.yearlyMonthly)
 }
-// Phone bar labels: 10,000 won units, one decimal under 100,000 (spec 007 V-9 b, item 1)
-const short = (v: number) => (v >= 100_000 ? `${Math.round(v / 10_000)}만` : v > 0 ? `${(v / 10_000).toFixed(1).replace(/\.0$/, '')}만` : '0')
 const signed = (n: number) => (n > 0 ? '+' : '') + fmtMoney(n)
 const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c) => (!c.text.trim() ? '내용을 입력해 주세요.' : null))
 </script>
@@ -152,7 +151,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
               <div class="plot" role="img" :aria-label="`앞으로 6개월 구독 월 환산: ${trend.map((b) => `${Number(b.ym.slice(5))}월 ${fmtMoney(b.v)}`).join(', ')}`">
                 <div class="bars">
                   <div v-for="b in trend" :key="b.ym" class="bar">
-                    <span class="bv bv-full">{{ fmtMoney(b.v) }}</span><span class="bv bv-short" aria-hidden="true">{{ short(b.v) }}</span>
+                    <span class="bv bv-full">{{ fmtMoney(b.v) }}</span><span class="bv bv-short" aria-hidden="true">{{ moneyShort(b.v) }}</span>
                     <i :style="{ height: `${Math.max(2, (b.v / trendTop) * 100)}%` }" :class="{ now: b.ym === ym }"></i>
                   </div>
                 </div>
