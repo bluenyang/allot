@@ -17,6 +17,12 @@ approvals:
     words: "일단 푸시 PR"
     rev: 9047091
     note: "범위: 브랜치 feat/redesign 푸시와 PR 생성. 머지·감사 보충·rc.1은 포함하지 않는다. S-17(주말 색)은 리뷰 전, 화면 재확인(V-9 b, V-14 d)은 사용자 대기."
+  - role: user
+    by: BlueNyang
+    at: "2026-11-16"
+    words: "캔버스처럼해서 수정하고, Push, PR, 검증되면 머지까지 진행해."
+    rev: eb8c6ac
+    note: "범위: W-18 뒤 푸시, PR #12 갱신, 검증(게이트·E2E·리뷰) 통과 시 머지. 감사 보충·rc.1은 포함하지 않는다."
 waivers: []
 supersedes: null
 ---
