@@ -3,6 +3,8 @@
 // back at the end of each test (also when it fails). Creates and deletes one extra account (V-6 b).
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { MARK } from './helpers'
+import { monthDay } from '../../src/lib/calc'
+import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 
 async function api(request: APIRequestContext, method: 'GET' | 'PUT' | 'POST' | 'DELETE', path: string, data?: unknown) {
   const base = test.info().project.use.baseURL!
@@ -73,21 +75,28 @@ test('(V-6 b, c) theme: only the preview changes before saving; saved colour sta
   }
 })
 
-test('(V-4 d) a pay day on a Saturday moves to the business day before, and back with "그대로"', async ({ page, request }) => {
+test('(V-4 d) a pay day on a Saturday moves to the exact business day before, and back with "그대로"', async ({ page, request }) => {
   const s0 = await state(request)
   const now = new Date()
-  // The first Saturday of this month that is not in the first two days (so "before" stays in the month).
-  let sat = 3
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  // The first Saturday of this month; with 'before' the expected day is computed by the same rules the
+  // app uses (weekends + the user's holiday sets), then compared exactly.
+  let sat = 1
   while (new Date(now.getFullYear(), now.getMonth(), sat).getDay() !== 6) sat++
+  const around = `${now.getFullYear() - 1}-01-01`
+  const off = new Set(holidaysIn(enabledSets(s0.holidaySets), around, `${now.getFullYear() + 1}-12-31`).map((h) => h.date))
+  const expected = monthDay(ym, sat, 'before', off)
+  const WD = ['일', '월', '화', '수', '목', '금', '토']
+  const md = (iso: string) => { const d = new Date(`${iso}T00:00:00`); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})` }
+  expect(expected.shifted).toBe('before')
   try {
     expect((await api(request, 'PUT', '/api/settings', { ...s0.settings, payDay: sat, dayShift: 'before' })).status).toBe(200)
     await page.goto('/#home')
     const header = page.locator('header.ph')
-    await expect(header).toContainText('(앞당김)')
-    await expect(header).not.toContainText(`월급 ${now.getMonth() + 1}/${sat}(`)
+    await expect(header).toContainText(`월급 ${md(expected.date)} (앞당김)`)
     expect((await api(request, 'PUT', '/api/settings', { ...s0.settings, payDay: sat, dayShift: 'none' })).status).toBe(200)
     await page.reload()
-    await expect(header).toContainText(`월급 ${now.getMonth() + 1}/${sat}(토)`)
+    await expect(header).toContainText(`월급 ${md(expected.nominal)}`)
     await expect(header).not.toContainText('(앞당김)')
   } finally {
     await api(request, 'PUT', '/api/settings', s0.settings)
