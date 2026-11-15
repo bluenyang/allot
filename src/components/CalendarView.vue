@@ -2,7 +2,7 @@
 // Month calendar (spec 007 S-11): FullCalendar draws, our code decides the dates (calendar-events.ts).
 // Loaded only where a calendar is open (defineAsyncComponent), so other pages never fetch it.
 // On a phone the same events show as a list.
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FullCalendar from '@fullcalendar/vue3'
 import type { CalendarOptions, EventInput } from '@fullcalendar/vue3'
 import classicTheme from '@fullcalendar/vue3/themes/classic'
@@ -13,6 +13,7 @@ import '@fullcalendar/vue3/skeleton.css'
 import '@fullcalendar/vue3/themes/classic/theme.css'
 import { KIND_LABEL, calendarEvents, holidayEvents } from '../lib/calendar-events'
 import type { HolidaySet } from '../data/types'
+import { store } from '../lib/store'
 
 // source 'schedule': everything the schedule page shows; 'holidays': only the holidays of `sets` (settings preview).
 const props = defineProps<{ source: 'schedule' | 'holidays'; sets?: HolidaySet[]; initialDate?: string; label?: string }>()
@@ -23,6 +24,15 @@ let mq: MediaQueryList | null = null
 const onMq = () => { narrow.value = !!mq?.matches }
 onMounted(() => { mq = window.matchMedia('(max-width: 759px)'); onMq(); mq.addEventListener('change', onMq) })
 onBeforeUnmount(() => mq?.removeEventListener('change', onMq))
+
+// The pages stay alive (KeepAlive), so a change saved elsewhere — a holiday set turned off, a pay
+// day moved, a subscription added — must redraw the events of the calendar that is already open.
+const cal = ref<InstanceType<typeof FullCalendar> | null>(null)
+watch(
+  () => [store.settings, store.holidaySets, store.subscriptions, store.planChanges, store.preferences],
+  () => cal.value?.getApi().refetchEvents(),
+  { deep: true },
+)
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
@@ -53,7 +63,7 @@ const options = computed<CalendarOptions>(() => ({
 
 <template>
   <div class="cal" :aria-label="label ?? '달력'" role="region">
-    <FullCalendar :key="(narrow ? 'list' : 'grid') + JSON.stringify(sets ?? '')" :options="options">
+    <FullCalendar ref="cal" :key="(narrow ? 'list' : 'grid') + JSON.stringify(sets ?? '')" :options="options">
       <template #eventContent="arg">
         <span class="evc"><b v-if="narrow || arg.event.extendedProps.kind === 'holiday' || arg.event.extendedProps.kind === 'sub' || arg.event.extendedProps.kind === 'change'" class="evk" :class="narrow ? 'ev-' + arg.event.extendedProps.kind : ''">{{ KIND_LABEL[arg.event.extendedProps.kind as keyof typeof KIND_LABEL] }}</b><span class="evt">{{ arg.event.title }}</span></span>
       </template>
