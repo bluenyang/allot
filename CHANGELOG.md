@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.2 — unreleased
+## 0.1.2-rc.1 — 2026-11-16
 
 Login and admin. Intent 006 (`.agents/intent/006_login-admin/`). Redesign and display settings, intent 007 (`.agents/intent/007_redesign/`).
 
@@ -22,14 +22,19 @@ Login and admin. Intent 006 (`.agents/intent/006_login-admin/`). Redesign and di
 - 설정 (per account): 일반 — light/dark/system, date format, amount unit (원·천원·만원), negatives, exchange rate and buffer, pay/transfer/billing days and what to do when one falls on a weekend or holiday; 테마 — primary and accent colours (presets or your own, kept readable at 4.5:1), corners, density. Changes are in the change history and can be reverted.
 - Holidays as rule sets (iCalendar RRULE, Korean lunar dates as `RSCALE=DANGI`, RDATE/EXDATE, substitute holidays). The public holidays of Korea are built in; add your own sets (company days, election days).
 - 일정: a month calendar with the monthly dates, subscription payments, plan changes and holidays (loaded only when opened).
-- 현황: KPI strip, distribution table, the next six months of subscription costs, upcoming payments. 구독: table with status, category and payment-path filters.
+- 현황: KPI strip; the 이번 달 tab shows the distribution, the next six months of subscription costs, upcoming payments, plan changes, upcoming events and the checklist (예정 and 확인할 것 show their own cards). 구독: table with status, category and payment-path filters, a two-line list on phones.
+- Saturdays in blue and Sundays in red on the calendar (also the days of the months around it and the phone list) and on the dashboard payment dates.
+- A light/dark switch in the header; light is the default, dark uses neutral greys.
 
 ### Changed
 - Several accounts are normal now: the seed no longer refuses other accounts, and `--replace-admin` takes the old account's email.
 - `/api/state` answers default settings for an account that has saved none yet (was 409).
 - Development `BETTER_AUTH_URL` should be the computer's LAN address, so the api container reaches Dex.
 - Menu names: 분배 → 월급 분배, 내역 → 변경 내역; 계정 is now 설정 › 로그인·보안 (`/#account` still opens it). The pay days and exchange rate moved from 월급 분배 to 설정 › 일반.
-- Migrations 0018–0019 add the `preference` and `holiday_set` tables (row-level security forced) and `settings.day_shift` (default: no shift, so every month computes as before).
+- Migrations 0018–0020 add the `preference` and `holiday_set` tables (row-level security forced) and `settings.day_shift` (default: no shift, so every month computes as before); 0020 makes light the default theme.
+
+### Fixed
+- The session check (`/api/auth/get-session`) allowed 100 requests a minute per address and the app read a 429 as signed out, so a busy tab could land on the login screen. The limit is 600 a minute, and a 429 now shows a wait note and retries after the time the server gives.
 
 ## 0.1.1 — 2026-11-12
 
