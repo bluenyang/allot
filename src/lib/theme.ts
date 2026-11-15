@@ -47,11 +47,20 @@ export function ensure(fg: string, grounds: string[], min: number, toward: 'dark
   return end
 }
 
-/** A filled colour (button, KPI cell) and the text on it: white or the text colour, whichever passes; else the fill darkens. */
-export function fill(c: string, text: string): { fill: string; ink: string } {
-  if (contrast(WHITE, c) >= 4.5) return { fill: c, ink: WHITE }
-  if (contrast(text, c) >= 4.5) return { fill: c, ink: text }
-  return { fill: ensure(c, [WHITE], 4.5, 'darker'), ink: WHITE }
+/**
+ * A filled colour (button, KPI cell, chart bar) and the text on it. The fill must stand out from the
+ * page ground (3:1, spec 007 S-7, review 1 R11) and its text must read (4.5:1, white or the text
+ * colour). It moves away from the ground — darker in light mode, lighter in dark — until both hold.
+ */
+export function fill(c: string, text: string, ground: string, toward: 'darker' | 'lighter'): { fill: string; ink: string } {
+  const end = toward === 'darker' ? BLACK : WHITE
+  for (let t = 0; t <= 1.0001; t += 0.02) {
+    const f = mix(c, end, t)
+    if (contrast(f, ground) < 3) continue
+    if (contrast(WHITE, f) >= 4.5) return { fill: f, ink: WHITE }
+    if (contrast(text, f) >= 4.5) return { fill: f, ink: text }
+  }
+  return { fill: end, ink: toward === 'darker' ? WHITE : text }
 }
 
 export type Tokens = Record<string, string>
@@ -61,8 +70,9 @@ export function derive(primary: string, accent: string, mode: 'light' | 'dark'):
   const g = GROUND[mode]
   const P = primary.toUpperCase()
   const A = accent.toUpperCase()
-  const p = fill(P, g.text)
-  const a = fill(A, g.text)
+  const dir = mode === 'light' ? 'darker' : 'lighter'
+  const p = fill(P, g.text, g.surface, dir)
+  const a = fill(A, g.text, g.surface, dir)
   if (mode === 'light') {
     const pSoft = mix(P, WHITE, 0.9)
     const aSoft = mix(A, WHITE, 0.88)

@@ -37,6 +37,7 @@ const PAIRS = [
   ['neg-text', 'surface', 4.5], ['neg-text', 'neg-soft', 4.5],
   ['info-text', 'surface', 4.5], ['info-text', 'info-soft', 4.5],
   ['border-strong', 'surface', 1.3],
+  ['primary', 'surface', 3], ['accent', 'surface', 3],
   ...[1, 2, 3, 4, 5, 6].flatMap((i) => [[`c${i}`, 'surface', 3], ['av-ink', `c${i}`, 4.5]]),
 ]
 
