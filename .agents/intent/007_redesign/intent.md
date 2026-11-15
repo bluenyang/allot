@@ -10,6 +10,13 @@ approvals:
     at: "2026-11-15"
     words: "승인"
     rev: e28b0c9
+  - role: user
+    kind: permission
+    by: BlueNyang
+    at: "2026-11-15"
+    words: "일단 푸시 PR"
+    rev: 9047091
+    note: "범위: 브랜치 feat/redesign 푸시와 PR 생성. 머지·감사 보충·rc.1은 포함하지 않는다. S-17(주말 색)은 리뷰 전, 화면 재확인(V-9 b, V-14 d)은 사용자 대기."
 waivers: []
 supersedes: null
 ---
