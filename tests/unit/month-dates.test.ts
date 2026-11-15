@@ -68,3 +68,15 @@ test('monthDates uses the settings and keeps none as before', () => {
   assert.equal(moved.pay.date, '2026-10-23') // 10-25 is a Sunday
   assert.equal(moved.pay.shifted, 'before')
 })
+
+test('review 1 (R5): no business day within the limit → the set day, marked unresolved, never a closed day as a result', () => {
+  const all = new Set<string>()
+  for (let i = 0; i < 500; i++) { const d = new Date(2027, 0, 1 + i); all.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`) }
+  const r = monthDay('2027-01', 1, 'after', all)
+  assert.equal(r.unresolved, true)
+  assert.equal(r.date, r.nominal)
+  assert.equal(r.shifted, null)
+  const eighty = new Set([...all].slice(0, 80))
+  const ok = monthDay('2027-01', 1, 'after', eighty)
+  assert.ok(!eighty.has(ok.date) && ok.unresolved === undefined)
+})

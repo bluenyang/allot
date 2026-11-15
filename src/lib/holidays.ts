@@ -19,7 +19,14 @@ export function parseRule(rrule: string): Map<string, string> {
   return out
 }
 
-const GREGORIAN_KEYS = new Set(['FREQ', 'RSCALE', 'BYMONTH', 'BYMONTHDAY', 'BYDAY', 'BYSETPOS', 'INTERVAL', 'SKIP'])
+// Yearly holidays need no INTERVAL (its result would depend on the start year) and no SKIP (only
+// meaningful with RSCALE, which a Gregorian rule drops): both are refused (review 1, R1/R2).
+const GREGORIAN_KEYS = new Set(['FREQ', 'RSCALE', 'BYMONTH', 'BYMONTHDAY', 'BYDAY', 'BYSETPOS'])
+
+/** The RRULE body the library gets for a Gregorian rule: the same for the check and the computation. */
+const gregorianBody = (r: Map<string, string>) => [...r].filter(([k]) => k !== 'RSCALE').map(([k, v]) => `${k}=${v}`).join(';')
+/** A fixed start, so a rule gives the same dates whatever range is asked (review 1, R2). */
+const DTSTART = 'DTSTART;VALUE=DATE:19000101'
 const DANGI_KEYS = new Set(['FREQ', 'RSCALE', 'BYMONTH', 'BYMONTHDAY'])
 
 /** Why this RRULE body cannot be a holiday rule, or null when it can. */
@@ -41,14 +48,14 @@ export function ruleProblem(rrule: string): string | null {
   // The library accepts some out-of-range values silently (BYMONTH=13 gives no date): check them here.
   const list = (k: string) => (r.get(k) ?? '').split(',').filter(Boolean)
   const intIn = (v: string, lo: number, hi: number) => /^[+-]?\d+$/.test(v) && +v !== 0 && Math.abs(+v) >= lo && Math.abs(+v) <= hi
+  if (!list('BYMONTH').length) return '양력 규칙에는 BYMONTH(1~12)가 있어야 해요.'
   if (list('BYMONTH').some((v) => !/^\d+$/.test(v) || +v < 1 || +v > 12)) return 'BYMONTH는 1~12예요.'
   if (list('BYMONTHDAY').some((v) => !intIn(v, 1, 31))) return 'BYMONTHDAY는 1~31 또는 -1~-31이에요.'
   if (list('BYDAY').some((v) => !/^([+-]?[1-5])?(MO|TU|WE|TH|FR|SA|SU)$/.test(v))) return 'BYDAY는 MO~SU, 몇째 주는 1MO·-1FR처럼 써요.'
   if (list('BYSETPOS').some((v) => !intIn(v, 1, 366))) return 'BYSETPOS 값이 범위를 벗어났어요.'
-  if (r.has('INTERVAL') && !/^[1-9]\d?$/.test(r.get('INTERVAL')!)) return 'INTERVAL은 1~99예요.'
   try {
-    const rule = new RRuleTemporal({ rruleString: `DTSTART;VALUE=DATE:20000101\nRRULE:${[...r].map(([k, v]) => `${k}=${v}`).join(';')}` })
-    // 2000 is a leap year, so 2/29 rules count; four years cover every yearly rule with INTERVAL ≤ 4.
+    const rule = new RRuleTemporal({ rruleString: `${DTSTART}\nRRULE:${gregorianBody(r)}` })
+    // 2000 is a leap year, so 2/29 rules count.
     if (!rule.between(new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2003, 11, 31)), true).length) return '이 규칙으로는 날짜가 나오지 않아요.'
   } catch (e) {
     return `규칙을 읽지 못했어요: ${(e as Error).message}`
@@ -99,8 +106,7 @@ export function ruleDates(rule: HolidayRule, from: string, to: string): string[]
         if (d && d >= from && d <= to) out.add(d)
       }
     } else {
-      const body = [...r].filter(([k]) => k !== 'RSCALE').map(([k, v]) => `${k}=${v}`).join(';')
-      const rr = new RRuleTemporal({ rruleString: `DTSTART;VALUE=DATE:${String(yearOf(from) - 1).padStart(4, '0')}0101\nRRULE:${body}` })
+      const rr = new RRuleTemporal({ rruleString: `${DTSTART}\nRRULE:${gregorianBody(r)}` })
       const [fy, fm, fd] = from.split('-').map(Number) as [number, number, number]
       const [ty, tm, td] = to.split('-').map(Number) as [number, number, number]
       for (const z of rr.between(new Date(Date.UTC(fy, fm - 1, fd)), new Date(Date.UTC(ty, tm - 1, td, 23, 59)), true)) {
@@ -138,9 +144,10 @@ export function enabledSets(rows: HolidaySet[]): { id: string; name: string; rul
  * holiday; the substitutes are the first days after the block that are neither weekend nor holiday.
  */
 export function holidaysIn(sets: { id: string; rules: HolidayRule[] }[], from: string, to: string): Holiday[] {
-  // Compute a margin around the range: a block can start before `from`, a substitute land after `to`.
-  const lo = addDays(from, -14)
-  const hi = addDays(to, 14)
+  // Whole years around the range: a block can start well before `from` and its substitute land after
+  // `to`, and the answer for a day must not depend on the range asked (review 1, R4).
+  const lo = `${yearOf(from) - 1}-01-01`
+  const hi = `${yearOf(to) + 1}-12-31`
   const base: (Holiday & { rule: HolidayRule })[] = []
   for (const s of sets) for (const rule of s.rules) {
     for (const date of ruleDates(rule, lo, hi)) base.push({ date, name: rule.name, setId: s.id, substitute: false, rule })

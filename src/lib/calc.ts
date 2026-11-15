@@ -35,6 +35,8 @@ export interface MonthDate {
   nominal: string // YYYY-MM-DD: the set day, or the month's last day when the month is shorter
   date: string // after the weekend/holiday shift
   shifted: Exclude<DayShift, 'none'> | null
+  /** No business day within the search limit (a year of holidays): `date` is the set day, unshifted. */
+  unresolved?: true
 }
 
 /**
@@ -50,7 +52,9 @@ export function monthDay(ym: string, day: number, shift: DayShift, off: Readonly
   let d = nominal
   if (shift !== 'none') {
     const step = shift === 'before' ? -1 : 1
-    for (let i = 0; closed(d) && i < 60; i++) d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + step)
+    for (let i = 0; closed(d) && i < 400; i++) d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + step)
+    // Never hand back a closed day as the result (review 1, R5).
+    if (closed(d)) return { nominal: ymd(nominal), date: ymd(nominal), shifted: null, unresolved: true }
   }
   const moved = ymd(d) !== ymd(nominal)
   return { nominal: ymd(nominal), date: ymd(d), shifted: moved && shift !== 'none' ? shift : null }

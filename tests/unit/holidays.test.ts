@@ -95,8 +95,35 @@ test('(c) rule check: refused and accepted rules', () => {
     'FREQ=MONTHLY;BYMONTHDAY=1', 'FREQ=YEARLY;BYMONTH=13;BYMONTHDAY=1', 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=31',
     'RSCALE=DANGI;FREQ=YEARLY;BYMONTH=5L;BYMONTHDAY=1', 'RSCALE=DANGI;FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=31',
     'RSCALE=DANGI;FREQ=YEARLY;BYMONTH=1;BYDAY=MO', 'FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=1;COUNT=3',
+    // review 1: SKIP and INTERVAL (R1, R2), a Gregorian rule without BYMONTH
+    'FREQ=YEARLY;RSCALE=GREGORIAN;BYMONTH=2;BYMONTHDAY=29;SKIP=OMIT', 'FREQ=YEARLY;INTERVAL=2;BYMONTH=7;BYMONTHDAY=17',
+    'FREQ=YEARLY;BYMONTHDAY=1',
   ]) assert.notEqual(ruleProblem(bad), null, bad)
+  assert.equal(ruleProblem('FREQ=YEARLY;RSCALE=GREGORIAN;BYMONTH=2;BYMONTHDAY=29'), null)
   for (const r of KR_RULES) assert.equal(ruleProblem(r.rrule!), null, r.name)
   assert.equal(ruleProblem('FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29'), null)
   assert.equal(ruleProblem('FREQ=YEARLY;BYMONTH=5;BYDAY=-1MO'), null)
+})
+
+test('review 1: every rule the check accepts also computes, and gives the same days for any range', () => {
+  const rules = [...KR_RULES.map((r) => r.rrule!), 'FREQ=YEARLY;RSCALE=GREGORIAN;BYMONTH=2;BYMONTHDAY=29', 'FREQ=YEARLY;BYMONTH=5;BYDAY=-1MO', 'FREQ=YEARLY;BYMONTH=11;BYDAY=TH;BYSETPOS=4']
+  for (const rrule of rules) {
+    assert.equal(ruleProblem(rrule), null, rrule)
+    const wide = ruleDates({ name: 'x', rrule }, '2020-01-01', '2032-12-31')
+    for (const y of [2026, 2027, 2028]) {
+      assert.deepEqual(ruleDates({ name: 'x', rrule }, `${y}-01-01`, `${y}-12-31`), wide.filter((d) => d.startsWith(`${y}-`)), `${rrule} ${y}`)
+    }
+  }
+})
+
+test('review 1 (R4): a long user block gets its substitute whatever range is asked', () => {
+  const long = Array.from({ length: 22 }, (_, i) => `2027-01-${String(4 + i).padStart(2, '0')}`)
+  const sets = [{ id: 'mine', rules: [
+    { name: '일요일 휴일', rdate: ['2027-01-03'], substitute: { on: ['SU' as const] } },
+    { name: '긴 휴가', rdate: long, substitute: { on: ['SU' as const] } },
+  ] }]
+  const month = holidaysIn(sets, '2027-01-01', '2027-01-31').filter((h) => h.substitute).map((h) => h.date)
+  const day = holidaysIn(sets, '2027-01-26', '2027-01-26').filter((h) => h.substitute).map((h) => h.date)
+  assert.ok(month.length > 0)
+  assert.deepEqual(day, month.filter((d) => d === '2027-01-26'))
 })
