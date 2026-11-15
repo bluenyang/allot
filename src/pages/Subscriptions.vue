@@ -203,8 +203,8 @@ function describe(c: PlanChange) {
     <!-- 목록 -->
     <div v-if="tab === 'list'">
       <section class="card">
-        <div class="stabs" role="tablist" aria-label="상태별 구독">
-          <button v-for="t in STATUS_TABS" :key="t.id" type="button" role="tab" :aria-selected="status === t.id ? 'true' : 'false'" @click="status = t.id">{{ t.label }} <span class="cnt">{{ t.count }}</span></button>
+        <div class="stabs" role="group" aria-label="상태별 구독">
+          <button v-for="t in STATUS_TABS" :key="t.id" type="button" :aria-pressed="status === t.id" @click="status = t.id">{{ t.label }} <span class="cnt">{{ t.count }}</span></button>
         </div>
         <div class="frow">
           <label class="fsearch"><Icon name="search" /><input v-model="q" type="search" aria-label="구독 검색" placeholder="서비스 이름 검색"></label>
@@ -390,12 +390,13 @@ function describe(c: PlanChange) {
 .strip.slim .v{font-size:22px}
 .stabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--border);overflow-x:auto}
 .stabs button{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 14px;border:0;border-radius:var(--r-ctl) var(--r-ctl) 0 0;background:transparent;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
-.stabs button[aria-selected="true"]{background:var(--primary-soft);color:var(--primary-text);box-shadow:inset 0 -2px 0 var(--primary-text)}
+.stabs button[aria-pressed="true"]{background:var(--primary-soft);color:var(--primary-text);box-shadow:inset 0 -2px 0 var(--primary-text)}
 .stabs .cnt{font-size:11px;padding:0 6px;border-radius:var(--r-badge);background:var(--fill);color:var(--muted);font-variant-numeric:tabular-nums}
-.stabs button[aria-selected="true"] .cnt{background:var(--primary);color:var(--primary-ink)}
+.stabs button[aria-pressed="true"] .cnt{background:var(--primary);color:var(--primary-ink)}
 .frow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border)}
 .frow .ymbar{margin:0}
 .fsearch{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);flex:1 1 220px;max-width:320px;color:var(--subtle)}
+.fsearch:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
 .fsearch svg{width:16px;height:16px;flex:none}
 .fsearch input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:13px}
 .fsel{width:auto;height:34px;font-size:13px}

@@ -47,7 +47,7 @@ test('(V-6 b, c) theme: only the preview changes before saving; saved colour sta
   try {
     await page.goto('/#settings/theme')
     const before = await cssVar(page, '--primary')
-    await page.getByRole('radio', { name: '파랑' }).click()
+    await page.getByRole('button', { name: '파랑', exact: true }).click()
     // (c) the preview box takes the colour, the page does not
     await expect.poll(() => page.locator('.box').evaluate((e) => getComputedStyle(e).getPropertyValue('--primary').trim().toUpperCase())).toBe('#1F5F8B')
     expect(await cssVar(page, '--primary')).toBe(before)
@@ -245,10 +245,23 @@ test('(V-14 a, b) a new account starts light even on a dark OS; the header switc
     await expect.poll(bg).toBe('rgb(17, 19, 21)')
     // 선호 테마 in settings applies without a save button
     await g.goto('/#settings/general')
-    await g.getByRole('radio', { name: '라이트' }).click()
+    await g.getByRole('group', { name: '선호 테마' }).getByRole('button', { name: '라이트' }).click()
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
     await g.reload()
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
+    // 시스템: follows the OS, also when the OS changes while the page is open (review 11)
+    await g.goto('/#settings/general')
+    await g.getByRole('group', { name: '선호 테마' }).getByRole('button', { name: '시스템' }).click()
+    await expect.poll(bg).toBe('rgb(17, 19, 21)') // this context's OS is dark
+    await g.emulateMedia({ colorScheme: 'light' })
+    await expect.poll(bg).toBe('rgb(245, 246, 245)')
+    await expect(g.getByRole('button', { name: '다크 모드로 바꾸기' })).toBeVisible()
+    await g.emulateMedia({ colorScheme: 'dark' })
+    await expect.poll(bg).toBe('rgb(17, 19, 21)')
+    await expect(g.getByRole('button', { name: '라이트 모드로 바꾸기' })).toBeVisible()
+    await g.reload()
+    await expect.poll(bg).toBe('rgb(17, 19, 21)')
+    expect((await (await g.request.get('/api/state')).json()).preferences.themeMode).toBe('system')
   } finally {
     await ctx.close()
     const u = (await api(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users.find((x: { email: string }) => x.email === email)

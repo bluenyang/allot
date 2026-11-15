@@ -86,8 +86,8 @@ function reset() {
       <div class="srow">
         <div class="lt"><h2 id="t-p">주 색상</h2><p>버튼, 선택된 메뉴와 탭, 강조 숫자</p></div>
         <div class="rt col">
-          <div class="sw" role="radiogroup" aria-labelledby="t-p">
-            <button v-for="[h, label] in PRIMARY_PRESETS" :key="h" type="button" role="radio" :aria-checked="primary === h" :aria-label="label" @click="pickPrimary(h); custom = ''">
+          <div class="sw" role="group" aria-labelledby="t-p">
+            <button v-for="[h, label] in PRIMARY_PRESETS" :key="h" type="button" :aria-pressed="primary === h" :aria-label="label" @click="pickPrimary(h); custom = ''">
               <i :style="{ background: h }"><svg v-if="primary === h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg></i><span>{{ label }}</span></button>
           </div>
           <label class="cust">직접 입력
@@ -99,8 +99,8 @@ function reset() {
       <div class="srow">
         <div class="lt"><h2 id="t-a">포인트 색상</h2><p>곧 다가오는 결제, 확인 필요</p></div>
         <div class="rt">
-          <div class="sw" role="radiogroup" aria-labelledby="t-a">
-            <button v-for="[h, label] in ACCENT_PRESETS" :key="h" type="button" role="radio" :aria-checked="accent === h" :aria-label="label" @click="pickAccent(h)">
+          <div class="sw" role="group" aria-labelledby="t-a">
+            <button v-for="[h, label] in ACCENT_PRESETS" :key="h" type="button" :aria-pressed="accent === h" :aria-label="label" @click="pickAccent(h)">
               <i :style="{ background: h }"><svg v-if="accent === h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg></i><span>{{ label }}</span></button>
           </div>
         </div>
@@ -170,7 +170,7 @@ function reset() {
 .rt.col{flex-direction:column}
 .sw{display:flex;flex-wrap:wrap;gap:10px}
 .sw button{display:flex;flex-direction:column;align-items:center;gap:6px;width:64px;padding:6px 0;border:1px solid var(--border);border-radius:var(--r-ctl);background:var(--surface);cursor:pointer}
-.sw button[aria-checked="true"]{border-color:var(--text)}
+.sw button[aria-pressed="true"]{border-color:var(--text)}
 .sw i{width:36px;height:28px;border-radius:var(--r-badge);display:flex;align-items:center;justify-content:center;color:#fff}
 .sw i svg{width:16px;height:16px}
 .sw span{font-size:11px;color:var(--muted)}

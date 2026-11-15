@@ -149,8 +149,8 @@ const addRow = () => rows.value.push(emptyRow())
         </div>
         <div class="srow">
           <div class="lt"><span id="g-theme-l" class="lab">선호 테마</span><p>누르면 바로 적용돼요. 색상과 모서리는 테마 탭에서 정해요</p></div>
-          <div class="rt tcards" role="radiogroup" aria-labelledby="g-theme-l">
-            <button v-for="t in THEME_CARDS" :key="t.id" type="button" role="radio" :aria-checked="store.preferences.themeMode === t.id" :aria-label="t.label" @click="pickTheme(t.id)">
+          <div class="rt tcards" role="group" aria-labelledby="g-theme-l">
+            <button v-for="t in THEME_CARDS" :key="t.id" type="button" :aria-pressed="store.preferences.themeMode === t.id" :aria-label="t.label" @click="pickTheme(t.id)">
               <span class="mini" aria-hidden="true">
                 <span v-for="(side, i) in t.sides" :key="i" class="half" :style="{ background: side.bg }"><i :style="{ background: side.ink }"></i><em :style="{ background: side.card, borderColor: side.line }"></em><i class="p"></i></span>
               </span>
@@ -328,7 +328,7 @@ const addRow = () => rows.value.push(emptyRow())
 .seg .red{color:var(--neg-text)}
 .tcards{gap:10px}
 .tcards button{width:118px;padding:8px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);cursor:pointer;display:flex;flex-direction:column;gap:8px;text-align:left;color:var(--text)}
-.tcards button[aria-checked="true"]{border:2px solid var(--primary-text);padding:7px}
+.tcards button[aria-pressed="true"]{border:2px solid var(--primary-text);padding:7px}
 .mini{height:64px;border-radius:var(--r-badge);border:1px solid var(--border);overflow:hidden;display:flex}
 .half{flex:1;padding:6px;display:flex;flex-direction:column;gap:4px}
 .half i{display:block;height:6px;width:60%;border-radius:1px}
@@ -337,9 +337,9 @@ const addRow = () => rows.value.push(emptyRow())
 .tl{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
 .ring{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--border-strong);display:flex;align-items:center;justify-content:center}
 .dotr{width:6px;height:6px;border-radius:50%}
-.tcards button[aria-checked="true"] .tl{color:var(--primary-text)}
-.tcards button[aria-checked="true"] .ring{border-color:var(--primary-text)}
-.tcards button[aria-checked="true"] .dotr{background:var(--primary-text)}
+.tcards button[aria-pressed="true"] .tl{color:var(--primary-text)}
+.tcards button[aria-pressed="true"] .ring{border-color:var(--primary-text)}
+.tcards button[aria-pressed="true"] .dotr{background:var(--primary-text)}
 .tmsg{flex-basis:100%}
 .savebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid var(--border);background:var(--surface-2);border-radius:0 0 var(--r-card) var(--r-card)}
 .grow{flex-grow:1}

@@ -55,7 +55,6 @@ const trendMax = computed(() => Math.max(1, ...trend.value.map((x) => x.v)))
 // The y axis as in the design: three equal steps to a round top (만원).
 const trendTop = computed(() => { const step = Math.max(1, Math.ceil(trendMax.value / 30_000)) * 10_000; return step * 3 })
 const ticks = computed(() => [3, 2, 1, 0].map((i) => (i ? `${(trendTop.value / 3 * i) / 10_000}만` : '0')))
-const shortMan = (v: number) => (v / 10_000).toFixed(1)
 
 const tab = ref('month')
 const horizon = computed(() => addYm(ym.value, 9))
@@ -82,6 +81,13 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
 
 <template>
   <section class="page-gap">
+    <!-- On a phone the header bar is hidden: the month switch and the phase sit here (review 11). -->
+    <div class="mnav" aria-label="현황 달">
+      <button class="btn icon" type="button" aria-label="이전 달" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
+      <b>{{ year }}. {{ String(month).padStart(2, '0') }}</b>
+      <button class="btn icon" type="button" aria-label="다음 달" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
+      <span class="pill tag">{{ dist.phase ? `${dist.phase.label} · ${dist.phase.name}` : '구간 밖' }}</span>
+    </div>
     <PageHeader :title="`${year}년 ${month}월 현황`">
       <template #desc>
         월급 <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="note(dates.pay)">{{ note(dates.pay) }}</small></span>
@@ -131,6 +137,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
                 </tbody>
               </table>
             </div>
+            <p v-if="split.length" class="split small subtle">{{ dist.remainderTarget?.name }} 나누기: {{ split.map((x) => `${x.name} ${fmtMoney(x.amount)}`).join(' · ') }}</p>
           </section>
 
           <section class="card">
@@ -140,7 +147,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
               <div class="plot" role="img" :aria-label="`앞으로 6개월 구독 월 환산: ${trend.map((b) => `${Number(b.ym.slice(5))}월 ${fmtMoney(b.v)}`).join(', ')}`">
                 <div class="bars">
                   <div v-for="b in trend" :key="b.ym" class="bar">
-                    <span class="bv">{{ shortMan(b.v) }}</span>
+                    <span class="bv">{{ fmtMoney(b.v) }}</span>
                     <i :style="{ height: `${Math.max(2, (b.v / trendTop) * 100)}%` }" :class="{ now: b.ym === ym }"></i>
                   </div>
                 </div>
@@ -170,7 +177,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
           <div class="card-hd"><h2>예약된 플랜 전환</h2><span class="aux">월 환산 차액</span></div>
           <ul class="items">
             <li v-for="c in nextChanges" :key="c.id">
-              <span class="when">{{ c.effective!.slice(2, 7).replace('-', '.') }}</span>
+              <span class="when wide">{{ fmtDate(c.effective!) }}</span>
               <span class="pn"><b>{{ subName(c.subId) }}</b><span>{{ c.note }}</span></span>
               <b class="num" :class="changeDelta(c.id, c.effective!) > 0 ? 'up' : 'down'">{{ signed(changeDelta(c.id, c.effective!)) }}</b>
             </li>
@@ -247,6 +254,12 @@ tr.sum td.n{font-weight:700}
 .pa span{font-size:12px;font-weight:600;color:var(--subtle)}
 .pa span.soon{color:var(--accent-text)}
 .when{width:52px;flex:none;font:12px var(--f-mono);color:var(--muted)}
+.when.wide{width:auto;min-width:84px}
+.split{margin:0;padding:12px 18px;border-top:1px solid var(--divider)}
+.mnav{display:none;align-items:center;gap:6px}
+.mnav b{padding:0 6px;font-variant-numeric:tabular-nums}
+.mnav .btn{width:32px;height:32px}
+@media (max-width:760px){.mnav{display:flex}}
 .grow{flex-grow:1}
 .items > li.dim{opacity:.6}
 .checks{max-width:760px}

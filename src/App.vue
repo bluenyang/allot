@@ -181,6 +181,7 @@ const REPO = 'https://github.com/bluenyang/allot'
 .search{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface-2);width:300px;max-width:100%;color:var(--subtle)}
 .search svg{width:16px;height:16px;flex:none}
 .search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text)}
+.search:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
 .search kbd{font:11px var(--f-mono);border:1px solid var(--border);border-radius:var(--r-badge);padding:0 5px;background:var(--surface)}
 .tb{width:36px;height:36px;position:relative;color:var(--muted)}
 .tb svg{width:18px;height:18px}
