@@ -160,3 +160,14 @@ test('review 3: substitutes pushed week after week by the previous block are the
   }
   assert.ok(wide.length > 52)
 })
+
+test('review 4: no answer depends on earlier questions; results are copies', () => {
+  const sets = [{ id: 'r4', rules: [{ name: 'Sunday', rdate: ['1989-12-31', '2026-03-01'], substitute: { on: ['SU' as const] } }] }]
+  const first = holidaysIn(sets, '1990-01-01', '1990-01-01')
+  holidaysIn(sets, '1989-12-31', '1990-01-01') // an earlier question
+  assert.deepEqual(holidaysIn(sets, '1990-01-01', '1990-01-01'), first)
+  assert.deepEqual(holidaysIn(sets, '1989-01-01', '1989-12-31'), [], 'nothing before 1990')
+  const got = holidaysIn(sets, '2026-03-01', '2026-03-02')
+  got[0]!.name = 'changed'
+  assert.equal(holidaysIn(sets, '2026-03-01', '2026-03-01')[0]!.name, 'Sunday')
+})

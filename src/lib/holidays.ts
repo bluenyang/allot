@@ -147,8 +147,9 @@ export function enabledSets(rows: HolidaySet[]): { id: string; name: string; rul
  *
  * Substitutes take days in date order, so one block's choice can push the next one's, week after
  * week (review 3). The answer for a day therefore must not depend on where the computation starts:
- * it always starts at EPOCH (or earlier for an earlier question) and runs at least to HORIZON, and
- * the result is kept per set of rules, so the work is done once.
+ * it always starts at EPOCH and runs at least to HORIZON, and the result is kept per set of rules,
+ * so the work is done once. Holidays exist from EPOCH on: rules and dates before it are not used,
+ * and a question about earlier days gets nothing (review 4).
  */
 export const MAX_RUN = 31
 const EPOCH = '1990-01-01'
@@ -157,17 +158,16 @@ const cache = new Map<string, { lo: string; hi: string; list: Holiday[] }>()
 
 export function holidaysIn(sets: { id: string; rules: HolidayRule[] }[], from: string, to: string): Holiday[] {
   const key = JSON.stringify(sets.map((s) => [s.id, s.rules]))
-  const needLo = from < EPOCH ? addDays(from, -4 * MAX_RUN) : EPOCH
   const needHi = addDays(to, 2 * MAX_RUN) > HORIZON ? addDays(to, 2 * MAX_RUN) : HORIZON
   let hit = cache.get(key)
-  if (!hit || hit.lo > needLo || hit.hi < needHi) {
-    const lo = hit && hit.lo < needLo ? hit.lo : needLo
-    const hi = hit && hit.hi > needHi ? hit.hi : needHi
-    hit = { lo, hi, list: computeHolidays(sets, lo, hi) }
+  if (!hit || hit.hi < needHi) {
+    // Only the end grows: later days never change what came before (substitutes move forward only).
+    hit = { lo: EPOCH, hi: needHi, list: computeHolidays(sets, EPOCH, needHi) }
     if (cache.size >= 16) cache.delete(cache.keys().next().value!)
     cache.set(key, hit)
   }
-  return hit.list.filter((x) => x.date >= from && x.date <= to)
+  // Copies: a caller changing what it got must not change the cache (review 4).
+  return hit.list.filter((x) => x.date >= from && x.date <= to).map((x) => ({ ...x }))
 }
 
 function computeHolidays(sets: { id: string; rules: HolidayRule[] }[], lo: string, hi: string): Holiday[] {
