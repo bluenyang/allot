@@ -137,6 +137,6 @@ const REPO = 'https://github.com/bluenyang/allot'
 .foot-bar nav{display:flex;gap:14px;flex-wrap:wrap}
 .foot-bar a{color:var(--muted)}
 .foot-bar .where{margin-left:auto}
-@media (min-width:900px){.foot-bar{padding:14px 32px}}
-@media (max-width:899px){.col .main{padding-bottom:16px}.foot-bar .where{margin-left:0}}
+@media (min-width:761px){.foot-bar{padding:14px 32px}}
+@media (max-width:760px){.col .main{padding-bottom:16px}.foot-bar .where{margin-left:0}}
 </style>

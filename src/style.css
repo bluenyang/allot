@@ -71,7 +71,7 @@ button,input,select,textarea{font:inherit}
 .botnav a svg{width:22px;height:22px}
 .botnav a[aria-current="true"]{color:var(--primary-text);font-weight:600}
 
-@media (min-width:900px){
+@media (min-width:761px){ /* phone = up to 760px (spec 007 shell) */
   .app{display:grid;grid-template-columns:240px minmax(0,1fr)}
   .side{display:flex;flex-direction:column;gap:20px;position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--surface);border-right:1px solid var(--border);padding:calc(18px + env(safe-area-inset-top,0px)) 14px 18px max(14px,env(safe-area-inset-left,0px))}
   .side .brand{display:flex;align-items:center;gap:10px;padding:2px 6px 10px;border-bottom:1px solid var(--border)}
