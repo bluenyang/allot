@@ -59,12 +59,12 @@ const col = (table: PgTable, k: string) => (table as unknown as Record<string, P
 
 /**
  * The key of a row in its table, without the owner (the owner is the user doing the request):
- * id, or phaseId+targetId (phase_amount), or nothing for the one-per-user rows (settings, living).
+ * id, or phaseId+targetId (phase_amount), or nothing for the one-per-user rows (settings, living, preference).
  * So history keeps pointing at the right row when data moves to another account.
  */
 export function keyOf(table: PgTable, row: Row): RowKey {
   if (table === t.phaseAmount) return { phaseId: String(row.phaseId), targetId: String(row.targetId) }
-  if (table === t.settings || table === t.living) return {}
+  if (table === t.settings || table === t.living || table === t.preference) return {}
   return { id: String(row.id) }
 }
 
@@ -91,7 +91,7 @@ export class RuleBroken extends Error {}
  * settings/living row cannot be locked by FOR UPDATE; the advisory lock covers it).
  */
 async function lockAll(q: Db, uid: string) {
-  for (const name of ['phase', 'allocation_target', 'settings', 'living']) await lockFor(q, name, uid)
+  for (const name of ['phase', 'allocation_target', 'settings', 'living', 'preference']) await lockFor(q, name, uid)
 }
 
 /**

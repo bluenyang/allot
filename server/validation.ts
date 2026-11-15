@@ -1,5 +1,6 @@
 // Request bodies, one schema per resource. The same rules as the UI editors.
 import { z } from 'zod'
+import { ruleProblem } from '../src/lib/holidays'
 
 /** A real calendar date (rejects 2031-02-30), YYYY-MM-DD. */
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD').refine((s) => {
@@ -28,6 +29,49 @@ export const settings = z.object({
   transferDay: day,
   billingDay: day,
   subRound: z.number().int().positive().max(INT_MAX),
+  // Optional so a client that does not know it keeps the saved value (spec 007 S-10).
+  dayShift: z.enum(['none', 'before', 'after']).optional(),
+})
+
+// ── Display settings and holiday sets (spec 007 S-7, S-8, S-9) ──
+const hex = z.string().regex(/^#[0-9A-Fa-f]{6}$/, '색은 #RRGGBB 형식이에요.').transform((x) => x.toUpperCase())
+
+export const preferences = z.object({
+  themeMode: z.enum(['system', 'light', 'dark']),
+  primary: hex.nullable(),
+  accent: hex.nullable(),
+  radius: z.enum(['sharp', 'base', 'soft']),
+  density: z.enum(['base', 'compact']),
+  dateFormat: z.enum(['iso', 'dot', 'us']),
+  amountUnit: z.enum(['won', 'thousand', 'man']),
+  negative: z.enum(['minus', 'paren', 'red']),
+}).strict()
+
+const holidayRule = z.object({
+  name: text.min(1, '공휴일 이름을 입력해 주세요.').max(40),
+  rrule: z.string().trim().min(1).max(200).superRefine((r, ctx) => {
+    const problem = ruleProblem(r)
+    if (problem) ctx.addIssue({ code: 'custom', message: problem })
+  }).optional(),
+  rdate: z.array(date).max(100).optional(),
+  exdate: z.array(date).max(100).optional(),
+  substitute: z.object({
+    on: z.array(z.enum(['SA', 'SU'])).min(1).max(2),
+    since: z.number().int().min(1900).max(2200).optional(),
+  }).strict().optional(),
+}).strict().refine((x) => !!x.rrule || !!x.rdate?.length, '반복 규칙(RRULE)이나 날짜(RDATE) 중 하나는 있어야 해요.')
+
+export const BUILTIN_HOLIDAY_SETS = ['kr'] as const
+
+export const holidaySet = z.object({
+  name: text.min(1, '세트 이름을 입력해 주세요.').max(40),
+  enabled: z.boolean(),
+  builtin: z.enum(BUILTIN_HOLIDAY_SETS).nullable(),
+  rules: z.array(holidayRule).max(100, '규칙은 100개까지예요.'),
+}).strict().superRefine((x, ctx) => {
+  // A built-in set's rules live in code; a user's own set needs at least one rule.
+  if (x.builtin && x.rules.length) ctx.addIssue({ code: 'custom', path: ['rules'], message: '기본 세트의 규칙은 바꿀 수 없어요.' })
+  if (!x.builtin && !x.rules.length) ctx.addIssue({ code: 'custom', path: ['rules'], message: '규칙을 하나 이상 넣어 주세요.' })
 })
 
 export const living = z.object({ food: won, transit: won, allowance: won })

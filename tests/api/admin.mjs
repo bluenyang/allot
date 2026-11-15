@@ -131,6 +131,10 @@ ok(badRoleName.status === 400, `set-role owner → ${badRoleName.status} (want 4
 const uSettings = await U('PUT', '/api/settings', { netPay: 1000000, fxRate: 1400, fxBuffer: 3, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10000 })
 const uSub = await U('POST', '/api/subscriptions', { name: 'V8-sub', category: 'tool', plan: 'p', amount: 1, currency: 'USD', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false })
 ok(uSettings.status === 200 && (uSub.status === 200 || uSub.status === 201), `U writes data: settings ${uSettings.status}, subscription ${uSub.status}`)
+// spec 007 V-5 (d): display settings and a holiday set are removed with the rest
+const uPref = await U('PUT', '/api/preferences', { themeMode: 'dark', primary: '#1F5F8B', accent: null, radius: 'base', density: 'base', dateFormat: 'iso', amountUnit: 'won', negative: 'minus' })
+const uSet = await U('POST', '/api/holiday-sets', { name: 'V8-set', enabled: true, builtin: null, rules: [{ name: 'x', rdate: ['2031-01-02'] }] })
+ok(uPref.status === 200 && uSet.status === 201, `U writes preferences ${uPref.status}, holiday set ${uSet.status}`)
 // V-7 (d): the admin's own /api/state never holds U's rows
 const aState = await A('GET', '/api/state')
 ok(aState.status === 200 && !aState.text.includes('V8-sub') && !aState.text.includes(uSub.json?.id ?? 'no-id') && aState.json?.settings?.netPay !== 1000000,

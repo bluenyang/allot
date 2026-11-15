@@ -6,7 +6,7 @@
 // `seq` keeps insertion order for lists.
 import { sql } from 'drizzle-orm'
 import { bigint, boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgEnum, pgPolicy, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, type PgColumn } from 'drizzle-orm/pg-core'
-import type { Plan } from '../../src/data/types'
+import type { HolidayRule, Plan } from '../../src/data/types'
 import { user } from './auth-schema'
 
 export const currency = pgEnum('currency', ['KRW', 'USD'])
@@ -45,7 +45,44 @@ export const settings = pgTable('settings', {
   transferDay: smallint('transfer_day').notNull(),
   billingDay: smallint('billing_day').notNull(),
   subRound: integer('sub_round').notNull().default(10_000),
+  /** Monthly dates on a weekend or holiday: 'none' keeps them, 'before'/'after' move to a business day (spec 007 S-10). */
+  dayShift: text('day_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
 }, (t) => [userScoped(t.userId)])
+
+/**
+ * Display settings and theme, one row per user (spec 007 S-7, S-8). Text columns checked by zod,
+ * so a new choice needs no enum migration. Null colours mean the default palette.
+ */
+export const preference = pgTable('preference', {
+  userId: owner().primaryKey(),
+  themeMode: text('theme_mode').$type<'system' | 'light' | 'dark'>().notNull().default('system'),
+  primary: text('primary'),
+  accent: text('accent'),
+  radius: text('radius').$type<'sharp' | 'base' | 'soft'>().notNull().default('base'),
+  density: text('density').$type<'base' | 'compact'>().notNull().default('base'),
+  dateFormat: text('date_format').$type<'iso' | 'dot' | 'us'>().notNull().default('iso'),
+  amountUnit: text('amount_unit').$type<'won' | 'thousand' | 'man'>().notNull().default('won'),
+  negative: text('negative').$type<'minus' | 'paren' | 'red'>().notNull().default('minus'),
+}, (t) => [userScoped(t.userId)])
+
+/**
+ * Holiday rule sets (spec 007 S-9). A built-in set ('kr') keeps its rules in code
+ * (src/data/holidays-kr.ts) and only its on/off here; a user's own set keeps its rules (RRULE,
+ * RDATE, EXDATE, substitute rule) in `rules`.
+ */
+export const holidaySet = pgTable('holiday_set', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  name: text('name').notNull(),
+  enabled: boolean('enabled').notNull().default(true),
+  builtin: text('builtin'),
+  rules: jsonb('rules').$type<HolidayRule[]>().notNull().default([]),
+}, (t) => [
+  unique('holiday_set_user_id_id').on(t.userId, t.id),
+  uniqueIndex('holiday_set_user_builtin').on(t.userId, t.builtin).where(sql`${t.builtin} is not null`),
+  userScoped(t.userId),
+])
 
 export const living = pgTable('living', {
   userId: owner().primaryKey(),

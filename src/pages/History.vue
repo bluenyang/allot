@@ -29,6 +29,7 @@ const TABLE: Record<string, string> = {
   settings: '설정', living: '생활비', subscription: '구독', plan_change: '요금 변경', phase: '구간',
   plan_event: '일정', check_item: '체크리스트', bank_account: '통장', debt: '부채',
   allocation_target: '분배 대상', phase_amount: '구간 금액', remainder_split: '나머지 배분',
+  preference: '표시 설정', holiday_set: '공휴일 세트',
 }
 const OP = { insert: '추가', update: '수정', delete: '삭제' } as const
 const HIDDEN = new Set(['userId', 'seq', 'id'])

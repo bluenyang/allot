@@ -3,7 +3,7 @@
 // (a client never sends it). Each request runs in one transaction as that user, so the
 // row-level security policies check the same thing again in the database.
 //   GET    /api/state                 everything the app shows, lists in insertion order
-//   PUT    /api/settings | /api/living  the single-row records
+//   PUT    /api/settings | /api/living | /api/preferences  the single-row records
 //   POST   /api/<resource>            create (server assigns the id)
 //   PUT    /api/<resource>/:id        replace
 //   DELETE /api/<resource>/:id
@@ -20,7 +20,7 @@ import type { Db } from './db/client'
 import { asUser, lockFor } from './db/scope'
 import * as t from './db/schema'
 import * as v from './validation'
-import { DEFAULT_LIVING, DEFAULT_SETTINGS } from '../src/data/defaults'
+import { DEFAULT_LIVING, DEFAULT_PREFERENCES, DEFAULT_SETTINGS } from '../src/data/defaults'
 
 type ListTable = PgTable & { id: PgColumn; seq: PgColumn; userId: PgColumn }
 
@@ -189,7 +189,7 @@ export const routes = new Hono<AppEnv>()
 routes.get('/state', async (c) => {
   const uid = uidOf(c)
   // One transaction (one connection) as the user; the queries run one after another on it.
-  const [[settings], [living], subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, targets, amounts] = await asUser(uid, (q) => {
+  const [[settings], [living], subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, targets, amounts, [prefs], holidaySets] = await asUser(uid, (q) => {
   const list = <T extends ListTable>(table: T) =>
     q.select().from(table as never).where(eq(table.userId, uid)).orderBy(asc(table.seq)) as unknown as Promise<T['$inferSelect'][]>
   return Promise.all([
@@ -205,6 +205,8 @@ routes.get('/state', async (c) => {
     list(t.remainderSplit),
     list(t.allocationTarget),
     q.select().from(t.phaseAmount).where(eq(t.phaseAmount.userId, uid)),
+    q.select().from(t.preference).where(eq(t.preference.userId, uid)),
+    list(t.holidaySet),
   ])
   })
   const amountsOf = (phaseId: string) =>
@@ -212,6 +214,7 @@ routes.get('/state', async (c) => {
   // A new account has no rows yet: it gets the defaults until its first save (spec 006 S-7).
   const { userId: _s, ...s } = settings ?? { userId: uid, ...DEFAULT_SETTINGS }
   const { userId: _l, ...l } = living ?? { userId: uid, ...DEFAULT_LIVING }
+  const { userId: _p, ...p } = prefs ?? { userId: uid, ...DEFAULT_PREFERENCES }
   return c.json({
     settings: s,
     living: l,
@@ -224,6 +227,8 @@ routes.get('/state', async (c) => {
     accounts: accounts.map((x) => out(x)),
     debts: debts.map((x) => out(x)),
     remainderSplit: remainderSplit.map((x) => out(x)),
+    preferences: p,
+    holidaySets: holidaySets.map((x) => out(x)),
   })
 })
 
@@ -235,8 +240,9 @@ routes.put('/settings', body(v.settings), async (c) => {
       // The row may not exist yet: lock first, so two first saves cannot both see "no row".
       await lockFor(q, 'settings', uid)
       const before = await readRow(q, t.settings, uid, {})
-      const written = await q.insert(t.settings).values({ userId: uid, ...input })
-        .onConflictDoUpdate({ target: t.settings.userId, set: input }).returning()
+      const full = { ...input, dayShift: input.dayShift ?? (before?.dayShift as typeof input.dayShift) ?? 'none' }
+      const written = await q.insert(t.settings).values({ userId: uid, ...full })
+        .onConflictDoUpdate({ target: t.settings.userId, set: full }).returning()
       await recorderFor(c, q).record(t.settings, {}, before ? 'update' : 'insert', before, written[0] as Row)
       return written
     })
@@ -258,6 +264,25 @@ routes.put('/living', body(v.living), async (c) => {
       const written = await q.insert(t.living).values({ userId: uid, ...input })
         .onConflictDoUpdate({ target: t.living.userId, set: input }).returning()
       await recorderFor(c, q).record(t.living, {}, before ? 'update' : 'insert', before, written[0] as Row)
+      return written
+    })
+    const { userId: _id, ...rest } = row!
+    return c.json(rest)
+  } catch (e) {
+    return dbError(c, e)
+  }
+})
+
+routes.put('/preferences', body(v.preferences), async (c) => {
+  const uid = uidOf(c)
+  const input = c.req.valid('json')
+  try {
+    const [row] = await asUser(uid, async (q) => {
+      await lockFor(q, 'preference', uid)
+      const before = await readRow(q, t.preference, uid, {})
+      const written = await q.insert(t.preference).values({ userId: uid, ...input })
+        .onConflictDoUpdate({ target: t.preference.userId, set: input }).returning()
+      await recorderFor(c, q).record(t.preference, {}, before ? 'update' : 'insert', before, written[0] as Row)
       return written
     })
     const { userId: _id, ...rest } = row!
@@ -321,6 +346,7 @@ crud(routes, '/checks', t.checkItem, v.checkItem)
 crud(routes, '/accounts', t.bankAccount, v.account)
 crud(routes, '/debts', t.debt, v.debt)
 crud(routes, '/remainder-split', t.remainderSplit, v.remainderSplit)
+crud(routes, '/holiday-sets', t.holidaySet, v.holidaySet)
 
 const KIND_LABEL = { living: '생활비 합계', subscriptions: '구독 이체액', remainder: '나머지' } as const
 crud(routes, '/targets', t.allocationTarget, v.target, {

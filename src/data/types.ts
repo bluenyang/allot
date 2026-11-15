@@ -41,6 +41,43 @@ export interface Settings {
   transferDay: number
   billingDay: number
   subRound: number // 구독 이체 올림 단위
+  dayShift: DayShift // 주말·공휴일이면 (spec 007 S-10)
+}
+
+export type DayShift = 'none' | 'before' | 'after'
+
+/** 표시 설정과 테마 (spec 007 S-7, S-8). 색이 null이면 기본 색. */
+export interface Preferences {
+  themeMode: 'system' | 'light' | 'dark'
+  primary: string | null
+  accent: string | null
+  radius: 'sharp' | 'base' | 'soft'
+  density: 'base' | 'compact'
+  dateFormat: 'iso' | 'dot' | 'us'
+  amountUnit: 'won' | 'thousand' | 'man'
+  negative: 'minus' | 'paren' | 'red'
+}
+
+/**
+ * 공휴일 규칙 하나 (spec 007 S-9). rrule은 iCalendar RRULE 본문(FREQ=YEARLY;…),
+ * 음력은 RSCALE=DANGI. rdate·exdate는 YYYY-MM-DD. substitute: 그 요일(또는 다른 공휴일)과 겹치면
+ * 다음 첫 평일이 대체공휴일 — since 연도부터.
+ */
+export interface HolidayRule {
+  name: string
+  rrule?: string
+  rdate?: string[]
+  exdate?: string[]
+  substitute?: { on: ('SA' | 'SU')[]; since?: number }
+}
+
+/** 공휴일 세트. builtin이면 규칙은 코드에 있고 켬/끔만 저장한다. */
+export interface HolidaySet {
+  id: string
+  name: string
+  enabled: boolean
+  builtin: string | null
+  rules: HolidayRule[]
 }
 
 export interface Living {
