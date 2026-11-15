@@ -199,6 +199,26 @@ test.describe('(V-9 a) phone width', () => {
       await expect(page.locator('header.ph h1')).toHaveText(title)
     }
   })
+  test('(V-15) trend labels do not overlap; each subscription keeps its name and monthly amount on one line', async ({ page, request }) => {
+    const sub = await api(request, 'POST', '/api/subscriptions', {
+      name: `${MARK}-a-rather-long-service-name`, category: 'tool', plan: 'p', amount: 1234500, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false,
+    })
+    try {
+      await page.goto('/#home')
+      const labels = page.locator('.bars .bv-short')
+      await expect(labels.first()).toBeVisible()
+      await expect(page.locator('.bars .bv-full').first()).toBeHidden()
+      const boxes = (await labels.evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => [r.left, r.right])))
+      for (let i = 1; i < boxes.length; i++) expect(boxes[i]![0], `label ${i} starts after label ${i - 1} ends`).toBeGreaterThanOrEqual(boxes[i - 1]![1])
+      await page.goto('/#subs')
+      const row = page.getByRole('row', { name: new RegExp(MARK) })
+      const [name, monthly] = await Promise.all([row.locator('td').nth(0).boundingBox(), row.locator('td').nth(4).boundingBox()])
+      expect(Math.abs(name!.y - monthly!.y), 'name and monthly amount share the first line').toBeLessThan(name!.height)
+      expect(monthly!.x, 'monthly amount on the right').toBeGreaterThan(name!.x + 100)
+    } finally {
+      await api(request, 'DELETE', `/api/subscriptions/${sub.json.id}`)
+    }
+  })
 })
 
 test('(V-13 b) a 429 on the session check shows a wait note, not the login form, until the time the server gave; then the app', async ({ page }) => {

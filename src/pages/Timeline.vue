@@ -16,7 +16,7 @@ const tab = ref('cal')
 const tabs = [
   { id: 'cal', label: '달력', icon: 'events' },
   { id: 'timeline', label: '타임라인', icon: 'list' },
-  { id: 'debt', label: '부채', icon: 'pay' },
+  { id: 'debt', label: '부채', icon: 'money' },
 ]
 const now = ymOf(today())
 const kinds = computed(() => [...new Set(store.events.map((e) => e.kind))])

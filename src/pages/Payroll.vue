@@ -16,7 +16,7 @@ const tab = ref('phases')
 const tabs = [
   { id: 'phases', label: '구간', icon: 'list' },
   { id: 'sim', label: '월별 시뮬레이션', icon: 'chart' },
-  { id: 'accounts', label: '통장·생활비·설정', icon: 'pay' },
+  { id: 'accounts', label: '통장·생활비·설정', icon: 'money' },
 ]
 const now = ymOf(today())
 const dist = (ym: string, pay = store.settings.netPay) =>
@@ -106,10 +106,10 @@ async function submitSettings() {
         </EditSheet>
         <div class="tbl">
           <table>
-            <thead><tr><th>이름</th><th>종류</th><th>메모</th></tr></thead>
+            <thead><tr><th>이름</th><th>종류</th><th class="c-memo">메모</th></tr></thead>
             <tbody>
               <tr v-for="t in store.targets" :key="t.id" class="click" tabindex="0" @click="targetEd.open(t)" @keydown.enter="targetEd.open(t)">
-                <td><i class="dot" :style="{ background: allocColor(t.id) }"></i>{{ t.name }}</td><td>{{ KIND[t.kind] }}</td><td class="small muted">{{ t.note }}</td></tr>
+                <td><i class="dot" :style="{ background: allocColor(t.id) }"></i>{{ t.name }}<span v-if="t.note" class="memo-sm">{{ t.note }}</span></td><td class="nowrap">{{ KIND[t.kind] }}</td><td class="small muted c-memo">{{ t.note }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -230,3 +230,10 @@ async function submitSettings() {
     </div>
   </section>
 </template>
+
+<style scoped>
+/* Phone: the memo moves under the name (spec 007 V-9 b) */
+.memo-sm{display:none}
+.nowrap{white-space:nowrap}
+@media (max-width:760px){.c-memo{display:none}.memo-sm{display:block;margin:2px 0 0 16px;font-size:12px;color:var(--subtle)}}
+</style>

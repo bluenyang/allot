@@ -22,7 +22,7 @@ const tabs = [
   { id: 'list', label: '목록', icon: 'list' },
   { id: 'preview', label: '전환 미리보기', icon: 'chart' },
   { id: 'changes', label: '변경 일정', icon: 'events' },
-  { id: 'calc', label: '이체액 계산', icon: 'pay' },
+  { id: 'calc', label: '이체액 계산', icon: 'money' },
 ]
 const now = today()
 const ym = ref(ymOf(now))
@@ -403,6 +403,18 @@ function describe(c: PlanChange) {
 .sp{flex:1}
 .count{align-self:center}
 .subs-t{min-width:920px}
+/* Phone: each subscription becomes two lines — name and monthly amount, then category, cycle, next date,
+   receipt. Billed amount and path stay in the edit sheet (spec 007 V-9 b). */
+@media (max-width:760px){
+  .subs-t{min-width:0}
+  .subs-t thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .subs-t tbody tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:10px 16px;border-bottom:1px solid var(--divider)}
+  .subs-t tbody td,.card .subs-t tbody td:first-child{display:block;padding:0;border:0}
+  .subs-t tbody td:nth-child(1){order:1;flex:1 0 calc(100% - 130px);min-width:0}
+  .subs-t tbody td:nth-child(5){order:2;flex:0 0 120px;text-align:right;font-weight:600}
+  .subs-t tbody td:nth-child(2),.subs-t tbody td:nth-child(3),.subs-t tbody td:nth-child(6),.subs-t tbody td:nth-child(8){order:3;font-size:12px;color:var(--muted)}
+  .subs-t tbody td:nth-child(4),.subs-t tbody td:nth-child(7){display:none}
+}
 .subs-t td.n.mono{font-weight:400;color:var(--muted)}
 .svc{all:unset;cursor:pointer;display:flex;flex-direction:column;min-width:0}
 .svc b{font-weight:600}

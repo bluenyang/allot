@@ -82,10 +82,12 @@ const label = (c: Change) => {
   const name = r.name ?? r.text ?? r.title ?? r.label ?? r.note
   return typeof name === 'string' && name ? name : Object.values(c.rowKey).join(' · ')
 }
+// Single-row tables (settings, preferences) have no name: no trailing separator (spec 007 V-9 b).
+const title = (c: Change) => { const l = label(c); return `${TABLE[c.tableName] ?? c.tableName} ${OP[c.op]}${l ? ` · ${l}` : ''}` }
 const summary = (s: ChangeSet) => {
   const first = s.changes[0]
   if (!first) return '변경 없음'
-  const head = `${TABLE[first.tableName] ?? first.tableName} ${OP[first.op]} · ${label(first)}`
+  const head = title(first)
   return s.changes.length > 1 ? `${head} 외 ${s.changes.length - 1}건` : head
 }
 /** Fields that differ (update), or every visible field (insert / delete). */
@@ -134,7 +136,7 @@ async function revert(s: ChangeSet) {
           <button v-else type="button" class="btn" :disabled="busy" @click="revert(s)">되돌리기</button>
           <div v-if="open === s.id" class="chg-body">
             <div v-for="c in s.changes" :key="c.id" class="chg-row">
-              <b class="small">{{ TABLE[c.tableName] ?? c.tableName }} {{ OP[c.op] }} · {{ label(c) }}</b>
+              <b class="small">{{ title(c) }}</b>
               <table class="small">
                 <tbody>
                   <tr v-for="f in fields(c)" :key="f.k">

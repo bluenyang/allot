@@ -125,6 +125,8 @@ h2,h3{font-size:15px;font-weight:600;margin:0 0 12px}
 .strip .v{font-size:26px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums;letter-spacing:-.01em;overflow-wrap:anywhere}
 .strip .v.sig{color:var(--accent-text)}
 .strip .s{font-size:12px;color:var(--muted)}
+/* Phone: two KPI cells per row instead of a tall stack (spec 007 V-9 b) */
+@media (max-width:760px){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}.strip > div{padding:12px 14px}.strip .v{font-size:20px}}
 
 /* ---------- rows ---------- */
 .rows{display:grid}

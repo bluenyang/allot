@@ -76,6 +76,8 @@ function changeDelta(id: string, eff: string) {
   const after = transferAt(store.subscriptions, store.planChanges, store.settings, eff.slice(0, 7))
   return (after.monthlySum + after.yearlyMonthly) - (before.monthlySum + before.yearlyMonthly)
 }
+// Phone bar labels: 10,000 won units, one decimal under 100,000 (spec 007 V-9 b, item 1)
+const short = (v: number) => (v >= 100_000 ? `${Math.round(v / 10_000)}만` : v > 0 ? `${(v / 10_000).toFixed(1).replace(/\.0$/, '')}만` : '0')
 const signed = (n: number) => (n > 0 ? '+' : '') + fmtMoney(n)
 const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c) => (!c.text.trim() ? '내용을 입력해 주세요.' : null))
 </script>
@@ -126,15 +128,15 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
             </div>
             <div class="tbl">
               <table>
-                <thead><tr><th scope="col">대상</th><th scope="col">계산 방식</th><th scope="col" class="n">비율</th><th scope="col" class="n">금액</th></tr></thead>
+                <thead><tr><th scope="col">대상</th><th scope="col" class="c-how">계산 방식</th><th scope="col" class="n">비율</th><th scope="col" class="n">금액</th></tr></thead>
                 <tbody>
                   <tr v-for="r in dist.rows" :key="r.key">
-                    <td><span class="tname"><i :style="{ background: allocColor(r.key) }"></i>{{ r.name }}</span></td>
-                    <td class="muted">{{ r.detail }}</td>
+                    <td><span class="tname"><i :style="{ background: allocColor(r.key) }"></i>{{ r.name }}</span><span v-if="r.detail" class="how-sm">{{ r.detail }}</span></td>
+                    <td class="muted c-how">{{ r.detail }}</td>
                     <td class="n muted num">{{ pct(r.amount) }}</td>
                     <td class="n" :class="fmtMoneyClass(r.amount)">{{ fmtMoney(r.amount) }}</td>
                   </tr>
-                  <tr class="sum"><td colspan="3">합계</td><td class="n">{{ fmtMoney(dist.rows.reduce((a, r) => a + r.amount, 0)) }}</td></tr>
+                  <tr class="sum"><td>합계</td><td class="c-how"></td><td></td><td class="n">{{ fmtMoney(dist.rows.reduce((a, r) => a + r.amount, 0)) }}</td></tr>
                 </tbody>
               </table>
             </div>
@@ -148,7 +150,7 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
               <div class="plot" role="img" :aria-label="`앞으로 6개월 구독 월 환산: ${trend.map((b) => `${Number(b.ym.slice(5))}월 ${fmtMoney(b.v)}`).join(', ')}`">
                 <div class="bars">
                   <div v-for="b in trend" :key="b.ym" class="bar">
-                    <span class="bv">{{ fmtMoney(b.v) }}</span>
+                    <span class="bv bv-full">{{ fmtMoney(b.v) }}</span><span class="bv bv-short" aria-hidden="true">{{ short(b.v) }}</span>
                     <i :style="{ height: `${Math.max(2, (b.v / trendTop) * 100)}%` }" :class="{ now: b.ym === ym }"></i>
                   </div>
                 </div>
@@ -267,6 +269,15 @@ tr.sum td.n{font-weight:700}
 .mnav b{padding:0 6px;font-variant-numeric:tabular-nums}
 .mnav .btn{width:32px;height:32px}
 @media (max-width:760px){.mnav{display:flex}}
+.how-sm,.bv-short{display:none}
+/* Phone: the method moves under the name, bar labels shorten (spec 007 V-9 b, items 1-2) */
+@media (max-width:760px){
+  .c-how{display:none}
+  .how-sm{display:block;margin:2px 0 0 18px;font-size:12px;color:var(--subtle)}
+  .bv-full{display:none}
+  .bv-short{display:inline}
+  .bars,.months{gap:8px}
+}
 .grow{flex-grow:1}
 .items > li.dim{opacity:.6}
 .checks{max-width:760px}
