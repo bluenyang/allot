@@ -3,8 +3,6 @@
 // back at the end of each test (also when it fails). Creates and deletes one extra account (V-6 b).
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { MARK } from './helpers'
-import { monthDay } from '../../src/lib/calc'
-import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 
 async function api(request: APIRequestContext, method: 'GET' | 'PUT' | 'POST' | 'DELETE', path: string, data?: unknown) {
   const base = test.info().project.use.baseURL!
@@ -75,31 +73,31 @@ test('(V-6 b, c) theme: only the preview changes before saving; saved colour sta
   }
 })
 
-test('(V-4 d) a pay day on a Saturday moves to the exact business day before, and back with "그대로"', async ({ page, request }) => {
+test('(V-4 d) the pay day moves to the business day the rules give: month end, year end, after a substitute holiday', async ({ page, request }) => {
   const s0 = await state(request)
-  const now = new Date()
-  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  // The first Saturday of this month; with 'before' the expected day is computed by the same rules the
-  // app uses (weekends + the user's holiday sets), then compared exactly.
-  let sat = 1
-  while (new Date(now.getFullYear(), now.getMonth(), sat).getDay() !== 6) sat++
-  const around = `${now.getFullYear() - 1}-01-01`
-  const off = new Set(holidaysIn(enabledSets(s0.holidaySets), around, `${now.getFullYear() + 1}-12-31`).map((h) => h.date))
-  const expected = monthDay(ym, sat, 'before', off)
-  const WD = ['일', '월', '화', '수', '목', '금', '토']
-  const md = (iso: string) => { const d = new Date(`${iso}T00:00:00`); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})` }
-  expect(expected.shifted).toBe('before')
+  // The built-in Korean set must be on for these cases; put it back as it was afterwards.
+  const kr = s0.holidaySets.find((h: { builtin: string | null }) => h.builtin === 'kr')
+  if (kr && !kr.enabled) await api(request, 'PUT', `/api/holiday-sets/${kr.id}`, { name: kr.name, enabled: true, builtin: 'kr', rules: [] })
+  // Expected days written by hand from the calendar and the public-holiday rules (not computed by the app's code):
+  const cases = [
+    { now: '2026-08-10T12:00:00+09:00', payDay: 1, shift: 'before', want: '월급 7/31(금) (앞당김)' }, // 8/1 Saturday → Friday in July
+    { now: '2027-01-10T12:00:00+09:00', payDay: 1, shift: 'before', want: '월급 12/31(목) (앞당김)' }, // 1/1 신정 → last year
+    { now: '2026-10-10T12:00:00+09:00', payDay: 3, shift: 'after', want: '월급 10/6(화) (미룸)' }, // 10/3 Sat 개천절, 10/5 substitute
+    { now: '2026-08-10T12:00:00+09:00', payDay: 1, shift: 'none', want: '월급 8/1(토)' },
+  ] as const
   try {
-    expect((await api(request, 'PUT', '/api/settings', { ...s0.settings, payDay: sat, dayShift: 'before' })).status).toBe(200)
-    await page.goto('/#home')
-    const header = page.locator('header.ph')
-    await expect(header).toContainText(`월급 ${md(expected.date)} (앞당김)`)
-    expect((await api(request, 'PUT', '/api/settings', { ...s0.settings, payDay: sat, dayShift: 'none' })).status).toBe(200)
-    await page.reload()
-    await expect(header).toContainText(`월급 ${md(expected.nominal)}`)
-    await expect(header).not.toContainText('(앞당김)')
+    for (const c of cases) {
+      expect((await api(request, 'PUT', '/api/settings', { ...s0.settings, payDay: c.payDay, dayShift: c.shift })).status).toBe(200)
+      await page.clock.setFixedTime(new Date(c.now))
+      await page.goto('/#home')
+      await page.reload()
+      const header = page.locator('header.ph')
+      await expect(header, `${c.now} ${c.shift}`).toContainText(c.want)
+      if (c.shift === 'none') await expect(header).not.toContainText('(앞당김)')
+    }
   } finally {
     await api(request, 'PUT', '/api/settings', s0.settings)
+    if (kr && !kr.enabled) await api(request, 'PUT', `/api/holiday-sets/${kr.id}`, { name: kr.name, enabled: false, builtin: 'kr', rules: [] })
   }
 })
 
