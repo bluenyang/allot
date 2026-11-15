@@ -201,7 +201,7 @@ onActivated(load)
         <template #after><p class="small muted">비워 두면 비밀번호 없이 만들어요. 그 이메일로 처음 외부 로그인할 때 이 계정에 연결돼요.</p></template>
       </EditSheet>
 
-      <div class="panel">
+      <div class="panel scroll-x">
         <table class="tbl">
           <thead><tr><th>이메일</th><th>이름</th><th>역할</th><th>상태</th><th>들어온 방식</th><th>만든 날</th></tr></thead>
           <tbody>
@@ -287,6 +287,7 @@ onActivated(load)
 .tbl th{font-weight:500;color:var(--subtle);font-size:12px;background:var(--surface-2);border-bottom-color:var(--border)}
 .click{cursor:pointer}
 .tbl tr.click:hover td{background:var(--surface-2)}
+.scroll-x{overflow-x:auto}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
 .warnbox{border-color:var(--accent-line);background:var(--accent-soft)}
