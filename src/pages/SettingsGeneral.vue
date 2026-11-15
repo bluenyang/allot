@@ -15,11 +15,22 @@ import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
 // money settings (two requests, each its own change set), 취소 drops the copy.
 const CalendarView = defineAsyncComponent(() => import('../components/CalendarView.vue'))
 
-type Draft = Pick<Preferences, 'themeMode' | 'dateFormat' | 'amountUnit' | 'negative'> & Pick<Settings, 'fxRate' | 'fxBuffer' | 'payDay' | 'transferDay' | 'billingDay' | 'dayShift'>
+type Draft = Pick<Preferences, 'dateFormat' | 'amountUnit' | 'negative'> & Pick<Settings, 'fxRate' | 'fxBuffer' | 'payDay' | 'transferDay' | 'billingDay' | 'dayShift'>
 const fromStore = (): Draft => {
-  const { themeMode, dateFormat, amountUnit, negative } = store.preferences
+  const { dateFormat, amountUnit, negative } = store.preferences
   const { fxRate, fxBuffer, payDay, transferDay, billingDay, dayShift } = store.settings
-  return { themeMode, dateFormat, amountUnit, negative, fxRate, fxBuffer, payDay, transferDay, billingDay, dayShift }
+  return { dateFormat, amountUnit, negative, fxRate, fxBuffer, payDay, transferDay, billingDay, dayShift }
+}
+// The theme applies and saves the moment it is picked, like the header's switch (spec 007 S-16).
+const themeMsg = ref('')
+async function pickTheme(mode: Preferences['themeMode']) {
+  themeMsg.value = ''
+  try {
+    await savePreferences({ ...store.preferences, themeMode: mode })
+    themeMsg.value = '바로 적용했어요.'
+  } catch (e) {
+    themeMsg.value = (e as Error).message
+  }
 }
 const d = ref<Draft>(fromStore())
 /** The saved values the draft started from: an edit is a difference from these, not from the store (review 1 R6). */
@@ -46,9 +57,9 @@ async function save() {
   if (problem.value) return (msg.value = problem.value)
   busy.value = true
   msg.value = ''
-  const { themeMode, dateFormat, amountUnit, negative, ...money } = d.value
+  const { dateFormat, amountUnit, negative, ...money } = d.value
   try {
-    await savePreferences({ ...store.preferences, themeMode, dateFormat, amountUnit, negative })
+    await savePreferences({ ...store.preferences, dateFormat, amountUnit, negative })
     await saveSettings(money)
     d.value = fromStore()
     base.value = fromStore()
@@ -126,8 +137,9 @@ const addRow = () => rows.value.push(emptyRow())
       <section class="panel">
         <h2>표시</h2>
         <div class="line">
-          <div class="lt"><b id="g-theme">선호 테마</b><span>색상과 모서리는 테마 탭에서 정해요</span></div>
-          <div class="seg" role="group" aria-labelledby="g-theme"><button v-for="[id, label] in THEMES" :key="id" type="button" :aria-pressed="d.themeMode === id" @click="d.themeMode = id">{{ label }}</button></div>
+          <div class="lt"><b id="g-theme">선호 테마</b><span>누르면 바로 적용돼요. 색상과 모서리는 테마 탭에서 정해요</span></div>
+          <div class="seg" role="group" aria-labelledby="g-theme"><button v-for="[id, label] in THEMES" :key="id" type="button" :aria-pressed="store.preferences.themeMode === id" @click="pickTheme(id)">{{ label }}</button></div>
+          <span v-if="themeMsg" class="small muted tmsg" role="status">{{ themeMsg }}</span>
         </div>
         <div class="line">
           <div class="lt"><b id="g-date">날짜 형식</b><span>표, 일정, 목록</span></div>
@@ -237,7 +249,7 @@ const addRow = () => rows.value.push(emptyRow())
         </tbody>
         <tfoot><tr class="total"><td colspan="2">합계</td><td class="n" :class="moneyClass(-previewTotal, fmt)">{{ money(-previewTotal, fmt) }}</td></tr></tfoot>
       </table>
-      <p class="small muted">테마: {{ THEMES.find((t) => t[0] === d.themeMode)![1] }} · 저장 전 미리보기예요.</p>
+      <p class="small muted">테마: {{ THEMES.find((t) => t[0] === store.preferences.themeMode)![1] }} · 저장 전 미리보기예요.</p>
     </aside>
   </div>
 </template>
@@ -255,6 +267,7 @@ h2{margin:0 0 12px}
 .lt b{font-weight:600}
 .lt span{font-size:12px;color:var(--subtle)}
 .seg .red{color:var(--neg-text)}
+.tmsg{flex-basis:100%;text-align:right}
 .savebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 16px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card)}
 .sp{flex:1}
 .err{color:var(--neg-text)}

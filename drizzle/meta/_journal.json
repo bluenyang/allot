@@ -141,6 +141,13 @@
       "when": 1794717998534,
       "tag": "0019_force_rls_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794746195264,
+      "tag": "0020_preference_default_light",
+      "breakpoints": true
     }
   ]
 }

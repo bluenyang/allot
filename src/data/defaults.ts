@@ -6,8 +6,8 @@ import type { Living, Preferences, Settings } from './types'
 
 export const DEFAULT_SETTINGS: Settings = { netPay: 0, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, dayShift: 'none' }
 export const DEFAULT_LIVING: Living = { food: 0, transit: 0, allowance: 0 }
-/** Display settings before the first save (spec 007): the canvas defaults. */
+/** Display settings before the first save (spec 007): the canvas defaults, light (S-16). */
 export const DEFAULT_PREFERENCES: Preferences = {
-  themeMode: 'system', primary: null, accent: null, radius: 'base', density: 'base',
+  themeMode: 'light', primary: null, accent: null, radius: 'base', density: 'base',
   dateFormat: 'iso', amountUnit: 'won', negative: 'minus',
 }

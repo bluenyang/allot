@@ -14,7 +14,7 @@ const BLACK = '#000000'
 /** Grounds and text the colours sit on (style.css). */
 export const GROUND = {
   light: { surface: '#FFFFFF', surface2: '#F9FAF9', text: '#16201B' },
-  dark: { surface: '#171D1A', surface2: '#1C2320', text: '#16201B' },
+  dark: { surface: '#1A1C1F', surface2: '#1F2124', text: '#16201B' },
 } as const
 
 const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number]

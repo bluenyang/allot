@@ -55,7 +55,7 @@ export const settings = pgTable('settings', {
  */
 export const preference = pgTable('preference', {
   userId: owner().primaryKey(),
-  themeMode: text('theme_mode').$type<'system' | 'light' | 'dark'>().notNull().default('system'),
+  themeMode: text('theme_mode').$type<'system' | 'light' | 'dark'>().notNull().default('light'),
   primary: text('primary'),
   accent: text('accent'),
   radius: text('radius').$type<'sharp' | 'base' | 'soft'>().notNull().default('base'),

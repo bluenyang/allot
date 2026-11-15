@@ -1,0 +1,1 @@
+ALTER TABLE "preference" ALTER COLUMN "theme_mode" SET DEFAULT 'light';

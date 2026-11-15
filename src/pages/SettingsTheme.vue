@@ -32,7 +32,7 @@ function onCustom(v: string) {
 const mode = ref<'light' | 'dark'>(document.documentElement.getAttribute('data-theme') === 'dark' || (!document.documentElement.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')
 const GROUND = {
   light: { bg: '#F5F6F5', surface: '#FFFFFF', 'surface-2': '#F9FAF9', fill: '#EEF0EF', border: '#E2E5E3', 'border-strong': '#CBD0CD', text: '#16201B', muted: '#47534D', subtle: '#5F6B65', divider: '#EEF0EF' },
-  dark: { bg: '#0F1412', surface: '#171D1A', 'surface-2': '#1C2320', fill: '#232B27', border: '#2A322E', 'border-strong': '#3D4842', text: '#E4EAE7', muted: '#9AA59F', subtle: '#8A958F', divider: '#232B27' },
+  dark: { bg: '#111315', surface: '#1A1C1F', 'surface-2': '#1F2124', fill: '#26292D', border: '#2F3337', 'border-strong': '#43484E', text: '#E6E8EA', muted: '#A2A8AE', subtle: '#8E959C', divider: '#26292D' },
 }
 const RADIUS = { sharp: ['2px', '3px'], base: ['4px', '6px'], soft: ['8px', '10px'] }
 const tokens = computed(() => derive(primary.value, accent.value, mode.value))
