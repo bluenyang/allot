@@ -7,7 +7,8 @@ import { dateText, money, moneyClass } from '../lib/format'
 import { holidayList } from '../lib/holidays-lazy'
 import { BUILTIN_SETS, KR_NAME } from '../data/holidays-kr'
 import { addYm, monthDates, today, upcomingPayments, ymOf } from '../lib/calc'
-import type { HolidayRule, HolidaySet, Preferences, Settings } from '../data/types'
+import type { HolidaySet, Preferences, Settings } from '../data/types'
+import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
 
 // 설정 › 일반 (spec 007 S-8, S-9, S-10): display, exchange rate, monthly dates and their
 // weekend/holiday shift, holiday sets. Edited as a copy; 저장 sends display settings and the
@@ -21,11 +22,17 @@ const fromStore = (): Draft => {
   return { themeMode, dateFormat, amountUnit, negative, fxRate, fxBuffer, payDay, transferDay, billingDay, dayShift }
 }
 const d = ref<Draft>(fromStore())
+/** The saved values the draft started from: an edit is a difference from these, not from the store (review 1 R6). */
+const base = ref<Draft>(fromStore())
 const msg = ref('')
 const busy = ref(false)
-const dirty = computed(() => JSON.stringify(d.value) !== JSON.stringify(fromStore()))
-// The saved values changed elsewhere (revert, another tab): show them unless the user is editing.
-watch(() => [store.preferences, store.settings], () => { if (!dirty.value) d.value = fromStore() }, { deep: true })
+const dirty = computed(() => JSON.stringify(d.value) !== JSON.stringify(base.value))
+// The saved values changed elsewhere (a revert in 변경 내역, another tab): follow them unless the user
+// has edited the draft.
+watch(() => JSON.stringify(fromStore()), () => {
+  if (!dirty.value) d.value = fromStore()
+  base.value = fromStore()
+})
 
 const problem = computed(() => {
   const days = [d.value.payDay, d.value.transferDay, d.value.billingDay]
@@ -44,6 +51,7 @@ async function save() {
     await savePreferences({ ...store.preferences, themeMode, dateFormat, amountUnit, negative })
     await saveSettings(money)
     d.value = fromStore()
+    base.value = fromStore()
     msg.value = '저장했어요.'
   } catch (e) {
     msg.value = (e as Error).message || status.error
@@ -53,6 +61,7 @@ async function save() {
 }
 function cancel() {
   d.value = fromStore()
+  base.value = fromStore()
   msg.value = ''
 }
 
@@ -95,29 +104,19 @@ const toggleOwn = (s: HolidaySet) => saveItem('holidaySets', { ...s, enabled: !s
 const showYear = ref(false)
 const showCal = ref(false)
 
-// Set editor: rules as rows (name + RRULE or dates + substitute weekdays).
-interface RuleRow { name: string; kind: 'rrule' | 'dates'; rrule: string; dates: string; sub: '' | 'SU' | 'SA,SU' }
+// Set editor: rules as rows (src/lib/holiday-rows.ts keeps what the rows do not show).
 const rows = ref<RuleRow[]>([])
-const toRows = (rules: HolidayRule[]): RuleRow[] => rules.map((r) => ({
-  name: r.name, kind: r.rrule ? 'rrule' : 'dates', rrule: r.rrule ?? '', dates: (r.rdate ?? []).join(', '),
-  sub: r.substitute ? (r.substitute.on.length === 2 ? 'SA,SU' : 'SU') : '',
-}))
-const toRules = (): HolidayRule[] => rows.value.map((r) => ({
-  name: r.name.trim(),
-  ...(r.kind === 'rrule' ? { rrule: r.rrule.trim() } : { rdate: r.dates.split(/[,\s]+/).filter(Boolean) }),
-  ...(r.sub ? { substitute: { on: r.sub.split(',') as ('SA' | 'SU')[] } } : {}),
-}))
 const setEd = useEditor('holidaySets', () => ({ id: '', name: '', enabled: true, builtin: null, rules: [] }),
   (s) => (!s.name.trim() ? '세트 이름을 입력해 주세요.' : !s.rules.length ? '규칙을 하나 이상 넣어 주세요.' : s.rules.some((r) => !r.name) ? '규칙마다 이름을 넣어 주세요.' : null))
 function openSet(s?: HolidaySet) {
   setEd.open(s)
-  rows.value = s ? toRows(s.rules) : [{ name: '', kind: 'dates', rrule: '', dates: '', sub: '' }]
+  rows.value = s ? toRows(s.rules) : [emptyRow()]
 }
 function saveSet() {
-  if (setEd.item.value) setEd.item.value.rules = toRules()
+  if (setEd.item.value) setEd.item.value.rules = toRules(rows.value)
   return setEd.save()
 }
-const addRow = () => rows.value.push({ name: '', kind: 'dates', rrule: '', dates: '', sub: '' })
+const addRow = () => rows.value.push(emptyRow())
 </script>
 
 <template>
@@ -218,7 +217,7 @@ const addRow = () => rows.value.push({ name: '', kind: 'dates', rrule: '', dates
             <div v-if="r.kind === 'dates'" class="field wide"><label :for="`hr-d-${i}`">날짜 (YYYY-MM-DD, 쉼표로)</label><input :id="`hr-d-${i}`" v-model="r.dates" class="in" placeholder="2027-06-03"></div>
             <div v-else class="field wide"><label :for="`hr-r-${i}`">RRULE</label><input :id="`hr-r-${i}`" v-model="r.rrule" class="in mono" placeholder="FREQ=YEARLY;BYMONTH=7;BYMONTHDAY=17"></div>
             <div class="field"><label :for="`hr-s-${i}`">대체 휴일</label>
-              <select :id="`hr-s-${i}`" v-model="r.sub" class="in"><option value="">없음</option><option value="SU">일요일이면</option><option value="SA,SU">토·일요일이면</option></select></div>
+              <select :id="`hr-s-${i}`" v-model="r.sub" class="in"><option value="">없음</option><option value="SU">일요일이면</option><option value="SA">토요일이면</option><option value="SA,SU">토·일요일이면</option></select></div>
             <button class="btn sm rm" type="button" :aria-label="`규칙 ${i + 1} 빼기`" @click="rows.splice(i, 1)">빼기</button>
           </div>
           <button class="btn sm" type="button" @click="addRow">+ 규칙</button>

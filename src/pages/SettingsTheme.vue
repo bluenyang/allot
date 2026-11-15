@@ -11,8 +11,13 @@ import type { Preferences } from '../data/types'
 type Draft = Pick<Preferences, 'primary' | 'accent' | 'radius' | 'density'>
 const fromStore = (): Draft => ({ primary: store.preferences.primary, accent: store.preferences.accent, radius: store.preferences.radius, density: store.preferences.density })
 const d = ref<Draft>(fromStore())
-const dirty = computed(() => JSON.stringify(d.value) !== JSON.stringify(fromStore()))
-watch(() => store.preferences, () => { if (!dirty.value) d.value = fromStore() }, { deep: true })
+/** The saved values the draft started from (review 1 R6): follow saved changes unless the user edited. */
+const base = ref<Draft>(fromStore())
+const dirty = computed(() => JSON.stringify(d.value) !== JSON.stringify(base.value))
+watch(() => JSON.stringify(fromStore()), () => {
+  if (!dirty.value) d.value = fromStore()
+  base.value = fromStore()
+})
 
 const primary = computed(() => d.value.primary ?? DEFAULT_PRIMARY)
 const accent = computed(() => d.value.accent ?? DEFAULT_ACCENT)
@@ -57,6 +62,7 @@ async function save() {
   try {
     await savePreferences({ ...store.preferences, ...d.value })
     d.value = fromStore()
+    base.value = fromStore()
     msg.value = '저장했어요.'
   } catch (e) {
     msg.value = (e as Error).message
