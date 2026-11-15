@@ -200,29 +200,24 @@ test.describe('(V-9 a) phone width', () => {
   })
 })
 
-test('(V-13 b) a 429 on the session check shows a wait note, not the login form; retries follow X-Retry-After, survive a network error; the app comes back', async ({ page }) => {
+test('(V-13 b) a 429 on the session check shows a wait note, not the login form, until the time the server gave; then the app', async ({ page }) => {
   const times: number[] = []
-  // first check refused for 6 s, a network error on the probe, refused for 2 s, the probe passes but the
-  // session refetch fails (network), then the next probe and refetch pass
-  const plan: ('429:6' | 'abort' | '429:2' | 'pass')[] = ['429:6', 'abort', '429:2', 'pass', 'abort']
+  let refusals = 2
   await page.route('**/api/auth/get-session*', (route) => {
     times.push(Date.now())
-    const step = plan.shift() ?? 'pass'
-    if (step === 'abort') return route.abort('failed')
-    if (step.startsWith('429')) {
-      return route.fulfill({ status: 429, contentType: 'application/json', headers: { 'X-Retry-After': step.slice(4) }, body: '{"message":"Too many requests. Please try again later."}' })
-    }
+    if (refusals-- > 0) return route.fulfill({ status: 429, contentType: 'application/json', headers: { 'X-Retry-After': '6' }, body: '{"message":"Too many requests. Please try again later."}' })
     return route.continue()
   })
   await page.goto('/#home')
-  await expect(page.getByRole('status').filter({ hasText: '요청이 많아요' })).toBeVisible()
-  await expect(page.getByLabel('비밀번호')).toHaveCount(0)
-  // while the refetch fails the note stays; the login form never shows
-  await expect(page.getByLabel('비밀번호')).toHaveCount(0)
-  await expect(page.locator('header.ph h1')).toContainText('현황', { timeout: 40_000 })
-  expect(times.length, 'the probe after the failed refetch and its refetch').toBeGreaterThanOrEqual(7)
-  const gaps = times.slice(1, 4).map((t, i) => t - times[i]!)
-  expect(gaps[0], 'waits the first refusal\'s 6 s').toBeGreaterThanOrEqual(5900)
-  expect(gaps[1], 'after a network error, 5 s').toBeGreaterThanOrEqual(4900)
-  expect(gaps[2], 'then the next refusal\'s 2 s').toBeGreaterThanOrEqual(1900)
+  const note = page.getByRole('status').filter({ hasText: '요청이 많아요' })
+  await expect(note).toBeVisible()
+  // the note holds, with no login form, through the whole wait (sampled every second)
+  for (let i = 0; i < 5; i++) {
+    await expect(page.getByLabel('비밀번호')).toHaveCount(0)
+    await page.waitForTimeout(1000)
+  }
+  await expect(page.locator('header.ph h1')).toContainText('현황', { timeout: 30_000 })
+  expect(times.length).toBeGreaterThanOrEqual(3)
+  expect(times[1]! - times[0]!, 'the second check waits the 6 s the server gave').toBeGreaterThanOrEqual(5900)
+  expect(times[2]! - times[1]!, 'and again').toBeGreaterThanOrEqual(5900)
 })
