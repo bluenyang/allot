@@ -142,12 +142,16 @@ export function enabledSets(rows: HolidaySet[]): { id: string; name: string; rul
  * (대체공휴일): a block of consecutive days from rules with the same substitute rule (설날·추석 = 3 days)
  * gets one substitute day for each of its days that falls on one of `on` weekdays or on another
  * holiday; the substitutes are the first days after the block that are neither weekend nor holiday.
+ *
+ * Limits (review 2, F2): a block longer than MAX_RUN days gets no substitute, and a substitute is
+ * looked for at most MAX_RUN days after its block. With those, a margin of 4×MAX_RUN before and
+ * 2×MAX_RUN after the range sees every block that can matter in full (or enough of it to know it is
+ * too long), so the answer for a day never depends on the range asked.
  */
+export const MAX_RUN = 31
 export function holidaysIn(sets: { id: string; rules: HolidayRule[] }[], from: string, to: string): Holiday[] {
-  // Whole years around the range: a block can start well before `from` and its substitute land after
-  // `to`, and the answer for a day must not depend on the range asked (review 1, R4).
-  const lo = `${yearOf(from) - 1}-01-01`
-  const hi = `${yearOf(to) + 1}-12-31`
+  const lo = addDays(from, -4 * MAX_RUN)
+  const hi = addDays(to, 2 * MAX_RUN)
   const base: (Holiday & { rule: HolidayRule })[] = []
   for (const s of sets) for (const rule of s.rules) {
     for (const date of ruleDates(rule, lo, hi)) base.push({ date, name: rule.name, setId: s.id, substitute: false, rule })
@@ -169,7 +173,12 @@ export function holidaysIn(sets: { id: string; rules: HolidayRule[] }[], from: s
     const k = key(h.rule)
     const inBlock = (d: string) => (byDate.get(d) ?? []).some((x) => key(x.rule) === k)
     let end = h.date
-    while (inBlock(addDays(end, 1))) end = addDays(end, 1)
+    let len = 1
+    while (inBlock(addDays(end, 1))) { end = addDays(end, 1); len++ }
+    if (len > MAX_RUN) {
+      for (let d = h.date; d <= end; d = addDays(d, 1)) done.add(`${d}|${k}`)
+      continue
+    }
     let n = 0
     let label = h.name // the block's shortest name: 설날 for 설날 전날·설날·설날 다음날
     for (let d = h.date; d <= end; d = addDays(d, 1)) {
@@ -180,7 +189,8 @@ export function holidaysIn(sets: { id: string; rules: HolidayRule[] }[], from: s
       if (hits && !counted.has(d)) { counted.add(d); n++ }
     }
     let d = end
-    while (n > 0) {
+    const limit = addDays(end, MAX_RUN)
+    while (n > 0 && d < limit) {
       d = addDays(d, 1)
       const wd = weekday(d)
       if (wd === 0 || wd === 6 || isHoliday(d) || taken.has(d)) continue

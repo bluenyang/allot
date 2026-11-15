@@ -35,7 +35,7 @@ export interface MonthDate {
   nominal: string // YYYY-MM-DD: the set day, or the month's last day when the month is shorter
   date: string // after the weekend/holiday shift
   shifted: Exclude<DayShift, 'none'> | null
-  /** No business day within the search limit (a year of holidays): `date` is the set day, unshifted. */
+  /** No business day within SHIFT_LIMIT days: `date` is the set day, unshifted. */
   unresolved?: true
 }
 
@@ -44,6 +44,8 @@ export interface MonthDate {
  * business day before, 'after' = the one after, 'none' = as set. `off` holds the holiday dates
  * (src/lib/holidays.ts makes them; this module stays free of that dependency).
  */
+/** How far a monthly date may move (review 2, F1/F3): callers supply the holidays of the month before and after. */
+export const SHIFT_LIMIT = 31
 export function monthDay(ym: string, day: number, shift: DayShift, off: ReadonlySet<string>): MonthDate {
   const first = parseDate(ym + '-01')
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate()
@@ -52,7 +54,7 @@ export function monthDay(ym: string, day: number, shift: DayShift, off: Readonly
   let d = nominal
   if (shift !== 'none') {
     const step = shift === 'before' ? -1 : 1
-    for (let i = 0; closed(d) && i < 400; i++) d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + step)
+    for (let i = 0; closed(d) && i < SHIFT_LIMIT; i++) d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + step)
     // Never hand back a closed day as the result (review 1, R5).
     if (closed(d)) return { nominal: ymd(nominal), date: ymd(nominal), shifted: null, unresolved: true }
   }

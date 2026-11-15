@@ -127,3 +127,22 @@ test('review 1 (R4): a long user block gets its substitute whatever range is ask
   assert.ok(month.length > 0)
   assert.deepEqual(day, month.filter((d) => d === '2027-01-26'))
 })
+
+test('review 2 (F2): substitutes never depend on the range asked, also around blocks longer than the limit', () => {
+  const span = (from: string, n: number) => Array.from({ length: n }, (_, i) => new Date(Date.parse(`${from}T00:00:00Z`) + i * 86_400_000).toISOString().slice(0, 10))
+  const chunks = (list: string[]) => Array.from({ length: Math.ceil(list.length / 100) }, (_, i) => ({ name: `긴 휴가 ${i}`, rdate: list.slice(i * 100, i * 100 + 100), substitute: { on: ['SU' as const] } }))
+  const cases = [
+    [{ name: '일', rdate: ['2025-11-30'], substitute: { on: ['SU' as const] } }, ...chunks(span('2025-12-01', 411))], // > limit: no substitute
+    [{ name: '일', rdate: ['2027-01-03'], substitute: { on: ['SU' as const] } }, ...chunks(span('2027-01-04', 20))], // within the limit
+  ]
+  for (const rules of cases) {
+    const sets = [{ id: 'mine', rules }]
+    const wide = holidaysIn(sets, '2025-01-01', '2027-12-31').filter((h) => h.substitute).map((h) => h.date)
+    for (const d of ['2027-01-18', '2027-01-25', '2027-01-26', '2027-02-01']) {
+      assert.deepEqual(holidaysIn(sets, d, d).filter((h) => h.substitute).map((h) => h.date), wide.filter((x) => x === d), d)
+    }
+  }
+  // within the limit there is a substitute; beyond it there is none
+  assert.ok(holidaysIn([{ id: 'm', rules: cases[1]! }], '2027-01-01', '2027-02-28').some((h) => h.substitute))
+  assert.ok(!holidaysIn([{ id: 'm', rules: cases[0]! }], '2025-11-01', '2027-02-28').some((h) => h.substitute))
+})
