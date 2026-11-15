@@ -229,7 +229,7 @@ summary_for_user: |
 - [x] W-2 셸: `App.vue` 사이드바 묶음·사용자 블록·푸터, `PageHeader.vue`, 휴대폰 위·아래 막대, 해시 라우트(`settings/*`, `account` 별칭), 버전 `define`, 메뉴 이름 변경과 그에 따른 E2E 수정. 이 W의 설정 화면은 빈 자리(로그인·보안 탭만 Account 내용)다. (S-2, S-3, S-12)
 - [x] W-3 편집 모달: `EditSheet.vue`를 `<dialog>`로(초점, Esc, 640px, 휴대폰 전체 화면, 버튼 배치). 모든 화면의 `EditSheet` 자리를 목록 안에서 모달로. (S-6)
 - [x] W-4 저장: `preference`·`holiday_set` 스키마, `settings.day_shift`, `pnpm db:generate` 마이그레이션, zod, `/api/preferences`·`/api/holiday-sets`·`/api/state`, `OWNED`, `src/data/types.ts`·`defaults.ts`·`store.ts`, `tests/api/preferences.mjs`, 관리자 완전 삭제 검사의 표 수. 규칙 검증에 `rrule-temporal`·`temporal-polyfill`을 더한다. (S-7, S-8, S-9)
-- [ ] W-5 공휴일: `src/lib/holidays.ts`, `src/data/holidays-kr.ts`(출처 주석), `calc.ts`의 `monthDates`, 단위 테스트 `tests/unit/holidays.test.ts`·`tests/unit/month-dates.test.ts`. 대조용 `korean-lunar-calendar`는 devDependency. (S-9, S-10)
+- [x] W-5 공휴일: `src/lib/holidays.ts`, `src/data/holidays-kr.ts`(출처 주석), `calc.ts`의 `monthDates`, 단위 테스트 `tests/unit/holidays.test.ts`·`tests/unit/month-dates.test.ts`. 대조용 `korean-lunar-calendar`는 devDependency. (S-9, S-10)
 - [ ] W-6 테마·형식: `src/lib/theme.ts`, `src/lib/format.ts`, 시작할 때와 설정을 받을 때 `applyTheme`, `data-radius`·`data-density` CSS, `tests/unit/theme.test.ts`. 화면의 금액·날짜 표시를 `format.ts`로 바꾸는 일은 각 화면 W에서 한다. (S-7, S-8)
 - [ ] W-7 달력: FullCalendar 의존성, `CalendarView.vue`(동적 import), 일정 화면 달력 탭, 타임라인·부채 모양, 금액·날짜 형식 적용. (S-11, S-5)
 - [ ] W-8 설정 화면: 일반(표시·환율·기준 일정·주말공휴일·공휴일 세트와 미리보기)·테마(미리보기 칸) 탭, 월급 분배 설정 칸 정리, 설정 E2E 이동. (S-7, S-8, S-9, S-12)

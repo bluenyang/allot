@@ -218,6 +218,9 @@ importers:
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
+      korean-lunar-calendar:
+        specifier: 0.4.0
+        version: 0.4.0
       lefthook:
         specifier: 2.2.2
         version: 2.2.2
@@ -1213,6 +1216,10 @@ packages:
   jose@6.2.16:
     resolution: {integrity: sha512-4LSJpbuBuPdGrONCdZUy0xnxtLf8eEz+EY0SMXdHQEBU7bgUHDVblU/JAjryv3wID9/LK7/YuwFwq+AQNfMscQ==}
 
+  korean-lunar-calendar@0.4.0:
+    resolution: {integrity: sha512-kJXyH3sI/butJxCBtsLXlMJsl5qqNKNjduf1Na0s7XXwP+D/Wdlx0R0/S5ygxPVFSXf/JZ3bBKaCP6bGWhgZ0w==}
+    engines: {node: '>= 16.14.0'}
+
   kysely@0.29.8:
     resolution: {integrity: sha512-ixHU1H4R+LeC5Y0nAhYgiGRFpFRHm2DXKEmJSs/vbes9sKXyssyzxzE/NYiOJX5fY0BL28biCre3GqlCqUwyXQ==}
     engines: {node: '>=22.0.0'}
@@ -2154,6 +2161,8 @@ snapshots:
   hono@4.13.17: {}
 
   jose@6.2.16: {}
+
+  korean-lunar-calendar@0.4.0: {}
 
   kysely@0.29.8: {}
 
