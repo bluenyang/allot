@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
 import { computed, onActivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import SubTabs from '../components/SubTabs.vue'
@@ -23,7 +24,7 @@ interface Provider {
 
 const origin = window.location.origin
 const tab = ref('users')
-const tabs = [{ id: 'users', label: '사용자' }, { id: 'methods', label: '로그인 방식' }]
+const tabs = [{ id: 'users', label: '사용자', icon: 'account' }, { id: 'methods', label: '로그인 방식', icon: 'security' }]
 const error = ref('')
 const notice = ref('')
 const busy = ref(false)
@@ -177,8 +178,7 @@ onActivated(load)
 
 <template>
   <section>
-    <h1>관리</h1>
-    <p class="lede">계정과 로그인 방식을 관리해요. 다른 사용자의 금융 데이터는 여기서 보이지 않아요.</p>
+    <PageHeader title="관리" desc="계정과 로그인 방식을 관리해요. 다른 사용자의 금융 데이터는 여기서 보이지 않아요." />
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
     <SubTabs v-model="tab" :tabs="tabs" />
@@ -201,7 +201,7 @@ onActivated(load)
         <template #after><p class="small muted">비워 두면 비밀번호 없이 만들어요. 그 이메일로 처음 외부 로그인할 때 이 계정에 연결돼요.</p></template>
       </EditSheet>
 
-      <div class="panel">
+      <div class="panel scroll-x">
         <table class="tbl">
           <thead><tr><th>이메일</th><th>이름</th><th>역할</th><th>상태</th><th>들어온 방식</th><th>만든 날</th></tr></thead>
           <tbody>
@@ -242,7 +242,7 @@ onActivated(load)
         <div v-for="p in providers" :key="p.id" class="panel click" tabindex="0" @click="openProvider(p)" @keydown.enter="openProvider(p)">
           <h3 style="margin-top:0">{{ TITLE[p.id] }}<span v-if="p.id === 'oidc' && p.values.name !== 'OIDC'" class="small muted"> · {{ p.values.name }}</span></h3>
           <p class="small">{{ p.usable ? '켜짐' : p.values.enabled ? '켜졌지만 쓸 수 없음' : '꺼짐' }}<span v-if="p.id !== 'password'"> · 가입: {{ SIGNUP[p.values.signup] }}</span></p>
-          <p v-if="p.problem" class="small" style="color:var(--neg)">{{ p.problem }}</p>
+          <p v-if="p.problem" class="small" style="color:var(--neg-text)">{{ p.problem }}</p>
           <p v-if="Object.values(p.source).includes('env')" class="small muted">일부 항목은 env로 정해져 있어요.</p>
         </div>
       </div>
@@ -282,13 +282,15 @@ onActivated(load)
 .list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .list li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .list li .btn{margin-left:auto}
-.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
-.tbl th,.tbl td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
-.tbl th{font-weight:500;color:var(--muted);font-size:12.5px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th,.tbl td{text-align:left;padding:var(--row-pad) 12px;border-bottom:1px solid var(--divider)}
+.tbl th{font-weight:500;color:var(--subtle);font-size:12px;background:var(--surface-2);border-bottom-color:var(--border)}
 .click{cursor:pointer}
-.tbl tr.click:hover td{background:var(--raised)}
+.tbl tr.click:hover td{background:var(--surface-2)}
+.scroll-x{overflow-x:auto}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
-.warnbox{border-color:var(--warn)}
+.warnbox{border-color:var(--accent-line);background:var(--accent-soft)}
+.warnbox h3{color:var(--accent-text)}
 @media (max-width:640px){.tbl th:nth-child(2),.tbl td:nth-child(2),.tbl th:nth-child(5),.tbl td:nth-child(5){display:none}}
 </style>

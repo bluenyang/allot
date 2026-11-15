@@ -1,12 +1,26 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import App from './App.vue'
 import Login from './pages/Login.vue'
-import { authClient } from './lib/auth-client'
+import { authClient, lastRetryAfter } from './lib/auth-client'
 import { ApiError, api, onUnauthorized } from './lib/api'
-import { loadState, status } from './lib/store'
+import { loadState, status, store } from './lib/store'
+import { applyTheme } from './lib/theme'
 
 const session = authClient.useSession()
+// Too many session checks (429) is not "signed out": say so and load the page again once the time
+// the server gave (X-Retry-After) has passed, instead of showing the login form (spec 007 S-14).
+// Only a 429 is handled here; any other error shows as before. A reload starts everything afresh,
+// so there is no retry state to get wrong (reviews 6–9).
+const limited = computed(() => !session.value.data && session.value.error?.status === 429)
+let reload: ReturnType<typeof setTimeout> | undefined
+watch(limited, (on) => {
+  clearTimeout(reload)
+  if (on) reload = setTimeout(() => window.location.reload(), Math.min(Math.max(lastRetryAfter() || 5, 1), 120) * 1000)
+}, { immediate: true })
+onBeforeUnmount(() => clearTimeout(reload))
+// The user's theme (spec 007 S-7): applied whenever the saved settings change (load, save, revert).
+watch(() => status.loaded && { ...store.preferences }, (p) => { if (p) applyTheme(p) }, { deep: true })
 // The API said the session is gone (expired or signed out elsewhere): show the login screen.
 onUnauthorized.handler = () => window.location.reload()
 
@@ -42,6 +56,7 @@ watch(
 
 <template>
   <p v-if="session.isPending" class="muted" style="padding:24px">불러오는 중…</p>
+  <div v-else-if="limited" class="boot" role="status"><p class="muted">요청이 많아요. 잠시 뒤 다시 확인해요…</p></div>
   <Login v-else-if="!session.data" :app-return="!!appReturn" />
   <div v-else-if="appReturn" class="boot" role="status">
     <p v-if="relay === 'error'" class="err" role="alert">{{ relayError }}</p>
@@ -57,5 +72,5 @@ watch(
 
 <style scoped>
 .boot{padding:24px;display:grid;gap:10px;justify-items:start}
-.err{margin:0;color:var(--neg)}
+.err{margin:0;color:var(--neg-text)}
 </style>

@@ -1,4 +1,4 @@
-import type { AllocationKind, AllocationTarget, Living, Phase, Plan, PlanChange, RemainderSplit, Settings, Subscription } from '../data/types'
+import type { AllocationKind, AllocationTarget, DayShift, Living, Phase, Plan, PlanChange, RemainderSplit, Settings, Subscription } from '../data/types'
 
 export const DAY = 86_400_000
 
@@ -28,6 +28,48 @@ export function addYm(ym: string, n: number): string {
 }
 export function ymRange(from: string, count: number): string[] {
   return Array.from({ length: count }, (_, i) => addYm(from, i))
+}
+
+// ---------- monthly dates (spec 007 S-10) ----------
+export interface MonthDate {
+  nominal: string // YYYY-MM-DD: the set day, or the month's last day when the month is shorter
+  date: string // after the weekend/holiday shift
+  shifted: Exclude<DayShift, 'none'> | null
+  /** No business day within SHIFT_LIMIT days: `date` is the set day, unshifted. */
+  unresolved?: true
+}
+
+/**
+ * One monthly day of `ym`, moved off weekends and holidays as `shift` says: 'before' = the
+ * business day before, 'after' = the one after, 'none' = as set. `off` holds the holiday dates
+ * (src/lib/holidays.ts makes them; this module stays free of that dependency).
+ */
+/** How far a monthly date may move (review 2, F1/F3): callers supply the holidays of the month before and after. */
+export const SHIFT_LIMIT = 31
+export function monthDay(ym: string, day: number, shift: DayShift, off: ReadonlySet<string>): MonthDate {
+  const first = parseDate(ym + '-01')
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate()
+  const nominal = new Date(first.getFullYear(), first.getMonth(), Math.min(day, last))
+  const closed = (d: Date) => d.getDay() === 0 || d.getDay() === 6 || off.has(ymd(d))
+  let d = nominal
+  if (shift !== 'none') {
+    const step = shift === 'before' ? -1 : 1
+    for (let i = 0; closed(d) && i < SHIFT_LIMIT; i++) d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + step)
+    // Never hand back a closed day as the result (review 1, R5).
+    if (closed(d)) return { nominal: ymd(nominal), date: ymd(nominal), shifted: null, unresolved: true }
+  }
+  const moved = ymd(d) !== ymd(nominal)
+  return { nominal: ymd(nominal), date: ymd(d), shifted: moved && shift !== 'none' ? shift : null }
+}
+
+/** Pay day, transfer day and card billing day of `ym` (spec 007 S-10). */
+export function monthDates(ym: string, s: Settings, off: ReadonlySet<string>) {
+  const shift = s.dayShift ?? 'none'
+  return {
+    pay: monthDay(ym, s.payDay, shift, off),
+    transfer: monthDay(ym, s.transferDay, shift, off),
+    billing: monthDay(ym, s.billingDay, shift, off),
+  }
 }
 
 // ---------- plan state at a month ----------

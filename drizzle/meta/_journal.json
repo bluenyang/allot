@@ -127,6 +127,27 @@
       "when": 1794581981603,
       "tag": "0017_existing_users_active",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794717997811,
+      "tag": "0018_preferences_holiday_sets",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794717998534,
+      "tag": "0019_force_rls_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794746195264,
+      "tag": "0020_preference_default_light",
+      "breakpoints": true
     }
   ]
 }

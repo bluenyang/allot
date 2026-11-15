@@ -11,6 +11,7 @@ export type OwnedTable = PgTable & { userId: PgColumn }
 export const OWNED: OwnedTable[] = [
   t.settings, t.living, t.subscription, t.phase, t.allocationTarget, t.planEvent,
   t.checkItem, t.bankAccount, t.debt, t.remainderSplit, t.planChange, t.phaseAmount,
+  t.preference, t.holidaySet,
 ]
 
 /** Moved with the data when an account is replaced: the data tables, then the change history. */

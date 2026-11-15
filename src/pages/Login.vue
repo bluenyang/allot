@@ -49,7 +49,7 @@ async function social(id: string) {
 <template>
   <main class="login">
     <div class="panel">
-      <div class="brand"><span class="logo">A</span><b>Allot</b></div>
+      <div class="brand"><span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>개인 재무 원장</small></span></div>
       <p v-if="appReturn" class="note">로그인하면 앱으로 돌아가요.</p>
       <p v-if="methods === null" class="note">불러오는 중…</p>
       <form v-if="hasPassword()" class="pw" @submit.prevent="submit">
@@ -72,8 +72,12 @@ async function social(id: string) {
 .panel{width:min(360px,100%);display:grid;gap:12px}
 .pw,.ext{display:grid;gap:12px}
 .brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-.brand b{font:700 17px var(--f-num)}
+.brand{padding-bottom:12px;border-bottom:1px solid var(--border)}
+.bn{display:flex;flex-direction:column;line-height:1.25}
+.bn b{font-weight:700;font-size:17px}
+.bn small{font-size:11px;color:var(--subtle)}
+.panel{padding:24px}
 .or{margin:0;text-align:center;font-size:12px;color:var(--muted)}
-.err{margin:0;color:var(--neg);font-size:13px}
+.err{margin:0;color:var(--neg-text);font-size:13px}
 .note{margin:0;font-size:13px;color:var(--muted)}
 </style>

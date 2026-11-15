@@ -4,6 +4,7 @@ import { ApiError, api } from '../lib/api'
 import { loadMethods, PROVIDER_NAME, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
 
 // My account (spec 006 S-1, S-11): who I am, the logins linked to me, my password.
+// Shown as the 설정 › 로그인·보안 tab (spec 007 S-12), so it has no page header of its own.
 interface Me { id: string; email: string; name: string; role: string }
 interface Linked { id: string; providerId: string; accountId: string; createdAt: string }
 
@@ -85,7 +86,6 @@ const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle
 
 <template>
   <section>
-    <h1>계정</h1>
     <p class="lede">로그인 방식을 연결하거나 해제하고, 비밀번호를 바꿔요.</p>
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>

@@ -42,7 +42,7 @@ Added to the roadmap after the work started (audit 0.1.0-stable, A-1). User's wo
 
 ## v0.1.x — security, login, MCP, and money management (patch releases)
 
-Status: 0.1.1 released (2026-11-12); 0.1.2 next. Settled with the user on 2026-11-11. The former v0.2 (MCP server, OAuth and passkey login) moves down into patch releases of v0.1 — user's words: "v0.2 쪼개기: 응. 쪼개라. 각 patch 버전으로 쪼개고, 버전 v0.2에서 v0.1.x로 내려." Each patch ships on its own.
+Status: 0.1.1 released (2026-11-12); 0.1.2 merged, redesign before its rc.1. Settled with the user on 2026-11-11. The former v0.2 (MCP server, OAuth and passkey login) moves down into patch releases of v0.1 — user's words: "v0.2 쪼개기: 응. 쪼개라. 각 patch 버전으로 쪼개고, 버전 v0.2에서 v0.1.x로 내려." Each patch ships on its own.
 
 Direction (user's words, Korean, 2026-11-11):
 
@@ -63,13 +63,23 @@ Decisions from the committee review (2026-11-11), accepted by the user ("그렇�
 |---|---|
 | 0.1.1 (released 2026-11-12) | Security foundation: `user_id` on every table (existing data kept for the current user), row-level security, change sets with revert, explicit trusted origins, HTTPS in the production example |
 | 0.1.2 | Login and admin: generic OIDC, GitHub, Google and password, each on/off; per-provider sign-up policy (admin-created, approval, or group/organization/domain rules); admin menu; initial admin from env (email or OIDC subject); encryption module; auth that a future mobile app can use (bearer tokens, deep-link return) |
-| 0.1.3 | MCP read: API keys (hashed, scoped, expiring, revocable), key management page, read tools |
+| 0.1.3 | MCP read: API keys (hashed, scoped, expiring, revocable), key management page, read tools; UI language setting (added 2026-11-15: "언어를 빼둔다? 그럼 다음 패치 버전으로 일단 적어놔봐.") |
 | 0.1.4 | MCP write: write tools, preview before confirm, revert of AI change sets |
 | 0.1.5 | One-off expenses: lump sum, split payment, installments |
 | 0.1.6 | Account management: purposes linked to accounts, target amounts (allocation stops at the target), buffers that refill gradually after use |
 | 0.1.7 | Transactions: file import and card statements from Gmail; matching against expected payments (paid, delayed, foreign-currency amount); the actual salary drives the month |
 | 0.1.8 | Payslip deductions and month-end close |
 | 0.1.9 | Mobile app (Capacitor): payment notifications on Android; on iOS what Shortcuts and the share sheet allow |
+
+### 0.1.2 — redesign before rc.1
+
+Added on 2026-11-15 (intent 007). User's words: "디자인 변경 작업. 계정의 클로드 디자인 아티팩트에서 이 회계 시스템 리디자인 참고"; chosen: "외형 + 설정 일반·테마", menus without a feature "숨김", "0.1.2 rc.1 전에 포함".
+
+- The whole app takes the redesign's tokens, components and shell; behaviour and API stay the same.
+- Per-account settings: theme (colours, corners, density) and general display settings.
+- Weekend and holiday adjustment of the monthly dates, with holidays from rule sets (RRULE) — user's words: "주말, 공휴일은 약간 플러그인??? 형태로 두자. rrule로 된 규칙 세트를 이용한다는 느낌으로."
+- A month calendar on the schedule page (user: "달력을 full-caleandar나 다른 거 써도 되지 않나").
+- Menus for features that do not exist yet (AI statements, assistant, AI settings) stay hidden until their version.
 
 Later (not scheduled): user-supplied LLM key for parsing and bookkeeping help, year-end tax estimate, passkey login, wider column encryption, auto-payment discovery.
 

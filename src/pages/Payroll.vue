@@ -4,6 +4,8 @@ import SubTabs from '../components/SubTabs.vue'
 import MonthPicker from '../components/MonthPicker.vue'
 import StackBar from '../components/StackBar.vue'
 import EditSheet from '../components/EditSheet.vue'
+import PageHeader from '../components/PageHeader.vue'
+import { fmtMoney, fmtMoneyClass } from '../lib/display'
 import { saveLiving, saveSettings, store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
@@ -12,9 +14,9 @@ import type { AllocationKind, Settings } from '../data/types'
 
 const tab = ref('phases')
 const tabs = [
-  { id: 'phases', label: '구간' },
-  { id: 'sim', label: '월별 시뮬레이션' },
-  { id: 'accounts', label: '통장·생활비·설정' },
+  { id: 'phases', label: '구간', icon: 'list' },
+  { id: 'sim', label: '월별 시뮬레이션', icon: 'chart' },
+  { id: 'accounts', label: '통장·생활비·설정', icon: 'money' },
 ]
 const now = ymOf(today())
 const dist = (ym: string, pay = store.settings.netPay) =>
@@ -88,8 +90,7 @@ async function submitSettings() {
 
 <template>
   <section>
-    <h1>월급 분배</h1>
-    <p class="lede">{{ store.settings.payDay }}일 월급 → {{ store.settings.transferDay }}일 분배. 생활비·구독 이체는 자동으로 계산하고, 고정 금액은 구간마다 정하고, 남는 금액은 전부 '{{ remainderName }}'으로 가요.</p>
+    <PageHeader title="월급 분배" :desc="`${store.settings.payDay}일 월급 → ${store.settings.transferDay}일 분배. 생활비·구독 이체는 자동으로 계산하고, 고정 금액은 구간마다 정하고, 남는 금액은 전부 '${remainderName}'으로 가요.`" />
 
     <SubTabs v-model="tab" :tabs="tabs" />
 
@@ -105,10 +106,10 @@ async function submitSettings() {
         </EditSheet>
         <div class="tbl">
           <table>
-            <thead><tr><th>이름</th><th>종류</th><th>메모</th></tr></thead>
+            <thead><tr><th>이름</th><th>종류</th><th class="c-memo">메모</th></tr></thead>
             <tbody>
               <tr v-for="t in store.targets" :key="t.id" class="click" tabindex="0" @click="targetEd.open(t)" @keydown.enter="targetEd.open(t)">
-                <td><i class="dot" :style="{ background: allocColor(t.id) }"></i>{{ t.name }}</td><td>{{ KIND[t.kind] }}</td><td class="small muted">{{ t.note }}</td></tr>
+                <td><i class="dot" :style="{ background: allocColor(t.id) }"></i>{{ t.name }}<span v-if="t.note" class="memo-sm">{{ t.note }}</span></td><td class="nowrap">{{ KIND[t.kind] }}</td><td class="small muted c-memo">{{ t.note }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -134,7 +135,7 @@ async function submitSettings() {
         </div>
         <StackBar :rows="r.d.rows" />
         <p class="small muted" style="margin:8px 0 0">
-          {{ ymLabel(r.start) }} 기준<template v-if="r.d.remainderTarget"> · {{ remainderName }} {{ man(r.d.remainder) }}</template><template v-if="r.p.note"> · {{ r.p.note }}</template>
+          {{ ymLabel(r.start) }} 기준<template v-if="r.d.remainderTarget"> · {{ remainderName }} {{ fmtMoney(r.d.remainder) }}</template><template v-if="r.p.note"> · {{ r.p.note }}</template>
         </p>
       </div>
     </div>
@@ -154,7 +155,7 @@ async function submitSettings() {
             <table>
               <thead><tr><th>목적지</th><th class="n">금액</th><th>메모</th></tr></thead>
               <tbody>
-                <tr v-for="r in sim.rows" :key="r.key"><td>{{ r.name }}</td><td class="n">{{ won(r.amount) }}</td><td class="small muted">{{ r.detail }}</td></tr>
+                <tr v-for="r in sim.rows" :key="r.key"><td>{{ r.name }}</td><td class="n" :class="fmtMoneyClass(r.amount)">{{ fmtMoney(r.amount) }}</td><td class="small muted">{{ r.detail }}</td></tr>
               </tbody>
             </table>
           </div>
@@ -162,7 +163,7 @@ async function submitSettings() {
         <div class="panel">
           <h3 style="margin-top:0">'{{ remainderName }}' 나누기</h3>
           <div v-if="!sim.remainderTarget" class="callout warn"><span class="lbl">나머지 없음</span><p>남는 금액을 받을 '나머지 전부' 대상이 없어요. 구간 탭의 분배 대상에서 하나 정해 주세요.</p></div>
-          <div v-else-if="sim.remainder < 0" class="callout warn"><span class="lbl">부족</span><p>나가는 금액이 실수령보다 {{ won(-sim.remainder) }} 많아요. 고정 금액이나 구독을 줄여야 해요.</p></div>
+          <div v-else-if="sim.remainder < 0" class="callout warn"><span class="lbl">부족</span><p>나가는 금액이 실수령보다 {{ fmtMoney(-sim.remainder) }} 많아요. 고정 금액이나 구독을 줄여야 해요.</p></div>
           <EditSheet v-if="splitEd.item.value" :key="splitEd.item.value.id || 'new'" :title="splitEd.item.value.id ? '나머지 분배 수정' : '나머지 분배 추가'" :error="splitEd.error.value" :busy="splitEd.busy.value"
             :can-delete="!!splitEd.item.value.id" @save="splitEd.save" @cancel="splitEd.close" @delete="splitEd.remove">
             <div class="field"><label for="rs-name">항목</label><input id="rs-name" v-model="splitEd.item.value.name" class="in"></div>
@@ -174,13 +175,13 @@ async function submitSettings() {
               <thead><tr><th>항목</th><th>코드</th><th class="n">비율</th><th class="n">금액</th></tr></thead>
               <tbody>
                 <tr v-for="s in split" :key="s.id" class="click" tabindex="0" @click="splitEd.open(store.remainderSplit.find((x) => x.id === s.id))" @keydown.enter="splitEd.open(store.remainderSplit.find((x) => x.id === s.id))">
-                  <td>{{ s.name }}</td><td class="mono small">{{ s.code }}</td><td class="n">{{ Math.round(s.ratio * 100) }}%</td><td class="n">{{ won(s.amount) }}</td></tr>
+                  <td>{{ s.name }}</td><td class="mono small">{{ s.code }}</td><td class="n">{{ Math.round(s.ratio * 100) }}%</td><td class="n">{{ fmtMoney(s.amount) }}</td></tr>
               </tbody>
             </table>
           </div>
           <div class="btns" style="margin:0 0 10px">
             <button class="btn sm" type="button" @click="splitEd.open()">+ 나머지 분배 추가</button>
-            <span v-if="split.length && ratioSum !== 100" class="small" style="color:var(--warn)">비율 합계 {{ ratioSum }}% (마지막 항목이 남는 금액을 받아요)</span>
+            <span v-if="split.length && ratioSum !== 100" class="small" style="color:var(--accent-text)">비율 합계 {{ ratioSum }}% (마지막 항목이 남는 금액을 받아요)</span>
           </div>
           <p class="small muted" style="margin:0">마지막 항목을 뺀 나머지는 만 원 단위로 반올림하고, 마지막 항목이 남는 금액을 받아요.</p>
         </div>
@@ -206,7 +207,7 @@ async function submitSettings() {
         </table>
       </div>
       <div class="panel" style="max-width:520px">
-        <h3 style="margin-top:0">{{ livingName }} <span class="mono muted small">{{ won(livingSum) }}</span></h3>
+        <h3 style="margin-top:0">{{ livingName }} <span class="muted small num">{{ fmtMoney(livingSum) }}</span></h3>
         <div class="form">
           <div class="field"><label for="l-food">식비</label><input id="l-food" v-model.number="store.living.food" class="in" type="number" step="10000" @change="saveLiving()"></div>
           <div class="field"><label for="l-tr">교통비</label><input id="l-tr" v-model.number="store.living.transit" class="in" type="number" step="10000" @change="saveLiving()"></div>
@@ -215,14 +216,10 @@ async function submitSettings() {
       </div>
       <form class="panel" style="max-width:720px" aria-label="설정" novalidate @submit.prevent="submitSettings">
         <h3 style="margin-top:0">설정</h3>
+        <p class="small muted">월급일·분배일·카드 결제일과 환율은 <a href="#settings/general">설정 › 일반</a>에서 바꿔요.</p>
         <div class="form">
           <div class="field"><label for="st-pay">월 실수령</label><input id="st-pay" v-model.number="set.netPay" class="in" type="number" step="10000" min="0"></div>
-          <div class="field"><label for="st-payday">월급일</label><input id="st-payday" v-model.number="set.payDay" class="in" type="number" min="1" max="31"></div>
-          <div class="field"><label for="st-xfer">분배 이체일</label><input id="st-xfer" v-model.number="set.transferDay" class="in" type="number" min="1" max="31"></div>
-          <div class="field"><label for="st-bill">카드 결제일</label><input id="st-bill" v-model.number="set.billingDay" class="in" type="number" min="1" max="31"></div>
           <div class="field"><label for="st-round">구독 이체 올림 단위</label><input id="st-round" v-model.number="set.subRound" class="in" type="number" step="1000" min="1"></div>
-          <div class="field"><label for="st-fx">환율 (원/$)</label><input id="st-fx" v-model.number="set.fxRate" class="in" type="number" step="any" min="0"></div>
-          <div class="field"><label for="st-buf">환율 여유분 %</label><input id="st-buf" v-model.number="set.fxBuffer" class="in" type="number" step="any" min="0"></div>
         </div>
         <div class="btns">
           <button class="btn pri" type="submit">설정 저장</button>
@@ -233,3 +230,10 @@ async function submitSettings() {
     </div>
   </section>
 </template>
+
+<style scoped>
+/* Phone: the memo moves under the name (spec 007 V-9 b) */
+.memo-sm{display:none}
+.nowrap{white-space:nowrap}
+@media (max-width:760px){.c-memo{display:none}.memo-sm{display:block;margin:2px 0 0 16px;font-size:12px;color:var(--subtle)}}
+</style>

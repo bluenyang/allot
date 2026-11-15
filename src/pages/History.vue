@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue'
+import { fmtDate } from '../lib/display'
 import { onActivated, onMounted, ref } from 'vue'
 import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
@@ -29,6 +31,7 @@ const TABLE: Record<string, string> = {
   settings: '설정', living: '생활비', subscription: '구독', plan_change: '요금 변경', phase: '구간',
   plan_event: '일정', check_item: '체크리스트', bank_account: '통장', debt: '부채',
   allocation_target: '분배 대상', phase_amount: '구간 금액', remainder_split: '나머지 배분',
+  preference: '표시 설정', holiday_set: '공휴일 세트',
 }
 const OP = { insert: '추가', update: '수정', delete: '삭제' } as const
 const HIDDEN = new Set(['userId', 'seq', 'id'])
@@ -59,7 +62,8 @@ async function load(reset = true) {
 onMounted(() => load())
 onActivated(() => load())
 
-const fmt = (at: string) => new Date(at).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+// The date follows the display settings (spec 007 S-8, review 1 R10); the time is added after it.
+const fmt = (at: string) => { const d = new Date(at); return `${fmtDate(d)} ${d.toLocaleTimeString('ko-KR', { timeStyle: 'short' })}` }
 /** A subscription's name, also when it has been deleted since (taken from the loaded history). */
 const subLabel = (id: string) => {
   if (store.subscriptions.some((x) => x.id === id)) return subName(id)
@@ -78,10 +82,12 @@ const label = (c: Change) => {
   const name = r.name ?? r.text ?? r.title ?? r.label ?? r.note
   return typeof name === 'string' && name ? name : Object.values(c.rowKey).join(' · ')
 }
+// Single-row tables (settings, preferences) have no name: no trailing separator (spec 007 V-9 b).
+const title = (c: Change) => { const l = label(c); return `${TABLE[c.tableName] ?? c.tableName} ${OP[c.op]}${l ? ` · ${l}` : ''}` }
 const summary = (s: ChangeSet) => {
   const first = s.changes[0]
   if (!first) return '변경 없음'
-  const head = `${TABLE[first.tableName] ?? first.tableName} ${OP[first.op]} · ${label(first)}`
+  const head = title(first)
   return s.changes.length > 1 ? `${head} 외 ${s.changes.length - 1}건` : head
 }
 /** Fields that differ (update), or every visible field (insert / delete). */
@@ -113,8 +119,7 @@ async function revert(s: ChangeSet) {
 
 <template>
   <section>
-    <h1>변경 내역</h1>
-    <p class="lede">저장 한 번이 변경 하나로 남아요. 되돌리면 반대 변경이 새로 저장돼요. 그 뒤에 같은 항목이 다시 바뀌었으면 되돌릴 수 없어요.</p>
+    <PageHeader title="변경 내역" desc="저장 한 번이 변경 하나로 남아요. 되돌리면 반대 변경이 새로 저장돼요. 그 뒤에 같은 항목이 다시 바뀌었으면 되돌릴 수 없어요." />
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
 
@@ -131,7 +136,7 @@ async function revert(s: ChangeSet) {
           <button v-else type="button" class="btn" :disabled="busy" @click="revert(s)">되돌리기</button>
           <div v-if="open === s.id" class="chg-body">
             <div v-for="c in s.changes" :key="c.id" class="chg-row">
-              <b class="small">{{ TABLE[c.tableName] ?? c.tableName }} {{ OP[c.op] }} · {{ label(c) }}</b>
+              <b class="small">{{ title(c) }}</b>
               <table class="small">
                 <tbody>
                   <tr v-for="f in fields(c)" :key="f.k">

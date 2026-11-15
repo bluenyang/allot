@@ -1,9 +1,9 @@
 import { reactive } from 'vue'
 import type {
-  Account, AllocationTarget, CheckItem, Debt, Living, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Subscription,
+  Account, AllocationTarget, CheckItem, Debt, HolidaySet, Living, Phase, PlanChange, PlanEvent, Preferences, RemainderSplit, Settings, Subscription,
 } from '../data/types'
 import { ApiError, api } from './api'
-import { DEFAULT_LIVING, DEFAULT_SETTINGS } from '../data/defaults'
+import { DEFAULT_LIVING, DEFAULT_PREFERENCES, DEFAULT_SETTINGS } from '../data/defaults'
 
 // App state comes from the API (PostgreSQL). Every change goes to the API first;
 // the store is updated from the server's answer, so what you see is what is saved.
@@ -19,12 +19,15 @@ export interface State {
   accounts: Account[]
   debts: Debt[]
   remainderSplit: RemainderSplit[]
+  preferences: Preferences
+  holidaySets: HolidaySet[]
 }
 
 const empty = (): State => ({
   settings: { ...DEFAULT_SETTINGS },
   living: { ...DEFAULT_LIVING },
-  targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [],
+  preferences: { ...DEFAULT_PREFERENCES },
+  targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [],
 })
 
 export const store = reactive<State>(empty())
@@ -69,6 +72,7 @@ export const RESOURCES = {
   debts: '/api/debts',
   remainderSplit: '/api/remainder-split',
   targets: '/api/targets',
+  holidaySets: '/api/holiday-sets',
 } as const
 export type ListKey = keyof typeof RESOURCES
 
@@ -105,6 +109,12 @@ export function saveSettings(patch: Partial<Settings> = {}) {
   })
 }
 
+export function savePreferences(next: Preferences) {
+  return save(async () => {
+    store.preferences = await api<Preferences>('PUT', '/api/preferences', next)
+  })
+}
+
 export function saveLiving(patch: Partial<Living> = {}) {
   return save(async () => {
     store.living = await api<Living>('PUT', '/api/living', { ...store.living, ...patch })
@@ -119,8 +129,8 @@ export const removeChange = (id: string) => deleteItem('planChanges', id)
 
 /** Everything the app holds, for the JSON view in the 개발 tab. */
 export function exportJson(): string {
-  const { settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit } = store
-  return JSON.stringify({ settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit }, null, 2)
+  const { settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, preferences, holidaySets } = store
+  return JSON.stringify({ settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, preferences, holidaySets }, null, 2)
 }
 
 export const subName = (id: string) => store.subscriptions.find((s) => s.id === id)?.name ?? id

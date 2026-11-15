@@ -4,8 +4,8 @@ import { MARK, go, reload, saveSheet, sheet } from './helpers'
 
 test('history: a save shows up, revert undoes it, the revert is listed', async ({ page }) => {
   const text = `${MARK}-hist`
-  await go(page, 'home', '확인 필요')
-  await page.getByRole('button', { name: '+ 확인할 것 추가' }).click()
+  await go(page, 'home', '확인할 것')
+  await page.getByRole('button', { name: '확인할 것 추가' }).click()
   await sheet(page, '확인할 것 추가').getByLabel('내용').fill(text)
   await saveSheet(page, '확인할 것 추가')
   await expect(page.getByRole('checkbox', { name: text })).toBeVisible()
@@ -22,6 +22,6 @@ test('history: a save shows up, revert undoes it, the revert is listed', async (
   await expect(list.getByRole('listitem').first()).toContainText('되돌림')
   await expect(list.getByRole('listitem').nth(1)).toContainText('되돌려짐')
 
-  await reload(page, 'home', '확인 필요')
+  await reload(page, 'home', '확인할 것')
   await expect(page.getByText(text)).toHaveCount(0)
 })

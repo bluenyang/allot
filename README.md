@@ -98,13 +98,21 @@ GitHub Actions → **Allot Release** → Run workflow(수동 실행).
 
 ## 분배 구조
 
-월급이 어디로 가는지는 코드가 아니라 데이터로 정한다(분배 화면 → 구간 탭).
+월급이 어디로 가는지는 코드가 아니라 데이터로 정한다(월급 분배 화면 → 구간 탭).
 
 - **분배 대상**: 이름과 종류. 종류는 `생활비 합계`(생활비 항목의 합), `구독 이체액`(구독 필요 이체액을 올림 단위로 올림), `구간별 고정`(구간마다 정한 금액), `나머지 전부`(실수령에서 나머지를 뺀 금액). 생활비 합계·구독 이체액·나머지는 하나씩, 나머지는 꼭 하나.
 - **구간**: 기간과, 고정 대상마다의 금액.
 - **나머지 분배**: 나머지 금액을 비율로 나눈다. 마지막 항목이 남는 금액을 받는다.
 
 시드 데이터 파일(`pnpm db:seed [파일]`)은 `targets`, `phases[].amounts`, `remainderSplit`을 포함한다.
+
+## 공휴일 규칙
+
+월급일·분배일·카드 결제일이 주말이나 공휴일이면 앞 영업일로 당기거나 다음 영업일로 미룰 수 있다(설정 › 일반, 기본은 그대로). 공휴일은 규칙 세트로 정한다.
+
+- 대한민국 공휴일이 기본 세트로 들어 있다(`src/data/holidays-kr.ts`, 「관공서의 공휴일에 관한 규정」, 대체공휴일 포함). 끌 수 있다.
+- 내 세트: 규칙마다 iCalendar `RRULE`(`FREQ=YEARLY`만) 또는 날짜 목록. 음력은 `RSCALE=DANGI`(예: 설날 `RSCALE=DANGI;FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=1`, 음력 섣달 그믐 `BYMONTHDAY=-1`). 대체 휴일은 "일요일이면" 또는 "토·일요일이면".
+- 양력 규칙은 `rrule-temporal`이, 음력은 Temporal의 `dangi` 달력이 계산한다. 음력 날짜는 2025~2050년을 천문연구원 자료와 대조했다(`tests/unit/holidays.test.ts`). 선거일·임시공휴일은 규칙이 없어 내 세트에 날짜로 넣는다.
 
 ## 명령
 
@@ -123,7 +131,7 @@ pnpm db:admin      # 관리자 계정만 (ADMIN_EMAIL/ADMIN_PASSWORD)
 pnpm db:seed       # 관리자 계정 + 처음 데이터
 pnpm keys:rotate   # 데이터 키를 지금 마스터 키로 다시 포장
 pnpm keys:forget-lost  # 잃어버린 마스터 키의 데이터 키를 버림 (그 암호문을 비움)
-pnpm test:unit     # 단위 테스트 (암호화)
+pnpm test:unit     # 단위 테스트 (암호화, 공휴일·날짜 조정, 테마 대비·표시 형식)
 pnpm e2e           # Playwright E2E (스택이 떠 있어야 함, 아래)
 ```
 
@@ -138,13 +146,14 @@ BASE=... ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/crud.mjs create      
 ```
 
 - `tests/e2e/auth.spec.ts`는 Dex로 승인 대기 흐름을 확인하므로 `DEX_CLIENT_SECRET`도 env로 준다. 관리 API로 OIDC 설정을 바꾸고 계정을 만들고 지우므로 테스트 DB에서 돌린다.
-- API 검사(`tests/api/`): `admin.mjs`(관리자 권한·동작), `mobile.mjs`(bearer·일회용 토큰, api에 `ALLOT_APP_RETURN_URLS` 필요), `new-account.mjs`(빈 DB에서 `db:admin` 뒤), `isolation.mjs`, `changes.mjs`, `keys.ts`(api 컨테이너 안에서, 키 교체·분실; RLS 검사는 슈퍼유저가 아닌 롤로), `password-guard.mjs`(비밀번호 끄기 안전장치, api 컨테이너 안에서), `rows-of.ts`(계정별 표마다 행 수, 완전 삭제 확인). `admin.mjs`와 `new-account.mjs`는 버려도 되는 DB에서 돌린다.
+- `tests/e2e/redesign.spec.ts`는 표시 설정·테마·공휴일 세트·날짜 조정을 바꿨다가 되돌리고, 테마 확인용 계정을 하나 만들었다 지운다. 외부 요청 0건과 휴대폰 폭(390)도 확인한다.
+- API 검사(`tests/api/`): `preferences.mjs`(표시 설정·공휴일 세트 검증·격리·되돌리기, 두 번째 계정 `B_EMAIL`/`B_PASSWORD` 필요), `admin.mjs`(관리자 권한·동작), `mobile.mjs`(bearer·일회용 토큰, api에 `ALLOT_APP_RETURN_URLS` 필요), `new-account.mjs`(빈 DB에서 `db:admin` 뒤), `isolation.mjs`, `changes.mjs`, `keys.ts`(api 컨테이너 안에서, 키 교체·분실; RLS 검사는 슈퍼유저가 아닌 롤로), `password-guard.mjs`(비밀번호 끄기 안전장치, api 컨테이너 안에서), `rows-of.ts`(계정별 표마다 행 수, 완전 삭제 확인). `admin.mjs`와 `new-account.mjs`는 버려도 되는 DB에서 돌린다.
 
 E2E는 시스템 Chrome(`channel: 'chrome'`)을 쓴다. 로그인 시도는 1분에 5번으로 제한된다.
 
 ## 구조
 
 - `src/` 프론트. 상태는 `src/lib/store.ts`가 API에서 읽고, 바꿀 때는 API에 먼저 저장한다.
-- `src/lib/calc.ts` 순수 계산 함수 (서버와 공유).
+- `src/lib/calc.ts` 순수 계산 함수 (서버와 공유). `src/lib/holidays.ts` 공휴일 규칙(순수, 필요할 때만 불러옴), `src/lib/theme.ts` 사용자 색과 대비 보정, `src/lib/format.ts` 표시 형식.
 - `server/` API: `app.ts`(라우팅·세션 확인), `routes.ts`(CRUD), `auth.ts`(Better Auth), `db/`(스키마·마이그레이션·시드).
 - `drizzle/` 커밋된 SQL 마이그레이션.
