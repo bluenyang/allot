@@ -4,9 +4,12 @@ import App from './App.vue'
 import Login from './pages/Login.vue'
 import { authClient } from './lib/auth-client'
 import { ApiError, api, onUnauthorized } from './lib/api'
-import { loadState, status } from './lib/store'
+import { loadState, status, store } from './lib/store'
+import { applyTheme } from './lib/theme'
 
 const session = authClient.useSession()
+// The user's theme (spec 007 S-7): applied whenever the saved settings change (load, save, revert).
+watch(() => status.loaded && { ...store.preferences }, (p) => { if (p) applyTheme(p) }, { deep: true })
 // The API said the session is gone (expired or signed out elsewhere): show the login screen.
 onUnauthorized.handler = () => window.location.reload()
 
