@@ -142,16 +142,35 @@ export function enabledSets(rows: HolidaySet[]): { id: string; name: string; rul
  * (대체공휴일): a block of consecutive days from rules with the same substitute rule (설날·추석 = 3 days)
  * gets one substitute day for each of its days that falls on one of `on` weekdays or on another
  * holiday; the substitutes are the first days after the block that are neither weekend nor holiday.
+ * A block longer than MAX_RUN days gets none, and a substitute is looked for at most MAX_RUN days
+ * after its block.
  *
- * Limits (review 2, F2): a block longer than MAX_RUN days gets no substitute, and a substitute is
- * looked for at most MAX_RUN days after its block. With those, a margin of 4×MAX_RUN before and
- * 2×MAX_RUN after the range sees every block that can matter in full (or enough of it to know it is
- * too long), so the answer for a day never depends on the range asked.
+ * Substitutes take days in date order, so one block's choice can push the next one's, week after
+ * week (review 3). The answer for a day therefore must not depend on where the computation starts:
+ * it always starts at EPOCH (or earlier for an earlier question) and runs at least to HORIZON, and
+ * the result is kept per set of rules, so the work is done once.
  */
 export const MAX_RUN = 31
+const EPOCH = '1990-01-01'
+const HORIZON = '2060-12-31'
+const cache = new Map<string, { lo: string; hi: string; list: Holiday[] }>()
+
 export function holidaysIn(sets: { id: string; rules: HolidayRule[] }[], from: string, to: string): Holiday[] {
-  const lo = addDays(from, -4 * MAX_RUN)
-  const hi = addDays(to, 2 * MAX_RUN)
+  const key = JSON.stringify(sets.map((s) => [s.id, s.rules]))
+  const needLo = from < EPOCH ? addDays(from, -4 * MAX_RUN) : EPOCH
+  const needHi = addDays(to, 2 * MAX_RUN) > HORIZON ? addDays(to, 2 * MAX_RUN) : HORIZON
+  let hit = cache.get(key)
+  if (!hit || hit.lo > needLo || hit.hi < needHi) {
+    const lo = hit && hit.lo < needLo ? hit.lo : needLo
+    const hi = hit && hit.hi > needHi ? hit.hi : needHi
+    hit = { lo, hi, list: computeHolidays(sets, lo, hi) }
+    if (cache.size >= 16) cache.delete(cache.keys().next().value!)
+    cache.set(key, hit)
+  }
+  return hit.list.filter((x) => x.date >= from && x.date <= to)
+}
+
+function computeHolidays(sets: { id: string; rules: HolidayRule[] }[], lo: string, hi: string): Holiday[] {
   const base: (Holiday & { rule: HolidayRule })[] = []
   for (const s of sets) for (const rule of s.rules) {
     for (const date of ruleDates(rule, lo, hi)) base.push({ date, name: rule.name, setId: s.id, substitute: false, rule })
@@ -199,7 +218,9 @@ export function holidaysIn(sets: { id: string; rules: HolidayRule[] }[], from: s
       n--
     }
   }
-  const all = [...base.map(({ rule: _r, ...x }) => x), ...subs].filter((x) => x.date >= from && x.date <= to)
+  // Base holidays near `hi` may miss substitutes past it: keep only what is complete.
+  const end = addDays(hi, -2 * MAX_RUN)
+  const all = [...base.map(({ rule: _r, ...x }) => x), ...subs].filter((x) => x.date <= end)
   return all.sort((a, b) => (a.date === b.date ? a.name.localeCompare(b.name) : a.date < b.date ? -1 : 1))
 }
 

@@ -146,3 +146,17 @@ test('review 2 (F2): substitutes never depend on the range asked, also around bl
   assert.ok(holidaysIn([{ id: 'm', rules: cases[1]! }], '2027-01-01', '2027-02-28').some((h) => h.substitute))
   assert.ok(!holidaysIn([{ id: 'm', rules: cases[0]! }], '2025-11-01', '2027-02-28').some((h) => h.substitute))
 })
+
+test('review 3: substitutes pushed week after week by the previous block are the same for any range', () => {
+  // 52 four-day blocks (Fri–Mon) from 2025-01-03, substitute on SA/SU; every Friday and the first Monday
+  // are also holidays of another rule, so each block's substitutes push the next block's.
+  const day = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+  const blocks = Array.from({ length: 52 }, (_, w) => ({ name: `b${w}`, rdate: [0, 1, 2, 3].map((i) => day('2025-01-03', w * 7 + i)), substitute: { on: ['SA' as const, 'SU' as const] } }))
+  const fridays = { name: 'fri', rdate: [...Array.from({ length: 52 }, (_, w) => day('2025-01-03', w * 7)).slice(0, 99), '2025-01-06'] }
+  const sets = [{ id: 'chain', rules: [...blocks, fridays] }]
+  const wide = holidaysIn(sets, '2025-01-01', '2026-03-31').filter((h) => h.substitute)
+  for (const d of ['2025-06-03', '2025-12-30', '2026-01-02', '2026-01-06']) {
+    assert.deepEqual(holidaysIn(sets, d, d).filter((h) => h.substitute), wide.filter((h) => h.date === d), d)
+  }
+  assert.ok(wide.length > 52)
+})
