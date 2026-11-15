@@ -1,7 +1,7 @@
 // API check for spec 007 V-5 (a)–(c) and V-3 (c), (d): display settings and holiday sets.
 //   BASE=… ADMIN_EMAIL=… ADMIN_PASSWORD=… B_EMAIL=… B_PASSWORD=… node tests/api/preferences.mjs
-// A is the seeded account; B a second account (tests/api/make-user.ts). Every value A had is put
-// back at the end (in finally); B's rows are removed. Exit code 0 only when every check passed.
+// A is the seeded account; B a second account (tests/api/make-user.ts). Every value A and B had is
+// put back at the end (in finally) and checked. Exit code 0 only when every check passed.
 let failed = 0
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
 const BASE = process.env.BASE ?? 'http://localhost:15173'
@@ -32,9 +32,9 @@ if (failed) process.exit(1)
 const before = (await A('GET', '/api/state')).json
 const prefs0 = before.preferences
 const settings0 = before.settings
+const bBefore = (await B('GET', '/api/state')).json
 ok(!!prefs0 && Array.isArray(before.holidaySets) && 'dayShift' in settings0, '/api/state has preferences, holidaySets, settings.dayShift')
 const made = []
-const bMade = []
 try {
   // (a) PUT → state, and the rules refuse bad input without touching the row
   const want = { themeMode: 'dark', primary: '#1f5f8b', accent: '#7A5AB8', radius: 'sharp', density: 'compact', dateFormat: 'dot', amountUnit: 'man', negative: 'paren' }
@@ -108,7 +108,6 @@ try {
   const bPref = await B('PUT', '/api/preferences', { ...want, primary: '#3A4540' })
   const aAfterB = (await A('GET', '/api/state')).json.preferences
   ok(bPref.status === 200 && aAfterB.primary === '#1F5F8B', `B's own PUT (${bPref.status}) leaves A's colour as it was`)
-  bMade.push('preference')
 
   // (c) each write is one change set; reverting the preference write brings the old value back
   const sets = (await A('GET', '/api/changes?limit=20')).json
@@ -128,6 +127,9 @@ try {
   const end = (await A('GET', '/api/state')).json
   ok(JSON.stringify(end.preferences) === JSON.stringify(prefs0) && end.settings.dayShift === settings0.dayShift
     && end.holidaySets.length === before.holidaySets.length, 'A is back to what it had')
+  await B('PUT', '/api/preferences', bBefore.preferences)
+  const bEnd = (await B('GET', '/api/state')).json
+  ok(JSON.stringify(bEnd.preferences) === JSON.stringify(bBefore.preferences) && bEnd.holidaySets.length === bBefore.holidaySets.length, 'B is back to what it had')
 }
 console.log(failed === 0 ? '\nALL PASS' : `\n${failed} FAILED`)
 process.exit(failed === 0 ? 0 : 1)
