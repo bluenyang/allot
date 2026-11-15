@@ -1,7 +1,14 @@
 ---
 intent: "007"
-status: draft
-approvals: []
+status: accepted
+approvals:
+  - role: user
+    kind: summary
+    by: BlueNyang
+    at: "2026-11-15"
+    words: "달력은 필요할 때 불려오게. 진행"
+    rev: 3120cfe
+    note: "\"앞으로 6개월\" 대체(S-4 메모)는 요약에 있었고 이 진행으로 받아들임. 달력 지시는 설계 \"달력\"에 반영: 일정 달력 탭과 설정 미리보기 모두 그 칸을 열 때만 불러온다."
 summary_for_user: |
   캔버스의 토큰·글꼴(앱에 넣어 배포)·컴포넌트·셸(묶음 사이드바, 페이지 헤더, 푸터)을 앱 전체에 적용합니다. 편집 폼은 모두 640px 모달이 되고, 없는 기능(AI 메뉴, 내보내기, 동기화 표시)은 그리지 않습니다. 계산과 API 동작은 그대로입니다.
   새 설정 화면(일반·테마·로그인·보안)이 생깁니다. 표시 설정과 테마는 새 표 `preference`에, 주말·공휴일 조정은 `settings.day_shift`(기본 "그대로" = 지금과 같음)에, 사용자 공휴일 세트는 `holiday_set`에 저장합니다. 셋 다 RLS와 변경 내역·되돌리기 대상입니다. 기준 일정과 환율은 월급 분배에서 설정 › 일반으로 옮깁니다.
@@ -207,7 +214,7 @@ summary_for_user: |
   - `holidaysIn`(켜진 세트, 날짜 칸 배경 + 이름).
 - 종류별 색은 토큰 의미 색을 쓰고, 글자로도 구분한다(배지 문구).
 - 휴대폰 폭에서는 목록 보기(같은 데이터)로 바뀐다.
-- 달력 코드는 일정 화면을 열 때 불러온다(동적 import). 첫 화면 번들을 키우지 않으려는 것이다.
+- 사용자 지시 "달력은 필요할 때 불려오게": 달력 코드(FullCalendar와 `CalendarView.vue`)는 일정의 달력 탭이나 설정의 공휴일 미리보기를 열 때만 불러온다(동적 import, `defineAsyncComponent`). 다른 화면을 열 때는 받지 않는다(V-1에서 조각을 확인).
 
 ## 작업 단위
 각 W는 혼자 되돌릴 수 있고 커밋마다 게이트(typecheck → build)를 지난다. W가 깨뜨리는 기존 E2E 선택자는 그 W 안에서 고친다. 커밋 메시지에 W 번호를 적는다. 한 커밋에 W 둘을 섞지 않는다(감사 0.1.2 A-1).
@@ -227,7 +234,7 @@ summary_for_user: |
 ## 검증 기준
 원본 출력은 `.loctx/reports/0.1.2/redesign/test/`에 둔다. 통과는 그 경로의 로그로만 판정한다. 개발 스택은 `docker/compose.dev.yaml`이다.
 - V-1 게이트: `pnpm install --frozen-lockfile && pnpm typecheck && pnpm build && pnpm build:server && pnpm test:unit` 모두 exit 0.
-  - `pnpm build` 출력의 첫 화면 JS 크기를 적는다. 기대: master(dad7b58) 대비 gzip 증가가 120kB 이하. 달력은 따로 나뉜 조각에 있다.
+  - `pnpm build` 출력의 첫 화면 JS 크기를 적는다. 기대: master(dad7b58) 대비 gzip 증가가 120kB 이하. 달력은 따로 나뉜 조각에 있고, 현황을 열 때 그 조각을 받지 않는다(E2E 요청 목록으로 확인).
   - 넘으면 원인을 적고 사용자에게 묻는다.
 - V-2 업그레이드 동등성(0.1.2 V-2 방식):
   - 준비: dad7b58 마이그레이션까지 적용한 DB에 로컬 시드를 넣는다. `/api/state`와 36개월 분배(`distributionAt`·`transferAt`)를 저장한다. 새 마이그레이션을 적용한다.
