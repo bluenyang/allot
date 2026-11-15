@@ -8,17 +8,32 @@ import { loadState, status, store } from './lib/store'
 import { applyTheme } from './lib/theme'
 
 const session = authClient.useSession()
-// Too many session checks (429) is not "signed out": say so and check again shortly, instead of
-// showing the login form (spec 007 S-14).
+// Too many session checks (429) is not "signed out": say so and check again when the server says
+// (X-Retry-After), instead of showing the login form (spec 007 S-14). One loop at a time; it stops
+// when the check passes or the root goes away (review 6).
 const limited = computed(() => !session.value.data && session.value.error?.status === 429)
-let retry: ReturnType<typeof setTimeout> | undefined
-watch(limited, (on) => {
-  clearTimeout(retry)
-  if (on) retry = setTimeout(function again() {
-    void session.value.refetch().then(() => { if (limited.value) retry = setTimeout(again, 5_000) })
-  }, 5_000)
-})
-onBeforeUnmount(() => clearTimeout(retry))
+let alive = true
+let waiting = false
+let timer: ReturnType<typeof setTimeout> | undefined
+const sleep = (s: number) => new Promise<void>((done) => { timer = setTimeout(done, Math.min(Math.max(s, 1), 120) * 1000) })
+async function waitForSession(firstWait: number) {
+  if (waiting) return
+  waiting = true
+  try {
+    let wait = firstWait
+    while (alive && limited.value) {
+      await sleep(wait)
+      if (!alive) return
+      const r = await fetch('/api/auth/get-session', { credentials: 'same-origin' })
+      if (r.status !== 429) { await session.value.refetch(); return }
+      wait = Number(r.headers.get('X-Retry-After')) || 5
+    }
+  } finally {
+    waiting = false
+  }
+}
+watch(limited, (on) => { if (on) void waitForSession(5) })
+onBeforeUnmount(() => { alive = false; clearTimeout(timer) })
 // The user's theme (spec 007 S-7): applied whenever the saved settings change (load, save, revert).
 watch(() => status.loaded && { ...store.preferences }, (p) => { if (p) applyTheme(p) }, { deep: true })
 // The API said the session is gone (expired or signed out elsewhere): show the login screen.
