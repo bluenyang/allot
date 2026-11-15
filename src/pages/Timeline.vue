@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
+import PageHeader from '../components/PageHeader.vue'
 import { saveItem, store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
-import { today, won, ymOf } from '../lib/calc'
+import { fmtMoney } from '../lib/display'
+import { today, ymOf } from '../lib/calc'
 import type { EventKind, EventState } from '../data/types'
 
-const tab = ref('timeline')
+// The calendar is fetched only when its tab opens (spec 007 S-11, user: "달력은 필요할 때 불려오게").
+const CalendarView = defineAsyncComponent(() => import('../components/CalendarView.vue'))
+
+const tab = ref('cal')
 const tabs = [
-  { id: 'timeline', label: '타임라인' },
-  { id: 'debt', label: '부채' },
+  { id: 'cal', label: '달력', icon: 'events' },
+  { id: 'timeline', label: '타임라인', icon: 'list' },
+  { id: 'debt', label: '부채', icon: 'pay' },
 ]
 const now = ymOf(today())
 const kinds = computed(() => [...new Set(store.events.map((e) => e.kind))])
@@ -40,11 +46,16 @@ const debtEd = useEditor('debts', () => ({ id: '', name: '', principal: 0, rate:
 
 <template>
   <section>
-    <h1>이벤트</h1>
-    <p class="lede">저축 금액이 바뀌는 시점, 상품 가입, 대출 상환 같은 일정. 상태 칩을 누르면 예정 → 진행 → 완료로 바뀌고, 내용을 누르면 수정해요.</p>
+    <PageHeader crumb="관리" title="일정" desc="월급·분배·카드 결제일, 구독 결제, 플랜 전환과 공휴일을 달력으로 보고, 월 단위 계획과 부채를 관리해요." />
     <SubTabs v-model="tab" :tabs="tabs" />
 
-    <div v-if="tab === 'timeline'">
+    <div v-if="tab === 'cal'">
+      <CalendarView source="schedule" label="이번 달 일정 달력" />
+      <p class="small muted note">월급·분배·카드 결제일은 설정 › 일반의 "주말·공휴일이면"에 따라 옮겨 보여요. 월 단위 계획은 타임라인 탭에 있어요.</p>
+    </div>
+
+    <div v-else-if="tab === 'timeline'">
+      <p class="lede">저축 금액이 바뀌는 시점, 상품 가입, 대출 상환 같은 일정. 상태 칩을 누르면 예정 → 진행 → 완료로 바뀌고, 내용을 누르면 수정해요.</p>
       <div class="btns" style="margin:0 0 14px">
         <select id="ev-kind" v-model="kind" class="in" style="width:auto" aria-label="분류">
           <option value="">전체 분류</option>
@@ -90,10 +101,14 @@ const debtEd = useEditor('debts', () => ({ id: '', name: '', principal: 0, rate:
           <thead><tr><th>항목</th><th class="n">원금</th><th>금리</th><th>상환 방식</th><th>계획</th></tr></thead>
           <tbody>
             <tr v-for="d in store.debts" :key="d.id" class="click" tabindex="0" @click="debtEd.open(d)" @keydown.enter="debtEd.open(d)">
-              <td>{{ d.name }}</td><td class="n">{{ won(d.principal) }}</td><td class="mono">{{ d.rate }}</td><td>{{ d.method }}</td><td>{{ d.plan }}</td></tr>
+              <td>{{ d.name }}</td><td class="n">{{ fmtMoney(d.principal) }}</td><td class="mono">{{ d.rate }}</td><td>{{ d.method }}</td><td>{{ d.plan }}</td></tr>
           </tbody>
         </table>
       </div>
     </div>
   </section>
 </template>
+
+<style scoped>
+.note{margin:10px 0 0}
+</style>

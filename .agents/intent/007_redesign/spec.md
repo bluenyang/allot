@@ -231,7 +231,7 @@ summary_for_user: |
 - [x] W-4 저장: `preference`·`holiday_set` 스키마, `settings.day_shift`, `pnpm db:generate` 마이그레이션, zod, `/api/preferences`·`/api/holiday-sets`·`/api/state`, `OWNED`, `src/data/types.ts`·`defaults.ts`·`store.ts`, `tests/api/preferences.mjs`, 관리자 완전 삭제 검사의 표 수. 규칙 검증에 `rrule-temporal`·`temporal-polyfill`을 더한다. (S-7, S-8, S-9)
 - [x] W-5 공휴일: `src/lib/holidays.ts`, `src/data/holidays-kr.ts`(출처 주석), `calc.ts`의 `monthDates`, 단위 테스트 `tests/unit/holidays.test.ts`·`tests/unit/month-dates.test.ts`. 대조용 `korean-lunar-calendar`는 devDependency. (S-9, S-10)
 - [x] W-6 테마·형식: `src/lib/theme.ts`, `src/lib/format.ts`, 시작할 때와 설정을 받을 때 `applyTheme`, `data-radius`·`data-density` CSS, `tests/unit/theme.test.ts`. 화면의 금액·날짜 표시를 `format.ts`로 바꾸는 일은 각 화면 W에서 한다. (S-7, S-8)
-- [ ] W-7 달력: FullCalendar 의존성, `CalendarView.vue`(동적 import), 일정 화면 달력 탭, 타임라인·부채 모양, 금액·날짜 형식 적용. (S-11, S-5)
+- [x] W-7 달력: FullCalendar 의존성, `CalendarView.vue`(동적 import), 일정 화면 달력 탭, 타임라인·부채 모양, 금액·날짜 형식 적용. (S-11, S-5)
 - [ ] W-8 설정 화면: 일반(표시·환율·기준 일정·주말공휴일·공휴일 세트와 미리보기)·테마(미리보기 칸) 탭, 월급 분배 설정 칸 정리, 설정 E2E 이동. (S-7, S-8, S-9, S-12)
 - [ ] W-9 현황: 헤더(조정된 날짜), KPI, 탭, 분배 표, 6개월 막대, 결제 예정, 예정 탭, 확인할 것 탭, 형식 적용. (S-4, S-10)
 - [ ] W-10 구독: KPI, 상태·분류·경로 거르개, 표, 추가·편집 모달, 미리보기·전환 탭 모양, 형식 적용. (S-4)
