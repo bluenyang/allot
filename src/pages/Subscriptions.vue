@@ -230,7 +230,7 @@ function describe(c: PlanChange) {
           <div class="field" style="grid-column:1/-1"><label for="e-note">메모</label><input id="e-note" v-model="edit.note" class="in"></div>
         <template #after>
           <label class="chk" style="border:0"><input id="e-ver" v-model="edit.verified" type="checkbox"><span>영수증으로 금액과 VAT를 확인했어요</span></label>
-          <div class="pvw"><span>월 환산 미리보기</span><b>{{ fmtMoney(preview) }}</b></div>
+          <div class="pvw"><span>월 환산 미리보기</span><b>{{ won(preview) }}</b></div>
           <div v-if="overridden" class="callout warn" data-testid="override-note">
             <span class="lbl">전환 적용 중</span>
             <p>여기서는 <b>기본값</b>(전환 전)을 고쳐요. {{ ymLabel(ym) }}에는 예약된 전환이 적용돼서 목록에 이렇게 보여요:
