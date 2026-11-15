@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Editor shared by every list (spec 007 S-6): a 640px modal (full screen on a phone) holding a
 // form named by its title. Save / cancel / press-twice delete as before. The native modal
-// <dialog> keeps Tab inside and makes the page behind inert; Esc cancels; on close the focus
+// <dialog> makes the page behind inert and Tab wraps inside it (trap below); Esc cancels; on close the focus
 // goes back to the button that opened it. A click outside does not close it (no lost input).
 import { nextTick, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
 
@@ -24,6 +24,19 @@ onBeforeUnmount(() => {
 // The page was left (KeepAlive) while the editor was open: drop the edit, as 취소 would.
 onDeactivated(() => emit('cancel'))
 
+// The native modal makes the page inert, but Tab from the last control would leave for the browser's
+// own UI: wrap it to the first control (and Shift+Tab from the first to the last).
+function trap(e: KeyboardEvent) {
+  if (e.key !== 'Tab' || !dlg.value) return
+  const items = [...dlg.value.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null)
+  if (!items.length) return
+  const first = items[0]!
+  const last = items[items.length - 1]!
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+}
+
 function del() {
   if (!armed.value) return (armed.value = true)
   armed.value = false
@@ -32,7 +45,7 @@ function del() {
 </script>
 
 <template>
-  <dialog ref="dlg" class="modal" :aria-label="props.title" @cancel.prevent="emit('cancel')">
+  <dialog ref="dlg" class="modal" :aria-label="props.title" @cancel.prevent="emit('cancel')" @keydown="trap">
     <form class="sheet-f" novalidate :aria-label="props.title" @submit.prevent="emit('save')">
       <header class="mh">
         <div>
