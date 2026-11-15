@@ -10,6 +10,7 @@ dist/
 # syncthing
 .stfolder/
 .stignore
+.stversions
 
 # docker env (real values / agent test values)
 docker/.env
