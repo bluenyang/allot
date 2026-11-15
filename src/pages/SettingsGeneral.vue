@@ -82,7 +82,7 @@ const fmt = computed(() => ({ amountUnit: d.value.amountUnit, negative: d.value.
 const ym = ymOf(now)
 const year = now.getFullYear()
 const yearHolidays = computed(() => holidayList(store.holidaySets, `${year}-01-01`, `${year}-12-31`))
-const aroundMonth = computed(() => holidayList(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 2)}-01`))
+const aroundMonth = computed(() => holidayList(store.holidaySets, `${addYm(ym, -2)}-01`, `${addYm(ym, 3)}-01`))
 const shifted = computed(() => {
   if (d.value.dayShift === 'none') return monthDates(ym, { ...store.settings, ...d.value }, new Set())
   // A shift can cross into the month before or after (review 1, R3).
@@ -166,7 +166,7 @@ const addRow = () => rows.value.push(emptyRow())
         </div>
         <p class="small muted" role="status">
           이번 달:
-          <template v-if="shifted">월급 {{ md(shifted.pay.date) }} · 분배 {{ md(shifted.transfer.date) }} · 카드 결제 {{ md(shifted.billing.date) }}</template>
+          <template v-if="shifted">월급 {{ md(shifted.pay.date) }}{{ shifted.pay.unresolved ? ' (옮길 영업일 없음)' : '' }} · 분배 {{ md(shifted.transfer.date) }}{{ shifted.transfer.unresolved ? ' (옮길 영업일 없음)' : '' }} · 카드 결제 {{ md(shifted.billing.date) }}{{ shifted.billing.unresolved ? ' (옮길 영업일 없음)' : '' }}</template>
           <template v-else>공휴일을 불러오는 중…</template>
         </p>
       </section>

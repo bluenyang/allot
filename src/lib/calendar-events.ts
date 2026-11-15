@@ -27,17 +27,19 @@ export function holidayEvents(sets: HolidaySet[], from: string, to: string): Cal
 /** Every event between from (inclusive) and to (exclusive), YYYY-MM-DD. */
 export function calendarEvents(from: string, to: string): CalEvent[] {
   const last = ymd(new Date(parseDate(to).getTime() - DAY))
-  // A monthly date can move into the range from the month before or after (review 1, R3), and its
-  // move needs the holidays around it: compute one month more on each side, then keep the range.
-  const firstYm = addYm(ymOf(parseDate(from)), -1)
-  const lastYm = addYm(ymOf(parseDate(last)), 1)
-  const wide = holidaysBetween(store.holidaySets, `${firstYm}-01`, ymd(new Date(parseDate(`${addYm(lastYm, 1)}-01`).getTime() - DAY)))
+  // A monthly date moves at most SHIFT_LIMIT (31) days, so it can come from up to two months away
+  // (Jan 31 → Mar 3; review 1 R3, review 2 F1), and its move needs the holidays one month further:
+  // compute those months, then keep the range.
+  const firstYm = addYm(ymOf(parseDate(from)), -2)
+  const lastYm = addYm(ymOf(parseDate(last)), 2)
+  const wide = holidaysBetween(store.holidaySets, `${addYm(firstYm, -1)}-01`, ymd(new Date(parseDate(`${addYm(lastYm, 2)}-01`).getTime() - DAY)))
   const off = new Set(wide.map((h) => h.date))
   const out: CalEvent[] = wide.filter((h) => h.date >= from && h.date <= last).map((h) => ({ date: h.date, title: h.name, kind: 'holiday' }))
 
   for (let ym = firstYm; ym <= lastYm; ym = addYm(ym, 1)) {
     const d = monthDates(ym, store.settings, off)
-    const moved = (x: { shifted: string | null }) => (x.shifted === 'before' ? ' (앞당김)' : x.shifted === 'after' ? ' (미룸)' : '')
+    const moved = (x: { shifted: string | null; unresolved?: true }) =>
+      x.unresolved ? ' (옮길 영업일 없음)' : x.shifted === 'before' ? ' (앞당김)' : x.shifted === 'after' ? ' (미룸)' : ''
     for (const [kind, x] of [['pay', d.pay], ['transfer', d.transfer], ['billing', d.billing]] as const) {
       if (x.date >= from && x.date <= last) out.push({ date: x.date, title: KIND_LABEL[kind] + moved(x), kind })
     }

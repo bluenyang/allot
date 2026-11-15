@@ -31,13 +31,16 @@ const pct = (n: number) => (store.settings.netPay > 0 ? `${((n / store.settings.
 // Monthly dates after the weekend/holiday shift; the holiday code loads only when a shift is set.
 const dates = computed(() => {
   if (store.settings.dayShift === 'none') return monthDates(ym, store.settings, new Set())
-  // A shift can cross into the month before or after: the holidays of the months around this one.
-  const off = offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 2)}-01`)
+  // A shift moves at most 31 days, into the month before or after: their holidays are needed too.
+  const off = offDays(store.holidaySets, `${addYm(ym, -2)}-01`, `${addYm(ym, 3)}-01`)
   return monthDates(ym, store.settings, off ?? new Set())
 })
 const WD = ['일', '월', '화', '수', '목', '금', '토']
 const md = (s: string) => { const d = new Date(`${s}T00:00:00`); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})` }
 const moved = (s: 'before' | 'after' | null) => (s === 'before' ? '주말·공휴일이라 앞당김' : s === 'after' ? '주말·공휴일이라 미룸' : '')
+/** The note after a monthly date: moved, or no business day within the limit (review 2, F3). */
+const note = (x: { shifted: 'before' | 'after' | null; unresolved?: true }) =>
+  x.unresolved ? ' (옮길 영업일 없음)' : x.shifted === 'before' ? ' (앞당김)' : x.shifted === 'after' ? ' (미룸)' : ''
 
 // Six months ahead: subscription monthly total with scheduled plan changes.
 const trend = computed(() => ymRange(ym, 6).map((m) => {
@@ -74,9 +77,9 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
     <PageHeader crumb="개요" :title="`${year}년 ${month}월 현황`">
       <template #meta><span v-if="dist.phase" class="pill tag">{{ dist.phase.label }} · {{ dist.phase.name }}</span><span v-else class="pill tag">구간 밖</span></template>
       <template #desc>
-        월급 <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="dates.pay.shifted"> ({{ dates.pay.shifted === 'before' ? '앞당김' : '미룸' }})</small></span>
-        · 분배 <span :title="moved(dates.transfer.shifted)">{{ md(dates.transfer.date) }}<small v-if="dates.transfer.shifted"> ({{ dates.transfer.shifted === 'before' ? '앞당김' : '미룸' }})</small></span>
-        · 카드 결제 <span :title="moved(dates.billing.shifted)">{{ md(dates.billing.date) }}<small v-if="dates.billing.shifted"> ({{ dates.billing.shifted === 'before' ? '앞당김' : '미룸' }})</small></span>
+        월급 <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="note(dates.pay)">{{ note(dates.pay) }}</small></span>
+        · 분배 <span :title="moved(dates.transfer.shifted)">{{ md(dates.transfer.date) }}<small v-if="note(dates.transfer)">{{ note(dates.transfer) }}</small></span>
+        · 카드 결제 <span :title="moved(dates.billing.shifted)">{{ md(dates.billing.date) }}<small v-if="note(dates.billing)">{{ note(dates.billing) }}</small></span>
       </template>
     </PageHeader>
 
