@@ -142,6 +142,10 @@ summary_for_user: |
 - A-12 (2026-11-16, W-7) `check-i18n.mjs` 허용 목록에 `src/data/types.ts`·`src/lib/labels.ts`(저장된 한국어 일정 분류 코드), `src/lib/holidays.ts`·`holiday-names.ts`(대체공휴일 이름), `src/i18n/en.ts`(언어 목록의 "한국어")를 더했다 · 모두 데이터나 저장 값이지 화면 문구가 아님 · 97b7c7f
 - A-13 (2026-11-16, W-7) 색 프리셋(`theme.ts`)은 한국어 이름 대신 id(green, teal…)를 갖고 이름은 메시지에서 · 이름이 화면 문구라서 · 2db0c3c
 - A-14 (2026-11-16, W-7) 로그아웃 뒤 로그인 화면 E2E는 새로 로그인하지 않고 공유 세션을 마지막에 로그아웃하는 `tests/e2e/zz-i18n-signout.spec.ts`(파일 이름이 맨 뒤로 가게)로 두었고, `global-setup`의 로그인 문맥은 `locale: 'ko-KR'`로 고정했다(Playwright 기본은 en-US라 이제 로그인 화면이 영어) · 로그인 시도 제한이 분당 5회라, 로그인을 하나 더 하면 뒤쪽 V-14 a, b가 429를 받았다(트레이스로 확인) · bb9e02b
+- A-15 (2026-11-16, W-4) 모든 도구 콜백을 오류 경계(`server/mcp/safe.ts`의 `guarded`)로 감싼다: 예외는 영어 "Internal error"의 `isError` 결과가 되고, 서버 로그에는 도구 이름과 오류의 이름·코드만 남긴다(메시지의 SQL·값은 남기지 않음). `list_changes.before`는 정규식 대신 실제 달력·시각인지 확인한다(`2026-99-99`, `2026-02-30`, 24시는 입력 오류) · 코드 검토 1: SDK가 예외 메시지를 그대로 클라이언트에 보내 Drizzle 오류의 SQL이 새어 나갔다. 달 입력(YYYY-MM)은 기존 정규식이 01~12만 받아 달력상 문제가 없다 · 10d8d6b
+- A-16 (2026-11-16, W-4) `list_subscriptions`의 다음 결제일은 기준 플랜(`base`)이 아니라 그 달에 적용된 플랜(`p`)의 주기로 계산한다(화면 `Subscriptions.vue`와 같음). 플랜 변경이 바꾸는 필드는 `Plan`뿐이라 같은 목록의 나머지 값(이름·분류·결제 경로·영수증 확인)은 `base`와 `p`가 같다 · 코드 검토 2: 월→연 변경이 이번 달에 적용되면 MCP는 2026-11-20, 화면은 2027-10-20 · 40f0950
+- A-17 (2026-11-16, W-3) 키별 요청 제한(RATE_LIMITED)에 걸렸을 때도 키의 소유자(저장된 해시로 조회, 사용 횟수는 올리지 않음)가 쓸 수 있는 계정(active, 차단 아님)일 때만 429를 주고, 아니면 공통 401(실패 횟수도 센다) · 코드 검토 3: 플러그인은 제한을 마지막에 검사하므로 제한에 걸린 키는 그 밖에는 유효하다. 그래도 차단·승인 대기 계정이 429로 키의 존재를 알 수 있었다 · 1997764
+- A-18 (2026-11-16, W-6) 메시지 키 없이 던져진 zod 이슈는 `issue.code`로 일반 문구를 고른다(`invalid_type`, `too_small`, `too_big`, `invalid_value`, `invalid_format`, `unrecognized_keys`, `custom` 등 → ko·en 6개 키 추가). 명시한 키는 그대로이고, 키가 아니던 `YYYY-MM-DD`·`YYYY-MM` 두 문구는 키(`dateFormat`, `monthFormat`)로 바꿨다 · 코드 검토 4: `{ expiresInDays: "90" }` 같은 형식 오류가 한국어 요청에도 zod의 영어로 나갔다 · d6e0372
 
 ## 우려
 - 플러그인의 클라이언트 경로 목록이 버전마다 다를 수 있다 — 닫을 때 경로를 하나씩 적지 않고 `/api-key/` 접두로 막고, V-2에서 `/api/auth/api-key/create`·`list`·`delete`·`update`가 막힌 것을 확인한다.
