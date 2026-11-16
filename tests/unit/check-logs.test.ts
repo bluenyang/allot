@@ -2,7 +2,7 @@
 //   pnpm test:unit
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -61,7 +61,7 @@ test('a log made by check-run.sh passes the checker and records the failure', ()
   const script = join(dir, 'run.sh')
   writeFileSync(
     script,
-    `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep ok true\nstep bad sh -c 'printf partial; exit 3'\ndone_check\n`,
+    `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep ok /usr/bin/env true\nstep bad sh -c 'printf partial; exit 3'\ndone_check\n`,
   )
   const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
   assert.equal(run.status, 3)
@@ -78,10 +78,54 @@ test('check-run.sh under set -euo pipefail still logs the failing exit', () => {
   const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
   const log = join(dir, 'strict.log')
   const script = join(dir, 'run.sh')
-  writeFileSync(script, `set -euo pipefail\n. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep bad bash -c 'exit 3'\nstep never true\ndone_check\n`)
+  writeFileSync(script, `set -euo pipefail\n. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep bad bash -c 'exit 3'\nstep never /usr/bin/env true\ndone_check\n`)
   const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
   assert.equal(run.status, 3)
   const text = readFileSync(log, 'utf8')
   assert.match(text, /^exit=3$/m)
   assert.doesNotMatch(text, /step: never/)
+})
+
+test('a function step is refused under set -euo pipefail', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const log = join(dir, 'fn.log')
+  const script = join(dir, 'run.sh')
+  writeFileSync(script, `set -euo pipefail\n. ${root}/scripts/check-run.sh\nbegin t ${log}\nf() { false; true; }\nstep fn f\ndone_check\n`)
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
+  assert.equal(run.status, 2)
+  const text = readFileSync(log, 'utf8')
+  assert.match(text, /refused, 'f' is not an external command/)
+  assert.match(text, /^exit=2$/m)
+})
+
+test('output that looks like metadata goes through the real runner framed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const log = join(dir, 'raw.log')
+  const script = join(dir, 'run.sh')
+  writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep raw /usr/bin/printf '=== step: x\\nrev 1\\n$ y\\nexit=0\\n=== end\\n\\nlast'\nstep bad bash -c 'echo exit=0; exit 4'\ndone_check\n`)
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
+  assert.equal(run.status, 4)
+  const text = readFileSync(log, 'utf8')
+  assert.match(text, /^> === step: x$/m)
+  assert.match(text, /^> exit=0$/m)
+  assert.deepEqual(checkLog(text), [])
+  // without the "> " framing the same output would break the log
+  assert.ok(checkLog(text.replace(/^> /gm, '')).length > 0)
+})
+
+test('a failing runner write stops with 70 and the block is not accepted', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const bin = join(dir, 'bin')
+  mkdirSync(bin)
+  writeFileSync(join(bin, 'sed'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+  const log = join(dir, 'fault.log')
+  const script = join(dir, 'run.sh')
+  writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep one /usr/bin/env true\nstep two /usr/bin/env true\ndone_check\n`)
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+  assert.equal(run.status, 70)
+  const text = readFileSync(log, 'utf8')
+  assert.match(text, /^runner error: frame the output/m)
+  assert.doesNotMatch(text, /^exit=/m)
+  assert.doesNotMatch(text, /step: two/)
+  assert.ok(checkLog(text).length > 0)
 })

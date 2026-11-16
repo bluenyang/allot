@@ -12,7 +12,8 @@
 # "rev <full HEAD>[+uncommitted]", "date", "$ <command as run>", the output with every line prefixed
 # "> " (">" if empty; captured by redirection to a file, never a pipe), "exit=<code of the command
 # itself>" and the terminator "=== end". The first non-zero step stops the run with that code.
-# A step with a '|' in any argument is refused (logged, exit=2): pipes and sh -c pipelines hide exit codes.
+# A step with a '|' in any argument, or whose command is not an external program (a function or
+# builtin loses errexit), is refused (logged, exit=2). A failing runner write ends the run with 70.
 # A failed cleanup never hides an earlier failure and turns a passing run into exit 1.
 # Verify a log with: pnpm check:logs <log>
 ROOT=$(git rev-parse --show-toplevel) || exit 1
@@ -29,23 +30,28 @@ _cr_q() { # quote one word for the command line shown in the log
     *) printf %s "$1" ;;
   esac
 }
+# A failure of the runner's own writes ends the run with 70; the block is left without exit= and "=== end".
+_cr_die() { echo "runner error: $1" >> "$LOG" 2>/dev/null; echo "check-run: runner error: $1" >&2; exit 70; }
 _cr_has_pipe() { local a; for a in "$@"; do case $a in *'|'*) return 0 ;; esac; done; return 1; }
 _cr_run() { # kind name command...
   local kind=$1 name=$2 out rc a; shift 2
-  out=$(mktemp "$_TMP/step.XXXXXX")
+  out=$(mktemp "$_TMP/step.XXXXXX") || _cr_die "create the capture file"
   { echo "=== $kind: $name"; echo "rev $(_cr_rev)"; echo "date $(date -Is)"
-    printf '$'; for a in "$@"; do printf ' '; _cr_q "$a"; done; echo; } >> "$LOG"
+    printf '$'; for a in "$@"; do printf ' '; _cr_q "$a"; done; echo; } >> "$LOG" || _cr_die "write the block header"
   if _cr_has_pipe "$@"; then
-    echo "check-run: refused, an argument contains '|'; a pipe hides the exit code. Use redirection to a file." > "$out"
+    echo "check-run: refused, an argument contains '|'; a pipe hides the exit code. Use redirection to a file." > "$out" || _cr_die "write the capture file"
+    rc=2
+  elif [ "$(type -t "$1")" != file ]; then
+    echo "check-run: refused, '$1' is not an external command (functions and builtins lose errexit and can hide failures). Use /usr/bin/env or bash -c." > "$out" || _cr_die "write the capture file"
     rc=2
   elif "$@" > "$out" 2>&1; then rc=0; else rc=$?; fi
   # every output line is written as "> <line>" (">" if empty), so output can never look like metadata
-  sed -e 's/^\(.\)/> \1/' -e 's/^$/>/' "$out" >> "$LOG"
+  sed -e 's/^\(.\)/> \1/' -e 's/^$/>/' "$out" >> "$LOG" || _cr_die "frame the output (sed)"
   if [ -s "$out" ] && [ -n "$(tail -c 1 "$out")" ]; then
-    { echo; echo "> [the output above had no newline at its end]"; } >> "$LOG"
+    { echo; echo "> [the output above had no newline at its end]"; } >> "$LOG" || _cr_die "write the output note"
   fi
   rm -f "$out"
-  { echo "exit=$rc"; echo "=== end"; echo; } >> "$LOG"
+  { echo "exit=$rc"; echo "=== end"; echo; } >> "$LOG" || _cr_die "write the block footer"
   echo "[$CHECK] $kind $name: exit=$rc"
   return $rc
 }
