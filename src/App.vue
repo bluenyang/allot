@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
 import Dashboard from './pages/Dashboard.vue'
@@ -96,6 +96,9 @@ const onGripUp = () => {
   document.body.classList.remove('resizing')
   setSideWidth(sideWidth.value)
 }
+// A drag never outlives the handle: folding removes it, and leaving the shell ends it (review 22).
+watch(sideFolded, () => onGripUp())
+onBeforeUnmount(() => document.body.classList.remove('resizing'))
 const onGripKey = (e: KeyboardEvent) => {
   const step = e.shiftKey ? 48 : 16
   const next = { ArrowLeft: sideWidth.value - step, ArrowRight: sideWidth.value + step, Home: SIDE.min, End: SIDE.max }[e.key]
@@ -135,7 +138,7 @@ const onGripKey = (e: KeyboardEvent) => {
       </div>
       <div v-if="!sideFolded" class="grip" role="separator" aria-orientation="vertical" aria-label="사이드바 너비" aria-controls="side" tabindex="0"
         :aria-valuemin="SIDE.min" :aria-valuemax="SIDE.max" :aria-valuenow="sideWidth" title="끌어서 너비 조정 · 두 번 클릭하면 기본 너비"
-        @pointerdown="onGripDown" @pointermove="onGripMove" @pointerup="onGripUp" @pointercancel="onGripUp" @keydown="onGripKey" @dblclick="setSideWidth(SIDE.default)"></div>
+        @pointerdown="onGripDown" @pointermove="onGripMove" @pointerup="onGripUp" @pointercancel="onGripUp" @lostpointercapture="onGripUp" @keydown="onGripKey" @dblclick="setSideWidth(SIDE.default)"></div>
     </aside>
 
     <div class="col">
