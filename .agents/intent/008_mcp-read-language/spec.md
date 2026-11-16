@@ -101,7 +101,7 @@ summary_for_user: |
 - [x] W-5 화면: 설정 › AI·연동(`SettingsAi.vue`), 관리자 "API 키" 탭, store·api, E2E `tests/e2e/api-keys.spec.ts`. (S-4) (commits d63645b, 7768511)
 - [x] W-6 언어 구조: `vue-i18n@11.4.20`, `src/i18n/*`, 언어 고르기, `preference.language` 열·마이그레이션·zod·defaults, 설정 › 일반의 언어 선택, `<html lang>`, `api.ts`의 `Accept-Language`, `server/messages.ts`와 서버 문구 옮기기, 키 비교 단위 테스트 `tests/unit/i18n.test.ts`. 이 W에서는 셸(사이드바·헤더·푸터)·설정 › 일반·로그인 화면 문구만 옮긴다. (S-9, S-10) (commits c49f8bd, 10c660d)
 - [x] W-7 나머지 화면 문구: 남은 `src/pages/*`, `src/components/*`, `src/lib/*` 문구, `types.ts` 표시 이름, 공휴일 영어 이름, 영어 금액 단위(`format.ts`), W-5 화면 문구. 화면마다 커밋. 한글이 남은 곳 검사 스크립트 `scripts/check-i18n.mjs`(허용 목록: `src/i18n/ko.ts`, 공휴일 데이터, 주석). (S-9) (commits d27d710 공통 lib·단위·열거 이름, 35a7dd8 현황, 7f0bf69 구독, 05ef1ca 월급 분배, a1c3163 일정, a66d567 변경 내역, e6d93ff 계정, 023f5b3 개발, 2db0c3c 테마, 8913a89 AI·연동, f9450ec 관리, 2d884ef calc 정리, 97b7c7f 검사 스크립트, 1ae27ae·bb9e02b E2E 분리)
-- [ ] W-8 문서: CHANGELOG, README, ROADMAP. (S-11)
+- [x] W-8 문서: CHANGELOG, README, ROADMAP. (S-11) · 8338356
 
 ## 검증 기준
 모든 출력은 `.loctx/reports/0.1.3/test/`에 명령·rev·종료 코드와 함께 남긴다(파이프로 종료 코드를 가리지 않음, 첫 실패에서 멈춤).
