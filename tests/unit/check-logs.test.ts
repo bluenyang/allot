@@ -161,3 +161,11 @@ test('the logged command reads back as exactly the arguments that ran', () => {
   const back = spawnSync('bash', ['-c', 'eval "set -- $CMD"; for a in "$@"; do printf \'%s\\0\' "$a"; done'], { encoding: 'utf8', env: { ...process.env, CMD: cmd } })
   assert.deepEqual(back.stdout.split('\0').slice(0, -1), ['/usr/bin/env', 'printf', '[%s]\\n', ...args])
 })
+
+test('a directory with no .log file fails: nothing checked is not a pass', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-logs-'))
+  writeFileSync(join(dir, 'notes.txt'), 'not a log\n')
+  const run = spawnSync('node', [join(root, 'scripts/check-logs.mjs'), dir], { encoding: 'utf8' })
+  assert.equal(run.status, 1)
+  assert.match(run.stdout, /nothing was checked/)
+})

@@ -58,6 +58,7 @@ function main(args) {
     for (const p of checkLog(readFileSync(f, 'utf8'))) { bad++; console.log(`${f}:${p.line}: ${p.problem}`) }
   }
   console.log(`${out.files.length} log(s) checked, ${bad} problem(s)`)
+  if (out.files.length === 0) { console.log('no .log file found: nothing was checked'); return 1 }
   return bad === 0 ? 0 : 1
 }
 
