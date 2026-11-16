@@ -1,7 +1,7 @@
 ---
 id: 2026-11-12_login-rate-limit-in-tests
 kind: failure
-status: active
+status: superseded
 supersedes: null
 topics: [test, auth, rate-limit]
 decisions: []
