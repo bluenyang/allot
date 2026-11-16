@@ -245,12 +245,8 @@ export function splitRemainder(remainder: number, split: RemainderSplit[]): (Rem
 }
 
 // ---------- format ----------
-export const won = (n: number) => Math.round(n).toLocaleString('ko-KR') + '원'
+// Plain numbers only. Amounts with a unit (원, 만, ₩ …) are in src/lib/format.ts, which follows the screen language.
 export const num = (n: number) => Math.round(n).toLocaleString('ko-KR')
-export const man = (n: number) => {
-  const v = n / 10_000
-  return (Number.isInteger(v) ? v.toString() : v.toFixed(1)) + '만'
-}
 export const usd = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 export const ymLabel = (ym: string) => `${ym.slice(0, 4)}.${ym.slice(5, 7)}`
 export const md = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`

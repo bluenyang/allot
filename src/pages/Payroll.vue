@@ -11,7 +11,7 @@ import { saveLiving, saveSettings, store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
 import { kindDetail } from '../lib/labels'
-import { distributionAt, man, splitRemainder, today, won, ymLabel, ymOf } from '../lib/calc'
+import { distributionAt, splitRemainder, today, ymLabel, ymOf } from '../lib/calc'
 import type { AllocationKind, Settings } from '../data/types'
 
 const tab = ref('phases')
