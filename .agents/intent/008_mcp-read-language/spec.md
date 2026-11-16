@@ -94,11 +94,11 @@ summary_for_user: |
 - `docs/ROADMAP.md` 상태 줄.
 
 ## 작업 단위
-- [ ] W-1 키 저장과 정책: 의존성(`@better-auth/api-key@1.7.18`), `auth-schema.ts`의 `apikey`, `app_setting` 표, `pnpm db:generate`, 플러그인 설정과 클라이언트 경로 닫기, `server/api-key-policy.ts`(기본값 ← DB ← env, `applyExpiryCap`, 시작 시 호출), 관리자 완전 삭제가 키를 지움, `.env.example`. (S-1, S-2, S-3)
-- [ ] W-2 키 API: `/api/keys` GET·POST·DELETE, `/api/admin/api-keys` GET·PUT, zod, `tests/api/api-keys.mjs`. (S-1, S-3, S-5의 "세션에서만")
-- [ ] W-3 MCP 경로와 인증: 의존성(`@modelcontextprotocol/server@2.4.0`), `server/state.ts`로 `/api/state` 조회 빼기(응답 같음), `server/mcp/index.ts`(인증, 실패 제한, Host·Origin, 본문 제한, stateless 전송), 로그 확인. 도구는 아직 없음(`tools/list`가 빈 목록). (S-5, S-7, S-8)
-- [ ] W-4 읽기 도구: `server/mcp/views.ts`(순수), `server/mcp/tools.ts`(6개), 단위 테스트 `tests/unit/mcp-views.test.ts`, API 검사 `tests/api/mcp.mjs`(SDK 클라이언트로 인증·도구·격리). (S-6, S-7)
-- [ ] W-5 화면: 설정 › AI·연동(`SettingsAi.vue`), 관리자 "API 키" 탭, store·api, E2E `tests/e2e/api-keys.spec.ts`. (S-4)
+- [x] W-1 키 저장과 정책: 의존성(`@better-auth/api-key@1.7.18`), `auth-schema.ts`의 `apikey`, `app_setting` 표, `pnpm db:generate`, 플러그인 설정과 클라이언트 경로 닫기, `server/api-key-policy.ts`(기본값 ← DB ← env, `applyExpiryCap`, 시작 시 호출), 관리자 완전 삭제가 키를 지움, `.env.example`. (S-1, S-2, S-3) (commits 62f819f, 3a46422)
+- [x] W-2 키 API: `/api/keys` GET·POST·DELETE, `/api/admin/api-keys` GET·PUT, zod, `tests/api/api-keys.mjs`. (S-1, S-3, S-5의 "세션에서만") (commit 9254391)
+- [x] W-3 MCP 경로와 인증: 의존성(`@modelcontextprotocol/server@2.4.0`), `server/state.ts`로 `/api/state` 조회 빼기(응답 같음), `server/mcp/index.ts`(인증, 실패 제한, Host·Origin, 본문 제한, stateless 전송), 로그 확인. 도구는 아직 없음(`tools/list`가 빈 목록). (S-5, S-7, S-8) (commits 0f9e4d5, 9a2f82e)
+- [x] W-4 읽기 도구: `server/mcp/views.ts`(순수), `server/mcp/tools.ts`(6개), 단위 테스트 `tests/unit/mcp-views.test.ts`, API 검사 `tests/api/mcp.mjs`(SDK 클라이언트로 인증·도구·격리). (S-6, S-7) (commit 3636b77)
+- [x] W-5 화면: 설정 › AI·연동(`SettingsAi.vue`), 관리자 "API 키" 탭, store·api, E2E `tests/e2e/api-keys.spec.ts`. (S-4) (commits d63645b, 7768511)
 - [ ] W-6 언어 구조: `vue-i18n@11.4.20`, `src/i18n/*`, 언어 고르기, `preference.language` 열·마이그레이션·zod·defaults, 설정 › 일반의 언어 선택, `<html lang>`, `api.ts`의 `Accept-Language`, `server/messages.ts`와 서버 문구 옮기기, 키 비교 단위 테스트 `tests/unit/i18n.test.ts`. 이 W에서는 셸(사이드바·헤더·푸터)·설정 › 일반·로그인 화면 문구만 옮긴다. (S-9, S-10)
 - [ ] W-7 나머지 화면 문구: 남은 `src/pages/*`, `src/components/*`, `src/lib/*` 문구, `types.ts` 표시 이름, 공휴일 영어 이름, 영어 금액 단위(`format.ts`), W-5 화면 문구. 화면마다 커밋. 한글이 남은 곳 검사 스크립트 `scripts/check-i18n.mjs`(허용 목록: `src/i18n/ko.ts`, 공휴일 데이터, 주석). (S-9)
 - [ ] W-8 문서: CHANGELOG, README, ROADMAP. (S-11)
@@ -128,7 +128,11 @@ summary_for_user: |
 - V-11 rc 테스트 서버: rc 이미지를 `allot-rc`(:13000)로 올려 마이그레이션 적용, 테스트 계정으로 키 만들기 → MCP `tools/list`·`get_overview` 성공, 언어 English 전환 확인.
 
 ## 조정 기록
-—
+- A-1 (2026-11-16, W-1) 플러그인 `keyExpiration.defaultExpiresIn`을 두지 않고, 만료 기본값 90일은 `POST /api/keys`가 정한다 · 플러그인은 `expiresIn: null`을 `defaultExpiresIn`으로 바꿔 "만료 없음"을 만들 수 없다(`expiresIn ? … : defaultExpiresIn ? … : null`). 최소 1일·최대 365일은 플러그인 설정 그대로 · 62f819f
+- A-2 (2026-11-16, W-1) 목록용 `start`를 앞 6자가 아니라 앞 12자로 저장(`startingCharactersConfig.charactersLength: 12`) · 접두어 `allot_`가 6자라 앞 6자는 모든 키가 같다(접두어 + 임의 6자). 임의 부분 6자가 드러나도 키 공간은 52^64 · 3a46422
+- A-3 (2026-11-16, W-3·W-4) MCP 검사(`tests/api/mcp.mjs`)는 SDK 클라이언트(`@modelcontextprotocol/client`) 없이 JSON-RPC를 fetch로 직접 보낸다 · 서버 SDK만 의존성으로 두고 검사 때문에 의존성을 더하지 않으려고. 응답 모양은 같다 · 9a2f82e, 3636b77
+- A-4 (2026-11-16, W-3) Host 검사는 `TRUSTED_ORIGINS`가 있을 때만(그 호스트 + `BETTER_AUTH_URL` 호스트), 없으면(개발) Origin이 있을 때 요청의 Host와 같아야 통과. 키별 요청 제한(분당 120 초과)은 같은 401이 아니라 429 · "설정된 경우"의 해석: 개발 스택은 LAN 주소가 여러 개라 Host를 고정할 수 없다. 429는 유효한 키에게만 보이는 답이라 키 존재를 새로 알리지 않는다 · 9a2f82e
+- A-5 (2026-11-16, W-5) 키 만들기 모달은 `useEditor` 대신 `EditSheet`와 화면 안 상태로 만든다 · `useEditor`는 `store`의 목록(`ListKey`)용이고 키는 스토어에 두지 않는다(원문이 한 번만 보임) · d63645b
 
 ## 우려
 - 플러그인의 클라이언트 경로 목록이 버전마다 다를 수 있다 — 닫을 때 경로를 하나씩 적지 않고 `/api-key/` 접두로 막고, V-2에서 `/api/auth/api-key/create`·`list`·`delete`·`update`가 막힌 것을 확인한다.
