@@ -143,3 +143,16 @@ test('policy: "만료 없음" is offered only while the server allows it; switch
     await request.put('/api/admin/api-keys', { data: { noExpiry: before.noExpiry } })
   }
 })
+
+test('policy: when env sets it, the switch is locked and says so', async ({ page, request }) => {
+  const p = await policy(request)
+  test.skip(!p.locked, 'ALLOT_API_KEY_NO_EXPIRY is not set (this check runs with it set)')
+  await page.goto('/#admin')
+  await page.getByRole('tab', { name: 'API 키' }).click()
+  const sw = page.getByLabel('만료 없는 키 허용')
+  await expect(sw).toBeDisabled()
+  if (p.noExpiry) await expect(sw).toBeChecked()
+  else await expect(sw).not.toBeChecked()
+  await expect(page.getByText('env(')).toContainText('ALLOT_API_KEY_NO_EXPIRY')
+  expect((await request.put('/api/admin/api-keys', { data: { noExpiry: !p.noExpiry } })).status()).toBe(409)
+})

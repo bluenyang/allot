@@ -1,14 +1,15 @@
 // API check for spec 008 V-2 and V-3 (a): the life of an API key, and the expiry policy.
-//   run inside the api container of the dev stack (it needs DATABASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD):
-//   docker compose -f docker/compose.dev.yaml exec -T -e BASE=http://web:15173 api node tests/api/api-keys.mjs [--keep-key-file]
+//   run inside the api container (BASE is the api itself: the dev web server only answers its own host names) of the dev stack (it needs DATABASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD):
+//   docker compose -f docker/compose.dev.yaml exec -T -e BASE=http://127.0.0.1:3000 api node tests/api/api-keys.mjs [--keep-key-file]
 // A is ADMIN_EMAIL (an admin); U is created here and deleted at the end (which also checks that the
 // admin "delete user" removes the user's keys). The "no expiry" policy is switched on and off through
 // the admin API; when ALLOT_API_KEY_NO_EXPIRY locks it, the checks that need the switch are skipped
-// and said so. With --keep-key-file one raw key is written to /tmp/v2-key.txt in the container
-// (outside the repository) so a pg_dump can be searched for it; otherwise no raw key leaves this process.
+// and said so. With --keep-key-file the run pauses after the first key is made: the key is written to /tmp/v2-key.txt in the
+// container (outside the repository) until /tmp/v2-go appears, so a pg_dump can be searched for it;
+// the file is removed afterwards. Otherwise no raw key leaves this process.
 // Exit 0 only if every check passed. The login rate limit (5/min) is respected: two sign-ins.
 import { createHash } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
+import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import postgres from 'postgres'
 
 let failed = 0
@@ -95,7 +96,16 @@ try {
   ok(JSON.stringify(c1.json?.item).includes(raw) === false, 'the item does not hold the key')
   ok(c1.json?.item?.permissions?.mcp?.[0] === 'read' && c1.json.item.permissions.mcp.length === 1, `scope is mcp: read (${JSON.stringify(c1.json?.item?.permissions)})`)
   if (!noExpiryOn || !locked) ok(within(c1.json?.item?.expiresAt, 90 * DAY), `no expiresInDays → 90 days (${c1.json?.item?.expiresAt})`)
-  if (process.argv.includes('--keep-key-file')) writeFileSync('/tmp/v2-key.txt', raw)
+  if (process.argv.includes('--keep-key-file')) {
+    // Pause here so the outside can search a pg_dump for the key (the key is in the database now):
+    // write /tmp/v2-key.txt, wait for /tmp/v2-go (up to two minutes), remove both.
+    rmSync('/tmp/v2-go', { force: true })
+    writeFileSync('/tmp/v2-key.txt', raw)
+    for (let i = 0; i < 240 && !existsSync('/tmp/v2-go'); i++) await new Promise((r) => setTimeout(r, 500))
+    ok(existsSync('/tmp/v2-go'), 'the dump step signalled it was done')
+    rmSync('/tmp/v2-key.txt', { force: true })
+    rmSync('/tmp/v2-go', { force: true })
+  }
   const list = await U('GET', '/api/keys')
   const listed = list.json?.keys?.find((k) => k.id === c1.json?.item?.id)
   ok(list.status === 200 && !!listed && listed.start === raw.slice(0, 12), `GET /api/keys lists it → ${list.status}`)
