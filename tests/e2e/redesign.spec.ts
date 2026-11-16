@@ -455,6 +455,43 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
     await expect(subs).toContainText('구독')
   })
 
+  test('(d) a visible handle on the sidebar edge; dragging it changes nothing else on the page, light and dark', async ({ page }) => {
+    await page.goto('/#subs')
+    await page.locator('header.ph h1').waitFor()
+    // the handle shows: a knob on the border line, at least 24px tall (the user, after rc.2)
+    const knob = page.getByRole('separator', { name: '사이드바 너비' }).locator('.knob')
+    await expect(knob).toBeVisible()
+    const kb = (await knob.boundingBox())!, edge = await page.locator('aside.side').evaluate((e) => e.getBoundingClientRect().right)
+    expect(kb.height).toBeGreaterThanOrEqual(24)
+    expect(kb.x < edge && kb.x + kb.width > edge, `knob ${kb.x}–${kb.x + kb.width} straddles the edge ${edge}`).toBe(true)
+    const look = () => page.evaluate(() => {
+      const c = (e: Element) => { const s = getComputedStyle(e); return `${s.backgroundColor}/${s.color}` }
+      return [c(document.body), c(document.querySelector('main.main')!), c(document.querySelector('header.ph h1')!), c(document.querySelector('header.topbar')!)].join(' | ')
+    })
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
+      const before = await look()
+      const box = (await page.getByRole('separator', { name: '사이드바 너비' }).boundingBox())!
+      await page.mouse.move(box.x + box.width / 2, 500)
+      await page.mouse.down()
+      await page.mouse.move(box.x + 40, 500, { steps: 4 })
+      await expect(page.locator('body')).toHaveClass(/resizing/)
+      expect(await look(), `${theme}: colours while dragging`).toBe(before)
+      await page.mouse.up()
+      expect(await look(), `${theme}: colours after the drag`).toBe(before)
+    }
+  })
+
+  test('(d) no handle when folded or on a phone', async ({ page }) => {
+    await page.goto('/#home')
+    await page.getByRole('button', { name: '사이드바 접기' }).click()
+    await expect(page.getByRole('separator', { name: '사이드바 너비' })).toHaveCount(0)
+    await page.getByRole('button', { name: '사이드바 펼치기' }).click()
+    await expect(page.getByRole('separator', { name: '사이드바 너비' })).toBeVisible()
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(page.getByRole('separator', { name: '사이드바 너비' })).toBeHidden()
+  })
+
   test('(c) the content column sits in the middle at 1920; the header lines up with it; the header holds at 761–1000 with either sidebar width', async ({ page }) => {
     for (const width of [1920, 1440]) {
       await page.setViewportSize({ width, height: 1000 })
