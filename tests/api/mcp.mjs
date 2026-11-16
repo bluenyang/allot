@@ -171,11 +171,29 @@ async function authMode() {
   const [{ n: rows }] = await sql`select count(*)::int as n from apikey where key = ${sha(busy)}`
   ok(rows === 1, 'a limited key is not deleted')
 
+  // ── an account that may not use the app gets the plain 401 even over the key's limit (review finding 3) ──
+  const limitedBannedId = await createUser('limited-banned')
+  const limitedPendingId = await createUser('limited-pending')
+  let overLimit = 0
+  for (const [what, uid, block] of [
+    ['banned', limitedBannedId, () => A('POST', `/api/admin/users/${limitedBannedId}/ban`, { reason: 'v4' })],
+    ['pending', limitedPendingId, () => sql`update "user" set status = 'pending' where id = ${limitedPendingId}`],
+  ]) {
+    const k = await insertKey(uid)
+    let n = 0
+    for (; n < 125; n++) if ((await mcp(A, k)).status === 429) break
+    ok(n === 120, `${what}-to-be account: its active key reaches the limit after 120 requests (${n})`)
+    await block()
+    const r = await mcp(A, k)
+    ok(r.status === 401 && r.text === seen[0].text && r.headers.get('www-authenticate') === seen[0].www, `a ${what} account's key over its limit: the common 401, not 429 (${r.status})`)
+    overLimit++
+  }
+
   // ── the limit per address: 20 failures in 10 minutes, the 21st is 429 ──
   // This process has made `cases.length` failures above, and the cookie-only call has none of the
   // Authorization header, which counts as one more. Calls refused before the check (405, 413, 403)
   // and the key on other paths do not count.
-  let counted = cases.length + 1
+  let counted = cases.length + 1 + overLimit
   let last
   for (let i = 0; i < 40; i++) {
     last = await mcp(A, newKey())

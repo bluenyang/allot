@@ -2,6 +2,7 @@
 // JSON responses. `Authorization: Bearer <API key>` is the only way in; a key is no session and
 // works nowhere else. Every failure to authenticate is the same 401, whatever the reason, and is
 // counted per client address.
+import { createHash } from 'node:crypto'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server'
 import { eq } from 'drizzle-orm'
 import type { Context, Hono } from 'hono'
@@ -27,6 +28,12 @@ async function usableUser(id: string): Promise<boolean> {
   return !(u.banned && (!u.banExpires || u.banExpires.getTime() > Date.now()))
 }
 
+/** The owner of a key by its stored form (SHA-256, base64url; the plugin's default hash), without counting a use. */
+async function keyOwner(key: string): Promise<string | null> {
+  const [row] = await db.select({ owner: a.apikey.referenceId }).from(a.apikey).where(eq(a.apikey.key, createHash('sha256').update(key).digest('base64url')))
+  return row?.owner ?? null
+}
+
 /** `clientIp` is app.ts's (handed in: app.ts imports this module). */
 async function handle(c: Context, clientIp: (c: Context) => string): Promise<Response> {
   if (c.req.method !== 'POST') return c.json({ error: 'method not allowed' }, 405, { Allow: 'POST' })
@@ -49,8 +56,12 @@ async function handle(c: Context, clientIp: (c: Context) => string): Promise<Res
   }
   const checked = await getAuth().api.verifyApiKey({ body: { key: bearer[1]!, permissions: KEY_SCOPE } })
   if (!checked.valid || !checked.key) {
-    // The key itself is fine but used too often: the one answer that is not a plain 401.
-    if (checked.error?.code === 'RATE_LIMITED') return c.json({ error: 'too_many_requests' }, 429, { 'Retry-After': '60' })
+    // The key itself is fine (the plugin checks the rate last) but used too often: the one answer that
+    // is not a plain 401, and only for an account that may use the app. Whoever may not gets the 401.
+    if (checked.error?.code === 'RATE_LIMITED') {
+      const owner = await keyOwner(bearer[1]!)
+      if (owner && (await usableUser(owner))) return c.json({ error: 'too_many_requests' }, 429, { 'Retry-After': '60' })
+    }
     failures.fail(ip)
     return unauthorized(c)
   }
