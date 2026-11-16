@@ -1,9 +1,10 @@
-# Runs the gates from .agents/harness/gates.yaml before each commit, in that order.
-# Check-only commands; nothing here may rewrite files (mutating_forbidden).
+# Runs the gates through reins' runner, which reads .agents/harness/gates.yaml (typecheck → build) and keeps
+# each run in .loctx/reports/gates/<tree>.log for the audits. Check-only; nothing here may rewrite files.
 pre-commit:
-  piped: true
   jobs:
-    - name: typecheck
-      run: pnpm typecheck
-    - name: build
-      run: pnpm build
+    - name: gates
+      run: sh .agents/harness/run-gates.sh pre-commit
+pre-push:
+  jobs:
+    - name: gates
+      run: sh .agents/harness/run-gates.sh pre-push
