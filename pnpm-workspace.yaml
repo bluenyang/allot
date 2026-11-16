@@ -8,3 +8,8 @@ engineStrict: true
 # Fail instead of silently adding minimumReleaseAgeExclude entries when a pinned
 # version is younger than the release-age cutoff.
 minimumReleaseAgeStrict: true
+# Security (GHSA-67mh-4wv8-2f99, esbuild <= 0.24.2): drizzle-kit 0.31.11, the latest stable, still pulls
+# esbuild 0.18 through @esbuild-kit/core-utils (also via better-auth's drizzle-kit peer). Lift that one
+# dependency to the esbuild the project already uses. Drop this when drizzle-kit no longer needs it.
+overrides:
+  "@esbuild-kit/core-utils>esbuild": 0.28.2
