@@ -9,8 +9,8 @@
 //   DELETE /api/<resource>/:id
 import { randomUUID } from 'node:crypto'
 import { zValidator } from '@hono/zod-validator'
-import { and, asc, eq, getTableName, inArray, ne, sql } from 'drizzle-orm'
-import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
+import { and, eq, getTableName, inArray, ne, sql } from 'drizzle-orm'
+import type { PgTable } from 'drizzle-orm/pg-core'
 import { childrenOf, Conflict, getSet, keyOf, listSets, NotFound, readRow, Recorder, revert, RuleBroken, whereKey, type RowKey } from './changes'
 import type { OwnedTable } from './db/owned'
 import { Hono, type Context } from 'hono'
@@ -20,16 +20,7 @@ import type { Db } from './db/client'
 import { asUser, lockFor } from './db/scope'
 import * as t from './db/schema'
 import * as v from './validation'
-import { DEFAULT_LIVING, DEFAULT_PREFERENCES, DEFAULT_SETTINGS } from '../src/data/defaults'
-
-type ListTable = PgTable & { id: PgColumn; seq: PgColumn; userId: PgColumn }
-
-/** Drop `seq` and `userId` and turn SQL nulls of optional text fields into absent keys, as the client types expect. */
-function out<R extends Record<string, unknown>>(row: R, optional: string[] = []): Omit<R, 'seq' | 'userId'> {
-  const { seq: _seq, userId: _u, ...rest } = row
-  for (const k of optional) if (rest[k] === null) delete rest[k]
-  return rest
-}
+import { out, readState, type ListTable } from './state'
 
 /** zValidator with a Korean, field-level 400 body. */
 const body = <S extends z.ZodType>(schema: S) =>
@@ -186,51 +177,7 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
 
 export const routes = new Hono<AppEnv>()
 
-routes.get('/state', async (c) => {
-  const uid = uidOf(c)
-  // One transaction (one connection) as the user; the queries run one after another on it.
-  const [[settings], [living], subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, targets, amounts, [prefs], holidaySets] = await asUser(uid, (q) => {
-  const list = <T extends ListTable>(table: T) =>
-    q.select().from(table as never).where(eq(table.userId, uid)).orderBy(asc(table.seq)) as unknown as Promise<T['$inferSelect'][]>
-  return Promise.all([
-    q.select().from(t.settings).where(eq(t.settings.userId, uid)),
-    q.select().from(t.living).where(eq(t.living.userId, uid)),
-    list(t.subscription),
-    list(t.planChange),
-    list(t.phase),
-    list(t.planEvent),
-    list(t.checkItem),
-    list(t.bankAccount),
-    list(t.debt),
-    list(t.remainderSplit),
-    list(t.allocationTarget),
-    q.select().from(t.phaseAmount).where(eq(t.phaseAmount.userId, uid)),
-    q.select().from(t.preference).where(eq(t.preference.userId, uid)),
-    list(t.holidaySet),
-  ])
-  })
-  const amountsOf = (phaseId: string) =>
-    Object.fromEntries(amounts.filter((a) => a.phaseId === phaseId).map((a) => [a.targetId, a.amount]))
-  // A new account has no rows yet: it gets the defaults until its first save (spec 006 S-7).
-  const { userId: _s, ...s } = settings ?? { userId: uid, ...DEFAULT_SETTINGS }
-  const { userId: _l, ...l } = living ?? { userId: uid, ...DEFAULT_LIVING }
-  const { userId: _p, ...p } = prefs ?? { userId: uid, ...DEFAULT_PREFERENCES }
-  return c.json({
-    settings: s,
-    living: l,
-    subscriptions: subscriptions.map((x) => out(x, ['note'])),
-    planChanges: planChanges.map((x) => out(x)),
-    targets: targets.map((x) => out(x, ['note'])),
-    phases: phases.map((x) => ({ ...out(x, ['note']), amounts: amountsOf(x.id) })),
-    events: events.map((x) => out(x)),
-    checks: checks.map((x) => out(x)),
-    accounts: accounts.map((x) => out(x)),
-    debts: debts.map((x) => out(x)),
-    remainderSplit: remainderSplit.map((x) => out(x)),
-    preferences: p,
-    holidaySets: holidaySets.map((x) => out(x)),
-  })
-})
+routes.get('/state', async (c) => c.json(await asUser(uidOf(c), (q) => readState(q, uidOf(c)))))
 
 routes.put('/settings', body(v.settings), async (c) => {
   const uid = uidOf(c)
