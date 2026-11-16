@@ -91,21 +91,21 @@ try {
   const c1 = await U('POST', '/api/keys', { name: 'first' })
   const raw = c1.json?.key
   ok(c1.status === 201 && typeof raw === 'string' && /^allot_[A-Za-z]{64}$/.test(raw), `create → ${c1.status}, key shape allot_ + 64 letters`)
-  ok(!!c1.json?.item?.id && c1.json.item.start === raw?.slice(0, 6) && c1.json.item.name === 'first', `item: id, name, start = first 6 chars (${c1.json?.item?.start})`)
+  ok(!!c1.json?.item?.id && c1.json.item.start === raw?.slice(0, 12) && c1.json.item.name === 'first', `item: id, name, start = first 12 chars (${c1.json?.item?.start})`)
   ok(JSON.stringify(c1.json?.item).includes(raw) === false, 'the item does not hold the key')
   ok(c1.json?.item?.permissions?.mcp?.[0] === 'read' && c1.json.item.permissions.mcp.length === 1, `scope is mcp: read (${JSON.stringify(c1.json?.item?.permissions)})`)
   if (!noExpiryOn || !locked) ok(within(c1.json?.item?.expiresAt, 90 * DAY), `no expiresInDays → 90 days (${c1.json?.item?.expiresAt})`)
   if (process.argv.includes('--keep-key-file')) writeFileSync('/tmp/v2-key.txt', raw)
   const list = await U('GET', '/api/keys')
   const listed = list.json?.keys?.find((k) => k.id === c1.json?.item?.id)
-  ok(list.status === 200 && !!listed && listed.start === raw.slice(0, 6), `GET /api/keys lists it → ${list.status}`)
+  ok(list.status === 200 && !!listed && listed.start === raw.slice(0, 12), `GET /api/keys lists it → ${list.status}`)
   ok(!list.text.includes(raw) && !list.text.includes(sha(raw)), 'the list holds neither the key nor its hash')
   ok(list.json?.max === 10 && typeof list.json?.policy?.noExpiry === 'boolean', `the list carries the policy and the limit (${JSON.stringify(list.json?.policy)}, max ${list.json?.max})`)
   ok(listed?.lastUsedAt === null, 'lastUsedAt is empty before any use')
   const [row] = await sql`select key, start, reference_id, permissions, enabled from apikey where id = ${c1.json.item.id}`
   ok(row?.key === sha(raw), 'DB apikey.key is the SHA-256 (base64url) of the key')
   ok(row?.key !== raw && !JSON.stringify(row).includes(raw), 'DB row does not hold the raw key')
-  ok(row?.reference_id === uId && row?.start === raw.slice(0, 6), 'DB row belongs to U, start is the first 6 characters')
+  ok(row?.reference_id === uId && row?.start === raw.slice(0, 12), 'DB row belongs to U, start is the first 12 characters')
 
   // ── create: input rules ──
   const bad = async (body, why) => {

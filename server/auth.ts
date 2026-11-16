@@ -114,6 +114,8 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
         permissions: { defaultPermissions: { mcp: ['read'] } },
         keyExpiration: { minExpiresIn: 1, maxExpiresIn: 365 },
         rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 120 },
+        // The prefix is 6 characters: store 12 so a list can tell keys apart (prefix + 6 of the random part).
+        startingCharactersConfig: { shouldStore: true, charactersLength: 12 },
         requireName: true,
         minimumNameLength: 1,
         maximumNameLength: 32,
