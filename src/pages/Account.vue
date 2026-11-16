@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onActivated, onMounted, ref } from 'vue'
 import { ApiError, api } from '../lib/api'
-import { loadMethods, PROVIDER_NAME, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
+import { loadMethods, providerName, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
 
 // My account (spec 006 S-1, S-11): who I am, the logins linked to me, my password.
 // Shown as the 설정 › 로그인·보안 tab (spec 007 S-12), so it has no page header of its own.
@@ -34,7 +34,7 @@ onActivated(load)
 const hasPassword = () => linked.value.some((a) => a.providerId === 'credential')
 const passwordOn = () => methods.value.some((m) => m.id === 'password')
 const linkable = () => methods.value.filter((m) => m.id !== 'password' && !linked.value.some((a) => a.providerId === m.id))
-const nameOf = (id: string) => methods.value.find((m) => m.id === id)?.name ?? PROVIDER_NAME[id] ?? id
+const nameOf = (id: string) => methods.value.find((m) => m.id === id)?.name ?? providerName(id)
 
 async function link(provider: string) {
   error.value = ''

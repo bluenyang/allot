@@ -15,23 +15,25 @@ import { savePreferences, status, store } from './lib/store'
 import { notReady, view } from './lib/view'
 import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
+import { t, type MessageKey } from './i18n'
 
 // Shell (spec 007 S-2): grouped sidebar with the user at the bottom, a footer on every page;
 // on a phone a top bar and a bottom tab bar. Menus for features that do not exist yet are not here (S-3).
-interface Page { id: string; label: string; comp: unknown; short?: string }
+interface Page { id: string; comp: unknown }
 const PAGES: Record<string, Page> = {
-  home: { id: 'home', label: '현황', comp: Dashboard },
-  subs: { id: 'subs', label: '구독', comp: Subscriptions },
-  pay: { id: 'pay', label: '월급 분배', comp: Payroll },
-  events: { id: 'events', label: '일정', comp: Timeline },
-  history: { id: 'history', label: '변경 내역', comp: History },
-  settings: { id: 'settings', label: '설정', comp: Settings },
-  admin: { id: 'admin', label: '관리', comp: Admin },
-  dev: { id: 'dev', label: '개발', comp: Dev },
+  home: { id: 'home', comp: Dashboard },
+  subs: { id: 'subs', comp: Subscriptions },
+  pay: { id: 'pay', comp: Payroll },
+  events: { id: 'events', comp: Timeline },
+  history: { id: 'history', comp: History },
+  settings: { id: 'settings', comp: Settings },
+  admin: { id: 'admin', comp: Admin },
+  dev: { id: 'dev', comp: Dev },
 }
+const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 const groups = [
-  { label: '개요', items: ['home'] },
-  { label: '관리', items: ['subs', 'pay', 'events', 'history'] },
+  { id: 'overview', items: ['home'] },
+  { id: 'manage', items: ['subs', 'pay', 'events', 'history'] },
 ]
 const bottom = ['home', 'subs', 'pay', 'events', 'history', 'settings']
 
@@ -62,17 +64,18 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', onHash))
 const activeSubs = computed(() => store.subscriptions.filter((s) => s.status === 'active').length)
 
 // ── Header bar (spec 007 S-15): where you are (the dashboard: its month and phase), search and
-// notifications as drawn (not there yet → "준비 중"), and the light/dark switch (S-16).
-const GROUP_OF: Record<string, string> = { home: '개요', subs: '관리', pay: '관리', events: '관리', history: '관리', settings: '설정', admin: '설정', dev: '설정' }
-const SETTINGS_TAB: Record<string, string> = { general: '일반', theme: '테마', ai: 'AI·연동', security: '로그인·보안' }
-const crumbPage = computed(() => (route.value.page === 'settings' ? (SETTINGS_TAB[route.value.sub] ?? '일반') : PAGES[route.value.page]!.label))
+// notifications as drawn (not there yet → "not available yet"), and the light/dark switch (S-16).
+const GROUP_OF: Record<string, 'groupOverview' | 'groupManage' | 'groupSettings'> = { home: 'groupOverview', subs: 'groupManage', pay: 'groupManage', events: 'groupManage', history: 'groupManage', settings: 'groupSettings', admin: 'groupSettings', dev: 'groupSettings' }
+const crumbPage = computed(() => (route.value.page === 'settings'
+  ? t(`settings.tabs.${['general', 'theme', 'ai', 'security'].includes(route.value.sub) ? route.value.sub : 'general'}` as MessageKey)
+  : label(route.value.page)))
 const tools = computed(() => !['settings', 'admin', 'dev'].includes(route.value.page))
 const phase = computed(() => phaseAt(store.phases, view.ym))
 const prefersDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => { prefersDark.value = e.matches })
 const dark = computed(() => store.preferences.themeMode === 'dark' || (store.preferences.themeMode === 'system' && prefersDark.value))
 const flipTheme = () => savePreferences({ ...store.preferences, themeMode: dark.value ? 'light' : 'dark' }).catch(() => {})
-const onSearch = (e: Event) => { e.preventDefault(); notReady('검색') }
+const onSearch = (e: Event) => { e.preventDefault(); notReady('shell.search') }
 const logout = () => authClient.signOut()
 const version = __APP_VERSION__
 const REPO = 'https://github.com/bluenyang/allot'
@@ -117,79 +120,79 @@ const onGripKey = (e: KeyboardEvent) => {
   <div class="app" :class="{ folded: sideFolded, resizing }" :style="{ '--side-w': `${sideFolded ? SIDE.folded : sideWidth}px` }">
     <aside id="side" ref="side" class="side">
       <div class="brand">
-        <span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>개인 재무 원장</small></span>
-        <button class="btn icon fold" type="button" :aria-label="sideFolded ? '사이드바 펼치기' : '사이드바 접기'" :title="sideFolded ? '사이드바 펼치기' : '사이드바 접기'"
+        <span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>{{ t('shell.tagline') }}</small></span>
+        <button class="btn icon fold" type="button" :aria-label="sideFolded ? t('shell.foldOpen') : t('shell.foldClose')" :title="sideFolded ? t('shell.foldOpen') : t('shell.foldClose')"
           :aria-expanded="!sideFolded" aria-controls="side" @click="toggleSide"><Icon name="panel" /></button>
       </div>
-      <nav aria-label="메뉴" class="groups">
-        <div v-for="g in groups" :key="g.label" class="grp">
-          <span class="glabel">{{ g.label }}</span>
-          <a v-for="id in g.items" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? PAGES[id]!.label : undefined">
-            <Icon :name="id" /><span class="grow lbl">{{ PAGES[id]!.label }}</span>
-            <span v-if="id === 'subs'" class="ncount" :aria-label="`활성 ${activeSubs}개`">{{ activeSubs }}</span>
+      <nav :aria-label="t('shell.menu')" class="groups">
+        <div v-for="g in groups" :key="g.id" class="grp">
+          <span class="glabel">{{ g.id === 'overview' ? t('shell.groupOverview') : t('shell.groupManage') }}</span>
+          <a v-for="id in g.items" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? label(id) : undefined">
+            <Icon :name="id" /><span class="grow lbl">{{ label(id) }}</span>
+            <span v-if="id === 'subs'" class="ncount" :aria-label="t('shell.activeSubs', { n: activeSubs })">{{ activeSubs }}</span>
           </a>
         </div>
       </nav>
       <div class="lower">
-        <nav aria-label="설정 메뉴">
-          <a v-for="id in lower" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? PAGES[id]!.label : undefined"><Icon :name="id" /><span class="lbl">{{ PAGES[id]!.label }}</span></a>
+        <nav :aria-label="t('shell.settingsMenu')">
+          <a v-for="id in lower" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? label(id) : undefined"><Icon :name="id" /><span class="lbl">{{ label(id) }}</span></a>
         </nav>
         <div v-if="me" class="who">
           <span class="ava" aria-hidden="true">{{ (me.name || me.email).slice(0, 1) }}</span>
-          <span class="wn"><b>{{ me.name || me.email }}</b><small>{{ me.role === 'admin' ? '관리자' : '사용자' }}</small></span>
-          <button class="btn icon" type="button" aria-label="로그아웃" title="로그아웃" @click="logout"><Icon name="logout" /></button>
+          <span class="wn"><b>{{ me.name || me.email }}</b><small>{{ me.role === 'admin' ? t('shell.roleAdmin') : t('shell.roleUser') }}</small></span>
+          <button class="btn icon" type="button" :aria-label="t('shell.logout')" :title="t('shell.logout')" @click="logout"><Icon name="logout" /></button>
         </div>
-        <button v-else class="logout" type="button" @click="logout">로그아웃</button>
+        <button v-else class="logout" type="button" @click="logout">{{ t('shell.logout') }}</button>
       </div>
     </aside>
     <!-- On the sidebar's border line, outside its scroll box so the knob can straddle it (S-20) -->
-    <div v-if="!sideFolded" class="grip" role="separator" aria-orientation="vertical" aria-label="사이드바 너비" aria-controls="side" tabindex="0"
-      :aria-valuemin="SIDE.min" :aria-valuemax="SIDE.max" :aria-valuenow="sideWidth" title="끌어서 너비 조정 · 두 번 클릭하면 기본 너비"
+    <div v-if="!sideFolded" class="grip" role="separator" aria-orientation="vertical" :aria-label="t('shell.sideWidth')" aria-controls="side" tabindex="0"
+      :aria-valuemin="SIDE.min" :aria-valuemax="SIDE.max" :aria-valuenow="sideWidth" :title="t('shell.sideWidthHint')"
       @pointerdown="onGripDown" @pointermove="onGripMove" @pointerup="onGripUp" @pointercancel="onGripUp" @lostpointercapture="onGripUp" @keydown="onGripKey" @dblclick="setSideWidth(SIDE.default)"><span class="knob" aria-hidden="true"></span></div>
 
     <div class="col">
       <header class="topbar">
         <div v-if="route.page === 'home'" class="monthnav">
-          <button class="btn icon" type="button" aria-label="이전 달" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
+          <button class="btn icon" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
           <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}</span>
-          <button class="btn icon" type="button" aria-label="다음 달" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
-          <span class="phasebadge">{{ phase ? `${phase.label} · ${phase.name}` : '구간 밖' }}</span>
+          <button class="btn icon" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
+          <span class="phasebadge">{{ phase ? `${phase.label} · ${phase.name}` : t('shell.outOfPhase') }}</span>
         </div>
-        <nav v-else class="crumbs" aria-label="현재 위치"><span>{{ GROUP_OF[route.page] }}</span><Icon name="chev" /><b>{{ crumbPage }}</b></nav>
+        <nav v-else class="crumbs" :aria-label="t('shell.here')"><span>{{ t(`shell.${GROUP_OF[route.page]}`) }}</span><Icon name="chev" /><b>{{ crumbPage }}</b></nav>
         <span class="sp"></span>
-        <form v-if="tools" class="search" role="search" @submit="onSearch" @click="notReady('검색')">
+        <form v-if="tools" class="search" role="search" @submit="onSearch" @click="notReady('shell.search')">
           <Icon name="search" />
-          <input type="search" aria-label="검색" placeholder="거래, 구독, 메모 검색" @focus="notReady('검색')">
+          <input type="search" :aria-label="t('shell.search')" :placeholder="t('shell.searchPlaceholder')" @focus="notReady('shell.search')">
           <kbd>/</kbd>
         </form>
-        <button v-if="tools" class="btn icon tb" type="button" aria-label="알림" @click="notReady('알림')"><Icon name="bell" /><i class="dotn" aria-hidden="true"></i></button>
-        <button class="btn icon tb" type="button" :aria-label="dark ? '라이트 모드로 바꾸기' : '다크 모드로 바꾸기'" :title="dark ? '라이트 모드로' : '다크 모드로'" @click="flipTheme"><Icon :name="dark ? 'sun' : 'moon'" /></button>
+        <button v-if="tools" class="btn icon tb" type="button" :aria-label="t('shell.notifications')" @click="notReady('shell.notifications')"><Icon name="bell" /><i class="dotn" aria-hidden="true"></i></button>
+        <button class="btn icon tb" type="button" :aria-label="dark ? t('shell.toLight') : t('shell.toDark')" :title="dark ? t('shell.toLightShort') : t('shell.toDarkShort')" @click="flipTheme"><Icon :name="dark ? 'sun' : 'moon'" /></button>
       </header>
       <p v-if="view.notice" class="toast" role="status">{{ view.notice }}</p>
       <main class="main">
         <div class="mtop">
           <span class="logo" aria-hidden="true">A</span><b>Allot</b><span class="ver">v{{ version }}</span>
-          <button class="acct" type="button" :aria-label="dark ? '라이트 모드로 바꾸기' : '다크 모드로 바꾸기'" @click="flipTheme"><Icon :name="dark ? 'sun' : 'moon'" /></button>
-          <a class="acct" href="#settings" aria-label="설정"><Icon name="settings" /></a>
-          <button class="logout m" type="button" @click="logout">로그아웃</button>
+          <button class="acct" type="button" :aria-label="dark ? t('shell.toLight') : t('shell.toDark')" @click="flipTheme"><Icon :name="dark ? 'sun' : 'moon'" /></button>
+          <a class="acct" href="#settings" :aria-label="t('shell.settingsLink')"><Icon name="settings" /></a>
+          <button class="logout m" type="button" @click="logout">{{ t('shell.logout') }}</button>
         </div>
-        <p v-if="status.error" class="save-err" role="alert">{{ status.error }} <button type="button" @click="status.error = ''">닫기</button></p>
+        <p v-if="status.error" class="save-err" role="alert">{{ status.error }} <button type="button" @click="status.error = ''">{{ t('common.close') }}</button></p>
         <KeepAlive><component :is="PAGES[route.page]!.comp" :key="route.page" v-bind="route.page === 'settings' ? { sub: route.sub } : {}" /></KeepAlive>
       </main>
       <footer class="foot-bar">
-        <div class="fl"><b>Allot</b><span class="mono">v{{ version }}</span><span aria-hidden="true">·</span><span>셀프 호스팅 개인 재무 관리</span></div>
-        <nav aria-label="바닥글">
+        <div class="fl"><b>Allot</b><span class="mono">v{{ version }}</span><span aria-hidden="true">·</span><span>{{ t('shell.footerTagline') }}</span></div>
+        <nav :aria-label="t('shell.footerLabel')">
           <a :href="REPO" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a :href="REPO + '/releases'" target="_blank" rel="noopener noreferrer">변경 기록</a>
-          <a :href="REPO + '/issues'" target="_blank" rel="noopener noreferrer">문제 신고</a>
-          <a href="#" @click.prevent="notReady('API 문서')">API 문서</a>
+          <a :href="REPO + '/releases'" target="_blank" rel="noopener noreferrer">{{ t('shell.changelog') }}</a>
+          <a :href="REPO + '/issues'" target="_blank" rel="noopener noreferrer">{{ t('shell.issues') }}</a>
+          <a href="#" @click.prevent="notReady('shell.apiDocs')">{{ t('shell.apiDocs') }}</a>
         </nav>
-        <div class="where"><Icon name="security" /><span>데이터는 이 서버에만 저장됩니다 · 개발 BlueNyang</span></div>
+        <div class="where"><Icon name="security" /><span>{{ t('shell.dataNote') }}</span></div>
       </footer>
     </div>
 
-    <nav class="botnav" aria-label="메뉴">
-      <a v-for="id in bottom" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'"><Icon :name="id" />{{ PAGES[id]!.label }}</a>
+    <nav class="botnav" :aria-label="t('shell.menu')">
+      <a v-for="id in bottom" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'"><Icon :name="id" />{{ label(id) }}</a>
     </nav>
   </div>
 </template>

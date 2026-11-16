@@ -6,6 +6,7 @@ import { authClient, lastRetryAfter } from './lib/auth-client'
 import { ApiError, api, onUnauthorized } from './lib/api'
 import { loadState, status, store } from './lib/store'
 import { applyTheme } from './lib/theme'
+import { applyPreference, languageBeforeSignIn, setLang, t } from './i18n'
 
 const session = authClient.useSession()
 // Too many session checks (429) is not "signed out": say so and load the page again once the time
@@ -21,6 +22,10 @@ watch(limited, (on) => {
 onBeforeUnmount(() => clearTimeout(reload))
 // The user's theme (spec 007 S-7): applied whenever the saved settings change (load, save, revert).
 watch(() => status.loaded && { ...store.preferences }, (p) => { if (p) applyTheme(p) }, { deep: true })
+// The account's language (spec 008 S-9): applied when the saved settings load or change; the sign-in
+// screen speaks the language this browser last chose, or the browser's own.
+watch(() => status.loaded && store.preferences.language, (l) => { if (l !== false) applyPreference(l) })
+watch(() => status.loaded, (on) => { if (!on) setLang(languageBeforeSignIn()) })
 // The API said the session is gone (expired or signed out elsewhere): show the login screen.
 onUnauthorized.handler = () => window.location.reload()
 
@@ -39,7 +44,7 @@ async function handOver() {
     window.location.href = url
   } catch (e) {
     relay.value = 'error'
-    relayError.value = e instanceof ApiError ? e.message : '앱으로 돌아가지 못했어요.'
+    relayError.value = e instanceof ApiError ? e.message : t('boot.returnFailed')
   }
 }
 
@@ -55,18 +60,18 @@ watch(
 </script>
 
 <template>
-  <p v-if="session.isPending" class="muted" style="padding:24px">불러오는 중…</p>
-  <div v-else-if="limited" class="boot" role="status"><p class="muted">요청이 많아요. 잠시 뒤 다시 확인해요…</p></div>
+  <p v-if="session.isPending" class="muted" style="padding:24px">{{ t('boot.session') }}</p>
+  <div v-else-if="limited" class="boot" role="status"><p class="muted">{{ t('boot.tooMany') }}</p></div>
   <Login v-else-if="!session.data" :app-return="!!appReturn" />
   <div v-else-if="appReturn" class="boot" role="status">
     <p v-if="relay === 'error'" class="err" role="alert">{{ relayError }}</p>
-    <p v-else class="muted">앱으로 돌아가는 중…</p>
+    <p v-else class="muted">{{ t('boot.returning') }}</p>
   </div>
   <App v-else-if="status.loaded" />
   <div v-else class="boot">
     <p v-if="status.error" class="err" role="alert">{{ status.error }}</p>
-    <p v-else class="muted">데이터를 불러오는 중…</p>
-    <button v-if="status.error" class="btn" type="button" @click="loadState">다시 시도</button>
+    <p v-else class="muted">{{ t('boot.data') }}</p>
+    <button v-if="status.error" class="btn" type="button" @click="loadState">{{ t('boot.retry') }}</button>
   </div>
 </template>
 

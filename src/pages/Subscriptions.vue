@@ -186,7 +186,7 @@ function describe(c: PlanChange) {
 <template>
   <section class="page-gap">
     <PageHeader title="구독" desc="정기 결제와 플랜 전환을 관리해요. USD 항목은 적용 환율과 VAT로 원화 환산합니다.">
-      <button class="btn" type="button" @click="notReady('CSV 내보내기')"><Icon name="download" />CSV 내보내기</button>
+      <button class="btn" type="button" @click="notReady('shell.csvExport')"><Icon name="download" />CSV 내보내기</button>
       <button class="btn pri" type="button" @click="tab = 'list'; openEdit()"><Icon name="plus" />구독 추가</button>
     </PageHeader>
 

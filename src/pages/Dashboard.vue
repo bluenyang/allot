@@ -95,10 +95,10 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
         월급 <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="note(dates.pay)">{{ note(dates.pay) }}</small></span>
         · 분배 <span :title="moved(dates.transfer.shifted)">{{ md(dates.transfer.date) }}<small v-if="note(dates.transfer)">{{ note(dates.transfer) }}</small></span>
         · 카드 결제 <span :title="moved(dates.billing.shifted)">{{ md(dates.billing.date) }}<small v-if="note(dates.billing)">{{ note(dates.billing) }}</small></span>
-        · <button class="linkish" type="button" @click="notReady('마지막 동기화')">마지막 동기화 —</button>
+        · <button class="linkish" type="button" @click="notReady('shell.lastSync')">마지막 동기화 —</button>
       </template>
-      <button class="btn" type="button" @click="notReady('내보내기')"><Icon name="download" />내보내기</button>
-      <button class="btn pri" type="button" @click="notReady('기록 추가')"><Icon name="plus" />기록 추가</button>
+      <button class="btn" type="button" @click="notReady('shell.export')"><Icon name="download" />내보내기</button>
+      <button class="btn pri" type="button" @click="notReady('shell.addRecord')"><Icon name="plus" />기록 추가</button>
     </PageHeader>
 
     <section class="strip" aria-label="이번 달 요약">

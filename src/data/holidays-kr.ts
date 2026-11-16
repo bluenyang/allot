@@ -10,6 +10,26 @@
 import type { HolidayRule } from './types'
 
 export const KR_NAME = '대한민국 공휴일'
+export const KR_NAME_EN = 'South Korea public holidays'
+
+/** English names of the built-in holidays, by their Korean rule name (spec 008 S-9). */
+export const KR_NAMES_EN: Record<string, string> = {
+  '신정': "New Year's Day",
+  '설날 전날': 'Day before Seollal',
+  '설날': 'Seollal (Lunar New Year)',
+  '설날 다음날': 'Day after Seollal',
+  '삼일절': 'Independence Movement Day',
+  '어린이날': "Children's Day",
+  '부처님오신날': "Buddha's Birthday",
+  '현충일': 'Memorial Day',
+  '광복절': 'Liberation Day',
+  '추석 전날': 'Day before Chuseok',
+  '추석': 'Chuseok',
+  '추석 다음날': 'Day after Chuseok',
+  '개천절': 'National Foundation Day',
+  '한글날': 'Hangul Day',
+  '기독탄신일': 'Christmas Day',
+}
 
 export const KR_RULES: HolidayRule[] = [
   { name: '신정', rrule: 'FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=1' },

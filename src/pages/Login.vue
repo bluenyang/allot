@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { authClient } from '../lib/auth-client'
+import { t } from '../i18n'
 import { loadMethods, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
 
 /** Opened by a mobile app (#app-login): after signing in, the browser goes back to the app. */
@@ -26,11 +27,11 @@ async function submit() {
   busy.value = false
   if (!error) return
   err.value =
-    error.status === 429 ? '로그인 시도가 너무 많아요. 1분 뒤에 다시 해 주세요.'
-    : error.status === 401 ? '이메일 또는 비밀번호가 맞지 않아요.'
-    : error.code === 'BANNED_USER' ? '정지된 계정이에요. 관리자에게 문의해 주세요.'
-    : error.code === 'PENDING_APPROVAL' ? '관리자 승인을 기다리고 있어요.'
-    : '로그인하지 못했어요. 잠시 뒤에 다시 해 주세요.'
+    error.status === 429 ? t('login.tooMany')
+    : error.status === 401 ? t('login.wrong')
+    : error.code === 'BANNED_USER' ? t('login.banned')
+    : error.code === 'PENDING_APPROVAL' ? t('login.pending')
+    : t('login.failed')
 }
 
 async function social(id: string) {
@@ -49,19 +50,19 @@ async function social(id: string) {
 <template>
   <main class="login">
     <div class="panel">
-      <div class="brand"><span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>개인 재무 원장</small></span></div>
-      <p v-if="appReturn" class="note">로그인하면 앱으로 돌아가요.</p>
-      <p v-if="methods === null" class="note">불러오는 중…</p>
+      <div class="brand"><span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>{{ t('login.tagline') }}</small></span></div>
+      <p v-if="appReturn" class="note">{{ t('login.returnNote') }}</p>
+      <p v-if="methods === null" class="note">{{ t('common.loading') }}</p>
       <form v-if="hasPassword()" class="pw" @submit.prevent="submit">
-        <div class="field"><label for="l-email">이메일</label><input id="l-email" v-model="email" class="in" type="email" autocomplete="username" required></div>
-        <div class="field"><label for="l-pw">비밀번호</label><input id="l-pw" v-model="password" class="in" type="password" autocomplete="current-password" required></div>
-        <button class="btn pri" type="submit" :disabled="busy">{{ busy ? '로그인 중…' : '로그인' }}</button>
+        <div class="field"><label for="l-email">{{ t('login.email') }}</label><input id="l-email" v-model="email" class="in" type="email" autocomplete="username" required></div>
+        <div class="field"><label for="l-pw">{{ t('login.password') }}</label><input id="l-pw" v-model="password" class="in" type="password" autocomplete="current-password" required></div>
+        <button class="btn pri" type="submit" :disabled="busy">{{ busy ? t('login.submitting') : t('login.submit') }}</button>
       </form>
-      <p v-if="hasPassword() && externals().length" class="or" aria-hidden="true">또는</p>
+      <p v-if="hasPassword() && externals().length" class="or" aria-hidden="true">{{ t('login.or') }}</p>
       <div v-if="externals().length" class="ext">
-        <button v-for="m in externals()" :key="m.id" class="btn" type="button" :disabled="busy" @click="social(m.id)">{{ m.name }}(으)로 로그인</button>
+        <button v-for="m in externals()" :key="m.id" class="btn" type="button" :disabled="busy" @click="social(m.id)">{{ t('login.with', { name: m.name }) }}</button>
       </div>
-      <p v-if="methods !== null && !methods.length" class="err">사용할 수 있는 로그인 방식이 없어요. 관리자에게 문의해 주세요.</p>
+      <p v-if="methods !== null && !methods.length" class="err">{{ t('login.noMethods') }}</p>
       <p v-if="err" class="err" role="alert">{{ err }}</p>
     </div>
   </main>
