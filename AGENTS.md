@@ -33,22 +33,23 @@ Allot — a self-hosted web app for personal money management: splitting the mon
 | `pnpm install` | install; also runs `lefthook install` on a host checkout (`prepare`) |
 | `pnpm typecheck` | `vue-tsc --noEmit` + `tsc -p tsconfig.server.json` — gate |
 | `pnpm build` | `vite build` → `dist/` — gate |
+| `pnpm test:unit` | unit tests (`tsx --test tests/unit/*.test.ts`), no database — gate |
 | `pnpm dev` / `pnpm dev:api` | Vite / API on the host (Docker is the default) |
 | `pnpm db:generate` | schema change → new migration in `drizzle/` (commit it) |
 | `pnpm db:migrate` / `pnpm db:seed [file]` | apply migrations / upsert seed data and the login account |
-| `pnpm e2e` | Playwright E2E against a running stack (`BASE`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`) |
+| `pnpm e2e` | Playwright E2E against a running stack (`BASE`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`) — optional gate, not run by the hooks |
 | `node tests/api/crud.mjs create\|verify\|cleanup` | API check (restart api between create and verify) |
 | `pnpm build:server` | esbuild bundle of the API → `dist-server/` (production image) |
 | `docker build -t allot:test .` | production image (root `Dockerfile`, linux/amd64) |
 | Actions → **Allot Release** | manual release: version → tag → gates → `ghcr.io/bluenyang/allot` → draft Release; try `dry_run` first; an rc follows the flow, a stable release needs the user's instruction |
 
-Gates (`.agents/harness/gates.yaml`, order: typecheck → build) run before every commit and push through **lefthook** (`lefthook.yml`), which calls `sh .agents/harness/run-gates.sh pre-commit|pre-push`; each run is kept in `.loctx/reports/gates/<tree>.log` for the audits. Gates are check-only; never add a command that rewrites files.
+Gates (`.agents/harness/gates.yaml`, order: typecheck → build → test; e2e is optional) run before every commit and push through **lefthook** (`lefthook.yml`), which calls `sh .agents/harness/run-gates.sh pre-commit|pre-push`; each run is kept in `.loctx/reports/gates/<tree>.log` for the audits. Gates are check-only; never add a command that rewrites files.
 - Change `gates.yaml` (and the hook wiring) only on the user's instruction, in a dedicated `config(gates): …` commit that touches nothing else.
 
 ## Conventions
 
 - Default branch: **`master`** (there is no `main`). Work on `type/topic` branches and merge into `master`; never commit to `master` directly.
-- Merges go through a **GitHub PR** on origin (user, 2026-11-10: "GitHub PR로"); when to push, open a PR and merge follows the flow section below. There is no CI yet: put the local gate output (typecheck, build) and the test summary in the PR body.
+- Merges go through a **GitHub PR** on origin (user, 2026-11-10: "GitHub PR로"); when to push, open a PR and merge follows the flow section below. There is no CI yet: put the local gate output (typecheck, build, unit tests) and the test summary in the PR body.
 - The gates in `gates.yaml` are the same for every role.
 - Commit messages: `<type>: <summary>` (e.g. `init:`, `chore:`, `feat:`, `fix:`), English.
 - Pure calculation goes in `src/lib/calc.ts`; types in `src/data/types.ts`; pages in `src/pages/`, shared UI in `src/components/`.
