@@ -5,6 +5,7 @@ import { ACCENT_PRESETS, DEFAULT_ACCENT, DEFAULT_PRIMARY, PRIMARY_PRESETS, deriv
 import { money as fmtAs } from '../lib/format'
 import { distributionAt, upcomingPayments, today, ymOf } from '../lib/calc'
 import type { Preferences } from '../data/types'
+import { t, type MessageKey } from '../i18n'
 
 // 설정 › 테마 (spec 007 S-7): colours, corners and density. Until 저장 only the preview box shows
 // the choice; the preview mode (light/dark) is for the box only — the real mode is in 일반.
@@ -29,7 +30,9 @@ function onCustom(v: string) {
   if (isHex(v)) pickPrimary(v)
 }
 
+const presetName = (id: string) => t(`settingsTheme.preset.${id}` as MessageKey)
 const mode = ref<'light' | 'dark'>(document.documentElement.getAttribute('data-theme') === 'dark' || (!document.documentElement.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')
+const modeName = computed(() => t(mode.value === 'dark' ? 'settings.general.dark' : 'settings.general.light'))
 const GROUND = {
   light: { bg: '#F5F6F5', surface: '#FFFFFF', 'surface-2': '#F9FAF9', fill: '#EEF0EF', border: '#E2E5E3', 'border-strong': '#CBD0CD', text: '#16201B', muted: '#47534D', subtle: '#5F6B65', divider: '#EEF0EF' },
   dark: { bg: '#111315', surface: '#1A1C1F', 'surface-2': '#1F2124', fill: '#26292D', border: '#2F3337', 'border-strong': '#43484E', text: '#E6E8EA', muted: '#A2A8AE', subtle: '#8E959C', divider: '#26292D' },
@@ -66,7 +69,7 @@ async function save() {
     await savePreferences({ ...store.preferences, ...d.value })
     d.value = fromStore()
     base.value = fromStore()
-    msg.value = '저장했어요.'
+    msg.value = t('settings.general.saved')
   } catch (e) {
     msg.value = (e as Error).message
   } finally {
@@ -82,78 +85,78 @@ function reset() {
 
 <template>
   <div class="thm">
-    <form class="card form-card" aria-label="테마 설정" novalidate @submit.prevent="save">
+    <form class="card form-card" :aria-label="t('settingsTheme.form')" novalidate @submit.prevent="save">
       <div class="srow">
-        <div class="lt"><h2 id="t-p">주 색상</h2><p>버튼, 선택된 메뉴와 탭, 강조 숫자</p></div>
+        <div class="lt"><h2 id="t-p">{{ t('settingsTheme.primary') }}</h2><p>{{ t('settingsTheme.primaryDesc') }}</p></div>
         <div class="rt col">
           <div class="sw" role="group" aria-labelledby="t-p">
-            <button v-for="[h, label] in PRIMARY_PRESETS" :key="h" type="button" :aria-pressed="primary === h" :aria-label="label" @click="pickPrimary(h); custom = ''">
-              <i :style="{ background: h }"><svg v-if="primary === h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg></i><span>{{ label }}</span></button>
+            <button v-for="[h, pid] in PRIMARY_PRESETS" :key="h" type="button" :aria-pressed="primary === h" :aria-label="presetName(pid)" @click="pickPrimary(h); custom = ''">
+              <i :style="{ background: h }"><svg v-if="primary === h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg></i><span>{{ presetName(pid) }}</span></button>
           </div>
-          <label class="cust">직접 입력
-            <input type="color" :value="isHex(custom) ? custom : primary" aria-label="색 고르기" @input="onCustom(($event.target as HTMLInputElement).value.toUpperCase())">
-            <input id="t-hex" class="hex" :value="custom || primary" placeholder="#RRGGBB" maxlength="7" aria-label="주 색상 HEX" :aria-invalid="custom !== '' && !isHex(custom)" @input="onCustom(($event.target as HTMLInputElement).value.trim())">
+          <label class="cust">{{ t('settingsTheme.custom') }}
+            <input type="color" :value="isHex(custom) ? custom : primary" :aria-label="t('settingsTheme.pickColor')" @input="onCustom(($event.target as HTMLInputElement).value.toUpperCase())">
+            <input id="t-hex" class="hex" :value="custom || primary" placeholder="#RRGGBB" maxlength="7" :aria-label="t('settingsTheme.primaryHex')" :aria-invalid="custom !== '' && !isHex(custom)" @input="onCustom(($event.target as HTMLInputElement).value.trim())">
           </label>
         </div>
       </div>
       <div class="srow">
-        <div class="lt"><h2 id="t-a">포인트 색상</h2><p>곧 다가오는 결제, 확인 필요</p></div>
+        <div class="lt"><h2 id="t-a">{{ t('settingsTheme.accent') }}</h2><p>{{ t('settingsTheme.accentDesc') }}</p></div>
         <div class="rt">
           <div class="sw" role="group" aria-labelledby="t-a">
-            <button v-for="[h, label] in ACCENT_PRESETS" :key="h" type="button" :aria-pressed="accent === h" :aria-label="label" @click="pickAccent(h)">
-              <i :style="{ background: h }"><svg v-if="accent === h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg></i><span>{{ label }}</span></button>
+            <button v-for="[h, pid] in ACCENT_PRESETS" :key="h" type="button" :aria-pressed="accent === h" :aria-label="presetName(pid)" @click="pickAccent(h)">
+              <i :style="{ background: h }"><svg v-if="accent === h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg></i><span>{{ presetName(pid) }}</span></button>
           </div>
         </div>
       </div>
       <div class="srow">
-        <div class="lt"><h2 id="t-m">미리보기 모드</h2><p>색을 라이트·다크에서 비교해 봐요. 실제 테마는 <a href="#settings/general">일반</a>에서 정해요</p></div>
+        <div class="lt"><h2 id="t-m">{{ t('settingsTheme.previewMode') }}</h2><i18n-t keypath="settingsTheme.previewModeDesc" tag="p"><template #link><a href="#settings/general">{{ t('settings.tabs.general') }}</a></template></i18n-t></div>
         <div class="rt"><div class="seg wide" role="group" aria-labelledby="t-m">
-          <button type="button" :aria-pressed="mode === 'light'" @click="mode = 'light'">라이트</button>
-          <button type="button" :aria-pressed="mode === 'dark'" @click="mode = 'dark'">다크</button>
+          <button type="button" :aria-pressed="mode === 'light'" @click="mode = 'light'">{{ t('settings.general.light') }}</button>
+          <button type="button" :aria-pressed="mode === 'dark'" @click="mode = 'dark'">{{ t('settings.general.dark') }}</button>
         </div></div>
       </div>
       <div class="srow">
-        <div class="lt"><h2 id="t-r">모서리</h2><p>카드, 버튼, 입력칸의 둥근 정도</p></div>
+        <div class="lt"><h2 id="t-r">{{ t('settingsTheme.radiusTitle') }}</h2><p>{{ t('settingsTheme.radiusDesc') }}</p></div>
         <div class="rt"><div class="seg wide" role="group" aria-labelledby="t-r">
-          <button v-for="[id, label] in ([['sharp', '각지게'], ['base', '기본'], ['soft', '부드럽게']] as const)" :key="id" type="button" :aria-pressed="d.radius === id" @click="d.radius = id">{{ label }}</button>
+          <button v-for="id in ['sharp', 'base', 'soft'] as const" :key="id" type="button" :aria-pressed="d.radius === id" @click="d.radius = id">{{ t(`settingsTheme.radius.${id}`) }}</button>
         </div></div>
       </div>
       <div class="srow">
-        <div class="lt"><h2 id="t-d">밀도</h2><p>표와 목록의 줄 간격</p></div>
+        <div class="lt"><h2 id="t-d">{{ t('settingsTheme.densityTitle') }}</h2><p>{{ t('settingsTheme.densityDesc') }}</p></div>
         <div class="rt"><div class="seg wide" role="group" aria-labelledby="t-d">
-          <button v-for="[id, label] in ([['base', '기본'], ['compact', '촘촘하게']] as const)" :key="id" type="button" :aria-pressed="d.density === id" @click="d.density = id">{{ label }}</button>
+          <button v-for="id in ['base', 'compact'] as const" :key="id" type="button" :aria-pressed="d.density === id" @click="d.density = id">{{ t(`settingsTheme.density.${id}`) }}</button>
         </div></div>
       </div>
       <div class="srow last">
-        <div class="lt"><h2 id="t-f">금액 표시</h2><p>요약 카드의 숫자 형식 (일반 탭의 금액 단위와 같은 설정)</p></div>
+        <div class="lt"><h2 id="t-f">{{ t('settingsTheme.amountDisplay') }}</h2><p>{{ t('settingsTheme.amountDisplayDesc') }}</p></div>
         <div class="rt"><div class="seg wide" role="group" aria-labelledby="t-f">
-          <button type="button" :aria-pressed="d.amountUnit === 'won'" @click="d.amountUnit = 'won'">₩1,234,000</button>
-          <button type="button" :aria-pressed="d.amountUnit === 'man'" @click="d.amountUnit = 'man'">123.4만원</button>
+          <button type="button" :aria-pressed="d.amountUnit === 'won'" @click="d.amountUnit = 'won'">{{ fmtAs(1_234_000, { ...store.preferences, amountUnit: 'won' }) }}</button>
+          <button type="button" :aria-pressed="d.amountUnit === 'man'" @click="d.amountUnit = 'man'">{{ fmtAs(123_400_000, { ...store.preferences, amountUnit: 'man' }) }}</button>
         </div></div>
       </div>
       <div class="savebar">
-        <span class="grow small subtle" role="status">{{ msg || '저장 전까지는 미리보기에만 적용돼요.' }}</span>
-        <button class="btn" type="button" @click="reset">기본값으로</button>
-        <button class="btn pri" type="submit" :disabled="busy || !dirty">저장</button>
+        <span class="grow small subtle" role="status">{{ msg || t('settingsTheme.previewOnly') }}</span>
+        <button class="btn" type="button" @click="reset">{{ t('settingsTheme.reset') }}</button>
+        <button class="btn pri" type="submit" :disabled="busy || !dirty">{{ t('common.save') }}</button>
       </div>
     </form>
 
-    <section class="pv" aria-label="미리보기">
-      <span class="pvl">미리보기 · {{ mode === 'dark' ? '다크' : '라이트' }}</span>
-      <div class="box" :style="boxStyle" role="img" :aria-label="`테마 미리보기, ${mode === 'dark' ? '다크' : '라이트'}`">
+    <section class="pv" :aria-label="t('settingsTheme.preview')">
+      <span class="pvl">{{ t('settingsTheme.previewMode2', { mode: modeName }) }}</span>
+      <div class="box" :style="boxStyle" role="img" :aria-label="t('settingsTheme.previewLabel', { mode: modeName })">
         <div class="bx-top"><span class="bx-logo">A</span><b>Allot</b></div>
-        <div class="bx-tabs"><span class="on">이번 달</span><span>예정</span><span>확인할 것</span></div>
+        <div class="bx-tabs"><span class="on">{{ t('dashboard.tabMonth') }}</span><span>{{ t('dashboard.tabNext') }}</span><span>{{ t('dashboard.checks') }}</span></div>
         <div class="bx-kpi">
-          <div class="hl"><span>이번 달 나머지</span><b>{{ money(remainder) }}</b></div>
-          <div><span>31일 내 결제</span><b>{{ money(paysSum) }}</b></div>
+          <div class="hl"><span>{{ t('settingsTheme.leftThisMonth') }}</span><b>{{ money(remainder) }}</b></div>
+          <div><span>{{ t('dashboard.dueIn31') }}</span><b>{{ money(paysSum) }}</b></div>
         </div>
         <div class="bx-rows">
           <div v-for="(p, i) in pays.slice(0, 3)" :key="p.sub.id + p.date.getTime()"><span class="g">{{ p.sub.name }}</span><b>{{ money(p.krw) }}</b>
-            <em :class="i === 0 ? 'a' : i === 2 ? 'p' : ''">{{ i === 2 && p.sub.verified ? '확인됨' : `D-${p.dday}` }}</em></div>
+            <em :class="i === 0 ? 'a' : i === 2 ? 'p' : ''">{{ i === 2 && p.sub.verified ? t('subscriptions.verified') : `D-${p.dday}` }}</em></div>
         </div>
-        <div class="bx-btns"><span class="pri">저장</span><span class="sec">취소</span><span class="acc">확인</span></div>
+        <div class="bx-btns"><span class="pri">{{ t('common.save') }}</span><span class="sec">{{ t('common.cancel') }}</span><span class="acc">{{ t('settingsTheme.confirmBtn') }}</span></div>
       </div>
-      <p class="small subtle">글자 대비가 4.5:1보다 낮아지는 색은 자동으로 진하게(다크에서는 밝게) 바꿔 써요.<template v-if="adjusted"> 이 색은 글자에 <span class="mono">{{ adjusted }}</span>을 써요.</template></p>
+      <p class="small subtle">{{ t('settingsTheme.contrast') }}<template v-if="adjusted"> <i18n-t keypath="settingsTheme.adjusted" tag="span"><template #color><span class="mono">{{ adjusted }}</span></template></i18n-t></template></p>
     </section>
   </div>
 </template>
