@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n'
 import PageHeader from '../components/PageHeader.vue'
 import { computed, ref } from 'vue'
 import SubTabs from '../components/SubTabs.vue'
@@ -6,28 +7,28 @@ import { exportJson } from '../lib/store'
 
 // The schema lives in server/db/schema.ts and drizzle/; this tab only shows the data.
 const tab = ref('json')
-const tabs = [{ id: 'json', label: '현재 데이터', icon: 'dev' }]
+const tabs = computed(() => [{ id: 'json', label: t('dev.tabData'), icon: 'dev' }])
 
 const json = computed(() => exportJson())
 const copied = ref('')
 async function copy() {
   try {
     await navigator.clipboard.writeText(json.value)
-    copied.value = '복사했어요.'
+    copied.value = t('dev.copied')
   } catch {
-    copied.value = '복사가 막혀 있어요. 아래 텍스트를 직접 선택해 주세요.'
+    copied.value = t('dev.copyBlocked')
   }
 }
 </script>
 
 <template>
   <section>
-    <PageHeader title="개발">
-      <template #desc>데이터는 PostgreSQL에 저장돼요. 처음 데이터는 <code>pnpm db:seed</code>로 넣어요. 스키마는 <code>server/db/schema.ts</code>에 있어요.</template>
+    <PageHeader :title="t('dev.title')">
+      <template #desc><i18n-t keypath="dev.desc" tag="span"><template #seed><code>pnpm db:seed</code></template><template #schema><code>server/db/schema.ts</code></template></i18n-t></template>
     </PageHeader>
     <SubTabs v-model="tab" :tabs="tabs" />
     <div class="btns" style="margin:0 0 12px">
-      <button class="btn pri" type="button" @click="copy">JSON 복사</button>
+      <button class="btn pri" type="button" @click="copy">{{ t('dev.copyJson') }}</button>
       <span class="small muted" role="status">{{ copied }}</span>
     </div>
     <pre style="max-height:480px"><code>{{ json }}</code></pre>

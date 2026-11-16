@@ -630,4 +630,12 @@ export const en = {
     newPw: 'New password',
     change: 'Change',
   },
+  dev: {
+    desc: 'Data is stored in PostgreSQL. Load the first data with {seed}. The schema is in {schema}.',
+    tabData: 'Current data',
+    copied: 'Copied.',
+    copyBlocked: 'Copying is blocked. Select the text below yourself.',
+    title: 'Developer',
+    copyJson: 'Copy JSON',
+  },
 } satisfies Messages

@@ -630,6 +630,14 @@ export const ko = {
     newPw: '새 비밀번호',
     change: '바꾸기',
   },
+  dev: {
+    desc: '데이터는 PostgreSQL에 저장돼요. 처음 데이터는 {seed}로 넣어요. 스키마는 {schema}에 있어요.',
+    tabData: '현재 데이터',
+    copied: '복사했어요.',
+    copyBlocked: '복사가 막혀 있어요. 아래 텍스트를 직접 선택해 주세요.',
+    title: '개발',
+    copyJson: 'JSON 복사',
+  },
 } as const
 
 type Widen<T> = T extends string ? string : { -readonly [K in keyof T]: Widen<T[K]> }
