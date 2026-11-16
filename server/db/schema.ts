@@ -302,3 +302,14 @@ export const authProvider = pgTable('auth_provider', {
   updatedBy: text('updated_by'),
 }, (t) => [check('auth_provider_id', sql`${t.id} in ('password', 'oidc', 'github', 'google')`),
   check('auth_provider_signup', sql`${t.signup} is null or ${t.signup} in ('closed', 'approval', 'rules')`)])
+
+// ── Server-wide settings (spec 008 S-3): one row per setting; no user_id, so no row-level security
+// (like auth_provider). Env values win over these (server/api-key-policy.ts). ──
+export const appSetting = pgTable('app_setting', {
+  /** api_keys */
+  id: text('id').primaryKey(),
+  /** api_keys: { noExpiry: boolean } */
+  value: jsonb('value').$type<Record<string, unknown>>().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text('updated_by'),
+}, (t) => [check('app_setting_id', sql`${t.id} in ('api_keys')`)])

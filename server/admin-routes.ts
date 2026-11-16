@@ -251,6 +251,7 @@ adminRoutes.delete('/users/:id', body(v.userDelete), async (c) => {
       await q.delete(t.changeLog).where(eq(t.changeLog.userId, target))
       await q.delete(t.changeSet).where(eq(t.changeSet.userId, target))
       await q.delete(t.userKey).where(eq(t.userKey.userId, target))
+      await q.delete(a.apikey).where(eq(a.apikey.referenceId, target))
       await q.delete(a.user).where(eq(a.user.id, target))
     })
   } catch (e) {

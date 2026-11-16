@@ -6,6 +6,7 @@
 // live in the database and the secret does not change, so they stay valid across a reload.
 // As a second layer, a before-hook checks every sign-in path against the latest configuration.
 import { betterAuth } from 'better-auth'
+import { apiKey } from '@better-auth/api-key'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { admin } from 'better-auth/plugins/admin'
@@ -102,6 +103,21 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
       // the server issues, for a listed app URL (server/app-login.ts).
       bearer(),
       oneTimeToken({ expiresIn: 3, disableClientRequest: true }),
+      // API keys for the read-only MCP endpoint (spec 008). Only /api/mcp accepts them (the key is
+      // never a session: enableSessionForAPIKeys stays off) and only our own routes create, list
+      // and delete them (server/keys.ts); the plugin's own HTTP paths are closed in the hook below.
+      // No defaultExpiresIn: the plugin would turn "no expiry" into it, and the policy
+      // (server/api-key-policy.ts) decides that. The create route passes the expiry itself.
+      apiKey({
+        defaultPrefix: 'allot_',
+        enableSessionForAPIKeys: false,
+        permissions: { defaultPermissions: { mcp: ['read'] } },
+        keyExpiration: { minExpiresIn: 1, maxExpiresIn: 365 },
+        rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 120 },
+        requireName: true,
+        minimumNameLength: 1,
+        maximumNameLength: 32,
+      }),
     ],
     disabledPaths: [...CLOSED_PATHS, ...ADMIN_CLOSED_PATHS],
     account: {
@@ -155,6 +171,8 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
       // checked against the latest configuration, also for an instance that is being replaced.
       before: createAuthMiddleware(async (ctx) => {
         await guardAdminPath(ctx)
+        // The plugin's HTTP paths are closed (an HTTP request has ctx.request; our own routes call auth.api directly).
+        if (ctx.request && ctx.path.startsWith('/api-key/')) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         if (ctx.path.startsWith('/one-time-token/') && !APP_RETURN_URLS.length) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         if (CLOSED_PATHS.includes(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         const m = methodOf(ctx)

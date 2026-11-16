@@ -148,6 +148,13 @@
       "when": 1794746195264,
       "tag": "0020_preference_default_light",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794818196447,
+      "tag": "0021_strong_quasar",
+      "breakpoints": true
     }
   ]
 }
