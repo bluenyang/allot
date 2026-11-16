@@ -8,10 +8,10 @@ const BASE = process.env.BASE ?? 'http://localhost:15173'
 
 function client() {
   let cookie = ''
-  return async function api(method, path, body) {
+  return async function api(method, path, body, headers = {}) {
     const res = await fetch(BASE + path, {
       method,
-      headers: { 'content-type': 'application/json', origin: BASE, ...(cookie ? { cookie } : {}) },
+      headers: { 'content-type': 'application/json', origin: BASE, ...(cookie ? { cookie } : {}), ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
     const set = res.headers.getSetCookie?.() ?? []
@@ -84,6 +84,12 @@ try {
     ok(r.status === 400, `${why} → ${r.status} (want 400)${r.status === 400 ? '' : ' ' + JSON.stringify(r.json)}`)
     if (r.status === 201) made.push(r.json.id)
   }
+  // spec 008 S-10: the message comes in the language of Accept-Language (missing or unknown: Korean)
+  const monthly = set([{ name: 'x', rrule: 'FREQ=MONTHLY;BYMONTHDAY=1' }])
+  const [mKo, mNone, mEn, mFr] = [await A('POST', '/api/holiday-sets', monthly, { 'accept-language': 'ko-KR,ko;q=0.9' }), await A('POST', '/api/holiday-sets', monthly),
+    await A('POST', '/api/holiday-sets', monthly, { 'accept-language': 'en-US,en;q=0.9' }), await A('POST', '/api/holiday-sets', monthly, { 'accept-language': 'fr-FR' })]
+  ok(mKo.status === 400 && /FREQ=YEARLY만/.test(mKo.json?.error) && mNone.json?.error === mKo.json?.error && mFr.json?.error === mKo.json?.error && mEn.json?.error === 'Holiday rules only support FREQ=YEARLY.',
+    `messages by Accept-Language: ko ${mKo.json?.error} | none same | fr same | en ${mEn.json?.error}`)
   const good = await A('POST', '/api/holiday-sets', set([
     { name: '양력', rrule: 'FREQ=YEARLY;BYMONTH=7;BYMONTHDAY=17' },
     { name: '음력', rrule: 'RSCALE=DANGI;FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=-1', substitute: { on: ['SU'], since: 2014 } },
