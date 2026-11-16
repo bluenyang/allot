@@ -2,7 +2,7 @@
 //   pnpm test:unit
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -128,4 +128,36 @@ test('a failing runner write stops with 70 and the block is not accepted', () =>
   assert.doesNotMatch(text, /^exit=/m)
   assert.doesNotMatch(text, /step: two/)
   assert.ok(checkLog(text).length > 0)
+})
+
+test('a failing git rev read stops with 70 before the step runs', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const bin = join(dir, 'bin')
+  mkdirSync(bin)
+  const realGit = spawnSync('bash', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim()
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\nif [ "$1" = rev-parse ] && [ "$2" = HEAD ]; then exit 1; fi\nexec ${realGit} "$@"\n`, { mode: 0o755 })
+  const log = join(dir, 'rev.log')
+  const marker = join(dir, 'ran')
+  const script = join(dir, 'run.sh')
+  writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep one /usr/bin/env touch ${marker}\ndone_check\n`)
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+  assert.equal(run.status, 70)
+  const text = readFileSync(log, 'utf8')
+  assert.match(text, /^runner error: read the git rev/m)
+  assert.doesNotMatch(text, /^exit=/m)
+  assert.equal(existsSync(marker), false)
+  assert.ok(checkLog(text).length > 0)
+})
+
+test('the logged command reads back as exactly the arguments that ran', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const log = join(dir, 'q.log')
+  const script = join(dir, 'run.sh')
+  const args = ["it's", 'a b', '$HOME', '*', 'é', '']
+  writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep q /usr/bin/env printf '[%s]\\n' ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}\ndone_check\n`)
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
+  assert.equal(run.status, 0)
+  const cmd = readFileSync(log, 'utf8').split('\n').find((l) => l.startsWith('$ '))!.slice(2)
+  const back = spawnSync('bash', ['-c', 'eval "set -- $CMD"; for a in "$@"; do printf \'%s\\0\' "$a"; done'], { encoding: 'utf8', env: { ...process.env, CMD: cmd } })
+  assert.deepEqual(back.stdout.split('\0').slice(0, -1), ['/usr/bin/env', 'printf', '[%s]\\n', ...args])
 })

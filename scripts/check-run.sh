@@ -23,12 +23,15 @@ LOG=/dev/null
 CLEANUPS=()
 CHECK=
 
-_cr_rev() { local r; r=$(git rev-parse HEAD); [ -z "$(git status --porcelain)" ] || r="$r+uncommitted"; echo "$r"; }
-_cr_q() { # quote one word for the command line shown in the log
-  case $1 in
-    ''|*[!A-Za-z0-9_./=:,@%+-]*) printf "'%s'" "$(printf %s "$1" | sed "s/'/'\\\\''/g")" ;;
-    *) printf %s "$1" ;;
-  esac
+_cr_rev() { # prints the rev line's value; returns non-zero if git fails
+  local r st
+  r=$(git rev-parse HEAD) || return 1
+  st=$(git status --porcelain) || return 1
+  [ -z "$st" ] || r="$r+uncommitted"
+  printf '%s\n' "$r"
+}
+_cr_q() { # quote one word for the command line shown in the log (bash builtin, no external tool)
+  printf '%q' "$1"
 }
 # A failure of the runner's own writes ends the run with 70; the block is left without exit= and "=== end".
 _cr_die() { echo "runner error: $1" >> "$LOG" 2>/dev/null; echo "check-run: runner error: $1" >&2; exit 70; }
@@ -36,8 +39,11 @@ _cr_has_pipe() { local a; for a in "$@"; do case $a in *'|'*) return 0 ;; esac; 
 _cr_run() { # kind name command...
   local kind=$1 name=$2 out rc a; shift 2
   out=$(mktemp "$_TMP/step.XXXXXX") || _cr_die "create the capture file"
-  { echo "=== $kind: $name"; echo "rev $(_cr_rev)"; echo "date $(date -Is)"
-    printf '$'; for a in "$@"; do printf ' '; _cr_q "$a"; done; echo; } >> "$LOG" || _cr_die "write the block header"
+  local rev now cmd=''
+  rev=$(_cr_rev) || _cr_die "read the git rev"
+  now=$(date -Is) || _cr_die "read the date"
+  for a in "$@"; do cmd+=" $(_cr_q "$a")" || _cr_die "quote the command"; done
+  { echo "=== $kind: $name"; echo "rev $rev"; echo "date $now"; echo "\$$cmd"; } >> "$LOG" || _cr_die "write the block header"
   if _cr_has_pipe "$@"; then
     echo "check-run: refused, an argument contains '|'; a pipe hides the exit code. Use redirection to a file." > "$out" || _cr_die "write the capture file"
     rc=2
