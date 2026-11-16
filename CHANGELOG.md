@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2-rc.3 — 2026-11-16
+
+### Changed
+- The sidebar edge has a visible handle (a small bar on the border line) that highlights on hover, focus and while dragging.
+
+### Fixed
+- Dragging the sidebar edge turned the page background teal until the drag ended.
+
 ## 0.1.2-rc.2 — 2026-11-16
 
 Layout changes asked for after rc.1 (spec 007 S-20, S-21).
