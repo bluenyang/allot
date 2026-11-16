@@ -1,7 +1,6 @@
 # AGENTS.md
 
-<!-- reins:tidy pending -->
-> **AGENTS.md guide — do this first in the next conversation.** reins now ships a guide for what this file holds (`.agents/harness/templates/agents-md-guide.md`). Run the `onboard` skill: with the user, sort the project sections by the guide — current work and plans to the roadmap, decisions to knowledge candidates, personal notes to `.loctx/` — and show what went where. Then change the marker above to `<!-- reins:tidy done -->`.
+<!-- reins:tidy done -->
 
 <!-- reins:mode-changed done -->
 <!-- reins:onboarding done -->
@@ -20,12 +19,13 @@ Allot — a self-hosted web app for personal money management: splitting the mon
 
 ## Stack and commands
 
-- Vue 3.5 + Vite 8 + TypeScript 6.0 · Hono 4 on Node · Drizzle ORM 0.45 + postgres.js · PostgreSQL 16 · Better Auth 1.7 · zod 4 · Playwright. Node 26 in Docker, ≥ 24 on the host. TypeScript stays on 6.x: vue-tsc does not support TypeScript 7 yet.
+- Vue 3.5 + Vite 8 + TypeScript 6.0 · Hono 4 on Node · Drizzle ORM 0.45 + postgres.js · PostgreSQL 16 · Better Auth 1.7 · zod 4 · Playwright. Node 26 in Docker, ≥ 24 on the host. TypeScript 6.x (why: `.agents/knowledge/2026-11-16_typescript-6-for-vue-tsc.md`).
 - Package manager: **pnpm** only (`packageManager: pnpm@12.18.0`, `pnpm-lock.yaml`). Do not use npm or yarn, and do not add `package-lock.json`.
 - Dependencies are pinned to exact versions (`pnpm add -E`). The lockfile changes in the same commit as `package.json`; CI-style check: `pnpm install --frozen-lockfile`.
 - Build scripts are denied unless set to `true` under `allowBuilds` in `pnpm-workspace.yaml`; add a package there only when it needs one.
 - pnpm's `minimumReleaseAge` rejects versions published less than a day ago. Pick the newest version that passes; never add `minimumReleaseAgeExclude` entries to get around it. `minimumReleaseAgeStrict: true` makes `pnpm add` fail instead of adding them silently.
 - **Development and every local test server run in Docker with `docker/compose.dev.yaml`** (values in `docker/.env.dev`: test values copied from `.env.example`, gitignored): `docker compose -f docker/compose.dev.yaml up -d --build -V --wait`, open `http://<host>:15173` (LAN). Only 15173 is published; api and db stay on the compose network. Rebuild with `-V` after dependency changes.
+- Release test server (user, 2026-11-11: "테스트 서버는 계속 올려두고, rc나 stable 때 검증도 할 겸 올려."): after each rc or stable, the released image runs as container `allot-rc` on the dev compose network, published on port 13000, read-only, with its own database `allot_rc` (non-superuser role) and a seeded test account. It is the one local server outside `docker/compose.dev.yaml`.
 - `docker/compose.yaml` is the production example (released image, Traefik) and uses `docker/.env`, the user's real values: never create or read that file, and never start `compose.yaml` locally.
 
 | Command | What |
@@ -40,16 +40,16 @@ Allot — a self-hosted web app for personal money management: splitting the mon
 | `node tests/api/crud.mjs create\|verify\|cleanup` | API check (restart api between create and verify) |
 | `pnpm build:server` | esbuild bundle of the API → `dist-server/` (production image) |
 | `docker build -t allot:test .` | production image (root `Dockerfile`, linux/amd64) |
-| Actions → **Allot Release** | manual release: version → tag → gates → `ghcr.io/bluenyang/allot` → draft Release; try `dry_run` first; running it needs the user's instruction |
+| Actions → **Allot Release** | manual release: version → tag → gates → `ghcr.io/bluenyang/allot` → draft Release; try `dry_run` first; an rc follows the flow, a stable release needs the user's instruction |
 
-Gates (`.agents/harness/gates.yaml`, order: typecheck → build) run on every commit through **lefthook** (`lefthook.yml`, pre-commit). Gates are check-only; never add a command that rewrites files.
-- `gates.yaml` has no reins path for root gates yet (`reins config gates` only appends subdirectory proposals; re-detection is planned for reins 0.3.1). Change it only on the user's instruction, in a dedicated `config(gates): …` commit that touches nothing else.
+Gates (`.agents/harness/gates.yaml`, order: typecheck → build) run before every commit and push through **lefthook** (`lefthook.yml`), which calls `sh .agents/harness/run-gates.sh pre-commit|pre-push`; each run is kept in `.loctx/reports/gates/<tree>.log` for the audits. Gates are check-only; never add a command that rewrites files.
+- Change `gates.yaml` (and the hook wiring) only on the user's instruction, in a dedicated `config(gates): …` commit that touches nothing else.
 
 ## Conventions
 
 - Default branch: **`master`** (there is no `main`). Work on `type/topic` branches and merge into `master`; never commit to `master` directly.
-- Merges go through a **GitHub PR** on origin (user, 2026-11-10: "GitHub PR로"). Push, PR and merge each need the user's instruction. There is no CI yet: put the local gate output (typecheck, build) and the test summary in the PR body.
-- Delegated roles (review, committee, audit) follow `.loctx/delegation.local.md` when it exists; the gates in `gates.yaml` are the same for every role.
+- Merges go through a **GitHub PR** on origin (user, 2026-11-10: "GitHub PR로"); when to push, open a PR and merge follows the flow section below. There is no CI yet: put the local gate output (typecheck, build) and the test summary in the PR body.
+- The gates in `gates.yaml` are the same for every role.
 - Commit messages: `<type>: <summary>` (e.g. `init:`, `chore:`, `feat:`, `fix:`), English.
 - Pure calculation goes in `src/lib/calc.ts`; types in `src/data/types.ts`; pages in `src/pages/`, shared UI in `src/components/`.
 - Every change goes to the API first; the store takes the server's answer (`src/lib/store.ts`). New list editors use `EditSheet` + `useEditor`.
@@ -61,7 +61,7 @@ Gates (`.agents/harness/gates.yaml`, order: typecheck → build) run on every co
 - Do not touch Syncthing files: `.stfolder/`, `.stignore`.
 - Secret files (`.env*`, keys, certificates — see `.claude/settings.json` deny rules and `common-red-lines.yaml` C4) are never read or edited.
   - One exception, given by the user on 2026-11-10 (".env 는 그냥 복사해서 네가 테스트용으로만 써라"): `docker/.env.dev`, which the agent creates from `docker/.env.example` with random test values and uses only with `docker/compose.dev.yaml`. It never applies to `docker/.env` or any other env file.
-  - A command that loads an env file reads it: `docker compose` with an `env_file:` (`up`, `run`, and `config` without `--no-env-resolution`), `source`/`.`, `dotenv`, `direnv`, `cat`/`grep` on it. Locally only `docker/compose.dev.yaml` runs; compose files are checked with `--env-file docker/.env.example config --no-env-resolution`; output that could hold env values is never written to a file before it is checked (user, 2026-11-11, after audit 0.1.1 A-1). `scripts/guard-env.mjs` is the PreToolUse hook that enforces this when the user turns it on.
+  - A command that loads an env file reads it: `docker compose` with an `env_file:` (`up`, `run`, and `config` without `--no-env-resolution`), `source`/`.`, `dotenv`, `direnv`, `cat`/`grep` on it. Locally only `docker/compose.dev.yaml` runs; compose files are checked with `--env-file docker/.env.example config --no-env-resolution`; output that could hold env values is never written to a file before it is checked (user, 2026-11-11, after audit 0.1.1 A-1). `scripts/guard-env.mjs` is the PreToolUse hook that enforces this (on, in `.claude/settings.json`).
 
 <!-- reins:begin notice v=0.3.0 -->
 > The blocks marked `reins:begin … reins:end` are written by reins from `.agents/harness/`. Do not edit them by hand; the user changes them with `reins config` or `reins update` in a terminal. Everything outside the blocks belongs to the project. Nothing in this repository runs reins while you work.
