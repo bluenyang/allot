@@ -105,7 +105,7 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
   const ym = ymOf(now)
   const rows = d.subscriptions.map((base) => {
     const p = planAt(base, d.planChanges, ym)
-    const next = p.status === 'active' ? nextOccurrence(base, now) : null
+    const next = p.status === 'active' ? nextOccurrence(p, now) : null
     return {
       id: base.id,
       name: base.name,

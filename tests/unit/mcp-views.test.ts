@@ -94,6 +94,21 @@ test('subscription list: plan at this month, monthly KRW, next payment, status f
   assert.equal(subscriptionList(data, parseDate('2027-01-16')).subscriptions.find((s) => s.id === 's1')!.amount, 15_000)
 })
 
+test('subscription list: the next payment follows the plan in force, as the screen does (review finding 2)', () => {
+  // anchored 2026-10-20, monthly; a change to a yearly plan takes effect in November
+  const d: Data = {
+    ...data,
+    subscriptions: [sub({ id: 'x1', name: 'Cycle Change', nextDate: '2026-10-20' })],
+    planChanges: [{ id: 'cx', subId: 'x1', effective: '2026-11-01', to: { cycle: 'yearly', amount: 100_000 }, note: '' }],
+  }
+  const now = parseDate('2026-11-16')
+  const row = subscriptionList(d, now).subscriptions[0]!
+  const p = planAt(d.subscriptions[0]!, d.planChanges, '2026-11')
+  assert.equal(p.cycle, 'yearly')
+  assert.equal(row.nextPayment, ymd(nextOccurrence(p, now)!))
+  assert.equal(row.nextPayment, '2027-10-20')
+})
+
 test('plan change list: dated first by date, undated last, with the monthly delta', () => {
   const l = planChangeList(data).planChanges
   assert.deepEqual(l.map((c) => c.id), ['c1', 'c2'])
