@@ -4,6 +4,7 @@ import { computed, onActivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import SubTabs from '../components/SubTabs.vue'
 import { ApiError, api } from '../lib/api'
+import { getKeyPolicy, setKeyPolicy, type KeyPolicy } from '../lib/keys'
 
 // Admin (spec 006 S-3, S-8): accounts and login methods. Account details only; nobody's
 // financial data is shown or reachable here. The server checks every action again.
@@ -24,7 +25,7 @@ interface Provider {
 
 const origin = window.location.origin
 const tab = ref('users')
-const tabs = [{ id: 'users', label: '사용자', icon: 'account' }, { id: 'methods', label: '로그인 방식', icon: 'security' }]
+const tabs = [{ id: 'users', label: '사용자', icon: 'account' }, { id: 'methods', label: '로그인 방식', icon: 'security' }, { id: 'keys', label: 'API 키', icon: 'list' }]
 const error = ref('')
 const notice = ref('')
 const busy = ref(false)
@@ -164,10 +165,29 @@ async function saveProvider() {
   }
 }
 
+// ── API keys (spec 008 S-3): may a key have no expiry date ──
+const keyPolicy = ref<KeyPolicy | null>(null)
+async function toggleNoExpiry(e: Event) {
+  const box = e.target as HTMLInputElement
+  const next = box.checked
+  if (!next && !confirm('끄면 만료 없는 키는 지금부터 365일 뒤에 만료돼요. 끌까요?')) { box.checked = true; return }
+  busy.value = true
+  error.value = ''
+  try {
+    keyPolicy.value = await setKeyPolicy(next)
+    say(next ? '만료 없는 키를 허용해요.' : `만료 없는 키를 막았어요.${keyPolicy.value.capped ? ` 만료 없던 키 ${keyPolicy.value.capped}개는 365일 뒤 만료로 바꿨어요.` : ''}`)
+  } catch (err) {
+    box.checked = !next
+    fail(err, '저장하지 못했어요.')
+  } finally {
+    busy.value = false
+  }
+}
+
 async function load() {
   try {
     meId.value = (await api<{ user: { id: string } }>('GET', '/api/me')).user.id
-    await Promise.all([loadUsers(), loadProviders()])
+    await Promise.all([loadUsers(), loadProviders(), getKeyPolicy().then((p) => { keyPolicy.value = p })])
   } catch (e) {
     fail(e, '관리 정보를 불러오지 못했어요.')
   }
@@ -237,6 +257,16 @@ onActivated(load)
       </EditSheet>
     </template>
 
+    <template v-else-if="tab === 'keys'">
+      <div class="panel">
+        <h3>만료 없는 API 키</h3>
+        <p class="small muted">켜면 사용자가 만료 없는 키를 만들 수 있어요. 끄면 키는 1~365일 안에 만료돼요(기본 90일).</p>
+        <label v-if="keyPolicy" class="sw"><input type="checkbox" :checked="keyPolicy.noExpiry" :disabled="keyPolicy.locked || busy" @change="toggleNoExpiry"> 만료 없는 키 허용</label>
+        <p v-if="keyPolicy?.locked" class="small muted">env(<span class="mono">ALLOT_API_KEY_NO_EXPIRY</span>)로 정해져 있어 화면에서 바꿀 수 없어요.</p>
+        <p v-else class="small muted">끄는 순간, 이미 있는 만료 없는 키는 지금부터 365일 뒤에 만료돼요. 사용자들의 키는 여기서 보이지 않아요.</p>
+      </div>
+    </template>
+
     <template v-else>
       <div class="cards">
         <div v-for="p in providers" :key="p.id" class="panel click" tabindex="0" @click="openProvider(p)" @keydown.enter="openProvider(p)">
@@ -290,6 +320,7 @@ onActivated(load)
 .scroll-x{overflow-x:auto}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.sw{display:flex;gap:8px;align-items:center;margin:12px 0}
 .warnbox{border-color:var(--accent-line);background:var(--accent-soft)}
 .warnbox h3{color:var(--accent-text)}
 @media (max-width:640px){.tbl th:nth-child(2),.tbl td:nth-child(2),.tbl th:nth-child(5),.tbl td:nth-child(5){display:none}}

@@ -64,7 +64,7 @@ const activeSubs = computed(() => store.subscriptions.filter((s) => s.status ===
 // ── Header bar (spec 007 S-15): where you are (the dashboard: its month and phase), search and
 // notifications as drawn (not there yet → "준비 중"), and the light/dark switch (S-16).
 const GROUP_OF: Record<string, string> = { home: '개요', subs: '관리', pay: '관리', events: '관리', history: '관리', settings: '설정', admin: '설정', dev: '설정' }
-const SETTINGS_TAB: Record<string, string> = { general: '일반', theme: '테마', security: '로그인·보안' }
+const SETTINGS_TAB: Record<string, string> = { general: '일반', theme: '테마', ai: 'AI·연동', security: '로그인·보안' }
 const crumbPage = computed(() => (route.value.page === 'settings' ? (SETTINGS_TAB[route.value.sub] ?? '일반') : PAGES[route.value.page]!.label))
 const tools = computed(() => !['settings', 'admin', 'dev'].includes(route.value.page))
 const phase = computed(() => phaseAt(store.phases, view.ym))

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import PageHeader from '../components/PageHeader.vue'
 import SubTabs from '../components/SubTabs.vue'
 import Account from './Account.vue'
+import SettingsAi from './SettingsAi.vue'
 import SettingsGeneral from './SettingsGeneral.vue'
 import SettingsTheme from './SettingsTheme.vue'
 
@@ -12,6 +13,7 @@ const props = defineProps<{ sub?: string }>()
 const tabs = [
   { id: 'general', label: '일반' },
   { id: 'theme', label: '테마' },
+  { id: 'ai', label: 'AI·연동' },
   { id: 'security', label: '로그인·보안' },
 ]
 const tab = computed(() => (tabs.some((t) => t.id === props.sub) ? props.sub! : tabs[0]!.id))
@@ -24,6 +26,7 @@ const pick = (id: string) => { location.hash = `#settings/${id}` }
     <SubTabs :model-value="tab" :tabs="tabs" @update:model-value="pick" />
     <SettingsGeneral v-if="tab === 'general'" />
     <SettingsTheme v-else-if="tab === 'theme'" />
+    <SettingsAi v-else-if="tab === 'ai'" />
     <Account v-else />
   </section>
 </template>
