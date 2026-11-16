@@ -1,7 +1,7 @@
 ---
 id: 2026-11-12_review-after-review-commits
 kind: decision
-status: active
+status: superseded
 supersedes: null
 topics: [review, merge]
 decisions: [late-commits-get-reviewed]
