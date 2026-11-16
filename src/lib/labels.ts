@@ -13,6 +13,8 @@ export const cycleLabel = (id: Cycle | string) => t(`label.cycle.${id}` as Messa
 const EVENT_KEY: Record<EventKind, string> = {
   '통장': 'bank', '구독': 'sub', '분배': 'split', '정책': 'policy', '세금': 'tax', '카드': 'card', '저축': 'saving', '수입': 'income', '대출': 'loan', '투자': 'invest',
 }
+export const EVENT_KINDS = Object.keys(EVENT_KEY) as EventKind[]
+export const DEFAULT_EVENT_KIND: EventKind = '저축'
 export const eventKindLabel = (kind: string) => (kind in EVENT_KEY ? t(`label.eventKind.${EVENT_KEY[kind as EventKind]}` as MessageKey) : kind)
 
 /** How a target's amount is worked out, when the user wrote no note of their own. */
