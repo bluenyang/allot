@@ -278,6 +278,13 @@ async function toolsMode() {
     ok(failedCall(t), `${name} ${JSON.stringify(args)} is refused`)
   }
 
+  // A timestamp that does not exist is an input error, and no tool failure shows SQL (review finding 1).
+  for (const before of ['2026-99-99 00:00:00Z', '2026-02-30 00:00:00Z']) {
+    const t = await tool(key, 'list_changes', { before, beforeId: 'x' })
+    const text = JSON.stringify(t)
+    ok(failedCall(t) && !/select|insert|\$1|params|"change/i.test(text), `list_changes before ${before} is refused without SQL in the answer`)
+  }
+
   const state = (await A('GET', '/api/state')).json
   const now = new Date()
   const ym0 = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
