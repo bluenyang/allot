@@ -30,6 +30,7 @@ defineProps<{ name: string }>()
     <template v-else-if="name === 'moon'"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></template>
     <template v-else-if="name === 'chev'"><path d="m9 18 6-6-6-6" /></template>
     <template v-else-if="name === 'download'"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" /></template>
+    <template v-else-if="name === 'panel'"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></template>
     <template v-else-if="name === 'plus'"><path d="M12 5v14M5 12h14" /></template>
   </svg>
 </template>

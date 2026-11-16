@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2-rc.2 — 2026-11-16
+
+Layout changes asked for after rc.1 (spec 007 S-20, S-21).
+
+### Changed
+- Sidebar: opens wider (272px); drag its edge, or focus the edge and use ←/→ (Shift for bigger steps), Home/End, to set 200–360px; a double-click goes back to the default. A button folds it to icons only. Width and folding are remembered in this browser.
+- On a wide screen the content column sits in the middle of the space next to the sidebar; the header bar and footer line up with it. The header keeps one line on narrow windows: the search box drops its hint, then becomes its icon.
+
 ## 0.1.2-rc.1 — 2026-11-16
 
 Login and admin. Intent 006 (`.agents/intent/006_login-admin/`). Redesign and display settings, intent 007 (`.agents/intent/007_redesign/`).

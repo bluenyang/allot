@@ -384,3 +384,120 @@ test('(V-16) 이번 달 shows every card as the design does; 예정 and 확인�
   await expect(h2('확인할 것')).toBeVisible()
   for (const n of ['결제 예정', '예약된 플랜 전환']) await expect(h2(n)).toHaveCount(0)
 })
+
+test.describe('(V-17) sidebar and content on a wide screen', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+  const sideW = (page: Page) => page.locator('aside.side').evaluate((e) => Math.round(e.getBoundingClientRect().width))
+
+  test('(a) the edge resizes the sidebar by drag and keys, within 200–360, kept after a reload; double-click resets', async ({ page }) => {
+    await page.goto('/#home')
+    const grip = page.getByRole('separator', { name: '사이드바 너비' })
+    await expect(grip).toHaveAttribute('aria-valuenow', '272')
+    expect(await sideW(page)).toBe(272)
+    await grip.focus()
+    await page.keyboard.press('End')
+    expect(await sideW(page)).toBe(360)
+    await page.keyboard.press('ArrowLeft')
+    expect(await sideW(page)).toBe(344)
+    await expect(grip).toHaveAttribute('aria-valuenow', '344')
+    const box = (await grip.boundingBox())!
+    await page.mouse.move(box.x + 3, 400)
+    await page.mouse.down()
+    await page.mouse.move(40, 400, { steps: 6 })
+    await page.mouse.up()
+    expect(await sideW(page), 'never under 200').toBe(200)
+    const box2 = (await grip.boundingBox())!
+    await page.mouse.move(box2.x + 3, 400)
+    await page.mouse.down()
+    await page.mouse.move(300, 400, { steps: 6 })
+    await page.mouse.up()
+    const dragged = await sideW(page)
+    expect(dragged).toBeGreaterThan(280)
+    expect(dragged).toBeLessThanOrEqual(305)
+    await page.reload()
+    await page.locator('aside.side').waitFor()
+    expect(await sideW(page), 'kept after a reload').toBe(dragged)
+    await page.getByRole('separator', { name: '사이드바 너비' }).dblclick()
+    expect(await sideW(page)).toBe(272)
+  })
+
+  test('(b) folding leaves icons only; links keep their names and work; kept after a reload; unfolding brings the width back', async ({ page }) => {
+    await page.goto('/#home')
+    const grip = page.getByRole('separator', { name: '사이드바 너비' })
+    await grip.focus()
+    await page.keyboard.press('ArrowRight')
+    const open = await sideW(page)
+    expect(open).toBe(288)
+    // folding in the middle of a drag ends the drag (review 22): no resize cursor left on the page
+    const gb = (await grip.boundingBox())!
+    await page.mouse.move(gb.x + 3, 400)
+    await page.mouse.down()
+    await page.mouse.move(gb.x + 10, 400)
+    await expect(page.locator('body')).toHaveClass(/resizing/)
+    await page.getByRole('button', { name: '사이드바 접기' }).focus()
+    await page.keyboard.press('Enter')
+    await expect(page.locator('body')).not.toHaveClass(/resizing/)
+    await page.mouse.up()
+    expect(await sideW(page)).toBe(64)
+    const kept = await page.evaluate(() => Number(localStorage.getItem('allot.side.width')))
+    expect(kept, 'the width at the moment of folding is kept').toBeGreaterThan(open)
+    await expect(page.getByRole('button', { name: '사이드바 펼치기' })).toHaveAttribute('aria-expanded', 'false')
+    const subs = page.locator('aside.side').getByRole('link', { name: '구독' })
+    await expect(subs.locator('.lbl')).toHaveCSS('clip-path', 'inset(50%)')
+    await expect(page.locator('aside.side .glabel').first()).toBeHidden()
+    await subs.click()
+    await expect(page.locator('header.ph h1')).toHaveText('구독')
+    await page.reload()
+    await page.locator('aside.side').waitFor()
+    expect(await sideW(page), 'still folded after a reload').toBe(64)
+    await page.getByRole('button', { name: '사이드바 펼치기' }).click()
+    expect(await sideW(page), 'the width it had').toBe(kept)
+    await expect(subs).toContainText('구독')
+  })
+
+  test('(c) the content column sits in the middle at 1920; the header lines up with it; the header holds at 761–1000 with either sidebar width', async ({ page }) => {
+    for (const width of [1920, 1440]) {
+      await page.setViewportSize({ width, height: 1000 })
+      await page.goto('/#home')
+      await page.locator('.strip').waitFor()
+      const m = await page.evaluate(() => {
+        const r = (e: Element) => e.getBoundingClientRect()
+        const col = r(document.querySelector('.col')!), strip = r(document.querySelector('.strip')!)
+        const nav = r(document.querySelector('header.topbar .monthnav')!), last = r([...document.querySelectorAll('header.topbar .tb')].at(-1)!)
+        return { left: strip.left - col.left, right: col.right - strip.right, headL: nav.left - strip.left, headR: last.right - strip.right }
+      })
+      expect(Math.abs(m.left - m.right), `${width}: left ${m.left} / right ${m.right}`).toBeLessThanOrEqual(2)
+      expect(Math.abs(m.headL), `${width}: header starts with the content`).toBeLessThanOrEqual(1)
+      expect(Math.abs(m.headR), `${width}: header ends with the content`).toBeLessThanOrEqual(1)
+      if (width === 1920) expect(m.left, 'there is room on both sides at 1920').toBeGreaterThan(100)
+    }
+    // The header at narrow desktop widths, with the default and the widest sidebar: one line, nothing overflows or overlaps (review 22).
+    for (const sidebar of ['default', 'End'] as const) {
+      for (const width of [761, 800, 1000]) {
+        await page.setViewportSize({ width, height: 800 })
+        await page.goto('/#home')
+        await page.locator('header.topbar').waitFor()
+        if (sidebar === 'End') { await page.getByRole('separator', { name: '사이드바 너비' }).focus(); await page.keyboard.press('End') }
+        const h = await page.locator('header.topbar').evaluate((bar) => {
+          const box = bar.getBoundingClientRect(), cs = getComputedStyle(bar)
+          const inner = { left: box.left + parseFloat(cs.paddingLeft) - 0.5, right: box.right - parseFloat(cs.paddingRight) + 0.5 }
+          const kids = [...bar.children].filter((e) => getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0).map((e) => e.getBoundingClientRect())
+          const search = bar.querySelector('.search') as HTMLElement
+          return {
+            overflow: bar.scrollWidth - bar.clientWidth,
+            rows: Math.max(...kids.map((r) => r.top + r.height / 2)) - Math.min(...kids.map((r) => r.top + r.height / 2)),
+            outside: kids.filter((r) => r.left < inner.left || r.right > inner.right).length,
+            overlaps: kids.slice(1).filter((r, i) => r.left < kids[i]!.right - 0.5).length,
+            searchOverflow: search.scrollWidth - search.clientWidth,
+          }
+        })
+        const at = `${width}px, sidebar ${sidebar === 'End' ? 360 : 272}`
+        expect(h.overflow, `${at}: header scrolls sideways`).toBeLessThanOrEqual(0)
+        expect(h.rows, `${at}: one line`).toBeLessThanOrEqual(4)
+        expect(h.outside, `${at}: items inside the header`).toBe(0)
+        expect(h.overlaps, `${at}: items do not overlap`).toBe(0)
+        expect(h.searchOverflow, `${at}: the search box holds its contents`).toBeLessThanOrEqual(0)
+      }
+    }
+  })
+})

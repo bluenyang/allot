@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
 import Dashboard from './pages/Dashboard.vue'
 import Subscriptions from './pages/Subscriptions.vue'
@@ -75,24 +76,58 @@ const onSearch = (e: Event) => { e.preventDefault(); notReady('검색') }
 const logout = () => authClient.signOut()
 const version = __APP_VERSION__
 const REPO = 'https://github.com/bluenyang/allot'
+
+// ── Sidebar width and folding (spec 007 S-20): drag or arrow keys on the edge, double-click for the default.
+const side = ref<HTMLElement | null>(null)
+let dragging = false
+const onGripDown = (e: PointerEvent) => {
+  if (e.button !== 0) return
+  dragging = true
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  document.body.classList.add('resizing')
+}
+const onGripMove = (e: PointerEvent) => {
+  if (!dragging || !side.value) return
+  setSideWidth(e.clientX - side.value.getBoundingClientRect().left, false)
+}
+const onGripUp = () => {
+  if (!dragging) return
+  dragging = false
+  document.body.classList.remove('resizing')
+  setSideWidth(sideWidth.value)
+}
+// A drag never outlives the handle: folding removes it, and leaving the shell ends it (review 22).
+watch(sideFolded, () => onGripUp())
+onBeforeUnmount(() => document.body.classList.remove('resizing'))
+const onGripKey = (e: KeyboardEvent) => {
+  const step = e.shiftKey ? 48 : 16
+  const next = { ArrowLeft: sideWidth.value - step, ArrowRight: sideWidth.value + step, Home: SIDE.min, End: SIDE.max }[e.key]
+  if (next === undefined) return
+  e.preventDefault()
+  setSideWidth(next)
+}
 </script>
 
 <template>
-  <div class="app">
-    <aside class="side">
-      <div class="brand"><span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>개인 재무 원장</small></span></div>
+  <div class="app" :class="{ folded: sideFolded }" :style="{ '--side-w': `${sideFolded ? SIDE.folded : sideWidth}px` }">
+    <aside id="side" ref="side" class="side">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>개인 재무 원장</small></span>
+        <button class="btn icon fold" type="button" :aria-label="sideFolded ? '사이드바 펼치기' : '사이드바 접기'" :title="sideFolded ? '사이드바 펼치기' : '사이드바 접기'"
+          :aria-expanded="!sideFolded" aria-controls="side" @click="toggleSide"><Icon name="panel" /></button>
+      </div>
       <nav aria-label="메뉴" class="groups">
         <div v-for="g in groups" :key="g.label" class="grp">
           <span class="glabel">{{ g.label }}</span>
-          <a v-for="id in g.items" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'">
-            <Icon :name="id" /><span class="grow">{{ PAGES[id]!.label }}</span>
+          <a v-for="id in g.items" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? PAGES[id]!.label : undefined">
+            <Icon :name="id" /><span class="grow lbl">{{ PAGES[id]!.label }}</span>
             <span v-if="id === 'subs'" class="ncount" :aria-label="`활성 ${activeSubs}개`">{{ activeSubs }}</span>
           </a>
         </div>
       </nav>
       <div class="lower">
         <nav aria-label="설정 메뉴">
-          <a v-for="id in lower" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'"><Icon :name="id" />{{ PAGES[id]!.label }}</a>
+          <a v-for="id in lower" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? PAGES[id]!.label : undefined"><Icon :name="id" /><span class="lbl">{{ PAGES[id]!.label }}</span></a>
         </nav>
         <div v-if="me" class="who">
           <span class="ava" aria-hidden="true">{{ (me.name || me.email).slice(0, 1) }}</span>
@@ -101,6 +136,9 @@ const REPO = 'https://github.com/bluenyang/allot'
         </div>
         <button v-else class="logout" type="button" @click="logout">로그아웃</button>
       </div>
+      <div v-if="!sideFolded" class="grip" role="separator" aria-orientation="vertical" aria-label="사이드바 너비" aria-controls="side" tabindex="0"
+        :aria-valuemin="SIDE.min" :aria-valuemax="SIDE.max" :aria-valuenow="sideWidth" title="끌어서 너비 조정 · 두 번 클릭하면 기본 너비"
+        @pointerdown="onGripDown" @pointermove="onGripMove" @pointerup="onGripUp" @pointercancel="onGripUp" @lostpointercapture="onGripUp" @keydown="onGripKey" @dblclick="setSideWidth(SIDE.default)"></div>
     </aside>
 
     <div class="col">
@@ -113,7 +151,7 @@ const REPO = 'https://github.com/bluenyang/allot'
         </div>
         <nav v-else class="crumbs" aria-label="현재 위치"><span>{{ GROUP_OF[route.page] }}</span><Icon name="chev" /><b>{{ crumbPage }}</b></nav>
         <span class="sp"></span>
-        <form v-if="tools" class="search" role="search" @submit="onSearch">
+        <form v-if="tools" class="search" role="search" @submit="onSearch" @click="notReady('검색')">
           <Icon name="search" />
           <input type="search" aria-label="검색" placeholder="거래, 구독, 메모 검색" @focus="notReady('검색')">
           <kbd>/</kbd>
@@ -165,25 +203,44 @@ const REPO = 'https://github.com/bluenyang/allot'
 .wn b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wn small{font-size:12px;color:var(--subtle)}
 .who .btn{color:var(--muted)}
-.col{display:flex;flex-direction:column;min-width:0;min-height:100vh}
+/* Sidebar width and folding (spec 007 S-20) */
+.brand .fold{margin-left:auto;width:30px;height:30px;color:var(--muted);flex:none}
+.brand .fold svg{width:18px;height:18px}
+.grip{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;touch-action:none;z-index:5}
+.grip::after{content:"";position:absolute;top:0;bottom:0;right:0;width:2px;background:transparent;transition:background .15s}
+.grip:hover::after,.grip:focus-visible::after,:global(body.resizing) .grip::after{background:var(--primary-text)}
+.grip:focus-visible{outline:none}
+:global(body.resizing){cursor:col-resize;user-select:none}
+.folded .bn,.folded .glabel,.folded .ncount,.folded .wn{display:none}
+.folded .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.folded .brand{flex-direction:column;gap:8px;padding:2px 0 10px}
+.folded .brand .fold{margin-left:0}
+.folded .groups{gap:10px}
+.folded nav a{justify-content:center;padding:0;gap:0}
+.folded .grp + .grp{border-top:1px solid var(--border);padding-top:10px}
+.folded .who{flex-direction:column;padding:6px 0 0;gap:8px}
+.col{display:flex;flex-direction:column;min-width:0;min-height:100vh;container:col / inline-size}
 .topbar{display:none}
 .topbar .sp{flex:1}
 @media (min-width:761px){
-  .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 32px;min-height:61px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
+  .topbar{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;padding:12px var(--col-pad);min-height:61px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
 }
 .crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--subtle)}
 .crumbs svg{width:14px;height:14px}
 .crumbs b{color:var(--text);font-weight:600}
-.monthnav{display:flex;align-items:center;gap:4px}
-.monthnav .btn{width:32px;height:32px;color:var(--muted)}
-.monthnav .ml{font-weight:600;padding:0 10px;font-variant-numeric:tabular-nums}
-.phasebadge{margin-left:8px;font-size:12px;color:var(--muted);padding:2px 8px;border:1px solid var(--border);border-radius:var(--r-badge);background:var(--surface-2)}
-.search{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface-2);width:300px;max-width:100%;color:var(--subtle)}
+.monthnav{display:flex;align-items:center;gap:4px;flex:0 1 auto;min-width:0}
+.monthnav .btn{width:32px;height:32px;color:var(--muted);flex:none}
+.monthnav .ml{font-weight:600;padding:0 10px;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+.phasebadge{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin-left:8px;font-size:12px;color:var(--muted);padding:2px 8px;border:1px solid var(--border);border-radius:var(--r-badge);background:var(--surface-2)}
+.search{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface-2);flex:0 20 300px;min-width:0;color:var(--subtle)}
 .search svg{width:16px;height:16px;flex:none}
 .search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text)}
 .search:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
 .search kbd{font:11px var(--f-mono);border:1px solid var(--border);border-radius:var(--r-badge);padding:0 5px;background:var(--surface)}
-.tb{width:36px;height:36px;position:relative;color:var(--muted)}
+/* A narrow content column (small window or a wide sidebar): the hint goes first, then the box becomes its icon (review 22) */
+@container col (max-width: 720px){ .search kbd{display:none} }
+@container col (max-width: 600px){ .search{flex:none;width:36px;padding:0;justify-content:center;position:relative;cursor:pointer} .search input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none} }
+.tb{width:36px;height:36px;position:relative;color:var(--muted);flex:none}
 .tb svg{width:18px;height:18px}
 .dotn{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--accent);border:1.5px solid var(--surface)}
 .toast{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:80;margin:0;padding:8px 14px;border-radius:var(--r-ctl);background:var(--text);color:var(--surface);font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
@@ -198,6 +255,6 @@ const REPO = 'https://github.com/bluenyang/allot'
 .foot-bar a:hover{text-decoration:underline}
 .foot-bar .where{display:flex;align-items:center;gap:6px}
 .foot-bar .where svg{width:14px;height:14px}
-@media (min-width:761px){.foot-bar{padding:16px 32px}}
+@media (min-width:761px){.foot-bar{padding:16px var(--col-pad)}}
 @media (max-width:760px){.col .main{padding-bottom:16px}}
 </style>
