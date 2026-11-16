@@ -1,22 +1,13 @@
 // check-logs.mjs — verify that check logs are evidence: every step/cleanup block has a rev line,
-// a "$ " command line (without an unquoted pipe) and an exit= line.
+// a "$ " command line (without any "|") and an exit= line.
 //   node scripts/check-logs.mjs <file|dir>...      (pnpm check:logs <file|dir>...)
 // Exit 0 only when nothing is reported. Logs come from scripts/check-run.sh.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export function hasUnquotedPipe(cmd) {
-  let q = ''
-  for (let i = 0; i < cmd.length; i++) {
-    const c = cmd[i]
-    if (q === "'") { if (c === "'") q = ''; continue }
-    if (c === '\\') { i++; continue }
-    if (q === '"') { if (c === '"') q = ''; continue }
-    if (c === "'" || c === '"') q = c
-    else if (c === '|') return true
-  }
-  return false
+export function hasPipe(cmd) {
+  return cmd.includes('|')
 }
 
 // Returns problems as { line, problem } for one log's text.
@@ -33,7 +24,7 @@ export function checkLog(text) {
     if (!block.some((l) => l.startsWith('rev '))) problems.push({ line: s + 1, problem: `${name}: no rev line` })
     const ci = block.findIndex((l) => l.startsWith('$ '))
     if (ci < 0) problems.push({ line: s + 1, problem: `${name}: no command line ("$ ")` })
-    else if (hasUnquotedPipe(block[ci].slice(2))) problems.push({ line: s + ci + 1, problem: `${name}: command has an unquoted pipe` })
+    else if (hasPipe(block[ci].slice(2))) problems.push({ line: s + ci + 1, problem: `${name}: command line contains a pipe "|"` })
     if (!block.some((l) => /^exit=\d+$/.test(l))) problems.push({ line: s + 1, problem: `${name}: no exit= line` })
   })
   return problems
