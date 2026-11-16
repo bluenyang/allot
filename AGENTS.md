@@ -55,6 +55,7 @@ Gates (`.agents/harness/gates.yaml`, order: typecheck → build → test; e2e is
 - The gates in `gates.yaml` are the same for every role.
 - Commit messages: `<type>: <summary>` (e.g. `init:`, `chore:`, `feat:`, `fix:`), English.
 - Every check whose log is evidence (V-n, re-runs, the release test server) runs through `scripts/check-run.sh`; a log is evidence only after `pnpm check:logs` passes on it. Delegated checks get the same instruction. A schema change runs `pnpm check:migrations` before its PR. A failed release run's log is saved at once (`gh run view <id> --log-failed`) under `.loctx/reports/<version>/`.
+- Every check whose log is evidence (V-n, re-runs, the release test server) runs through `scripts/check-run.sh`; a log is evidence only after `pnpm check:logs` passes on it. Delegated checks get the same instruction. A schema change runs `pnpm check:migrations` before its PR. A failed release run's log is saved at once (`gh run view <id> --log-failed`) under `.loctx/reports/<version>/`.
 - Pure calculation goes in `src/lib/calc.ts`; types in `src/data/types.ts`; pages in `src/pages/`, shared UI in `src/components/`.
 - Every change goes to the API first; the store takes the server's answer (`src/lib/store.ts`). New list editors use `EditSheet` + `useEditor`.
 - API bodies are validated with zod in `server/validation.ts`; schema changes go through `pnpm db:generate`, never hand-written SQL. A data move that the schema diff cannot express goes in a `drizzle-kit generate --custom` migration.
