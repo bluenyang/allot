@@ -153,8 +153,8 @@ test('the logged command reads back as exactly the arguments that ran', () => {
   const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
   const log = join(dir, 'q.log')
   const script = join(dir, 'run.sh')
-  const args = ["it's", 'a b', '$HOME', '*', 'é', '']
-  writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep q /usr/bin/env printf '[%s]\\n' ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}\ndone_check\n`)
+  const args = ["it's", 'a b', '$HOME', '*', 'é', '', 'a\\b', '-n', '\\n']
+  writeFileSync(script, `shopt -s xpg_echo\n. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep q /usr/bin/env printf '[%s]\\n' ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}\ndone_check\n`)
   const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
   assert.equal(run.status, 0)
   const cmd = readFileSync(log, 'utf8').split('\n').find((l) => l.startsWith('$ '))!.slice(2)

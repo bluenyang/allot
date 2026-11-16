@@ -34,7 +34,9 @@ _cr_q() { # quote one word for the command line shown in the log (bash builtin, 
   printf '%q' "$1"
 }
 # A failure of the runner's own writes ends the run with 70; the block is left without exit= and "=== end".
-_cr_die() { echo "runner error: $1" >> "$LOG" 2>/dev/null; echo "check-run: runner error: $1" >&2; exit 70; }
+# printf, never echo: echo's behaviour depends on the caller's shell options (xpg_echo).
+_cr_say() { printf '%s\n' "$@"; }
+_cr_die() { _cr_say "runner error: $1" >> "$LOG" 2>/dev/null; _cr_say "check-run: runner error: $1" >&2; exit 70; }
 _cr_has_pipe() { local a; for a in "$@"; do case $a in *'|'*) return 0 ;; esac; done; return 1; }
 _cr_run() { # kind name command...
   local kind=$1 name=$2 out rc a; shift 2
@@ -43,35 +45,35 @@ _cr_run() { # kind name command...
   rev=$(_cr_rev) || _cr_die "read the git rev"
   now=$(date -Is) || _cr_die "read the date"
   for a in "$@"; do cmd+=" $(_cr_q "$a")" || _cr_die "quote the command"; done
-  { echo "=== $kind: $name"; echo "rev $rev"; echo "date $now"; echo "\$$cmd"; } >> "$LOG" || _cr_die "write the block header"
+  { _cr_say "=== $kind: $name"; _cr_say "rev $rev"; _cr_say "date $now"; _cr_say "\$$cmd"; } >> "$LOG" || _cr_die "write the block header"
   if _cr_has_pipe "$@"; then
-    echo "check-run: refused, an argument contains '|'; a pipe hides the exit code. Use redirection to a file." > "$out" || _cr_die "write the capture file"
+    _cr_say "check-run: refused, an argument contains '|'; a pipe hides the exit code. Use redirection to a file." > "$out" || _cr_die "write the capture file"
     rc=2
   elif [ "$(type -t "$1")" != file ]; then
-    echo "check-run: refused, '$1' is not an external command (functions and builtins lose errexit and can hide failures). Use /usr/bin/env or bash -c." > "$out" || _cr_die "write the capture file"
+    _cr_say "check-run: refused, '$1' is not an external command (functions and builtins lose errexit and can hide failures). Use /usr/bin/env or bash -c." > "$out" || _cr_die "write the capture file"
     rc=2
   elif "$@" > "$out" 2>&1; then rc=0; else rc=$?; fi
   # every output line is written as "> <line>" (">" if empty), so output can never look like metadata
   sed -e 's/^\(.\)/> \1/' -e 's/^$/>/' "$out" >> "$LOG" || _cr_die "frame the output (sed)"
   if [ -s "$out" ] && [ -n "$(tail -c 1 "$out")" ]; then
-    { echo; echo "> [the output above had no newline at its end]"; } >> "$LOG" || _cr_die "write the output note"
+    { _cr_say ''; _cr_say "> [the output above had no newline at its end]"; } >> "$LOG" || _cr_die "write the output note"
   fi
   rm -f "$out"
-  { echo "exit=$rc"; echo "=== end"; echo; } >> "$LOG" || _cr_die "write the block footer"
-  echo "[$CHECK] $kind $name: exit=$rc"
+  { _cr_say "exit=$rc"; _cr_say "=== end"; _cr_say ''; } >> "$LOG" || _cr_die "write the block footer"
+  _cr_say "[$CHECK] $kind $name: exit=$rc"
   return $rc
 }
 # begin <check> <logfile>: start a check's log.
 begin() {
   CHECK=$1; LOG=$2
   mkdir -p "$(dirname "$LOG")"
-  { echo "# check $CHECK, started $(date -Is)"; echo; } > "$LOG"
+  { _cr_say "# check $CHECK, started $(date -Is)"; _cr_say ''; } > "$LOG"
 }
 # step <name> <command...>: run; stop everything on non-zero.
 step() {
   local rc
   if _cr_run step "$@"; then rc=0; else rc=$?; fi
-  if [ $rc -ne 0 ]; then echo "STOPPED at step '$1' (exit=$rc)" >> "$LOG"; exit $rc; fi
+  if [ $rc -ne 0 ]; then _cr_say "STOPPED at step '$1' (exit=$rc)" >> "$LOG"; exit $rc; fi
 }
 # cleanup <name> <command...>: registered now, run in reverse order at done_check or on exit.
 cleanup() { CLEANUPS+=("$(printf '%q ' "$@")"); }
@@ -84,13 +86,13 @@ _cr_cleanups() { # returns 1 if any cleanup failed
 }
 # done_check: run the cleanups and write the verdict.
 done_check() {
-  if ! _cr_cleanups; then echo "RESULT $CHECK: fail (a cleanup failed)" >> "$LOG"; exit 1; fi
-  echo "RESULT $CHECK: all steps exit 0" >> "$LOG"
+  if ! _cr_cleanups; then _cr_say "RESULT $CHECK: fail (a cleanup failed)" >> "$LOG"; exit 1; fi
+  _cr_say "RESULT $CHECK: all steps exit 0" >> "$LOG"
 }
 _cr_on_exit() {
   local rc=$?
   if [ ${#CLEANUPS[@]} -gt 0 ]; then _cr_cleanups || { [ $rc -eq 0 ] && rc=1; }; fi
-  if [ $rc -ne 0 ]; then echo "RESULT $CHECK: fail (exit=$rc)" >> "$LOG"; fi
+  if [ $rc -ne 0 ]; then _cr_say "RESULT $CHECK: fail (exit=$rc)" >> "$LOG"; fi
   rm -rf "$_TMP"
   exit $rc
 }
