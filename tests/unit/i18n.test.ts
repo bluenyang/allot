@@ -118,3 +118,37 @@ test('keys built from data exist for every value (categories, kinds, states, tab
   const missing = Object.entries(families).flatMap(([f, ids]) => ids.map((id) => `${f}.${id}`)).filter((k) => !(k in fko))
   assert.deepEqual(missing, [])
 })
+
+test('a zod issue without a message of ours is generic in the request language, never zod English (review finding 4)', async () => {
+  const { z } = await import('zod')
+  const { issueMessage } = await import('../../server/messages')
+  const schema = z.object({
+    n: z.number(), s: z.string().min(3), t: z.string().max(2), e: z.enum(['a', 'b']), u: z.string().email(), k: z.number().min(1, 'keyDaysMin'),
+  }).strict()
+  const cases: Array<[unknown, string]> = [
+    [{ n: '90', s: 'abc', t: 'a', e: 'a', u: 'a@b.co', k: 1 }, 'invalidType'],
+    [{ n: 1, s: 'a', t: 'a', e: 'a', u: 'a@b.co', k: 1 }, 'tooSmall'],
+    [{ n: 1, s: 'abc', t: 'abc', e: 'a', u: 'a@b.co', k: 1 }, 'tooBig'],
+    [{ n: 1, s: 'abc', t: 'a', e: 'z', u: 'a@b.co', k: 1 }, 'invalidValue'],
+    [{ n: 1, s: 'abc', t: 'a', e: 'a', u: 'nope', k: 1 }, 'invalidFormat'],
+    [{ n: 1, s: 'abc', t: 'a', e: 'a', u: 'a@b.co', k: 1, extra: 1 }, 'unknownField'],
+  ]
+  for (const [input, key] of cases) {
+    const r = schema.safeParse(input)
+    assert.equal(r.success, false)
+    const issue = r.error!.issues[0]
+    for (const lang of ['ko', 'en'] as const) {
+      const got = issueMessage(lang, issue)
+      assert.equal(got, text(lang, key as never), `${lang} ${issue?.code}`)
+      assert.notEqual(got, issue?.message, 'zod\'s own text is not passed on')
+    }
+    assert.ok(!/[A-Za-z]{4,}/.test(issueMessage('ko', issue)), `Korean answer has no English words: ${issueMessage('ko', issue)}`)
+  }
+  // an explicit key is kept as it is
+  const explicit = schema.safeParse({ n: 1, s: 'abc', t: 'a', e: 'a', u: 'a@b.co', k: 0 })
+  assert.equal(issueMessage('en', explicit.error!.issues[0]), text('en', 'keyDaysMin'))
+  assert.equal(issueMessage('ko', explicit.error!.issues[0]), text('ko', 'keyDaysMin'))
+  // an issue with no known code falls back to the general message
+  assert.equal(issueMessage('ko', { code: 'weird' }), text('ko', 'invalidInput'))
+  assert.equal(issueMessage('en', undefined), text('en', 'invalidInput'))
+})

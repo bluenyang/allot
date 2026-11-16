@@ -90,6 +90,10 @@ try {
     await A('POST', '/api/holiday-sets', monthly, { 'accept-language': 'en-US,en;q=0.9' }), await A('POST', '/api/holiday-sets', monthly, { 'accept-language': 'fr-FR' })]
   ok(mKo.status === 400 && /FREQ=YEARLY만/.test(mKo.json?.error) && mNone.json?.error === mKo.json?.error && mFr.json?.error === mKo.json?.error && mEn.json?.error === 'Holiday rules only support FREQ=YEARLY.',
     `messages by Accept-Language: ko ${mKo.json?.error} | none same | fr same | en ${mEn.json?.error}`)
+  // a rule with no message of ours (zod's own text is English) is generic in the request language (review finding 4)
+  const [zKo, zEn] = [await A('POST', '/api/keys', { name: 'x', expiresInDays: '90' }, { 'accept-language': 'ko' }), await A('POST', '/api/keys', { name: 'x', expiresInDays: '90' }, { 'accept-language': 'en' })]
+  ok(zKo.status === 400 && !/[A-Za-z]{4,}/.test(zKo.json?.error ?? 'English') && zEn.status === 400 && /^[\x20-\x7e]+$/.test(zEn.json?.error ?? '') && !/expected|received|Invalid input/i.test(zEn.json?.error ?? ''),
+    `a type error is generic: ko "${zKo.json?.error}" | en "${zEn.json?.error}"`)
   const good = await A('POST', '/api/holiday-sets', set([
     { name: '양력', rrule: 'FREQ=YEARLY;BYMONTH=7;BYMONTHDAY=17' },
     { name: '음력', rrule: 'RSCALE=DANGI;FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=-1', substitute: { on: ['SU'], since: 2014 } },

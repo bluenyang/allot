@@ -9,6 +9,14 @@ export type Vars = Record<string, string | number>
 const ko = {
   // common
   invalidInput: '입력값을 확인해 주세요.',
+  dateFormat: 'YYYY-MM-DD',
+  monthFormat: 'YYYY-MM',
+  invalidType: '값의 형식이 맞지 않아요.',
+  tooSmall: '값이 너무 작거나 짧아요.',
+  tooBig: '값이 너무 크거나 길어요.',
+  invalidValue: '허용되지 않는 값이에요.',
+  invalidFormat: '값의 모양이 맞지 않아요.',
+  unknownField: '알 수 없는 항목이 있어요.',
   itemNotFound: '항목을 찾을 수 없어요.',
   pendingApproval: '관리자 승인을 기다리고 있어요.',
   appUnlisted: '등록되지 않은 앱 주소예요.',
@@ -125,6 +133,14 @@ export type MsgKey = keyof typeof ko
 
 const en: Record<MsgKey, string> = {
   invalidInput: 'Please check the values you entered.',
+  dateFormat: 'YYYY-MM-DD',
+  monthFormat: 'YYYY-MM',
+  invalidType: 'The value is the wrong type.',
+  tooSmall: 'The value is too small or too short.',
+  tooBig: 'The value is too large or too long.',
+  invalidValue: 'That value is not allowed.',
+  invalidFormat: 'The value is not in the right format.',
+  unknownField: 'There is an unknown field.',
   itemNotFound: 'Item not found.',
   pendingApproval: 'Waiting for admin approval.',
   appUnlisted: 'This app address is not registered.',
@@ -276,6 +292,28 @@ export function issueText(lang: Lang, message: string | undefined): string {
     try { return text(lang, JSON.parse(message) as Msg) } catch { /* not ours */ }
   }
   return message
+}
+
+/** What a rule says when it names no message of ours: zod's text is English, so the issue's kind picks a generic message. */
+const byCode: Record<string, MsgKey> = {
+  invalid_type: 'invalidType',
+  too_small: 'tooSmall',
+  too_big: 'tooBig',
+  invalid_value: 'invalidValue',
+  invalid_format: 'invalidFormat',
+  not_multiple_of: 'invalidValue',
+  invalid_key: 'invalidValue',
+  invalid_element: 'invalidValue',
+  invalid_union: 'invalidInput',
+  unrecognized_keys: 'unknownField',
+  custom: 'invalidInput',
+}
+
+/** The message of a zod issue in `lang`: our key (explicit) when the rule has one, else a generic one by the issue's code; never zod's own English. */
+export function issueMessage(lang: Lang, issue: { code?: string; message?: string } | undefined): string {
+  const m = issue?.message
+  if (m && (m in ko || m.startsWith('{"key"'))) return issueText(lang, m)
+  return text(lang, byCode[issue?.code ?? ''] ?? 'invalidInput')
 }
 
 /** The language of a request given to a Better Auth hook (it has headers or a request). */

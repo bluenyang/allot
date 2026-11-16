@@ -5,11 +5,11 @@ import { ruleProblem } from '../src/lib/holidays'
 import { m, type MsgKey } from './messages'
 
 /** A real calendar date (rejects 2031-02-30), YYYY-MM-DD. */
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD').refine((s) => {
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'dateFormat').refine((s) => {
   const d = new Date(`${s}T00:00:00Z`)
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s
 }, 'dateInvalid')
-const ym = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM')
+const ym = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'monthFormat')
 // Bounds match the column types: integer, numeric(12,2), numeric(8,2), numeric(5,2).
 const INT_MAX = 2_147_483_647
 const won = z.number().int().min(0).max(INT_MAX, 'amountTooBig')
