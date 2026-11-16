@@ -163,3 +163,13 @@ export const userBan = z.object({ reason: z.string().trim().max(200).optional() 
 
 /** DELETE /api/admin/users/:id — the user's email, typed again. */
 export const userDelete = z.object({ confirmEmail: z.string().trim().min(1).max(254) }).strict()
+
+// ── API keys (spec 008 S-1, S-3) ──
+/** POST /api/keys — expiresInDays: absent = 90 days, null = no expiry (only while the server allows it). */
+export const keyCreate = z.object({
+  name: z.string().trim().min(1, '키 이름을 적어 주세요.').max(32, '키 이름은 32자까지예요.'),
+  expiresInDays: z.number().int('일 수는 정수예요.').min(1, '만료는 1일 이상이에요.').max(365, '만료는 365일까지예요.').nullable().optional(),
+}).strict()
+
+/** PUT /api/admin/api-keys */
+export const keyPolicy = z.object({ noExpiry: z.boolean() }).strict()

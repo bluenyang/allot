@@ -11,6 +11,7 @@ import { zValidator } from '@hono/zod-validator'
 import { and, count, eq, ne, sql } from 'drizzle-orm'
 import { Hono, type Context } from 'hono'
 import type { z } from 'zod'
+import { loadKeyPolicy, saveNoExpiry } from './api-key-policy'
 import { adminCanSignInWithout, isActiveAdmin, logAdmin } from './admin'
 import type { AppEnv } from './app-env'
 import { getAuthConfig, getOidcIssuer, reloadAuth, withAuthLock } from './auth'
@@ -58,6 +59,22 @@ function view(cfg: AuthConfig, id: ProviderId) {
 adminRoutes.get('/providers', (c) => {
   const cfg = getAuthConfig()
   return c.json({ providers: PROVIDERS.map((id) => view(cfg, id)) })
+})
+
+// API key expiry policy (spec 008 S-3): "may a key have no expiry date". env locks it.
+adminRoutes.get('/api-keys', async (c) => {
+  const p = await loadKeyPolicy()
+  return c.json({ noExpiry: p.noExpiry, source: p.source, locked: p.source === 'env' })
+})
+
+adminRoutes.put('/api-keys', body(v.keyPolicy), async (c) => {
+  const cur = await loadKeyPolicy()
+  if (cur.source === 'env') return c.json({ error: 'env로 정한 항목은 화면에서 바꿀 수 없어요.' }, 409)
+  const { noExpiry } = c.req.valid('json')
+  const capped = await saveNoExpiry(noExpiry, uidOf(c))
+  logAdmin(uidOf(c), `api-keys noExpiry=${noExpiry} capped=${capped}`, 'api_keys')
+  const p = await loadKeyPolicy()
+  return c.json({ noExpiry: p.noExpiry, source: p.source, locked: p.source === 'env', capped })
 })
 
 type Update = z.infer<typeof v.providerUpdate>

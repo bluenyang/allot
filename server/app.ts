@@ -4,6 +4,7 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { adminRoutes } from './admin-routes'
 import { allowedReturn } from './app-login'
 import { publicMethods } from './auth-config'
+import { keyRoutes } from './keys'
 import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
 import type { AppEnv } from './app-env'
 import { routes } from './routes'
@@ -69,6 +70,7 @@ app.post('/app-login/ticket', async (c) => {
   url.searchParams.set('ott', token)
   return c.json({ url: url.toString() })
 })
+app.route('/keys', keyRoutes)
 app.route('/admin', adminRoutes)
 app.route('/', routes)
 
