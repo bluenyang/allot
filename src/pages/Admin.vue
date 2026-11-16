@@ -4,6 +4,8 @@ import { computed, onActivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import SubTabs from '../components/SubTabs.vue'
 import { ApiError, api } from '../lib/api'
+import { lang, t, type MessageKey } from '../i18n'
+import { getKeyPolicy, setKeyPolicy, type KeyPolicy } from '../lib/keys'
 
 // Admin (spec 006 S-3, S-8): accounts and login methods. Account details only; nobody's
 // financial data is shown or reachable here. The server checks every action again.
@@ -24,7 +26,7 @@ interface Provider {
 
 const origin = window.location.origin
 const tab = ref('users')
-const tabs = [{ id: 'users', label: '사용자', icon: 'account' }, { id: 'methods', label: '로그인 방식', icon: 'security' }]
+const tabs = computed(() => [{ id: 'users', label: t('admin.tabUsers'), icon: 'account' }, { id: 'methods', label: t('admin.tabMethods'), icon: 'security' }, { id: 'keys', label: t('settingsAi.apiKey'), icon: 'list' }])
 const error = ref('')
 const notice = ref('')
 const busy = ref(false)
@@ -38,10 +40,10 @@ async function loadUsers() {
   const r = await api<{ users: User[] }>('GET', '/api/auth/admin/list-users?limit=500&sortBy=createdAt&sortDirection=asc')
   users.value = r.users
 }
-const STATUS = (u: User) => (u.banned ? '정지' : u.status === 'pending' ? '승인 대기' : '활성')
-const ADMISSION: Record<string, string> = { seed: '처음 계정', admin: '관리자가 만듦', approval: '승인', rule: '규칙', bootstrap: '초기 관리자' }
+const STATUS = (u: User) => (u.banned ? t('admin.statusBanned') : u.status === 'pending' ? t('admin.statusPending') : t('admin.statusActive'))
+const ADMISSION = (a: string) => (['seed', 'admin', 'approval', 'rule', 'bootstrap'].includes(a) ? t(`admin.admission.${a}` as MessageKey) : a)
 const pending = computed(() => users.value.filter((u) => u.status === 'pending' && !u.banned))
-const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle: 'medium' })
+const fmt = (at: string) => new Date(at).toLocaleDateString(lang.value === 'en' ? 'en-US' : 'ko-KR', { dateStyle: 'medium' })
 
 interface UserEdit { user: User | null; email: string; name: string; role: 'admin' | 'user'; password: string; confirm: string }
 const edit = ref<UserEdit | null>(null)
@@ -61,7 +63,7 @@ async function act(fn: () => Promise<unknown>, done: string, keepOpen = false) {
     if (!keepOpen) edit.value = null
     else if (edit.value?.user) edit.value.user = users.value.find((x) => x.id === edit.value!.user!.id) ?? null
   } catch (e) {
-    editError.value = e instanceof ApiError ? e.message : '하지 못했어요.'
+    editError.value = e instanceof ApiError ? e.message : t('admin.failed')
   } finally {
     busy.value = false
   }
@@ -70,32 +72,32 @@ async function saveUser() {
   const e = edit.value
   if (!e) return
   if (!e.user) {
-    if (!/^\S+@\S+\.\S+$/.test(e.email.trim())) return (editError.value = '이메일을 확인해 주세요.')
-    if (!e.name.trim()) return (editError.value = '이름을 넣어 주세요.')
-    if (e.password && e.password.length < 8) return (editError.value = '임시 비밀번호는 8자 이상이어야 해요.')
+    if (!/^\S+@\S+\.\S+$/.test(e.email.trim())) return (editError.value = t('admin.checkEmail'))
+    if (!e.name.trim()) return (editError.value = t('admin.needName'))
+    if (e.password && e.password.length < 8) return (editError.value = t('admin.tempPwShort'))
     return act(() => api('POST', '/api/auth/admin/create-user', {
       email: e.email.trim(), name: e.name.trim(), role: e.role, ...(e.password ? { password: e.password } : {}),
-    }), e.password ? '계정을 만들었어요.' : '계정을 만들었어요. 그 이메일로 처음 외부 로그인하면 연결돼요.')
+    }), e.password ? t('admin.created') : t('admin.createdLink'))
   }
   const u = e.user
   await act(async () => {
     if (e.name.trim() && e.name.trim() !== u.name) await api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { name: e.name.trim() } })
     if (e.role !== u.role) await api('POST', `/api/admin/users/${u.id}/role`, { role: e.role })
-  }, '저장했어요.')
+  }, t('settings.general.saved'))
 }
-const approve = (u: User) => act(() => api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { status: 'active' } }), `${u.email}을(를) 승인했어요.`, !!edit.value)
-const ban = (u: User) => confirm(`${u.email}을(를) 정지할까요? 로그인이 모두 끊겨요.`)
-  && act(() => api('POST', `/api/admin/users/${u.id}/ban`, {}), '정지했어요.', true)
-const unban = (u: User) => act(() => api('POST', '/api/auth/admin/unban-user', { userId: u.id }), '정지를 풀었어요.', true)
-const endSessions = (u: User) => act(() => api('POST', '/api/auth/admin/revoke-user-sessions', { userId: u.id }), '로그인을 모두 끊었어요.', true)
+const approve = (u: User) => act(() => api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { status: 'active' } }), t('admin.approved', { email: u.email }), !!edit.value)
+const ban = (u: User) => confirm(t('admin.confirmBan', { email: u.email }))
+  && act(() => api('POST', `/api/admin/users/${u.id}/ban`, {}), t('admin.banned'), true)
+const unban = (u: User) => act(() => api('POST', '/api/auth/admin/unban-user', { userId: u.id }), t('admin.unbanned'), true)
+const endSessions = (u: User) => act(() => api('POST', '/api/auth/admin/revoke-user-sessions', { userId: u.id }), t('admin.sessionsEnded'), true)
 function resetPassword(u: User) {
   const p = edit.value?.password ?? ''
-  if (p.length < 8) return (editError.value = '새 비밀번호는 8자 이상이어야 해요.')
-  return act(() => api('POST', '/api/auth/admin/set-user-password', { userId: u.id, newPassword: p }), '비밀번호를 바꿨어요. 그 사용자의 로그인은 끊었어요.', true)
+  if (p.length < 8) return (editError.value = t('account.pwShort'))
+  return act(() => api('POST', '/api/auth/admin/set-user-password', { userId: u.id, newPassword: p }), t('admin.pwReset'), true)
 }
 function remove(u: User) {
-  if ((edit.value?.confirm ?? '').trim().toLowerCase() !== u.email.toLowerCase()) return (editError.value = '확인란에 그 사용자의 이메일을 그대로 넣어 주세요.')
-  return act(() => api('DELETE', `/api/admin/users/${u.id}`, { confirmEmail: edit.value!.confirm.trim() }), `${u.email} 계정과 데이터를 모두 지웠어요.`)
+  if ((edit.value?.confirm ?? '').trim().toLowerCase() !== u.email.toLowerCase()) return (editError.value = t('admin.confirmEmailText'))
+  return act(() => api('DELETE', `/api/admin/users/${u.id}`, { confirmEmail: edit.value!.confirm.trim() }), t('admin.deleted', { email: u.email }))
 }
 
 // ── login methods ──
@@ -103,9 +105,10 @@ const providers = ref<Provider[]>([])
 interface ProvEdit { id: Provider['id']; enabled: boolean; signup: Provider['values']['signup']; name: string; clientId: string; discoveryUrl: string; scopes: string; groupsClaim: string; rules: Record<string, string>; secret: string; dropSecret: boolean }
 const pedit = ref<ProvEdit | null>(null)
 const peditError = ref('')
-const TITLE: Record<string, string> = { password: '비밀번호', oidc: 'OIDC', github: 'GitHub', google: 'Google' }
-const SIGNUP = { closed: '관리자가 만든 계정만', approval: '승인 대기', rules: '규칙에 맞으면 바로' }
-const RULE: Record<string, string> = { emails: '이메일', groups: 'group', orgs: 'GitHub organization', domains: 'Google 도메인' }
+const TITLE = (id: string) => (id === 'password' ? t('auth.password') : ({ oidc: 'OIDC', github: 'GitHub', google: 'Google' } as Record<string, string>)[id] ?? id)
+const SIGNUP_IDS = ['closed', 'approval', 'rules'] as const
+const SIGNUP = (id: string) => t(`admin.signup.${id}` as MessageKey)
+const RULE = (k: string) => (k === 'emails' ? t('admin.rule.emails') : k === 'domains' ? t('admin.rule.domains') : ({ groups: 'group', orgs: 'GitHub organization' } as Record<string, string>)[k] ?? k)
 async function loadProviders() {
   providers.value = (await api<{ providers: Provider[] }>('GET', '/api/admin/providers')).providers
 }
@@ -155,10 +158,29 @@ async function saveProvider() {
   try {
     await api('PUT', `/api/admin/providers/${p.id}`, body)
     await loadProviders()
-    say(`${TITLE[p.id]} 설정을 저장했어요. 바로 적용돼요.`)
+    say(t('admin.providerSaved', { name: TITLE(p.id) }))
     pedit.value = null
   } catch (err) {
-    peditError.value = err instanceof ApiError ? err.message : '저장하지 못했어요.'
+    peditError.value = err instanceof ApiError ? err.message : t('admin.saveFailed')
+  } finally {
+    busy.value = false
+  }
+}
+
+// ── API keys (spec 008 S-3): may a key have no expiry date ──
+const keyPolicy = ref<KeyPolicy | null>(null)
+async function toggleNoExpiry(e: Event) {
+  const box = e.target as HTMLInputElement
+  const next = box.checked
+  if (!next && !confirm(t('admin.confirmOff'))) { box.checked = true; return }
+  busy.value = true
+  error.value = ''
+  try {
+    keyPolicy.value = await setKeyPolicy(next)
+    say(next ? t('admin.noExpiryOn') : t('admin.noExpiryOff') + (keyPolicy.value.capped ? ` ${t('admin.capped', { n: keyPolicy.value.capped })}` : ''))
+  } catch (err) {
+    box.checked = !next
+    fail(err, t('admin.saveFailed'))
   } finally {
     busy.value = false
   }
@@ -167,9 +189,9 @@ async function saveProvider() {
 async function load() {
   try {
     meId.value = (await api<{ user: { id: string } }>('GET', '/api/me')).user.id
-    await Promise.all([loadUsers(), loadProviders()])
+    await Promise.all([loadUsers(), loadProviders(), getKeyPolicy().then((p) => { keyPolicy.value = p })])
   } catch (e) {
-    fail(e, '관리 정보를 불러오지 못했어요.')
+    fail(e, t('admin.loadFailed'))
   }
 }
 onMounted(load)
@@ -178,99 +200,109 @@ onActivated(load)
 
 <template>
   <section>
-    <PageHeader title="관리" desc="계정과 로그인 방식을 관리해요. 다른 사용자의 금융 데이터는 여기서 보이지 않아요." />
-    <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
+    <PageHeader :title="t('admin.title')" :desc="t('admin.desc')" />
+    <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">{{ t('common.close') }}</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
     <SubTabs v-model="tab" :tabs="tabs" />
 
     <template v-if="tab === 'users'">
       <div v-if="pending.length" class="panel warnbox">
-        <h3 style="margin-top:0">승인 대기 {{ pending.length }}명</h3>
+        <h3 style="margin-top:0">{{ t('admin.pendingN', { n: pending.length }) }}</h3>
         <ul class="list">
           <li v-for="u in pending" :key="u.id"><span>{{ u.email }}</span><span class="small muted">{{ fmt(u.createdAt) }}</span>
-            <button class="btn pri" type="button" :disabled="busy" @click="approve(u)">승인</button></li>
+            <button class="btn pri" type="button" :disabled="busy" @click="approve(u)">{{ t('admin.approve') }}</button></li>
         </ul>
       </div>
-      <div class="btns" style="margin:0 0 12px"><button class="btn pri" type="button" @click="openUser()">+ 계정 만들기</button></div>
+      <div class="btns" style="margin:0 0 12px"><button class="btn pri" type="button" @click="openUser()">{{ t('admin.newAccountBtn') }}</button></div>
 
-      <EditSheet v-if="edit && !edit.user" title="새 계정" :error="editError" :busy="busy" @save="saveUser" @cancel="edit = null">
-        <div class="field"><label for="u-email">이메일</label><input id="u-email" v-model="edit.email" class="in" type="email" autocomplete="off"></div>
-        <div class="field"><label for="u-name">이름</label><input id="u-name" v-model="edit.name" class="in"></div>
-        <div class="field"><label for="u-role">역할</label><select id="u-role" v-model="edit.role" class="in"><option value="user">사용자</option><option value="admin">관리자</option></select></div>
-        <div class="field"><label for="u-pw">임시 비밀번호 (선택)</label><input id="u-pw" v-model="edit.password" class="in" type="password" autocomplete="new-password"></div>
-        <template #after><p class="small muted">비워 두면 비밀번호 없이 만들어요. 그 이메일로 처음 외부 로그인할 때 이 계정에 연결돼요.</p></template>
+      <EditSheet v-if="edit && !edit.user" :title="t('admin.newAccount')" :error="editError" :busy="busy" @save="saveUser" @cancel="edit = null">
+        <div class="field"><label for="u-email">{{ t('login.email') }}</label><input id="u-email" v-model="edit.email" class="in" type="email" autocomplete="off"></div>
+        <div class="field"><label for="u-name">{{ t('admin.name') }}</label><input id="u-name" v-model="edit.name" class="in"></div>
+        <div class="field"><label for="u-role">{{ t('admin.role') }}</label><select id="u-role" v-model="edit.role" class="in"><option value="user">{{ t('shell.roleUser') }}</option><option value="admin">{{ t('shell.roleAdmin') }}</option></select></div>
+        <div class="field"><label for="u-pw">{{ t('admin.tempPw') }}</label><input id="u-pw" v-model="edit.password" class="in" type="password" autocomplete="new-password"></div>
+        <template #after><p class="small muted">{{ t('admin.tempPwNote') }}</p></template>
       </EditSheet>
 
       <div class="panel scroll-x">
         <table class="tbl">
-          <thead><tr><th>이메일</th><th>이름</th><th>역할</th><th>상태</th><th>들어온 방식</th><th>만든 날</th></tr></thead>
+          <thead><tr><th>{{ t('login.email') }}</th><th>{{ t('admin.name') }}</th><th>{{ t('admin.role') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.admissionCol') }}</th><th>{{ t('admin.createdCol') }}</th></tr></thead>
           <tbody>
             <tr v-for="u in users" :key="u.id" class="click" tabindex="0" @click="openUser(u)" @keydown.enter="openUser(u)">
-              <td>{{ u.email }}<span v-if="u.id === meId" class="small muted"> (나)</span></td><td>{{ u.name }}</td>
-              <td>{{ u.role === 'admin' ? '관리자' : '사용자' }}</td><td>{{ STATUS(u) }}</td>
-              <td>{{ ADMISSION[u.admission] ?? u.admission }}</td><td class="n">{{ fmt(u.createdAt) }}</td>
+              <td>{{ u.email }}<span v-if="u.id === meId" class="small muted"> {{ t('admin.me') }}</span></td><td>{{ u.name }}</td>
+              <td>{{ u.role === 'admin' ? t('shell.roleAdmin') : t('shell.roleUser') }}</td><td>{{ STATUS(u) }}</td>
+              <td>{{ ADMISSION(u.admission) }}</td><td class="n">{{ fmt(u.createdAt) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <EditSheet v-if="edit && edit.user" :title="edit.user.email" :error="editError" :busy="busy" @save="saveUser" @cancel="edit = null">
-        <div class="field"><label for="ue-name">이름</label><input id="ue-name" v-model="edit.name" class="in"></div>
-        <div class="field"><label for="ue-role">역할</label><select id="ue-role" v-model="edit.role" class="in" :disabled="edit.user.id === meId && edit.user.role === 'admin' && users.filter((x) => x.role === 'admin' && !x.banned).length <= 1"><option value="user">사용자</option><option value="admin">관리자</option></select></div>
+        <div class="field"><label for="ue-name">{{ t('admin.name') }}</label><input id="ue-name" v-model="edit.name" class="in"></div>
+        <div class="field"><label for="ue-role">{{ t('admin.role') }}</label><select id="ue-role" v-model="edit.role" class="in" :disabled="edit.user.id === meId && edit.user.role === 'admin' && users.filter((x) => x.role === 'admin' && !x.banned).length <= 1"><option value="user">{{ t('shell.roleUser') }}</option><option value="admin">{{ t('shell.roleAdmin') }}</option></select></div>
         <template #after>
           <div class="acts">
-            <button v-if="edit.user.status === 'pending'" class="btn pri" type="button" :disabled="busy" @click="approve(edit.user)">승인</button>
+            <button v-if="edit.user.status === 'pending'" class="btn pri" type="button" :disabled="busy" @click="approve(edit.user)">{{ t('admin.approve') }}</button>
             <template v-if="edit.user.id !== meId">
-              <button v-if="!edit.user.banned" class="btn" type="button" :disabled="busy" @click="ban(edit.user)">정지</button>
-              <button v-else class="btn" type="button" :disabled="busy" @click="unban(edit.user)">정지 풀기</button>
+              <button v-if="!edit.user.banned" class="btn" type="button" :disabled="busy" @click="ban(edit.user)">{{ t('admin.ban') }}</button>
+              <button v-else class="btn" type="button" :disabled="busy" @click="unban(edit.user)">{{ t('admin.unban') }}</button>
             </template>
-            <button class="btn" type="button" :disabled="busy" @click="endSessions(edit.user)">로그인 모두 끊기</button>
+            <button class="btn" type="button" :disabled="busy" @click="endSessions(edit.user)">{{ t('admin.endSessions') }}</button>
           </div>
-          <div class="field"><label for="ue-pw">새 비밀번호</label><input id="ue-pw" v-model="edit.password" class="in" type="password" autocomplete="new-password"></div>
-          <div class="acts"><button class="btn" type="button" :disabled="busy" @click="resetPassword(edit.user)">비밀번호 재설정</button></div>
+          <div class="field"><label for="ue-pw">{{ t('admin.newPw') }}</label><input id="ue-pw" v-model="edit.password" class="in" type="password" autocomplete="new-password"></div>
+          <div class="acts"><button class="btn" type="button" :disabled="busy" @click="resetPassword(edit.user)">{{ t('admin.resetPw') }}</button></div>
           <template v-if="edit.user.id !== meId">
-            <div class="field"><label for="ue-del">완전 삭제 — 확인하려면 이메일을 그대로 입력</label><input id="ue-del" v-model="edit.confirm" class="in" autocomplete="off"></div>
-            <div class="acts"><button class="btn danger" type="button" :disabled="busy" @click="remove(edit.user)">계정과 데이터 완전 삭제</button></div>
-            <p class="small muted">그 사용자의 모든 데이터·변경 내역·로그인이 지워지고 되돌릴 수 없어요.</p>
+            <div class="field"><label for="ue-del">{{ t('admin.deleteLabel') }}</label><input id="ue-del" v-model="edit.confirm" class="in" autocomplete="off"></div>
+            <div class="acts"><button class="btn danger" type="button" :disabled="busy" @click="remove(edit.user)">{{ t('admin.deleteBtn') }}</button></div>
+            <p class="small muted">{{ t('admin.deleteNote') }}</p>
           </template>
         </template>
       </EditSheet>
     </template>
 
+    <template v-else-if="tab === 'keys'">
+      <div class="panel">
+        <h3>{{ t('admin.noExpiryTitle') }}</h3>
+        <p class="small muted">{{ t('admin.noExpiryDesc') }}</p>
+        <label v-if="keyPolicy" class="sw"><input type="checkbox" :checked="keyPolicy.noExpiry" :disabled="keyPolicy.locked || busy" @change="toggleNoExpiry"> {{ t('admin.noExpiryLabel') }}</label>
+        <i18n-t v-if="keyPolicy?.locked" keypath="admin.envLocked" tag="p" class="small muted"><template #env><span class="mono">ALLOT_API_KEY_NO_EXPIRY</span></template></i18n-t>
+        <p v-else class="small muted">{{ t('admin.noExpiryNote') }}</p>
+      </div>
+    </template>
+
     <template v-else>
       <div class="cards">
         <div v-for="p in providers" :key="p.id" class="panel click" tabindex="0" @click="openProvider(p)" @keydown.enter="openProvider(p)">
-          <h3 style="margin-top:0">{{ TITLE[p.id] }}<span v-if="p.id === 'oidc' && p.values.name !== 'OIDC'" class="small muted"> · {{ p.values.name }}</span></h3>
-          <p class="small">{{ p.usable ? '켜짐' : p.values.enabled ? '켜졌지만 쓸 수 없음' : '꺼짐' }}<span v-if="p.id !== 'password'"> · 가입: {{ SIGNUP[p.values.signup] }}</span></p>
+          <h3 style="margin-top:0">{{ TITLE(p.id) }}<span v-if="p.id === 'oidc' && p.values.name !== 'OIDC'" class="small muted"> · {{ p.values.name }}</span></h3>
+          <p class="small">{{ p.usable ? t('common.on') : p.values.enabled ? t('admin.onUnusable') : t('common.off') }}<span v-if="p.id !== 'password'"> · {{ t('admin.signupIs', { how: SIGNUP(p.values.signup) }) }}</span></p>
           <p v-if="p.problem" class="small" style="color:var(--neg-text)">{{ p.problem }}</p>
-          <p v-if="Object.values(p.source).includes('env')" class="small muted">일부 항목은 env로 정해져 있어요.</p>
+          <p v-if="Object.values(p.source).includes('env')" class="small muted">{{ t('admin.someEnv') }}</p>
         </div>
       </div>
 
-      <EditSheet v-if="pedit && current()" :title="TITLE[pedit.id] + ' 설정'" :error="peditError" :busy="busy" @save="saveProvider" @cancel="pedit = null">
-        <div class="field"><label for="p-on">사용</label>
-          <select id="p-on" v-model="pedit.enabled" class="in" :disabled="locked(current()!, 'enabled')"><option :value="true">켜기</option><option :value="false">끄기</option></select></div>
+      <EditSheet v-if="pedit && current()" :title="t('admin.providerSettings', { name: TITLE(pedit.id) })" :error="peditError" :busy="busy" @save="saveProvider" @cancel="pedit = null">
+        <div class="field"><label for="p-on">{{ t('admin.use') }}</label>
+          <select id="p-on" v-model="pedit.enabled" class="in" :disabled="locked(current()!, 'enabled')"><option :value="true">{{ t('admin.turnOn') }}</option><option :value="false">{{ t('admin.turnOff') }}</option></select></div>
         <template v-if="pedit.id !== 'password'">
-          <div class="field"><label for="p-signup">새 사용자</label>
+          <div class="field"><label for="p-signup">{{ t('admin.newUsers') }}</label>
             <select id="p-signup" v-model="pedit.signup" class="in" :disabled="locked(current()!, 'signup')">
-              <option v-for="(label, k) in SIGNUP" :key="k" :value="k">{{ label }}</option></select></div>
-          <div v-if="pedit.id === 'oidc'" class="field"><label for="p-name">버튼 이름</label><input id="p-name" v-model="pedit.name" class="in" :disabled="locked(current()!, 'name')"></div>
+              <option v-for="k in SIGNUP_IDS" :key="k" :value="k">{{ SIGNUP(k) }}</option></select></div>
+          <div v-if="pedit.id === 'oidc'" class="field"><label for="p-name">{{ t('admin.buttonName') }}</label><input id="p-name" v-model="pedit.name" class="in" :disabled="locked(current()!, 'name')"></div>
           <div v-if="pedit.id === 'oidc'" class="field"><label for="p-disc">discovery URL</label><input id="p-disc" v-model="pedit.discoveryUrl" class="in" placeholder="https://…/.well-known/openid-configuration" :disabled="locked(current()!, 'discoveryUrl')"></div>
           <div class="field"><label for="p-cid">client id</label><input id="p-cid" v-model="pedit.clientId" class="in" autocomplete="off" :disabled="locked(current()!, 'clientId')"></div>
-          <div class="field"><label for="p-sec">client secret {{ current()!.secretSet ? '(저장됨 · 바꿀 때만 입력)' : '(없음)' }}</label>
+          <div class="field"><label for="p-sec">client secret {{ current()!.secretSet ? t('admin.secretSaved') : t('admin.secretNone') }}</label>
             <input id="p-sec" v-model="pedit.secret" class="in" type="password" autocomplete="new-password" :disabled="locked(current()!, 'clientSecret')"></div>
-          <label v-if="current()!.secretSet && !locked(current()!, 'clientSecret')" class="small"><input v-model="pedit.dropSecret" type="checkbox"> 저장된 secret 지우기</label>
-          <div v-if="pedit.id === 'oidc'" class="field"><label for="p-scopes">scope (공백으로 구분)</label><input id="p-scopes" v-model="pedit.scopes" class="in" :disabled="locked(current()!, 'scopes')"></div>
-          <div v-if="pedit.id === 'oidc'" class="field"><label for="p-gc">group 클레임 이름</label><input id="p-gc" v-model="pedit.groupsClaim" class="in" :disabled="locked(current()!, 'groupsClaim')"></div>
+          <label v-if="current()!.secretSet && !locked(current()!, 'clientSecret')" class="small"><input v-model="pedit.dropSecret" type="checkbox"> {{ t('admin.dropSecret') }}</label>
+          <div v-if="pedit.id === 'oidc'" class="field"><label for="p-scopes">{{ t('admin.scopes') }}</label><input id="p-scopes" v-model="pedit.scopes" class="in" :disabled="locked(current()!, 'scopes')"></div>
+          <div v-if="pedit.id === 'oidc'" class="field"><label for="p-gc">{{ t('admin.groupClaim') }}</label><input id="p-gc" v-model="pedit.groupsClaim" class="in" :disabled="locked(current()!, 'groupsClaim')"></div>
           <div v-for="k in current()!.ruleKinds" :key="k" class="field">
-            <label :for="'p-r-' + k">규칙: {{ RULE[k] }} (한 줄에 하나)</label>
+            <label :for="'p-r-' + k">{{ t('admin.ruleLabel', { kind: RULE(k) }) }}</label>
             <textarea :id="'p-r-' + k" v-model="pedit.rules[k]" class="in" rows="3" :disabled="locked(current()!, `rules.${k}`)" />
           </div>
         </template>
         <template #after>
-          <p v-if="Object.values(current()!.source).includes('env')" class="small muted">회색 항목은 env로 정해져 있어 화면에서 바꿀 수 없어요.</p>
-          <p v-if="pedit.id === 'password'" class="small muted">관리자 계정에 다른 로그인 방식이 연결되어 있어야 끌 수 있어요.</p>
-          <p v-else class="small muted">콜백 주소: <span class="mono">{{ origin }}/api/auth/callback/{{ pedit.id }}</span></p>
+          <p v-if="Object.values(current()!.source).includes('env')" class="small muted">{{ t('admin.greyEnv') }}</p>
+          <p v-if="pedit.id === 'password'" class="small muted">{{ t('admin.pwOffNote') }}</p>
+          <p v-else class="small muted">{{ t('admin.callback') }} <span class="mono">{{ origin }}/api/auth/callback/{{ pedit.id }}</span></p>
         </template>
       </EditSheet>
     </template>
@@ -290,6 +322,7 @@ onActivated(load)
 .scroll-x{overflow-x:auto}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.sw{display:flex;gap:8px;align-items:center;margin:12px 0}
 .warnbox{border-color:var(--accent-line);background:var(--accent-soft)}
 .warnbox h3{color:var(--accent-text)}
 @media (max-width:640px){.tbl th:nth-child(2),.tbl td:nth-child(2),.tbl th:nth-child(5),.tbl td:nth-child(5){display:none}}

@@ -6,7 +6,7 @@ export default async function globalSetup(config: FullConfig) {
   const { ADMIN_EMAIL, ADMIN_PASSWORD } = process.env
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD must be set')
   const browser = await chromium.launch({ channel: 'chrome' })
-  const page = await browser.newPage({ baseURL })
+  const page = await browser.newPage({ baseURL, locale: 'ko-KR' }) // the screens are Korean by default (spec 008)
   await page.goto('/')
   await page.getByLabel('이메일').fill(ADMIN_EMAIL)
   await page.getByLabel('비밀번호').fill(ADMIN_PASSWORD)

@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { decryptField, SYSTEM } from './crypto/keys'
 import { db } from './db/client'
 import * as t from './db/schema'
+import { m, type Msg } from './messages'
 
 export const PROVIDERS = ['password', 'oidc', 'github', 'google'] as const
 export type ProviderId = (typeof PROVIDERS)[number]
@@ -46,7 +47,7 @@ export interface AuthConfig {
   providers: Record<ProviderId, ProviderConfig>
   source: Record<ProviderId, Partial<Record<Field, Source>>>
   /** Why an enabled provider cannot be used (it is then treated as off). */
-  problems: Partial<Record<ProviderId, string>>
+  problems: Partial<Record<ProviderId, Msg>>
 }
 
 const NAMES: Record<ProviderId, string> = { password: '비밀번호', oidc: 'OIDC', github: 'GitHub', google: 'Google' }
@@ -141,7 +142,7 @@ async function applyRow(p: ProviderConfig, row: Row, undecryptable: Set<Provider
   return set
 }
 
-const LOST_SECRET = '저장된 client secret을 풀 수 없어요. 마스터 키가 바뀌었다면 이전 키를 ALLOT_MASTER_KEY_PREVIOUS에 넣거나, secret을 다시 넣어 주세요(README: 암호화 키).'
+const LOST_SECRET = m('lostSecret')
 
 /** Where a provider's client secret is sealed (AAD). */
 export const secretRef = (id: ProviderId) => ({ table: 'auth_provider', column: 'client_secret', row: id })
@@ -150,17 +151,17 @@ export const secretRef = (id: ProviderId) => ({ table: 'auth_provider', column: 
 const production = () => !!process.env.TRUSTED_ORIGINS?.trim()
 
 /** What stops an enabled provider from working, or undefined. */
-export function problemOf(p: ProviderConfig, isProduction = production()): string | undefined {
+export function problemOf(p: ProviderConfig, isProduction = production()): Msg | undefined {
   if (!p.enabled || p.id === 'password') return undefined
-  if (!p.clientId) return 'client id가 없어요.'
-  if (!p.clientSecret) return 'client secret이 없어요.'
+  if (!p.clientId) return m('clientIdMissing')
+  if (!p.clientSecret) return m('clientSecretMissing')
   if (p.id === 'oidc') {
-    if (!p.discoveryUrl) return 'discovery URL이 없어요.'
+    if (!p.discoveryUrl) return m('discoveryMissing')
     let u: URL
-    try { u = new URL(p.discoveryUrl) } catch { return 'discovery URL이 URL이 아니에요.' }
-    if (u.protocol !== 'https:' && !(u.protocol === 'http:' && !isProduction)) return '운영에서는 discovery URL이 https여야 해요.'
-    if (!p.scopes.includes('openid')) return "scope에 'openid'가 있어야 해요."
-    if (!p.groupsClaim) return 'group 클레임 이름이 비어 있어요.'
+    try { u = new URL(p.discoveryUrl) } catch { return m('discoveryNotUrl') }
+    if (u.protocol !== 'https:' && !(u.protocol === 'http:' && !isProduction)) return m('discoveryHttps')
+    if (!p.scopes.includes('openid')) return m('scopeOpenid')
+    if (!p.groupsClaim) return m('groupsClaimEmpty')
   }
   return undefined
 }

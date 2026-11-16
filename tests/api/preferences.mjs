@@ -8,10 +8,10 @@ const BASE = process.env.BASE ?? 'http://localhost:15173'
 
 function client() {
   let cookie = ''
-  return async function api(method, path, body) {
+  return async function api(method, path, body, headers = {}) {
     const res = await fetch(BASE + path, {
       method,
-      headers: { 'content-type': 'application/json', origin: BASE, ...(cookie ? { cookie } : {}) },
+      headers: { 'content-type': 'application/json', origin: BASE, ...(cookie ? { cookie } : {}), ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
     const set = res.headers.getSetCookie?.() ?? []
@@ -37,7 +37,7 @@ ok(!!prefs0 && Array.isArray(before.holidaySets) && 'dayShift' in settings0, '/a
 const made = []
 try {
   // (a) PUT → state, and the rules refuse bad input without touching the row
-  const want = { themeMode: 'dark', primary: '#1f5f8b', accent: '#7A5AB8', radius: 'sharp', density: 'compact', dateFormat: 'dot', amountUnit: 'man', negative: 'paren' }
+  const want = { themeMode: 'dark', primary: '#1f5f8b', accent: '#7A5AB8', radius: 'sharp', density: 'compact', dateFormat: 'dot', amountUnit: 'man', negative: 'paren', language: 'en' }
   const put = await A('PUT', '/api/preferences', want)
   ok(put.status === 200 && put.json.primary === '#1F5F8B', `PUT /api/preferences → ${put.status}, colour stored upper-case (${put.json?.primary})`)
   const read = (await A('GET', '/api/state')).json.preferences
@@ -48,6 +48,7 @@ try {
     ['unknown unit', { ...want, amountUnit: 'billion' }],
     ['extra key', { ...want, font: 'x' }],
     ['missing key', { ...want, negative: undefined }],
+    ['unknown language', { ...want, language: 'fr' }],
   ]) {
     const r = await A('PUT', '/api/preferences', bad)
     ok(r.status === 400, `${why} → ${r.status} (want 400)`)
@@ -83,6 +84,16 @@ try {
     ok(r.status === 400, `${why} → ${r.status} (want 400)${r.status === 400 ? '' : ' ' + JSON.stringify(r.json)}`)
     if (r.status === 201) made.push(r.json.id)
   }
+  // spec 008 S-10: the message comes in the language of Accept-Language (missing or unknown: Korean)
+  const monthly = set([{ name: 'x', rrule: 'FREQ=MONTHLY;BYMONTHDAY=1' }])
+  const [mKo, mNone, mEn, mFr] = [await A('POST', '/api/holiday-sets', monthly, { 'accept-language': 'ko-KR,ko;q=0.9' }), await A('POST', '/api/holiday-sets', monthly),
+    await A('POST', '/api/holiday-sets', monthly, { 'accept-language': 'en-US,en;q=0.9' }), await A('POST', '/api/holiday-sets', monthly, { 'accept-language': 'fr-FR' })]
+  ok(mKo.status === 400 && /FREQ=YEARLY만/.test(mKo.json?.error) && mNone.json?.error === mKo.json?.error && mFr.json?.error === mKo.json?.error && mEn.json?.error === 'Holiday rules only support FREQ=YEARLY.',
+    `messages by Accept-Language: ko ${mKo.json?.error} | none same | fr same | en ${mEn.json?.error}`)
+  // a rule with no message of ours (zod's own text is English) is generic in the request language (review finding 4)
+  const [zKo, zEn] = [await A('POST', '/api/keys', { name: 'x', expiresInDays: '90' }, { 'accept-language': 'ko' }), await A('POST', '/api/keys', { name: 'x', expiresInDays: '90' }, { 'accept-language': 'en' })]
+  ok(zKo.status === 400 && !/[A-Za-z]{4,}/.test(zKo.json?.error ?? 'English') && zEn.status === 400 && /^[\x20-\x7e]+$/.test(zEn.json?.error ?? '') && !/expected|received|Invalid input/i.test(zEn.json?.error ?? ''),
+    `a type error is generic: ko "${zKo.json?.error}" | en "${zEn.json?.error}"`)
   const good = await A('POST', '/api/holiday-sets', set([
     { name: '양력', rrule: 'FREQ=YEARLY;BYMONTH=7;BYMONTHDAY=17' },
     { name: '음력', rrule: 'RSCALE=DANGI;FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=-1', substitute: { on: ['SU'], since: 2014 } },

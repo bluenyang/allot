@@ -42,7 +42,7 @@ Added to the roadmap after the work started (audit 0.1.0-stable, A-1). User's wo
 
 ## v0.1.x — security, login, MCP, and money management (patch releases)
 
-Status: 0.1.2 released (2026-11-16); 0.1.3 next. Settled with the user on 2026-11-11. The former v0.2 (MCP server, OAuth and passkey login) moves down into patch releases of v0.1 — user's words: "v0.2 쪼개기: 응. 쪼개라. 각 patch 버전으로 쪼개고, 버전 v0.2에서 v0.1.x로 내려." Each patch ships on its own.
+Status: 0.1.2 released (2026-11-16); 0.1.3 in progress. Settled with the user on 2026-11-11. The former v0.2 (MCP server, OAuth and passkey login) moves down into patch releases of v0.1 — user's words: "v0.2 쪼개기: 응. 쪼개라. 각 patch 버전으로 쪼개고, 버전 v0.2에서 v0.1.x로 내려." Each patch ships on its own.
 
 Direction (user's words, Korean, 2026-11-11):
 
@@ -70,6 +70,7 @@ Decisions from the committee review (2026-11-11), accepted by the user ("그렇�
 | 0.1.7 | Transactions: file import and card statements from Gmail; matching against expected payments (paid, delayed, foreign-currency amount); the actual salary drives the month |
 | 0.1.8 | Payslip deductions and month-end close |
 | 0.1.9 | Mobile app (Capacitor): payment notifications on Android; on iOS what Shortcuts and the share sheet allow |
+| 0.1.10 | MCP over OAuth: remote connectors that take only OAuth (claude.ai, the phone app); 0.1.3 ships API keys only (added 2026-11-16: "a만. 지금 계획되지 않은 빠른 버전이 뭐지? 거기로 미루면 될거 같은데" / "그럽시다.") |
 
 ### 0.1.2 — redesign before rc.1
 

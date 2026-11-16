@@ -9,5 +9,5 @@ export const DEFAULT_LIVING: Living = { food: 0, transit: 0, allowance: 0 }
 /** Display settings before the first save (spec 007): the canvas defaults, light (S-16). */
 export const DEFAULT_PREFERENCES: Preferences = {
   themeMode: 'light', primary: null, accent: null, radius: 'base', density: 'base',
-  dateFormat: 'iso', amountUnit: 'won', negative: 'minus',
+  dateFormat: 'iso', amountUnit: 'won', negative: 'minus', language: null,
 }

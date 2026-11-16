@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { t } from '../i18n'
 import { onActivated, onMounted, ref } from 'vue'
 import { ApiError, api } from '../lib/api'
-import { loadMethods, PROVIDER_NAME, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
+import { loadMethods, providerName, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
 
 // My account (spec 006 S-1, S-11): who I am, the logins linked to me, my password.
 // Shown as the 설정 › 로그인·보안 tab (spec 007 S-12), so it has no page header of its own.
@@ -25,7 +26,7 @@ async function load() {
     linked.value = await api<Linked[]>('GET', '/api/auth/list-accounts')
     methods.value = await loadMethods()
   } catch (e) {
-    fail(e, '계정 정보를 불러오지 못했어요.')
+    fail(e, t('account.loadFailed'))
   }
 }
 onMounted(load)
@@ -34,7 +35,7 @@ onActivated(load)
 const hasPassword = () => linked.value.some((a) => a.providerId === 'credential')
 const passwordOn = () => methods.value.some((m) => m.id === 'password')
 const linkable = () => methods.value.filter((m) => m.id !== 'password' && !linked.value.some((a) => a.providerId === m.id))
-const nameOf = (id: string) => methods.value.find((m) => m.id === id)?.name ?? PROVIDER_NAME[id] ?? id
+const nameOf = (id: string) => methods.value.find((m) => m.id === id)?.name ?? providerName(id)
 
 async function link(provider: string) {
   error.value = ''
@@ -43,22 +44,22 @@ async function link(provider: string) {
     await startSocial(provider, `${window.location.origin}/#account`, true)
   } catch (e) {
     busy.value = false
-    fail(e, '연결하지 못했어요.')
+    fail(e, t('account.linkFailed'))
   }
 }
 
 async function unlink(a: Linked) {
-  if (linked.value.length <= 1) return (error.value = '마지막 로그인 방식은 해제할 수 없어요.')
-  if (!confirm(`${nameOf(a.providerId)} 연결을 해제할까요?`)) return
+  if (linked.value.length <= 1) return (error.value = t('account.lastMethod'))
+  if (!confirm(t('account.confirmUnlink', { name: nameOf(a.providerId) }))) return
   error.value = ''
   notice.value = ''
   busy.value = true
   try {
     await api('POST', '/api/auth/unlink-account', { accountId: a.id })
-    notice.value = '연결을 해제했어요.'
+    notice.value = t('account.unlinked')
     await load()
   } catch (e) {
-    fail(e, '해제하지 못했어요.')
+    fail(e, t('account.unlinkFailed'))
   } finally {
     busy.value = false
   }
@@ -67,15 +68,15 @@ async function unlink(a: Linked) {
 async function changePassword() {
   error.value = ''
   notice.value = ''
-  if (pw.value.next.length < 8) return (error.value = '새 비밀번호는 8자 이상이어야 해요.')
-  if (pw.value.next !== pw.value.again) return (error.value = '새 비밀번호가 서로 달라요.')
+  if (pw.value.next.length < 8) return (error.value = t('account.pwShort'))
+  if (pw.value.next !== pw.value.again) return (error.value = t('account.pwMismatch'))
   busy.value = true
   try {
     await api('POST', '/api/auth/change-password', { currentPassword: pw.value.current, newPassword: pw.value.next, revokeOtherSessions: true })
     pw.value = { current: '', next: '', again: '' }
-    notice.value = '비밀번호를 바꿨어요. 다른 기기의 로그인은 끊었어요.'
+    notice.value = t('account.pwChanged')
   } catch (e) {
-    fail(e, '비밀번호를 바꾸지 못했어요.')
+    fail(e, t('account.pwFailed'))
   } finally {
     busy.value = false
   }
@@ -86,39 +87,39 @@ const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle
 
 <template>
   <section>
-    <p class="lede">로그인 방식을 연결하거나 해제하고, 비밀번호를 바꿔요.</p>
-    <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
+    <p class="lede">{{ t('account.lede') }}</p>
+    <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">{{ t('common.close') }}</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
 
     <div v-if="me" class="panel">
-      <h3 style="margin-top:0">내 정보</h3>
-      <p class="kv"><span class="muted">이메일</span> {{ me.email }}</p>
-      <p class="kv"><span class="muted">이름</span> {{ me.name }}</p>
-      <p class="kv"><span class="muted">역할</span> {{ me.role === 'admin' ? '관리자' : '사용자' }} <a v-if="me.role === 'admin'" href="#admin">관리 화면</a></p>
+      <h3 style="margin-top:0">{{ t('account.myInfo') }}</h3>
+      <p class="kv"><span class="muted">{{ t('login.email') }}</span> {{ me.email }}</p>
+      <p class="kv"><span class="muted">{{ t('account.name') }}</span> {{ me.name }}</p>
+      <p class="kv"><span class="muted">{{ t('account.role') }}</span> {{ me.role === 'admin' ? t('shell.roleAdmin') : t('shell.roleUser') }} <a v-if="me.role === 'admin'" href="#admin">{{ t('account.adminLink') }}</a></p>
     </div>
 
     <div class="panel">
-      <h3 style="margin-top:0">로그인 방식</h3>
+      <h3 style="margin-top:0">{{ t('account.methods') }}</h3>
       <ul class="list">
         <li v-for="a in linked" :key="a.id">
           <span>{{ nameOf(a.providerId) }}</span>
-          <span class="small muted">{{ fmt(a.createdAt) }}부터</span>
-          <button class="btn" type="button" :disabled="busy || linked.length <= 1" @click="unlink(a)">해제</button>
+          <span class="small muted">{{ t('account.since', { date: fmt(a.createdAt) }) }}</span>
+          <button class="btn" type="button" :disabled="busy || linked.length <= 1" @click="unlink(a)">{{ t('account.unlink') }}</button>
         </li>
       </ul>
       <div v-if="linkable().length" class="btns">
-        <button v-for="m in linkable()" :key="m.id" class="btn" type="button" :disabled="busy" @click="link(m.id)">{{ m.name }} 연결</button>
+        <button v-for="m in linkable()" :key="m.id" class="btn" type="button" :disabled="busy" @click="link(m.id)">{{ t('account.link', { name: m.name }) }}</button>
       </div>
     </div>
 
     <form v-if="hasPassword() && passwordOn()" class="panel" @submit.prevent="changePassword">
-      <h3 style="margin-top:0">비밀번호 바꾸기</h3>
+      <h3 style="margin-top:0">{{ t('account.changePw') }}</h3>
       <div class="form">
-        <div class="field"><label for="a-cur">지금 비밀번호</label><input id="a-cur" v-model="pw.current" class="in" type="password" autocomplete="current-password" required></div>
-        <div class="field"><label for="a-new">새 비밀번호</label><input id="a-new" v-model="pw.next" class="in" type="password" autocomplete="new-password" minlength="8" required></div>
-        <div class="field"><label for="a-again">새 비밀번호 확인</label><input id="a-again" v-model="pw.again" class="in" type="password" autocomplete="new-password" required></div>
+        <div class="field"><label for="a-cur">{{ t('account.currentPw') }}</label><input id="a-cur" v-model="pw.current" class="in" type="password" autocomplete="current-password" required></div>
+        <div class="field"><label for="a-new">{{ t('account.newPw') }}</label><input id="a-new" v-model="pw.next" class="in" type="password" autocomplete="new-password" minlength="8" required></div>
+        <div class="field"><label for="a-again">{{ t('account.newPwAgain') }}</label><input id="a-again" v-model="pw.again" class="in" type="password" autocomplete="new-password" required></div>
       </div>
-      <div class="btns"><button class="btn pri" type="submit" :disabled="busy">바꾸기</button></div>
+      <div class="btns"><button class="btn pri" type="submit" :disabled="busy">{{ t('account.change') }}</button></div>
     </form>
   </section>
 </template>

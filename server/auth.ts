@@ -6,6 +6,7 @@
 // live in the database and the secret does not change, so they stay valid across a reload.
 // As a second layer, a before-hook checks every sign-in path against the latest configuration.
 import { betterAuth } from 'better-auth'
+import { apiKey } from '@better-auth/api-key'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { admin } from 'better-auth/plugins/admin'
@@ -16,6 +17,7 @@ import { ADMIN_CLOSED_PATHS, adminCanSignInWithout, afterAdminPath, guardAdminPa
 import { EXTERNAL, loadAuthConfig, usable, type AuthConfig, type ProviderId } from './auth-config'
 import { APP_RETURN_URLS } from './app-login'
 import { afterNewUser, makeValidateUserInfo, newUserFields, refusePending } from './auth-policy'
+import { m, MsgError, text, langOfCtx } from './messages'
 import { fetchDiscovery, oidcProviders, socialProviders, type Discovery } from './providers'
 import { dropTokenUpdates, sealNewAccountTokens } from './token-crypto'
 import { db } from './db/client'
@@ -102,6 +104,23 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
       // the server issues, for a listed app URL (server/app-login.ts).
       bearer(),
       oneTimeToken({ expiresIn: 3, disableClientRequest: true }),
+      // API keys for the read-only MCP endpoint (spec 008). Only /api/mcp accepts them (the key is
+      // never a session: enableSessionForAPIKeys stays off) and only our own routes create, list
+      // and delete them (server/keys.ts); the plugin's own HTTP paths are closed in the hook below.
+      // No defaultExpiresIn: the plugin would turn "no expiry" into it, and the policy
+      // (server/api-key-policy.ts) decides that. The create route passes the expiry itself.
+      apiKey({
+        defaultPrefix: 'allot_',
+        enableSessionForAPIKeys: false,
+        permissions: { defaultPermissions: { mcp: ['read'] } },
+        keyExpiration: { minExpiresIn: 1, maxExpiresIn: 365 },
+        rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 120 },
+        // The prefix is 6 characters: store 12 so a list can tell keys apart (prefix + 6 of the random part).
+        startingCharactersConfig: { shouldStore: true, charactersLength: 12 },
+        requireName: true,
+        minimumNameLength: 1,
+        maximumNameLength: 32,
+      }),
     ],
     disabledPaths: [...CLOSED_PATHS, ...ADMIN_CLOSED_PATHS],
     account: {
@@ -155,16 +174,18 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
       // checked against the latest configuration, also for an instance that is being replaced.
       before: createAuthMiddleware(async (ctx) => {
         await guardAdminPath(ctx)
+        // The plugin's HTTP paths are closed (an HTTP request has ctx.request; our own routes call auth.api directly).
+        if (ctx.request && ctx.path.startsWith('/api-key/')) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         if (ctx.path.startsWith('/one-time-token/') && !APP_RETURN_URLS.length) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         if (CLOSED_PATHS.includes(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         const m = methodOf(ctx)
         if (!m) return
         // Code flow only: a client-supplied ID token is never a way in.
         if (ctx.path === '/sign-in/social' && (ctx.body as { idToken?: unknown } | undefined)?.idToken) {
-          throw deny('ID_TOKEN_SIGN_IN_DISABLED', '이 방식으로는 로그인할 수 없어요.')
+          throw deny('ID_TOKEN_SIGN_IN_DISABLED', text(langOfCtx(ctx), 'idTokenDisabled'))
         }
         const latest = currentConfig ?? cfg
-        if (m === 'unknown' || !usable(latest, m)) throw deny('METHOD_DISABLED', '사용할 수 없는 로그인 방식이에요.')
+        if (m === 'unknown' || !usable(latest, m)) throw deny('METHOD_DISABLED', text(langOfCtx(ctx), 'methodDisabled'))
       }),
       // Admin actions: end sessions after a password reset, one log line per action.
       after: createAuthMiddleware(async (ctx) => {
@@ -203,7 +224,7 @@ async function build(): Promise<{ auth: Auth; cfg: AuthConfig; issuer?: string; 
     try {
       discovery = await fetchDiscovery(cfg.providers.oidc.discoveryUrl, !!TRUSTED_ORIGINS)
     } catch (e) {
-      cfg.problems.oidc = (e as Error).message
+      cfg.problems.oidc = e instanceof MsgError ? e.ref : m('discoveryConnect')
       discoveryFailed = true
     }
   }
@@ -277,7 +298,7 @@ function retryDiscovery(failed: boolean) {
 /** First build at start. Problems with an enabled provider are logged; that provider stays off. */
 export async function initAuth() {
   const cfg = await withAuthLock(buildAndInstall)
-  for (const [id, why] of Object.entries(cfg.problems)) console.warn(`WARNING: login method ${id} is enabled but cannot be used: ${why}`)
+  for (const [id, why] of Object.entries(cfg.problems)) console.warn(`WARNING: login method ${id} is enabled but cannot be used: ${text('en', why)}`)
 }
 
 /**

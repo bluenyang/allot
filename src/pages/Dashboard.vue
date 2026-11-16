@@ -8,8 +8,10 @@ import { saveItem, store, subName } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { notReady, view } from '../lib/view'
 import { allocColor } from '../lib/colors'
+import { kindDetail } from '../lib/labels'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
-import { moneyShort } from '../lib/format'
+import { manText, monthLong, monthShort, moneyShort, weekdayShort } from '../lib/format'
+import { t, lang } from '../i18n'
 import { offDays } from '../lib/holidays-lazy'
 import {
   addYm, distributionAt, monthDates, splitRemainder, today, transferAt, upcomingPayments, ymOf, ymRange,
@@ -41,12 +43,11 @@ const dates = computed(() => {
   const off = offDays(store.holidaySets, `${addYm(ym.value, -2)}-01`, `${addYm(ym.value, 3)}-01`)
   return monthDates(ym.value, store.settings, off ?? new Set())
 })
-const WD = ['일', '월', '화', '수', '목', '금', '토']
-const md = (s: string) => { const d = new Date(`${s}T00:00:00`); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})` }
-const moved = (s: 'before' | 'after' | null) => (s === 'before' ? '주말·공휴일이라 앞당김' : s === 'after' ? '주말·공휴일이라 미룸' : '')
+const md = (s: string) => { const d = new Date(`${s}T00:00:00`); return `${d.getMonth() + 1}/${d.getDate()}(${weekdayShort(d)})` }
+const moved = (s: 'before' | 'after' | null) => (s === 'before' ? t('dashboard.movedBefore') : s === 'after' ? t('dashboard.movedAfter') : '')
 /** The note after a monthly date: moved, or no business day within the limit (review 2, F3). */
 const note = (x: { shifted: 'before' | 'after' | null; unresolved?: true }) =>
-  x.unresolved ? ' (옮길 영업일 없음)' : x.shifted === 'before' ? ' (앞당김)' : x.shifted === 'after' ? ' (미룸)' : ''
+  x.unresolved ? ` (${t('calendar.noBizDay')})` : x.shifted === 'before' ? ` (${t('calendar.before')})` : x.shifted === 'after' ? ` (${t('calendar.after')})` : ''
 
 // Six months ahead: subscription monthly total with scheduled plan changes.
 const trend = computed(() => ymRange(ym.value, 6).map((m) => {
@@ -56,7 +57,8 @@ const trend = computed(() => ymRange(ym.value, 6).map((m) => {
 const trendMax = computed(() => Math.max(1, ...trend.value.map((x) => x.v)))
 // The y axis as in the design: three equal steps to a round top (만원).
 const trendTop = computed(() => { const step = Math.max(1, Math.ceil(trendMax.value / 30_000)) * 10_000; return step * 3 })
-const ticks = computed(() => [3, 2, 1, 0].map((i) => (i ? `${(trendTop.value / 3 * i) / 10_000}만` : '0')))
+const ticks = computed(() => [3, 2, 1, 0].map((i) => (i ? manText(trendTop.value / 3 * i) : '0')))
+const monthName = computed(() => (lang.value === 'en' ? monthLong(month.value) : month.value))
 
 const tab = ref('month')
 const horizon = computed(() => addYm(ym.value, 9))
@@ -67,9 +69,9 @@ const undated = computed(() => store.planChanges.filter((c) => !c.effective))
 const nextEvents = computed(() => store.events.filter((e) => e.state !== 'done' && e.when.slice(0, 7) <= horizon.value))
 const openChecks = computed(() => store.checks.filter((c) => !c.done).length)
 const tabs = computed(() => [
-  { id: 'month', label: '이번 달', icon: 'chart' },
-  { id: 'next', label: '예정', icon: 'events', count: nextChanges.value.length + nextEvents.value.length },
-  { id: 'checks', label: '확인할 것', icon: 'check', count: openChecks.value, signal: true },
+  { id: 'month', label: t('dashboard.tabMonth'), icon: 'chart' },
+  { id: 'next', label: t('dashboard.tabNext'), icon: 'events', count: nextChanges.value.length + nextEvents.value.length },
+  { id: 'checks', label: t('dashboard.checks'), icon: 'check', count: openChecks.value, signal: true },
 ])
 
 function changeDelta(id: string, eff: string) {
@@ -78,84 +80,84 @@ function changeDelta(id: string, eff: string) {
   return (after.monthlySum + after.yearlyMonthly) - (before.monthlySum + before.yearlyMonthly)
 }
 const signed = (n: number) => (n > 0 ? '+' : '') + fmtMoney(n)
-const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c) => (!c.text.trim() ? '내용을 입력해 주세요.' : null))
+const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c) => (!c.text.trim() ? t('dashboard.needDetails') : null))
 </script>
 
 <template>
   <section class="page-gap">
     <!-- On a phone the header bar is hidden: the month switch and the phase sit here (review 11). -->
-    <div class="mnav" aria-label="현황 달">
-      <button class="btn icon" type="button" aria-label="이전 달" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
+    <div class="mnav" :aria-label="t('dashboard.monthNav')">
+      <button class="btn icon" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
       <b>{{ year }}. {{ String(month).padStart(2, '0') }}</b>
-      <button class="btn icon" type="button" aria-label="다음 달" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
-      <span class="pill tag">{{ dist.phase ? `${dist.phase.label} · ${dist.phase.name}` : '구간 밖' }}</span>
+      <button class="btn icon" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
+      <span class="pill tag">{{ dist.phase ? `${dist.phase.label} · ${dist.phase.name}` : t('shell.outOfPhase') }}</span>
     </div>
-    <PageHeader :title="`${year}년 ${month}월 현황`">
+    <PageHeader :title="t('dashboard.title', { year, month: monthName })">
       <template #desc>
-        월급 <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="note(dates.pay)">{{ note(dates.pay) }}</small></span>
-        · 분배 <span :title="moved(dates.transfer.shifted)">{{ md(dates.transfer.date) }}<small v-if="note(dates.transfer)">{{ note(dates.transfer) }}</small></span>
-        · 카드 결제 <span :title="moved(dates.billing.shifted)">{{ md(dates.billing.date) }}<small v-if="note(dates.billing)">{{ note(dates.billing) }}</small></span>
-        · <button class="linkish" type="button" @click="notReady('마지막 동기화')">마지막 동기화 —</button>
+        {{ t('calendar.kind.pay') }} <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="note(dates.pay)">{{ note(dates.pay) }}</small></span>
+        · {{ t('calendar.kind.transfer') }} <span :title="moved(dates.transfer.shifted)">{{ md(dates.transfer.date) }}<small v-if="note(dates.transfer)">{{ note(dates.transfer) }}</small></span>
+        · {{ t('calendar.kind.billing') }} <span :title="moved(dates.billing.shifted)">{{ md(dates.billing.date) }}<small v-if="note(dates.billing)">{{ note(dates.billing) }}</small></span>
+        · <button class="linkish" type="button" @click="notReady('shell.lastSync')">{{ t('shell.lastSync') }} —</button>
       </template>
-      <button class="btn" type="button" @click="notReady('내보내기')"><Icon name="download" />내보내기</button>
-      <button class="btn pri" type="button" @click="notReady('기록 추가')"><Icon name="plus" />기록 추가</button>
+      <button class="btn" type="button" @click="notReady('shell.export')"><Icon name="download" />{{ t('shell.export') }}</button>
+      <button class="btn pri" type="button" @click="notReady('shell.addRecord')"><Icon name="plus" />{{ t('shell.addRecord') }}</button>
     </PageHeader>
 
-    <section class="strip" aria-label="이번 달 요약">
+    <section class="strip" :aria-label="t('dashboard.summaryLabel')">
       <div v-if="dist.remainderTarget" class="hl">
-        <span class="l">이번 달 나머지 → {{ dist.remainderTarget.name }}</span>
+        <span class="l">{{ t('dashboard.leftThisMonth', { name: dist.remainderTarget.name }) }}</span>
         <span class="v" :class="fmtMoneyClass(dist.remainder)">{{ fmtMoney(dist.remainder) }}</span>
-        <span class="s">실수령 {{ fmtMoney(store.settings.netPay) }} 중 {{ pct(dist.remainder) }}</span>
+        <span class="s">{{ t('dashboard.ofTakeHome', { pay: fmtMoney(store.settings.netPay), pct: pct(dist.remainder) }) }}</span>
       </div>
-      <div v-else class="hl"><span class="l">나머지</span><span class="v">—</span><span class="s">월급 분배에서 나머지 대상을 정해 주세요</span></div>
-      <div><span class="l">구독 월 환산</span><span class="v">{{ fmtMoney(subsMonthly) }}</span><span class="s">활성 {{ activeSubs }}건 · 이체 {{ fmtMoney(dist.subscriptions || xfer.transfer) }}</span></div>
-      <div><span class="l">31일 내 결제</span><span class="v">{{ fmtMoney(paysSum) }}</span><span class="s">{{ pays.length }}건<template v-if="pays.length"> · 가장 가까운 결제 D-{{ pays[0]!.dday }}</template></span></div>
-      <div><span class="l">확인 필요</span><span class="v" :class="{ sig: openChecks > 0 }">{{ openChecks }}<small class="unit"> 건</small></span><span class="s">할 일 {{ openChecks }}</span></div>
+      <div v-else class="hl"><span class="l">{{ t('dashboard.remainder') }}</span><span class="v">—</span><span class="s">{{ t('dashboard.setRemainder') }}</span></div>
+      <div><span class="l">{{ t('dashboard.subsMonthly') }}</span><span class="v">{{ fmtMoney(subsMonthly) }}</span><span class="s">{{ t('dashboard.activeTransfer', { n: activeSubs, amount: fmtMoney(dist.subscriptions || xfer.transfer) }) }}</span></div>
+      <div><span class="l">{{ t('dashboard.dueIn31') }}</span><span class="v">{{ fmtMoney(paysSum) }}</span><span class="s">{{ t('dashboard.paymentCount', { n: pays.length }) }}<template v-if="pays.length"> · {{ t('dashboard.nextDue', { d: pays[0]!.dday }) }}</template></span></div>
+      <div><span class="l">{{ t('dashboard.needCheck') }}</span><span class="v" :class="{ sig: openChecks > 0 }">{{ openChecks }}<small class="unit"> {{ t('dashboard.countUnit') }}</small></span><span class="s">{{ t('dashboard.tasks', { n: openChecks }) }}</span></div>
     </section>
 
     <div>
-      <SubTabs v-model="tab" :tabs="tabs" aria-label="현황 보기" />
+      <SubTabs v-model="tab" :tabs="tabs" :aria-label="t('dashboard.viewLabel')" />
 
-      <!-- 이번 달 shows every card, as the design canvas does; 예정 and 확인할 것 show only theirs (spec 007 S-19) -->
+      <!-- this month shows every card, as the design canvas does; upcoming and to-check show only theirs (spec 007 S-19) -->
       <div class="tabbody">
       <div v-if="tab === 'month'" class="flexcols">
         <div class="col-main">
           <section class="card">
-            <div class="card-hd"><h2>{{ dates.transfer.date.slice(8).replace(/^0/, '') }}일 자동이체 분배</h2><span class="aux">실수령 {{ fmtMoney(store.settings.netPay) }}</span></div>
+            <div class="card-hd"><h2>{{ t('dashboard.autoSplit', { day: dates.transfer.date.slice(8).replace(/^0/, '') }) }}</h2><span class="aux">{{ t('dashboard.takeHome', { pay: fmtMoney(store.settings.netPay) }) }}</span></div>
             <div class="card-bd">
-              <div class="ratio" role="img" :aria-label="`분배 비율: ${dist.rows.map((r) => `${r.name} ${pct(r.amount)}`).join(', ')}`">
+              <div class="ratio" role="img" :aria-label="t('dashboard.ratioLabel', { list: dist.rows.map((r) => `${r.name} ${pct(r.amount)}`).join(', ') })">
                 <i v-for="r in dist.rows.filter((x) => x.amount > 0)" :key="r.key" :style="{ flexGrow: r.amount, background: allocColor(r.key) }"></i>
               </div>
             </div>
             <div class="tbl">
               <table>
-                <thead><tr><th scope="col">대상</th><th scope="col" class="c-how">계산 방식</th><th scope="col" class="n">비율</th><th scope="col" class="n">금액</th></tr></thead>
+                <thead><tr><th scope="col">{{ t('dashboard.colTarget') }}</th><th scope="col" class="c-how">{{ t('dashboard.colHow') }}</th><th scope="col" class="n">{{ t('dashboard.colShare') }}</th><th scope="col" class="n">{{ t('dashboard.colAmount') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="r in dist.rows" :key="r.key">
-                    <td><span class="tname"><i :style="{ background: allocColor(r.key) }"></i>{{ r.name }}</span><span v-if="r.detail" class="how-sm">{{ r.detail }}</span></td>
-                    <td class="muted c-how">{{ r.detail }}</td>
+                    <td><span class="tname"><i :style="{ background: allocColor(r.key) }"></i>{{ r.name }}</span><span class="how-sm">{{ r.detail || kindDetail(r.kind) }}</span></td>
+                    <td class="muted c-how">{{ r.detail || kindDetail(r.kind) }}</td>
                     <td class="n muted num">{{ pct(r.amount) }}</td>
                     <td class="n" :class="fmtMoneyClass(r.amount)">{{ fmtMoney(r.amount) }}</td>
                   </tr>
-                  <tr class="sum"><td>합계</td><td class="c-how"></td><td></td><td class="n">{{ fmtMoney(dist.rows.reduce((a, r) => a + r.amount, 0)) }}</td></tr>
+                  <tr class="sum"><td>{{ t('dashboard.total') }}</td><td class="c-how"></td><td></td><td class="n">{{ fmtMoney(dist.rows.reduce((a, r) => a + r.amount, 0)) }}</td></tr>
                 </tbody>
               </table>
             </div>
-            <p v-if="split.length" class="split small subtle">{{ dist.remainderTarget?.name }} 나누기: {{ split.map((x) => `${x.name} ${fmtMoney(x.amount)}`).join(' · ') }}</p>
+            <p v-if="split.length" class="split small subtle">{{ t('dashboard.splitOf', { name: dist.remainderTarget?.name ?? '', list: split.map((x) => `${x.name} ${fmtMoney(x.amount)}`).join(' · ') }) }}</p>
           </section>
 
           <section class="card">
-            <div class="card-hd"><h2>고정 지출 추이</h2><span class="aux">앞으로 6개월 · 구독 월 환산</span></div>
+            <div class="card-hd"><h2>{{ t('dashboard.trend') }}</h2><span class="aux">{{ t('dashboard.trendAux') }}</span></div>
             <div class="trend">
               <div class="axis" aria-hidden="true"><span v-for="t in ticks" :key="t">{{ t }}</span></div>
-              <div class="plot" role="img" :aria-label="`앞으로 6개월 구독 월 환산: ${trend.map((b) => `${Number(b.ym.slice(5))}월 ${fmtMoney(b.v)}`).join(', ')}`">
+              <div class="plot" role="img" :aria-label="t('dashboard.trendLabel', { list: trend.map((b) => `${monthShort(Number(b.ym.slice(5)))} ${fmtMoney(b.v)}`).join(', ') })">
                 <div class="bars">
                   <div v-for="b in trend" :key="b.ym" class="bar">
                     <span class="bv bv-full">{{ fmtMoney(b.v) }}</span><span class="bv bv-short" aria-hidden="true">{{ moneyShort(b.v) }}</span>
                     <i :style="{ height: `${Math.max(2, (b.v / trendTop) * 100)}%` }" :class="{ now: b.ym === ym }"></i>
                   </div>
                 </div>
-                <div class="months"><span v-for="b in trend" :key="b.ym">{{ Number(b.ym.slice(5)) }}월</span></div>
+                <div class="months"><span v-for="b in trend" :key="b.ym">{{ monthShort(Number(b.ym.slice(5))) }}</span></div>
               </div>
             </div>
           </section>
@@ -163,22 +165,22 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
 
         <div class="col-side">
           <section class="card">
-            <div class="card-hd"><h2>결제 예정</h2><a href="#subs" class="aux">구독 전체 보기</a></div>
+            <div class="card-hd"><h2>{{ t('dashboard.upcomingPayments') }}</h2><a href="#subs" class="aux">{{ t('dashboard.allSubs') }}</a></div>
             <ul class="items pays">
               <li v-for="p in pays" :key="p.sub.id + p.date.getTime()">
-                <span class="dbox" :class="{ sat: p.date.getDay() === 6, sun: p.date.getDay() === 0 }"><b>{{ p.date.getDate() }}</b><span>{{ p.date.getMonth() + 1 }}월 {{ WD[p.date.getDay()] }}</span></span>
+                <span class="dbox" :class="{ sat: p.date.getDay() === 6, sun: p.date.getDay() === 0 }"><b>{{ p.date.getDate() }}</b><span>{{ monthShort(p.date.getMonth() + 1) }} {{ weekdayShort(p.date) }}</span></span>
                 <span class="pn"><b>{{ p.sub.name }}</b><span>{{ p.sub.plan || '—' }}</span></span>
                 <span class="pa"><b>{{ fmtMoney(p.krw) }}</b><span :class="{ soon: p.dday <= 3 }">D-{{ p.dday }}</span></span>
               </li>
             </ul>
-            <p v-if="!pays.length" class="empty">31일 안에 결제할 구독이 없어요.</p>
+            <p v-if="!pays.length" class="empty">{{ t('settings.general.noPayments') }}</p>
           </section>
         </div>
       </div>
 
       <div v-if="tab !== 'checks'" class="flexcols">
         <section class="card half">
-          <div class="card-hd"><h2>예약된 플랜 전환</h2><span class="aux">월 환산 차액</span></div>
+          <div class="card-hd"><h2>{{ t('dashboard.scheduledChanges') }}</h2><span class="aux">{{ t('dashboard.monthlyDelta') }}</span></div>
           <ul class="items">
             <li v-for="c in nextChanges" :key="c.id">
               <span class="when wide">{{ fmtDate(c.effective!) }}</span>
@@ -186,15 +188,15 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
               <b class="num" :class="changeDelta(c.id, c.effective!) > 0 ? 'up' : 'down'">{{ signed(changeDelta(c.id, c.effective!)) }}</b>
             </li>
             <li v-for="c in undated" :key="c.id" class="dim">
-              <span class="when">미정</span>
+              <span class="when">{{ t('dashboard.tbd') }}</span>
               <span class="pn"><b>{{ subName(c.subId) }}</b><span>{{ c.note }}</span></span>
-              <span class="pill mute">미반영</span>
+              <span class="pill mute">{{ t('dashboard.notApplied') }}</span>
             </li>
           </ul>
-          <p v-if="!nextChanges.length && !undated.length" class="empty">예약된 전환이 없어요.</p>
+          <p v-if="!nextChanges.length && !undated.length" class="empty">{{ t('dashboard.noChanges') }}</p>
         </section>
         <section class="card half">
-          <div class="card-hd"><h2>다가오는 일정</h2><span class="aux">~ {{ horizon.replace('-', '. ') }}</span></div>
+          <div class="card-hd"><h2>{{ t('dashboard.upcomingEvents') }}</h2><span class="aux">~ {{ horizon.replace('-', '. ') }}</span></div>
           <ul class="items">
             <li v-for="e in nextEvents" :key="e.id">
               <span class="when">{{ e.when.slice(2).replace('-', '.') }}</span>
@@ -202,24 +204,24 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
               <span class="pill" :class="e.state === 'doing' ? 'acc' : 'mute'">{{ e.kind }}</span>
             </li>
           </ul>
-          <p v-if="!nextEvents.length" class="empty">다가오는 일정이 없어요.</p>
+          <p v-if="!nextEvents.length" class="empty">{{ t('dashboard.noEvents') }}</p>
         </section>
       </div>
 
       <section v-if="tab !== 'next'" class="card checks">
-        <div class="card-hd"><h2>확인할 것</h2><button class="btn sm add" type="button" aria-label="확인할 것 추가" @click="chkEd.open()">+ 추가</button></div>
-        <EditSheet v-if="chkEd.item.value" :key="chkEd.item.value.id || 'new'" :title="chkEd.item.value.id ? '확인할 것 수정' : '확인할 것 추가'" :error="chkEd.error.value" :busy="chkEd.busy.value"
+        <div class="card-hd"><h2>{{ t('dashboard.checks') }}</h2><button class="btn sm add" type="button" :aria-label="t('dashboard.addCheckLabel')" @click="chkEd.open()">{{ t('common.add') }}</button></div>
+        <EditSheet v-if="chkEd.item.value" :key="chkEd.item.value.id || 'new'" :title="chkEd.item.value.id ? t('dashboard.editCheck') : t('dashboard.addCheck')" :error="chkEd.error.value" :busy="chkEd.busy.value"
           :can-delete="!!chkEd.item.value.id" @save="chkEd.save" @cancel="chkEd.close" @delete="chkEd.remove">
-          <div class="field" style="grid-column:1/-1"><label for="ck-text">내용</label><input id="ck-text" v-model="chkEd.item.value.text" class="in"></div>
+          <div class="field" style="grid-column:1/-1"><label for="ck-text">{{ t('dashboard.details') }}</label><input id="ck-text" v-model="chkEd.item.value.text" class="in"></div>
         </EditSheet>
         <ul class="items">
           <li v-for="c in store.checks" :key="c.id" class="ck">
             <input :id="'chk-' + c.id" :checked="c.done" type="checkbox" @change="saveItem('checks', { ...c, done: !c.done }).catch(() => {})">
             <label :for="'chk-' + c.id" :class="{ done: c.done }">{{ c.text }}</label>
-            <button class="btn sm" type="button" :aria-label="`${c.text} 수정`" @click="chkEd.open(c)">수정</button>
+            <button class="btn sm" type="button" :aria-label="t('common.editLabel', { name: c.text })" @click="chkEd.open(c)">{{ t('common.edit') }}</button>
           </li>
         </ul>
-        <p v-if="!store.checks.length" class="empty">확인할 것이 없어요.</p>
+        <p v-if="!store.checks.length" class="empty">{{ t('dashboard.noChecks') }}</p>
       </section>
       </div>
     </div>

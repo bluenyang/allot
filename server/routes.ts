@@ -8,9 +8,8 @@
 //   PUT    /api/<resource>/:id        replace
 //   DELETE /api/<resource>/:id
 import { randomUUID } from 'node:crypto'
-import { zValidator } from '@hono/zod-validator'
-import { and, asc, eq, getTableName, inArray, ne, sql } from 'drizzle-orm'
-import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
+import { and, eq, getTableName, inArray, ne, sql } from 'drizzle-orm'
+import type { PgTable } from 'drizzle-orm/pg-core'
 import { childrenOf, Conflict, getSet, keyOf, listSets, NotFound, readRow, Recorder, revert, RuleBroken, whereKey, type RowKey } from './changes'
 import type { OwnedTable } from './db/owned'
 import { Hono, type Context } from 'hono'
@@ -18,27 +17,11 @@ import type { z } from 'zod'
 import type { AppEnv } from './app-env'
 import type { Db } from './db/client'
 import { asUser, lockFor } from './db/scope'
+import { body } from './body'
+import { m, msg, MsgError, type Msg } from './messages'
 import * as t from './db/schema'
 import * as v from './validation'
-import { DEFAULT_LIVING, DEFAULT_PREFERENCES, DEFAULT_SETTINGS } from '../src/data/defaults'
-
-type ListTable = PgTable & { id: PgColumn; seq: PgColumn; userId: PgColumn }
-
-/** Drop `seq` and `userId` and turn SQL nulls of optional text fields into absent keys, as the client types expect. */
-function out<R extends Record<string, unknown>>(row: R, optional: string[] = []): Omit<R, 'seq' | 'userId'> {
-  const { seq: _seq, userId: _u, ...rest } = row
-  for (const k of optional) if (rest[k] === null) delete rest[k]
-  return rest
-}
-
-/** zValidator with a Korean, field-level 400 body. */
-const body = <S extends z.ZodType>(schema: S) =>
-  zValidator('json', schema, (r, c) => {
-    if (!r.success) {
-      const issue = r.error.issues[0]
-      return c.json({ error: issue?.message ?? '입력값을 확인해 주세요.', path: issue?.path.join('.') ?? '' }, 400)
-    }
-  })
+import { out, readState, type ListTable } from './state'
 
 function pgCode(e: unknown): string | undefined {
   const err = e as { code?: string; cause?: { code?: string } }
@@ -48,25 +31,25 @@ function pgCode(e: unknown): string | undefined {
 /** Map known constraint errors to 400; anything else is a real 500. */
 function dbError(c: Context, e: unknown) {
   const code = pgCode(e)
-  if (code === '23503') return c.json({ error: '연결된 항목을 찾을 수 없어요.' }, 400)
+  if (code === '23503') return c.json({ error: msg(c, 'fkMissing') }, 400)
   // unique violation, e.g. a second 'living' target (also when a revert would bring one back)
-  if (code === '23505') return c.json({ error: '같은 항목이 이미 있어요. 하나만 둘 수 있는 항목이에요.' }, 400)
+  if (code === '23505') return c.json({ error: msg(c, 'duplicate') }, 400)
   // check violation, bad text repr, numeric/integer overflow, bad or out-of-range date
-  if (['23514', '22P02', '22003', '22007', '22008'].includes(code ?? '')) return c.json({ error: '입력값이 허용 범위를 벗어났어요.' }, 400)
+  if (['23514', '22P02', '22003', '22007', '22008'].includes(code ?? '')) return c.json({ error: msg(c, 'outOfRange') }, 400)
   throw e
 }
 
 /** Phases may not overlap (per user): [from, to] with an open end meaning "forever". */
-export async function phaseOverlap(q: Db, uid: string, p: { from: string; to: string | null }, exceptId?: string) {
+export async function phaseOverlap(q: Db, uid: string, p: { from: string; to: string | null }, exceptId?: string): Promise<Msg | null> {
   const mine = eq(t.phase.userId, uid)
   const others = await q.select().from(t.phase).where(exceptId ? and(mine, ne(t.phase.id, exceptId)) : mine)
   const end = (x: string | null) => x ?? '9999-12'
   const hit = others.find((o) => o.from <= end(p.to) && p.from <= end(o.to))
-  return hit ? `'${hit.label} ${hit.name}' 구간(${hit.from}~${hit.to ?? ''})과 겹쳐요.` : null
+  return hit ? m('phaseOverlap', { label: hit.label, name: hit.name, from: hit.from, to: hit.to ?? '' }) : null
 }
 
 /** A rule the request breaks: the transaction rolls back and the client gets 400 with this message. */
-export class Rejected extends Error {}
+export class Rejected extends MsgError {}
 
 const uidOf = (c: Context<AppEnv>) => c.get('session').user.id
 
@@ -94,13 +77,13 @@ async function deleteChildren(q: Db, rec: Recorder, uid: string, table: PgTable,
 interface CrudOptions<S extends z.ZodType> {
   optional?: string[]
   /** Runs in the same transaction as the write; with `lock`, the table is locked first so checks cannot race. */
-  check?: (q: Db, uid: string, input: z.infer<S>, id?: string) => Promise<string | null>
+  check?: (q: Db, uid: string, input: z.infer<S>, id?: string) => Promise<Msg | null>
   lock?: boolean
   toRow?: (input: z.infer<S>) => Record<string, unknown>
   /** Same transaction, after the row is written; returns extra fields for the response (e.g. phase amounts). */
   afterWrite?: (q: Db, rec: Recorder, uid: string, id: string, input: z.infer<S>) => Promise<Record<string, unknown>>
   /** Same transaction (and lock) as the delete; a message refuses it with 400. */
-  beforeDelete?: (q: Db, uid: string, id: string) => Promise<string | null>
+  beforeDelete?: (q: Db, uid: string, id: string) => Promise<Msg | null>
 }
 
 function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: string, table: T, schema: S, o: CrudOptions<S> = {}) {
@@ -134,7 +117,7 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
       })
       return c.json(row, 201)
     } catch (e) {
-      if (e instanceof Rejected) return c.json({ error: e.message }, 400)
+      if (e instanceof Rejected) return c.json({ error: msg(c, e.ref) }, 400)
       return dbError(c, e)
     }
   })
@@ -154,10 +137,10 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
         const extra = o.afterWrite ? await o.afterWrite(q, rec, uid, id, input) : {}
         return { ...shape(written), ...extra }
       })
-      if (!row) return c.json({ error: '항목을 찾을 수 없어요.' }, 404)
+      if (!row) return c.json({ error: msg(c, 'itemNotFound') }, 404)
       return c.json(row)
     } catch (e) {
-      if (e instanceof Rejected) return c.json({ error: e.message }, 400)
+      if (e instanceof Rejected) return c.json({ error: msg(c, e.ref) }, 400)
       return dbError(c, e)
     }
   })
@@ -175,10 +158,10 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
         await deleteChildren(q, rec, uid, table, id)
         return deleteLogged(q, rec, owned, uid, { id })
       })
-      if (!gone) return c.json({ error: '항목을 찾을 수 없어요.' }, 404)
+      if (!gone) return c.json({ error: msg(c, 'itemNotFound') }, 404)
       return c.body(null, 204)
     } catch (e) {
-      if (e instanceof Rejected) return c.json({ error: e.message }, 400)
+      if (e instanceof Rejected) return c.json({ error: msg(c, e.ref) }, 400)
       return dbError(c, e)
     }
   })
@@ -186,51 +169,7 @@ function crud<T extends ListTable, S extends z.ZodType>(r: Hono<AppEnv>, path: s
 
 export const routes = new Hono<AppEnv>()
 
-routes.get('/state', async (c) => {
-  const uid = uidOf(c)
-  // One transaction (one connection) as the user; the queries run one after another on it.
-  const [[settings], [living], subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, targets, amounts, [prefs], holidaySets] = await asUser(uid, (q) => {
-  const list = <T extends ListTable>(table: T) =>
-    q.select().from(table as never).where(eq(table.userId, uid)).orderBy(asc(table.seq)) as unknown as Promise<T['$inferSelect'][]>
-  return Promise.all([
-    q.select().from(t.settings).where(eq(t.settings.userId, uid)),
-    q.select().from(t.living).where(eq(t.living.userId, uid)),
-    list(t.subscription),
-    list(t.planChange),
-    list(t.phase),
-    list(t.planEvent),
-    list(t.checkItem),
-    list(t.bankAccount),
-    list(t.debt),
-    list(t.remainderSplit),
-    list(t.allocationTarget),
-    q.select().from(t.phaseAmount).where(eq(t.phaseAmount.userId, uid)),
-    q.select().from(t.preference).where(eq(t.preference.userId, uid)),
-    list(t.holidaySet),
-  ])
-  })
-  const amountsOf = (phaseId: string) =>
-    Object.fromEntries(amounts.filter((a) => a.phaseId === phaseId).map((a) => [a.targetId, a.amount]))
-  // A new account has no rows yet: it gets the defaults until its first save (spec 006 S-7).
-  const { userId: _s, ...s } = settings ?? { userId: uid, ...DEFAULT_SETTINGS }
-  const { userId: _l, ...l } = living ?? { userId: uid, ...DEFAULT_LIVING }
-  const { userId: _p, ...p } = prefs ?? { userId: uid, ...DEFAULT_PREFERENCES }
-  return c.json({
-    settings: s,
-    living: l,
-    subscriptions: subscriptions.map((x) => out(x, ['note'])),
-    planChanges: planChanges.map((x) => out(x)),
-    targets: targets.map((x) => out(x, ['note'])),
-    phases: phases.map((x) => ({ ...out(x, ['note']), amounts: amountsOf(x.id) })),
-    events: events.map((x) => out(x)),
-    checks: checks.map((x) => out(x)),
-    accounts: accounts.map((x) => out(x)),
-    debts: debts.map((x) => out(x)),
-    remainderSplit: remainderSplit.map((x) => out(x)),
-    preferences: p,
-    holidaySets: holidaySets.map((x) => out(x)),
-  })
-})
+routes.get('/state', async (c) => c.json(await asUser(uidOf(c), (q) => readState(q, uidOf(c)))))
 
 routes.put('/settings', body(v.settings), async (c) => {
   const uid = uidOf(c)
@@ -280,8 +219,10 @@ routes.put('/preferences', body(v.preferences), async (c) => {
     const [row] = await asUser(uid, async (q) => {
       await lockFor(q, 'preference', uid)
       const before = await readRow(q, t.preference, uid, {})
-      const written = await q.insert(t.preference).values({ userId: uid, ...input })
-        .onConflictDoUpdate({ target: t.preference.userId, set: input }).returning()
+      // A client that does not send the language keeps the saved one (spec 008 S-9).
+      const full = { ...input, language: (input.language === undefined ? ((before?.language as 'ko' | 'en' | null | undefined) ?? null) : input.language) }
+      const written = await q.insert(t.preference).values({ userId: uid, ...full })
+        .onConflictDoUpdate({ target: t.preference.userId, set: full }).returning()
       await recorderFor(c, q).record(t.preference, {}, before ? 'update' : 'insert', before, written[0] as Row)
       return written
     })
@@ -313,7 +254,7 @@ async function writeAmounts(q: Db, rec: Recorder, uid: string, phaseId: string, 
       .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), eq(t.allocationTarget.kind, 'fixed')))
     const ok = new Set(fixed.map((f) => f.id))
     const bad = ids.filter((i) => !ok.has(i))
-    if (bad.length) throw new Rejected('구간 금액은 고정 대상에만 넣을 수 있어요.')
+    if (bad.length) throw new Rejected(m('amountsFixedOnly'))
   }
   // Only what differs is written (and logged): removed, changed, added.
   const pa = t.phaseAmount
@@ -348,7 +289,7 @@ crud(routes, '/debts', t.debt, v.debt)
 crud(routes, '/remainder-split', t.remainderSplit, v.remainderSplit)
 crud(routes, '/holiday-sets', t.holidaySet, v.holidaySet)
 
-const KIND_LABEL = { living: '생활비 합계', subscriptions: '구독 이체액', remainder: '나머지' } as const
+const ONE_ONLY = { living: 'oneLiving', subscriptions: 'oneSubscriptions', remainder: 'oneRemainder' } as const
 crud(routes, '/targets', t.allocationTarget, v.target, {
   optional: ['note'],
   lock: true,
@@ -356,10 +297,10 @@ crud(routes, '/targets', t.allocationTarget, v.target, {
   check: async (q, uid, x, id) => {
     const all = await q.select().from(t.allocationTarget).where(eq(t.allocationTarget.userId, uid))
     if (x.kind !== 'fixed' && all.some((o) => o.kind === x.kind && o.id !== id)) {
-      return `'${KIND_LABEL[x.kind]}' 대상은 하나만 둘 수 있어요.`
+      return m(ONE_ONLY[x.kind as keyof typeof ONE_ONLY])
     }
     const was = all.find((o) => o.id === id)
-    if (was?.kind === 'remainder' && x.kind !== 'remainder') return '나머지 대상은 하나 있어야 해서 종류를 바꿀 수 없어요. 이름은 바꿀 수 있어요.'
+    if (was?.kind === 'remainder' && x.kind !== 'remainder') return m('remainderKindLocked')
     return null
   },
   // A target that is no longer 'fixed' keeps no phase amounts.
@@ -369,7 +310,7 @@ crud(routes, '/targets', t.allocationTarget, v.target, {
   },
   beforeDelete: async (q, uid, id) => {
     const [row] = await q.select().from(t.allocationTarget).where(and(eq(t.allocationTarget.userId, uid), eq(t.allocationTarget.id, id)))
-    return row?.kind === 'remainder' ? '나머지 대상은 지울 수 없어요. 나머지를 받을 곳이 하나는 있어야 해요.' : null
+    return row?.kind === 'remainder' ? m('remainderNoDelete') : null
   },
 })
 
@@ -382,8 +323,8 @@ routes.get('/changes', async (c) => {
   const uid = uidOf(c)
   const at = c.req.query('before') || undefined
   const id = c.req.query('beforeId') || undefined
-  if (at && Number.isNaN(Date.parse(at))) return c.json({ error: 'before는 시각이어야 해요.' }, 400)
-  if (!!at !== !!id) return c.json({ error: 'before와 beforeId는 함께 보내야 해요.' }, 400)
+  if (at && Number.isNaN(Date.parse(at))) return c.json({ error: msg(c, 'beforeNotTime') }, 400)
+  if (!!at !== !!id) return c.json({ error: msg(c, 'beforeBoth') }, 400)
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50) || 50, 1), 200)
   return c.json(await asUser(uid, (q) => listSets(q, uid, at && id ? { at, id } : undefined, limit)))
 })
@@ -391,7 +332,7 @@ routes.get('/changes', async (c) => {
 routes.get('/changes/:id', async (c) => {
   const uid = uidOf(c)
   const set = await asUser(uid, (q) => getSet(q, uid, c.req.param('id')))
-  return set ? c.json(set) : c.json({ error: '변경 묶음을 찾을 수 없어요.' }, 404)
+  return set ? c.json(set) : c.json({ error: msg(c, 'changeNotFound') }, 404)
 })
 
 routes.post('/changes/:id/revert', async (c) => {
@@ -405,9 +346,9 @@ routes.post('/changes/:id/revert', async (c) => {
     })
     return c.json({ reverted: id, changeSet: setId })
   } catch (e) {
-    if (e instanceof NotFound) return c.json({ error: e.message }, 404)
-    if (e instanceof Conflict) return c.json({ error: e.message, table: e.table, key: e.key }, 409)
-    if (e instanceof RuleBroken) return c.json({ error: e.message }, 400)
+    if (e instanceof NotFound) return c.json({ error: msg(c, e.ref) }, 404)
+    if (e instanceof Conflict) return c.json({ error: msg(c, e.ref), table: e.table, key: e.key }, 409)
+    if (e instanceof RuleBroken) return c.json({ error: msg(c, e.ref) }, 400)
     return dbError(c, e)
   }
 })

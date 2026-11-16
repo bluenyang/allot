@@ -190,13 +190,6 @@ export interface Distribution {
   remainderTarget: AllocationTarget | null
 }
 
-const KIND_DETAIL: Record<AllocationKind, string> = {
-  living: '생활비 항목 합계',
-  subscriptions: '구독 필요 이체액을 올림 단위로 올림',
-  fixed: '구간별 금액',
-  remainder: '나머지 전부',
-}
-
 /**
  * The month's pay split over the user's targets, in their order:
  * living = sum of living costs, subscriptions = needed subscription transfer,
@@ -230,7 +223,7 @@ export function distributionAt(
       name: t.name,
       kind: t.kind,
       amount: t.kind === 'remainder' ? remainder : amountOf(t),
-      detail: t.note || KIND_DETAIL[t.kind],
+      detail: t.note || '', // the user's own note; the screens show how the amount is worked out when it is empty (src/lib/labels.ts)
     }))
     .filter((r) => r.amount !== 0 || r.kind === 'remainder')
   return {
@@ -252,12 +245,8 @@ export function splitRemainder(remainder: number, split: RemainderSplit[]): (Rem
 }
 
 // ---------- format ----------
-export const won = (n: number) => Math.round(n).toLocaleString('ko-KR') + '원'
+// Plain numbers only. Amounts with a unit (원, 만, ₩ …) are in src/lib/format.ts, which follows the screen language.
 export const num = (n: number) => Math.round(n).toLocaleString('ko-KR')
-export const man = (n: number) => {
-  const v = n / 10_000
-  return (Number.isInteger(v) ? v.toString() : v.toFixed(1)) + '만'
-}
 export const usd = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 export const ymLabel = (ym: string) => `${ym.slice(0, 4)}.${ym.slice(5, 7)}`
 export const md = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`

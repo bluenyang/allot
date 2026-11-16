@@ -63,6 +63,8 @@ export const preference = pgTable('preference', {
   dateFormat: text('date_format').$type<'iso' | 'dot' | 'us'>().notNull().default('iso'),
   amountUnit: text('amount_unit').$type<'won' | 'thousand' | 'man'>().notNull().default('won'),
   negative: text('negative').$type<'minus' | 'paren' | 'red'>().notNull().default('minus'),
+  // Screen and message language (spec 008 S-9); null = follow the browser.
+  language: text('language').$type<'ko' | 'en'>(),
 }, (t) => [userScoped(t.userId)])
 
 /**
@@ -302,3 +304,14 @@ export const authProvider = pgTable('auth_provider', {
   updatedBy: text('updated_by'),
 }, (t) => [check('auth_provider_id', sql`${t.id} in ('password', 'oidc', 'github', 'google')`),
   check('auth_provider_signup', sql`${t.signup} is null or ${t.signup} in ('closed', 'approval', 'rules')`)])
+
+// ── Server-wide settings (spec 008 S-3): one row per setting; no user_id, so no row-level security
+// (like auth_provider). Env values win over these (server/api-key-policy.ts). ──
+export const appSetting = pgTable('app_setting', {
+  /** api_keys */
+  id: text('id').primaryKey(),
+  /** api_keys: { noExpiry: boolean } */
+  value: jsonb('value').$type<Record<string, unknown>>().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text('updated_by'),
+}, (t) => [check('app_setting_id', sql`${t.id} in ('api_keys')`)])

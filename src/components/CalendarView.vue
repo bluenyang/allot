@@ -11,7 +11,8 @@ import listPlugin from '@fullcalendar/vue3/list'
 import koLocale from '@fullcalendar/vue3/locales/ko'
 import '@fullcalendar/vue3/skeleton.css'
 import '@fullcalendar/vue3/themes/classic/theme.css'
-import { KIND_LABEL, calendarEvents, holidayEvents } from '../lib/calendar-events'
+import { calendarEvents, holidayEvents, kindLabel } from '../lib/calendar-events'
+import { lang, t } from '../i18n'
 import type { HolidaySet } from '../data/types'
 import { store } from '../lib/store'
 
@@ -39,7 +40,7 @@ const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 
 const options = computed<CalendarOptions>(() => ({
   plugins: [classicTheme, dayGridPlugin, listPlugin],
-  locale: koLocale,
+  locale: lang.value === 'ko' ? koLocale : undefined, // FullCalendar's own default is English
   initialView: narrow.value ? 'listMonth' : 'dayGridMonth',
   initialDate: props.initialDate,
   headerToolbar: { start: 'title', center: '', end: 'prev,today,next' },
@@ -67,10 +68,10 @@ const options = computed<CalendarOptions>(() => ({
 </script>
 
 <template>
-  <div class="cal" :aria-label="label ?? '달력'" role="region">
-    <FullCalendar ref="cal" :key="(narrow ? 'list' : 'grid') + JSON.stringify(sets ?? '')" :options="options">
+  <div class="cal" :aria-label="label ?? t('calendar.region')" role="region">
+    <FullCalendar ref="cal" :key="(narrow ? 'list' : 'grid') + lang + JSON.stringify(sets ?? '')" :options="options">
       <template #eventContent="arg">
-        <span class="evc"><b v-if="narrow || arg.event.extendedProps.kind === 'holiday' || arg.event.extendedProps.kind === 'sub' || arg.event.extendedProps.kind === 'change'" class="evk" :class="narrow ? 'ev-' + arg.event.extendedProps.kind : ''">{{ KIND_LABEL[arg.event.extendedProps.kind as keyof typeof KIND_LABEL] }}</b><span class="evt">{{ arg.event.title }}</span></span>
+        <span class="evc"><b v-if="narrow || arg.event.extendedProps.kind === 'holiday' || arg.event.extendedProps.kind === 'sub' || arg.event.extendedProps.kind === 'change'" class="evk" :class="narrow ? 'ev-' + arg.event.extendedProps.kind : ''">{{ kindLabel(arg.event.extendedProps.kind) }}</b><span class="evt">{{ arg.event.title }}</span></span>
       </template>
     </FullCalendar>
   </div>

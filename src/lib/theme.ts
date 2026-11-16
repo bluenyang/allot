@@ -6,8 +6,9 @@ import type { Preferences } from '../data/types'
 
 export const DEFAULT_PRIMARY = '#14705A'
 export const DEFAULT_ACCENT = '#E0670E'
-export const PRIMARY_PRESETS: [string, string][] = [['#14705A', '초록'], ['#0F6E73', '청록'], ['#1F5F8B', '파랑'], ['#2E3F6E', '남색'], ['#3A4540', '흑연']]
-export const ACCENT_PRESETS: [string, string][] = [['#E0670E', '주황'], ['#C98A00', '호박'], ['#D2493B', '적갈'], ['#7A5AB8', '보라']]
+/** [colour, id]: the id names the colour in the messages (theme.preset.<id>). */
+export const PRIMARY_PRESETS: [string, string][] = [['#14705A', 'green'], ['#0F6E73', 'teal'], ['#1F5F8B', 'blue'], ['#2E3F6E', 'navy'], ['#3A4540', 'graphite']]
+export const ACCENT_PRESETS: [string, string][] = [['#E0670E', 'orange'], ['#C98A00', 'amber'], ['#D2493B', 'brick'], ['#7A5AB8', 'purple']]
 
 const WHITE = '#FFFFFF'
 const BLACK = '#000000'

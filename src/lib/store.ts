@@ -3,6 +3,7 @@ import type {
   Account, AllocationTarget, CheckItem, Debt, HolidaySet, Living, Phase, PlanChange, PlanEvent, Preferences, RemainderSplit, Settings, Subscription,
 } from '../data/types'
 import { ApiError, api } from './api'
+import { t } from '../i18n'
 import { DEFAULT_LIVING, DEFAULT_PREFERENCES, DEFAULT_SETTINGS } from '../data/defaults'
 
 // App state comes from the API (PostgreSQL). Every change goes to the API first;
@@ -46,7 +47,7 @@ export async function loadState() {
   }
 }
 
-const message = (e: unknown) => (e instanceof ApiError ? e.message : '서버에 연결하지 못했어요.')
+const message = (e: unknown) => (e instanceof ApiError ? e.message : t('api.offline'))
 
 /** Run a save; on failure show the error and reload, so the screen never shows unsaved values. */
 async function save<T>(run: () => Promise<T>): Promise<T> {

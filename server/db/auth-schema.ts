@@ -1,7 +1,7 @@
 // Better Auth core tables (user, session, account, verification) for the Drizzle adapter.
 // Field names follow Better Auth's model; the app's own bank accounts live in `bank_account`.
 import { sql } from 'drizzle-orm'
-import { boolean, check, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { boolean, check, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
 const at = (name: string) => timestamp(name, { withTimezone: true })
 
@@ -65,3 +65,36 @@ export const verification = pgTable('verification', {
   createdAt: at('created_at').notNull().defaultNow(),
   updatedAt: at('updated_at').notNull().defaultNow(),
 }, (t) => [index('verification_identifier_idx').on(t.identifier)])
+
+// @better-auth/api-key (spec 008 S-1): API keys. Field names and types follow the plugin's schema.
+// `key` is the SHA-256 (base64url) of the key, never the key itself; `start` is its first 6
+// characters. referenceId is the owner's user id (no foreign key in the plugin's schema, so the
+// admin "delete user" removes the rows itself). Auth table: no row-level security, like `session`.
+export const apikey = pgTable('apikey', {
+  id: text('id').primaryKey(),
+  configId: text('config_id').notNull().default('default'),
+  name: text('name'),
+  start: text('start'),
+  referenceId: text('reference_id').notNull(),
+  prefix: text('prefix'),
+  key: text('key').notNull(),
+  refillInterval: integer('refill_interval'),
+  refillAmount: integer('refill_amount'),
+  lastRefillAt: at('last_refill_at'),
+  enabled: boolean('enabled').default(true),
+  rateLimitEnabled: boolean('rate_limit_enabled').default(true),
+  rateLimitTimeWindow: integer('rate_limit_time_window'),
+  rateLimitMax: integer('rate_limit_max'),
+  requestCount: integer('request_count').default(0),
+  remaining: integer('remaining'),
+  lastRequest: at('last_request'),
+  expiresAt: at('expires_at'),
+  createdAt: at('created_at').notNull(),
+  updatedAt: at('updated_at').notNull(),
+  permissions: text('permissions'),
+  metadata: text('metadata'),
+}, (t) => [
+  index('apikey_config_id_idx').on(t.configId),
+  index('apikey_reference_id_idx').on(t.referenceId),
+  index('apikey_key_idx').on(t.key),
+])

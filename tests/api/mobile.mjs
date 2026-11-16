@@ -1,12 +1,46 @@
 // API check for spec 006 V-12 (a)(b, server part)(c): bearer tokens and the one-time token for an app.
 //   BASE=… ADMIN_EMAIL=… ADMIN_PASSWORD=… APP_RETURN=allot://auth node tests/api/mobile.mjs
-// The api must run with ALLOT_APP_RETURN_URLS containing APP_RETURN. Two sign-ins. Exit 0 only if every check passed.
+// The api must run with ALLOT_APP_RETURN_URLS containing APP_RETURN. Three sign-ins. Exit 0 only if every check passed.
+// Requests with `origin: false` are the app's: they go through node:http(s), which, like a native app's
+// HTTP client, adds no Fetch Metadata headers. Node's fetch (undici) always adds `sec-fetch-mode: cors`,
+// and Better Auth then asks for an Origin, as it should for a browser (spec 008 A-19).
+import http from 'node:http'
+import https from 'node:https'
+
 let failed = 0
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
 const BASE = process.env.BASE ?? 'http://localhost:15173'
 const APP = process.env.APP_RETURN ?? 'allot://auth'
 
+// A response like fetch's, enough for the checks: status, text, headers.get / getSetCookie.
+function appRequest(method, url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url)
+    const r = (u.protocol === 'https:' ? https : http).request(u, { method, headers }, (res) => {
+      let text = ''
+      res.setEncoding('utf8')
+      res.on('data', (c) => { text += c })
+      res.on('end', () => {
+        const h = res.headers
+        const one = (k) => { const v = h[k.toLowerCase()]; return v === undefined ? null : Array.isArray(v) ? v.join(', ') : String(v) }
+        resolve({ status: res.statusCode, text: async () => text, headers: { get: one, getSetCookie: () => [].concat(h['set-cookie'] ?? []) } })
+      })
+    })
+    r.on('error', reject)
+    if (body !== undefined) r.write(body)
+    r.end()
+  })
+}
+
 async function req(method, path, { body, headers = {}, origin = true } = {}) {
+  if (!origin) {
+    const payload = body === undefined ? undefined : JSON.stringify(body)
+    const res = await appRequest(method, BASE + path, { 'content-type': 'application/json', ...headers }, payload)
+    const text = await res.text()
+    let json = null
+    try { json = text ? JSON.parse(text) : null } catch { json = text }
+    return { status: res.status, json, headers: res.headers }
+  }
   const res = await fetch(BASE + path, {
     method,
     headers: { 'content-type': 'application/json', ...(origin ? { origin: BASE } : {}), ...headers },
@@ -44,6 +78,9 @@ if (process.env.EXPECT_OFF === '1') {
 const s = await req('POST', '/api/auth/sign-in/email', { body: creds, origin: false })
 const token = s.headers.get('set-auth-token')
 ok(s.status === 200 && !!token, `sign-in → ${s.status}, set-auth-token ${token ? 'present' : 'missing'}`)
+// the browser-CSRF protection: an Origin-less sign-in that carries Fetch Metadata (as a browser's would) is refused
+const fm = await req('POST', '/api/auth/sign-in/email', { body: creds, origin: false, headers: { 'sec-fetch-mode': 'cors' } })
+ok(fm.status === 403 && !fm.headers.get('set-auth-token'), `sign-in without Origin but with sec-fetch-mode: cors → ${fm.status} ${fm.json?.code ?? ''} (want 403)`)
 const withToken = await req('GET', '/api/state', { headers: { authorization: `Bearer ${token}` }, origin: false })
 ok(withToken.status === 200, `GET /api/state with Bearer → ${withToken.status}`)
 const without = await req('GET', '/api/state', { origin: false })
