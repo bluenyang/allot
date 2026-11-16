@@ -1,7 +1,14 @@
 ---
 intent: "008"
-status: draft
-approvals: []
+status: accepted
+approvals:
+  - role: user
+    kind: summary
+    by: BlueNyang
+    at: "2026-11-16"
+    words: "진행"
+    rev: 244bb42
+    note: "영어 금액 단위(₩1,234 / ₩1,234K / ₩123.4×10K)는 요약에 있었고 이 진행으로 받아들임."
 summary_for_user: |
   API 키: Better Auth의 API 키 패키지(@better-auth/api-key 1.7.18)를 쓰고, 서버에는 SHA-256 해시만 남깁니다. 설정 › AI·연동에서 만들기·목록·폐기를 하고, 만료 없는 키는 관리자 설정(env 우선, 기본 OFF)으로 켜고 끕니다. OFF면 최대 1년이고, OFF로 바꾸는 순간 만료 없는 키는 1년 뒤 만료됩니다.
   MCP: 같은 서버의 /api/mcp에 Authorization: Bearer로 붙습니다. 도구 6개는 읽기 전용입니다(현황, 구독, 플랜 전환, 분배, 일정, 변경 내역). 키는 MCP에서만 통하고 다른 API에는 통하지 않습니다. 인증 실패는 모두 같은 401로 답하고, IP별 실패 제한과 키별 분당 제한을 둡니다. SDK는 @modelcontextprotocol/server 2.4.0입니다.
