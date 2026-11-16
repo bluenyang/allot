@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.3 — unreleased
+
+Read-only MCP endpoint, API keys, and a Korean/English interface. Intent 008 (`.agents/intent/008_mcp-read-language/`).
+
+### Added
+- MCP read endpoint at `POST /api/mcp` (Streamable HTTP, stateless) with six read-only tools: `get_overview`, `list_subscriptions`, `list_plan_changes`, `get_allocation`, `get_schedule`, `list_changes`. Each runs as the key's owner, under the same row-level security as the app. No tool changes data. See the README for how to connect a client.
+- API keys, in Settings › AI & integrations: stored hashed, shown once when created, scoped to `mcp:read`, with an expiry (1 to 365 days), revocation and a last-used time; at most 10 live keys per account. A key works only at `/api/mcp`, never as a session for the other API.
+- Admin switch (Admin › API key tab) for keys without an expiry, off by default, or `ALLOT_API_KEY_NO_EXPIRY=true|false` (env wins and locks the switch). While it is off, every key without an expiry gets one year from the moment it is switched off or the server starts.
+- Abuse limits on the endpoint: 20 failed authentications per client address in 10 minutes (then 429 with `Retry-After`; every failure is the same 401 whatever the reason), and 120 requests a minute per key. The Host and Origin of a request are checked against `TRUSTED_ORIGINS` / `BETTER_AUTH_URL`.
+- Interface language: Korean and English, chosen in Settings › General (or follow the browser). Menus, pages, amount units, calendar text, holiday names and the messages the server returns follow it; the sign-in screen uses the language last chosen in this browser, then the browser's language. `Accept-Language` picks the language of API error messages.
+
+### Security
+- Lifted the `esbuild` that `@esbuild-kit/core-utils` pulls in past GHSA-67mh-4wv8-2f99 with a package override (6937d61).
+
+### Changed
+- The commit and push gates now include the unit tests, and the Playwright E2E is an optional gate (69c53b9).
+
 ## 0.1.2 — 2026-11-16
 
 Stable. Same application code as 0.1.2-rc.3. Login and admin (intent 006) and the redesign with display settings, holiday rule sets and the calendar (intent 007); the upgrade notes are under 0.1.2-rc.1.
