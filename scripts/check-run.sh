@@ -32,7 +32,7 @@ _cr_run() { # kind name command...
   out=$(mktemp "$_TMP/step.XXXXXX")
   { echo "=== $kind: $name"; echo "rev $(_cr_rev)"; echo "date $(date -Is)"
     printf '$'; for a in "$@"; do printf ' '; _cr_q "$a"; done; echo; } >> "$LOG"
-  "$@" > "$out" 2>&1; rc=$?
+  if "$@" > "$out" 2>&1; then rc=0; else rc=$?; fi
   cat "$out" >> "$LOG"
   if [ -s "$out" ] && [ -n "$(tail -c 1 "$out")" ]; then
     { echo; echo "[the output above had no newline at its end]"; } >> "$LOG"
@@ -50,14 +50,17 @@ begin() {
 }
 # step <name> <command...>: run; stop everything on non-zero.
 step() {
-  _cr_run step "$@"; local rc=$?
+  local rc
+  if _cr_run step "$@"; then rc=0; else rc=$?; fi
   if [ $rc -ne 0 ]; then echo "STOPPED at step '$1' (exit=$rc)" >> "$LOG"; exit $rc; fi
 }
 # cleanup <name> <command...>: registered now, run in reverse order at done_check or on exit.
 cleanup() { CLEANUPS+=("$(printf '%q ' "$@")"); }
 _cr_cleanups() { # returns 1 if any cleanup failed
   local i bad=0
-  for ((i=${#CLEANUPS[@]}-1; i>=0; i--)); do eval "_cr_run cleanup ${CLEANUPS[$i]}" || bad=1; done
+  for ((i=${#CLEANUPS[@]}-1; i>=0; i--)); do
+    if ! eval "_cr_run cleanup ${CLEANUPS[$i]}"; then bad=1; fi
+  done
   CLEANUPS=(); return $bad
 }
 # done_check: run the cleanups and write the verdict.
@@ -68,7 +71,7 @@ done_check() {
 _cr_on_exit() {
   local rc=$?
   if [ ${#CLEANUPS[@]} -gt 0 ]; then _cr_cleanups || { [ $rc -eq 0 ] && rc=1; }; fi
-  [ $rc -ne 0 ] && echo "RESULT $CHECK: fail (exit=$rc)" >> "$LOG"
+  if [ $rc -ne 0 ]; then echo "RESULT $CHECK: fail (exit=$rc)" >> "$LOG"; fi
   rm -rf "$_TMP"
   exit $rc
 }
