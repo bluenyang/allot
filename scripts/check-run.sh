@@ -8,9 +8,10 @@
 #   cleanup "remove temp" rm -rf /tmp/x      # runs in reverse order at done_check or on exit
 #   done_check
 #
-# Each step logs "=== step: <name>", "rev <full HEAD>[+uncommitted]", "date", "$ <command as run>",
-# the full output (captured by redirection to a file, never a pipe), a newline if the output lacked
-# one, and "exit=<code of the command itself>". The first non-zero step stops the run with that code.
+# Each step is one block of metadata lines (never starting with ">"): "=== step: <name>",
+# "rev <full HEAD>[+uncommitted]", "date", "$ <command as run>", the output with every line prefixed
+# "> " (">" if empty; captured by redirection to a file, never a pipe), "exit=<code of the command
+# itself>" and the terminator "=== end". The first non-zero step stops the run with that code.
 # A step with a '|' in any argument is refused (logged, exit=2): pipes and sh -c pipelines hide exit codes.
 # A failed cleanup never hides an earlier failure and turns a passing run into exit 1.
 # Verify a log with: pnpm check:logs <log>
@@ -38,12 +39,13 @@ _cr_run() { # kind name command...
     echo "check-run: refused, an argument contains '|'; a pipe hides the exit code. Use redirection to a file." > "$out"
     rc=2
   elif "$@" > "$out" 2>&1; then rc=0; else rc=$?; fi
-  cat "$out" >> "$LOG"
+  # every output line is written as "> <line>" (">" if empty), so output can never look like metadata
+  sed -e 's/^\(.\)/> \1/' -e 's/^$/>/' "$out" >> "$LOG"
   if [ -s "$out" ] && [ -n "$(tail -c 1 "$out")" ]; then
-    { echo; echo "[the output above had no newline at its end]"; } >> "$LOG"
+    { echo; echo "> [the output above had no newline at its end]"; } >> "$LOG"
   fi
   rm -f "$out"
-  { echo "exit=$rc"; echo; } >> "$LOG"
+  { echo "exit=$rc"; echo "=== end"; echo; } >> "$LOG"
   echo "[$CHECK] $kind $name: exit=$rc"
   return $rc
 }

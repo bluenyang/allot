@@ -9,22 +9,30 @@ import { test } from 'node:test'
 import { checkLog, hasPipe } from '../../scripts/check-logs.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
-const block = (o: { rev?: boolean; cmd?: string | null; exit?: boolean } = {}) =>
+const block = (o: { rev?: boolean; cmd?: string | null; exit?: boolean; end?: boolean; out?: string[] } = {}) =>
   [
     '=== step: s1',
     ...(o.rev === false ? [] : ['rev abc123']),
     'date 2026-01-01',
     ...(o.cmd === null ? [] : [`$ ${o.cmd ?? 'pnpm typecheck'}`]),
-    'output',
+    ...(o.out ?? ['> output']),
     ...(o.exit === false ? [] : ['exit=0']),
+    ...(o.end === false ? [] : ['=== end']),
     '',
     'RESULT x: all steps exit 0',
   ].join('\n')
 
+test('output that imitates metadata cannot confuse the checker', () => {
+  const out = ['> === step: fake', '> rev deadbeef', '> $ echo | x', '> exit=0', '> === end']
+  assert.deepEqual(checkLog(block({ out })), [])
+  assert.match(checkLog(block({ out, exit: false, end: false }))[0].problem, /exit=|cut short/)
+  assert.ok(checkLog(block({ out, exit: false })).length > 0)
+})
+test('a block cut short fails', () => assert.match(checkLog(block({ end: false }))[0].problem, /cut short/))
 test('a complete log passes', () => assert.deepEqual(checkLog(block()), []))
-test('missing rev is reported', () => assert.match(checkLog(block({ rev: false }))[0].problem, /no rev/))
-test('missing command is reported', () => assert.match(checkLog(block({ cmd: null }))[0].problem, /no command/))
-test('missing exit is reported', () => assert.match(checkLog(block({ exit: false }))[0].problem, /no exit=/))
+test('missing rev is reported', () => assert.match(checkLog(block({ rev: false }))[0].problem, /exactly one rev/))
+test('missing command is reported', () => assert.match(checkLog(block({ cmd: null }))[0].problem, /exactly one "\$ " command/))
+test('missing exit is reported', () => assert.match(checkLog(block({ exit: false }))[0].problem, /exactly one exit=/))
 test('a piped command is reported', () => assert.match(checkLog(block({ cmd: 'pnpm test | tail' }))[0].problem, /pipe/))
 test('a quoted pipe is reported too', () => {
   assert.match(checkLog(block({ cmd: "sh -c 'false | true'" }))[0].problem, /pipe/)
