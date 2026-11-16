@@ -9,6 +9,7 @@ import { fmtMoney, fmtMoneyClass } from '../lib/display'
 import { saveLiving, saveSettings, store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
+import { kindDetail } from '../lib/labels'
 import { distributionAt, man, splitRemainder, today, won, ymLabel, ymOf } from '../lib/calc'
 import type { AllocationKind, Settings } from '../data/types'
 
@@ -155,7 +156,7 @@ async function submitSettings() {
             <table>
               <thead><tr><th>목적지</th><th class="n">금액</th><th>메모</th></tr></thead>
               <tbody>
-                <tr v-for="r in sim.rows" :key="r.key"><td>{{ r.name }}</td><td class="n" :class="fmtMoneyClass(r.amount)">{{ fmtMoney(r.amount) }}</td><td class="small muted">{{ r.detail }}</td></tr>
+                <tr v-for="r in sim.rows" :key="r.key"><td>{{ r.name }}</td><td class="n" :class="fmtMoneyClass(r.amount)">{{ fmtMoney(r.amount) }}</td><td class="small muted">{{ r.detail || kindDetail(r.kind) }}</td></tr>
               </tbody>
             </table>
           </div>

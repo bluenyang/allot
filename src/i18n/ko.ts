@@ -214,6 +214,81 @@ export const ko = {
       previewFoot: '테마: {theme} · 외화 1개 사용 · 저장 전 미리보기예요.',
     },
   },
+  format: {
+    won: '₩{n}',
+    wonPlain: '{n}원',
+    thousand: '{n}천원',
+    man: '{n}만원',
+    manShort: '{n}만',
+  },
+  label: {
+    category: {
+      ai: 'AI',
+      telecom: '통신',
+      content: '콘텐츠',
+      tool: '도구',
+      insurance: '보험',
+      life: '생활',
+    },
+    path: {
+      direct: '직접 결제',
+      google: 'Google Play',
+      apple: 'App Store',
+      telecom: '통신사',
+    },
+    status: {
+      active: '구독 중',
+      cancelled: '해지',
+      company: '회사 지원',
+    },
+    cycle: {
+      monthly: '월간',
+      yearly: '연간',
+    },
+    eventKind: {
+      bank: '통장',
+      sub: '구독',
+      split: '분배',
+      policy: '정책',
+      tax: '세금',
+      card: '카드',
+      saving: '저축',
+      income: '수입',
+      loan: '대출',
+      invest: '투자',
+    },
+    allocDetail: {
+      living: '생활비 항목 합계',
+      subscriptions: '구독 필요 이체액을 올림 단위로 올림',
+      fixed: '구간별 금액',
+      remainder: '나머지 전부',
+    },
+    allocKind: {
+      living: '생활비 합계',
+      subscriptions: '구독 이체액',
+      fixed: '고정 금액',
+      remainder: '나머지',
+    },
+  },
+  calendar: {
+    kind: {
+      pay: '월급',
+      transfer: '분배',
+      billing: '카드 결제',
+      sub: '구독',
+      change: '전환',
+      holiday: '휴일',
+    },
+    noBizDay: '옮길 영업일 없음',
+    before: '앞당김',
+    after: '미룸',
+    changeOf: '{name} 전환',
+    region: '달력',
+  },
+  transferChart: {
+    ariaLabel: '월별 구독 필요 이체액',
+    changed: '변경',
+  },
 } as const
 
 type Widen<T> = T extends string ? string : { -readonly [K in keyof T]: Widen<T[K]> }

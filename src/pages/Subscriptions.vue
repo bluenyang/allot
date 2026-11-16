@@ -13,7 +13,8 @@ import {
   addYm, chargeKrw, changesIn, monthlyKrw, nextOccurrence, num, planAt, today, transferAt, usd, won, ymd, ymLabel, ymOf, ymRange,
 } from '../lib/calc'
 import type { PlanChange, Subscription } from '../data/types'
-import { CAT_COLORS, CAT_LABEL } from '../lib/colors'
+import { CAT_COLORS } from '../lib/colors'
+import { CATEGORY_IDS, catLabel } from '../lib/labels'
 
 // 구독 (spec 007 S-4): KPI strip, status/category/path filters, a table, the add/edit modal.
 // Not drawn (S-3): CSV export, AI analysis, "명세서에서 채우기".
@@ -208,7 +209,7 @@ function describe(c: PlanChange) {
         </div>
         <div class="frow">
           <label class="fsearch"><Icon name="search" /><input v-model="q" type="search" aria-label="구독 검색" placeholder="서비스 이름 검색"></label>
-          <select v-model="cat" class="in fsel" aria-label="분류"><option value="">분류 전체</option><option v-for="(v, k) in CAT_LABEL" :key="k" :value="k">{{ v }}</option></select>
+          <select v-model="cat" class="in fsel" aria-label="분류"><option value="">분류 전체</option><option v-for="k in CATEGORY_IDS" :key="k" :value="k">{{ catLabel(k) }}</option></select>
           <select v-model="path" class="in fsel" aria-label="결제 경로"><option value="">결제 경로 전체</option><option v-for="(v, k) in PATH" :key="k" :value="k">{{ v }}</option></select>
           <span class="sp"></span>
           <MonthPicker v-model="ym" label="기준 월" />
@@ -218,7 +219,7 @@ function describe(c: PlanChange) {
         desc="저장하면 서버에 먼저 기록되고 변경 내역에 남아요." @save="save" @cancel="edit = null" @delete="del">
           <div class="field" style="grid-column:1/-1"><label for="e-name" class="req">서비스 이름</label><input id="e-name" v-model="edit.name" class="in" placeholder="예: 영상 스트리밍" required></div>
           <div class="field"><label for="e-cat">분류</label>
-            <select id="e-cat" v-model="edit.category" class="in"><option v-for="(v, k) in CAT_LABEL" :key="k" :value="k">{{ v }}</option></select></div>
+            <select id="e-cat" v-model="edit.category" class="in"><option v-for="k in CATEGORY_IDS" :key="k" :value="k">{{ catLabel(k) }}</option></select></div>
           <div class="field"><label for="e-plan">플랜</label><input id="e-plan" v-model="edit.plan" class="in"></div>
           <div class="field"><span class="flabel" id="e-cycle-l">결제 주기</span>
             <div class="seg" role="group" aria-labelledby="e-cycle-l">
@@ -255,7 +256,7 @@ function describe(c: PlanChange) {
           <tbody>
             <tr v-for="r in shown" :key="r.base.id" :class="{ dim: r.p.status !== 'active' }">
               <td><button type="button" class="svc" @click="openEdit(r.base)"><b>{{ r.p.name }}</b><span>{{ r.p.plan || '—' }}<template v-if="r.pending.length"> · 전환 예정</template></span></button></td>
-              <td><span class="pill tag">{{ CAT_LABEL[r.p.category] }}</span></td>
+              <td><span class="pill tag">{{ catLabel(r.p.category) }}</span></td>
               <td>{{ r.p.cycle === 'yearly' ? '연간' : '월간' }}</td>
               <td class="n mono">{{ r.p.status === 'company' ? '회사 부담' : charge(r.p) }}</td>
               <td class="n">{{ r.p.status === 'active' ? fmtMoney(r.monthly) : fmtMoney(0) }}</td>

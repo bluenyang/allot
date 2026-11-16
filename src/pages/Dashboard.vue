@@ -8,6 +8,7 @@ import { saveItem, store, subName } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { notReady, view } from '../lib/view'
 import { allocColor } from '../lib/colors'
+import { kindDetail } from '../lib/labels'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
 import { moneyShort } from '../lib/format'
 import { offDays } from '../lib/holidays-lazy'
@@ -132,8 +133,8 @@ const chkEd = useEditor('checks', () => ({ id: '', text: '', done: false }), (c)
                 <thead><tr><th scope="col">대상</th><th scope="col" class="c-how">계산 방식</th><th scope="col" class="n">비율</th><th scope="col" class="n">금액</th></tr></thead>
                 <tbody>
                   <tr v-for="r in dist.rows" :key="r.key">
-                    <td><span class="tname"><i :style="{ background: allocColor(r.key) }"></i>{{ r.name }}</span><span v-if="r.detail" class="how-sm">{{ r.detail }}</span></td>
-                    <td class="muted c-how">{{ r.detail }}</td>
+                    <td><span class="tname"><i :style="{ background: allocColor(r.key) }"></i>{{ r.name }}</span><span class="how-sm">{{ r.detail || kindDetail(r.kind) }}</span></td>
+                    <td class="muted c-how">{{ r.detail || kindDetail(r.kind) }}</td>
                     <td class="n muted num">{{ pct(r.amount) }}</td>
                     <td class="n" :class="fmtMoneyClass(r.amount)">{{ fmtMoney(r.amount) }}</td>
                   </tr>

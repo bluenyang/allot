@@ -11,4 +11,3 @@ export function allocColor(targetId: string): string {
 export const CAT_COLORS: Record<string, string> = {
   ai: 'var(--c1)', telecom: 'var(--c2)', content: 'var(--c3)', tool: 'var(--c5)', insurance: 'var(--c4)', life: 'var(--c6)',
 }
-export const CAT_LABEL: Record<string, string> = { ai: 'AI', telecom: '통신', content: '콘텐츠', tool: '도구', insurance: '보험', life: '생활' }

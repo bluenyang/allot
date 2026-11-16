@@ -190,13 +190,6 @@ export interface Distribution {
   remainderTarget: AllocationTarget | null
 }
 
-const KIND_DETAIL: Record<AllocationKind, string> = {
-  living: '생활비 항목 합계',
-  subscriptions: '구독 필요 이체액을 올림 단위로 올림',
-  fixed: '구간별 금액',
-  remainder: '나머지 전부',
-}
-
 /**
  * The month's pay split over the user's targets, in their order:
  * living = sum of living costs, subscriptions = needed subscription transfer,
@@ -230,7 +223,7 @@ export function distributionAt(
       name: t.name,
       kind: t.kind,
       amount: t.kind === 'remainder' ? remainder : amountOf(t),
-      detail: t.note || KIND_DETAIL[t.kind],
+      detail: t.note || '', // the user's own note; the screens show how the amount is worked out when it is empty (src/lib/labels.ts)
     }))
     .filter((r) => r.amount !== 0 || r.kind === 'remainder')
   return {

@@ -17,8 +17,8 @@ export type MessageKey = Path<Messages>
 
 const KEY = 'allot.lang'
 
-/** The browser's language: English when the first language starts with "en", else Korean. */
-export function browserLang(nav: readonly string[] | undefined = typeof navigator === 'undefined' ? undefined : (navigator.languages?.length ? navigator.languages : [navigator.language])): Lang {
+/** The browser's language: English when the first language starts with "en", else Korean (also outside a browser, as in the unit tests). */
+export function browserLang(nav: readonly string[] | undefined = typeof window === 'undefined' ? undefined : (navigator.languages?.length ? navigator.languages : [navigator.language])): Lang {
   const first = (nav?.[0] ?? '').toLowerCase()
   return first === 'en' || first.startsWith('en-') ? 'en' : 'ko'
 }
@@ -74,5 +74,8 @@ export function applyPreference(pref: Lang | null | undefined) {
 type Vars = Record<string, string | number>
 /** A message in the current language; `{name}` is replaced from `vars`. */
 export const t = (key: MessageKey, vars?: Vars): string => (vars ? i18n.global.t(key, vars) : i18n.global.t(key))
+
+/** A message in a given language (for the pure formatters, which take the language as an argument). */
+export const tl = (l: Lang, key: MessageKey, vars?: Vars): string => i18n.global.t(key, vars ?? {}, { locale: l })
 
 setLang(lang.value)
