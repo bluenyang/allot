@@ -128,7 +128,8 @@ test('(V-6 d) the calendar shows the monthly dates and the holidays of the sets 
 
 test('(V-6 e) no menu, button or text for features that do not exist', async ({ page }) => {
   // AI features stay hidden (the user's choice); controls drawn as in the design are tested in V-14 (c).
-  const banned = ['명세서 분석', 'AI 어시스턴트', 'AI·연동', 'AI 분석', '명세서에서 채우기']
+  // 설정 › AI·연동 is real since 0.1.3 (spec 008: API keys and the MCP connection), so it is not listed.
+  const banned = ['명세서 분석', 'AI 어시스턴트', 'AI 분석', '명세서에서 채우기']
   for (const r of ROUTES) {
     await page.goto(`/#${r}`)
     await page.locator('header.ph h1').waitFor()
