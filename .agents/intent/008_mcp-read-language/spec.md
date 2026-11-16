@@ -146,6 +146,7 @@ summary_for_user: |
 - A-16 (2026-11-16, W-4) `list_subscriptions`의 다음 결제일은 기준 플랜(`base`)이 아니라 그 달에 적용된 플랜(`p`)의 주기로 계산한다(화면 `Subscriptions.vue`와 같음). 플랜 변경이 바꾸는 필드는 `Plan`뿐이라 같은 목록의 나머지 값(이름·분류·결제 경로·영수증 확인)은 `base`와 `p`가 같다 · 코드 검토 2: 월→연 변경이 이번 달에 적용되면 MCP는 2026-11-20, 화면은 2027-10-20 · 40f0950
 - A-17 (2026-11-16, W-3) 키별 요청 제한(RATE_LIMITED)에 걸렸을 때도 키의 소유자(저장된 해시로 조회, 사용 횟수는 올리지 않음)가 쓸 수 있는 계정(active, 차단 아님)일 때만 429를 주고, 아니면 공통 401(실패 횟수도 센다) · 코드 검토 3: 플러그인은 제한을 마지막에 검사하므로 제한에 걸린 키는 그 밖에는 유효하다. 그래도 차단·승인 대기 계정이 429로 키의 존재를 알 수 있었다 · 1997764
 - A-18 (2026-11-16, W-6) 메시지 키 없이 던져진 zod 이슈는 `issue.code`로 일반 문구를 고른다(`invalid_type`, `too_small`, `too_big`, `invalid_value`, `invalid_format`, `unrecognized_keys`, `custom` 등 → ko·en 6개 키 추가). 명시한 키는 그대로이고, 키가 아니던 `YYYY-MM-DD`·`YYYY-MM` 두 문구는 키(`dateFormat`, `monthFormat`)로 바꿨다 · 코드 검토 4: `{ expiresInDays: "90" }` 같은 형식 오류가 한국어 요청에도 zod의 영어로 나갔다 · d6e0372
+- A-19 (2026-11-16, V-9) tests/api/mobile.mjs가 앱 요청을 Fetch Metadata 헤더 없이 보낸다 · Node fetch가 sec-fetch-mode: cors를 붙여 Better Auth가 Origin을 요구 — 네이티브 앱은 이 헤더를 보내지 않는다. master에서도 같은 실패. 기대 결과는 그대로, 헤더가 있으면 403인 검사를 더함 · 8bafdfb
 
 ## 우려
 - 플러그인의 클라이언트 경로 목록이 버전마다 다를 수 있다 — 닫을 때 경로를 하나씩 적지 않고 `/api-key/` 접두로 막고, V-2에서 `/api/auth/api-key/create`·`list`·`delete`·`update`가 막힌 것을 확인한다.
