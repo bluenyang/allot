@@ -99,8 +99,8 @@ summary_for_user: |
 - [x] W-3 MCP 경로와 인증: 의존성(`@modelcontextprotocol/server@2.4.0`), `server/state.ts`로 `/api/state` 조회 빼기(응답 같음), `server/mcp/index.ts`(인증, 실패 제한, Host·Origin, 본문 제한, stateless 전송), 로그 확인. 도구는 아직 없음(`tools/list`가 빈 목록). (S-5, S-7, S-8) (commits 0f9e4d5, 9a2f82e)
 - [x] W-4 읽기 도구: `server/mcp/views.ts`(순수), `server/mcp/tools.ts`(6개), 단위 테스트 `tests/unit/mcp-views.test.ts`, API 검사 `tests/api/mcp.mjs`(SDK 클라이언트로 인증·도구·격리). (S-6, S-7) (commit 3636b77)
 - [x] W-5 화면: 설정 › AI·연동(`SettingsAi.vue`), 관리자 "API 키" 탭, store·api, E2E `tests/e2e/api-keys.spec.ts`. (S-4) (commits d63645b, 7768511)
-- [ ] W-6 언어 구조: `vue-i18n@11.4.20`, `src/i18n/*`, 언어 고르기, `preference.language` 열·마이그레이션·zod·defaults, 설정 › 일반의 언어 선택, `<html lang>`, `api.ts`의 `Accept-Language`, `server/messages.ts`와 서버 문구 옮기기, 키 비교 단위 테스트 `tests/unit/i18n.test.ts`. 이 W에서는 셸(사이드바·헤더·푸터)·설정 › 일반·로그인 화면 문구만 옮긴다. (S-9, S-10)
-- [ ] W-7 나머지 화면 문구: 남은 `src/pages/*`, `src/components/*`, `src/lib/*` 문구, `types.ts` 표시 이름, 공휴일 영어 이름, 영어 금액 단위(`format.ts`), W-5 화면 문구. 화면마다 커밋. 한글이 남은 곳 검사 스크립트 `scripts/check-i18n.mjs`(허용 목록: `src/i18n/ko.ts`, 공휴일 데이터, 주석). (S-9)
+- [x] W-6 언어 구조: `vue-i18n@11.4.20`, `src/i18n/*`, 언어 고르기, `preference.language` 열·마이그레이션·zod·defaults, 설정 › 일반의 언어 선택, `<html lang>`, `api.ts`의 `Accept-Language`, `server/messages.ts`와 서버 문구 옮기기, 키 비교 단위 테스트 `tests/unit/i18n.test.ts`. 이 W에서는 셸(사이드바·헤더·푸터)·설정 › 일반·로그인 화면 문구만 옮긴다. (S-9, S-10) (commits c49f8bd, 10c660d)
+- [x] W-7 나머지 화면 문구: 남은 `src/pages/*`, `src/components/*`, `src/lib/*` 문구, `types.ts` 표시 이름, 공휴일 영어 이름, 영어 금액 단위(`format.ts`), W-5 화면 문구. 화면마다 커밋. 한글이 남은 곳 검사 스크립트 `scripts/check-i18n.mjs`(허용 목록: `src/i18n/ko.ts`, 공휴일 데이터, 주석). (S-9) (commits d27d710 공통 lib·단위·열거 이름, 35a7dd8 현황, 7f0bf69 구독, 05ef1ca 월급 분배, a1c3163 일정, a66d567 변경 내역, e6d93ff 계정, 023f5b3 개발, 2db0c3c 테마, 8913a89 AI·연동, f9450ec 관리, 2d884ef calc 정리, 97b7c7f 검사 스크립트, 1ae27ae·bb9e02b E2E 분리)
 - [ ] W-8 문서: CHANGELOG, README, ROADMAP. (S-11)
 
 ## 검증 기준
@@ -133,6 +133,15 @@ summary_for_user: |
 - A-3 (2026-11-16, W-3·W-4) MCP 검사(`tests/api/mcp.mjs`)는 SDK 클라이언트(`@modelcontextprotocol/client`) 없이 JSON-RPC를 fetch로 직접 보낸다 · 서버 SDK만 의존성으로 두고 검사 때문에 의존성을 더하지 않으려고. 응답 모양은 같다 · 9a2f82e, 3636b77
 - A-4 (2026-11-16, W-3) Host 검사는 `TRUSTED_ORIGINS`가 있을 때만(그 호스트 + `BETTER_AUTH_URL` 호스트), 없으면(개발) Origin이 있을 때 요청의 Host와 같아야 통과. 키별 요청 제한(분당 120 초과)은 같은 401이 아니라 429 · "설정된 경우"의 해석: 개발 스택은 LAN 주소가 여러 개라 Host를 고정할 수 없다. 429는 유효한 키에게만 보이는 답이라 키 존재를 새로 알리지 않는다 · 9a2f82e
 - A-5 (2026-11-16, W-5) 키 만들기 모달은 `useEditor` 대신 `EditSheet`와 화면 안 상태로 만든다 · `useEditor`는 `store`의 목록(`ListKey`)용이고 키는 스토어에 두지 않는다(원문이 한 번만 보임) · d63645b
+- A-6 (2026-11-16, W-6) 로그인 전 화면의 언어는 "이 브라우저에서 마지막으로 고른 언어(localStorage) → 브라우저 언어" 순이다(S-9 문구는 반대 순서) · 로그아웃 뒤 로그인 화면이 계정에서 고른 English로 남아야 하는데(V-8), 브라우저 언어를 먼저 보면 한국어 브라우저에서 항상 한국어가 된다. 계정이 "브라우저 따라가기"(null)면 저장값을 지워 브라우저 언어가 이긴다 · 10c660d
+- A-7 (2026-11-16, W-6) `preferences.language`는 zod에서 선택 항목이다(없으면 저장된 값을 둠, `dayShift`와 같은 방식) · language를 모르는 클라이언트와 0.1.2의 `tests/api/preferences.mjs`가 그대로 통하게. 그 검사는 `language: 'en'`을 넣고 `Accept-Language`별 메시지를 확인하도록 고쳤다 · c49f8bd, 1ae27ae
+- A-8 (2026-11-16, W-6) 서버에서 깊은 곳(검사 함수, 되돌리기 오류, 공휴일 규칙, 로그인 방식 문제)이 던지는 문구는 문자열 대신 메시지 참조(`Msg`/`MsgError`, 공휴일은 `{code, vars}`)를 실어 올리고 라우트가 요청 언어로 푼다. zod 메시지는 `server/messages.ts`의 키이고 `server/body.ts`가 요청마다 푼다(세 라우터의 같은 검사기를 하나로) · 스키마를 언어마다 두지 않으려고 · c49f8bd
+- A-9 (2026-11-16, W-6) Better Auth 훅(로그인 방식 거부)의 문구는 요청의 `Accept-Language`로 고르고, 세션 만들기 훅의 PENDING_APPROVAL은 한국어로 둔다(요청이 없는 자리). 화면은 어차피 오류 코드로 문구를 고른다(`authMessage`) · c49f8bd
+- A-10 (2026-11-16, W-6) 공용 `EditSheet`의 문구(닫기·취소·저장·삭제)와 `notReady`를 부르는 현황·구독의 네 곳은 W-6에서 함께 옮겼다 · 셸과 설정 › 일반이 같은 컴포넌트를 쓰고, `notReady`가 메시지 키를 받도록 바뀌어 타입 검사가 통해야 해서 · 10c660d
+- A-11 (2026-11-16, W-7) `calc.ts`의 표시 함수 `won`·`man`은 어디서도 쓰이지 않아 지웠다(단위 붙은 금액은 `format.ts`의 `wonText`·`manText`). `distributionAt`의 `detail`은 사용자 메모만 담고, 메모가 없을 때의 기본 문구("생활비 항목 합계" 등)는 `labels.ts`(`kindDetail`)가 언어에 맞게 낸다 · `calc.ts`는 서버가 쓰는 순수 계산으로 둠(서버는 `detail`을 쓰지 않음) · d27d710, 2d884ef
+- A-12 (2026-11-16, W-7) `check-i18n.mjs` 허용 목록에 `src/data/types.ts`·`src/lib/labels.ts`(저장된 한국어 일정 분류 코드), `src/lib/holidays.ts`·`holiday-names.ts`(대체공휴일 이름), `src/i18n/en.ts`(언어 목록의 "한국어")를 더했다 · 모두 데이터나 저장 값이지 화면 문구가 아님 · 97b7c7f
+- A-13 (2026-11-16, W-7) 색 프리셋(`theme.ts`)은 한국어 이름 대신 id(green, teal…)를 갖고 이름은 메시지에서 · 이름이 화면 문구라서 · 2db0c3c
+- A-14 (2026-11-16, W-7) 로그아웃 뒤 로그인 화면 E2E는 새로 로그인하지 않고 공유 세션을 마지막에 로그아웃하는 `tests/e2e/zz-i18n-signout.spec.ts`(파일 이름이 맨 뒤로 가게)로 두었고, `global-setup`의 로그인 문맥은 `locale: 'ko-KR'`로 고정했다(Playwright 기본은 en-US라 이제 로그인 화면이 영어) · 로그인 시도 제한이 분당 5회라, 로그인을 하나 더 하면 뒤쪽 V-14 a, b가 429를 받았다(트레이스로 확인) · bb9e02b
 
 ## 우려
 - 플러그인의 클라이언트 경로 목록이 버전마다 다를 수 있다 — 닫을 때 경로를 하나씩 적지 않고 `/api-key/` 접두로 막고, V-2에서 `/api/auth/api-key/create`·`list`·`delete`·`update`가 막힌 것을 확인한다.
