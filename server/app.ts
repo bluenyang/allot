@@ -5,6 +5,7 @@ import { adminRoutes } from './admin-routes'
 import { allowedReturn } from './app-login'
 import { publicMethods } from './auth-config'
 import { keyRoutes } from './keys'
+import { mountMcp } from './mcp'
 import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
 import type { AppEnv } from './app-env'
 import { routes } from './routes'
@@ -47,6 +48,9 @@ app.on(['GET', 'POST'], '/auth/*', (c) => {
 
 // The login screen's list of methods (spec 006 S-1): ids and display names only, no session needed.
 app.get('/auth-methods', (c) => c.json({ methods: publicMethods(getAuthConfig()) }))
+
+// The MCP endpoint takes an API key, not a session (spec 008): it sits before the session check.
+mountMcp(app, clientIp)
 
 // Everything else under /api needs a session.
 app.use('*', async (c, next) => {
