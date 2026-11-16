@@ -80,9 +80,11 @@ const REPO = 'https://github.com/bluenyang/allot'
 // ── Sidebar width and folding (spec 007 S-20): drag or arrow keys on the edge, double-click for the default.
 const side = ref<HTMLElement | null>(null)
 let dragging = false
+const resizing = ref(false)
 const onGripDown = (e: PointerEvent) => {
   if (e.button !== 0) return
   dragging = true
+  resizing.value = true
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   document.body.classList.add('resizing')
 }
@@ -93,6 +95,7 @@ const onGripMove = (e: PointerEvent) => {
 const onGripUp = () => {
   if (!dragging) return
   dragging = false
+  resizing.value = false
   document.body.classList.remove('resizing')
   setSideWidth(sideWidth.value)
 }
@@ -109,7 +112,7 @@ const onGripKey = (e: KeyboardEvent) => {
 </script>
 
 <template>
-  <div class="app" :class="{ folded: sideFolded }" :style="{ '--side-w': `${sideFolded ? SIDE.folded : sideWidth}px` }">
+  <div class="app" :class="{ folded: sideFolded, resizing }" :style="{ '--side-w': `${sideFolded ? SIDE.folded : sideWidth}px` }">
     <aside id="side" ref="side" class="side">
       <div class="brand">
         <span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>개인 재무 원장</small></span>
@@ -208,7 +211,7 @@ const onGripKey = (e: KeyboardEvent) => {
 .brand .fold svg{width:18px;height:18px}
 .grip{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;touch-action:none;z-index:5}
 .grip::after{content:"";position:absolute;top:0;bottom:0;right:0;width:2px;background:transparent;transition:background .15s}
-.grip:hover::after,.grip:focus-visible::after,:global(body.resizing) .grip::after{background:var(--primary-text)}
+.grip:hover::after,.grip:focus-visible::after,.app.resizing .grip::after{background:var(--primary-text)}
 .grip:focus-visible{outline:none}
 :global(body.resizing){cursor:col-resize;user-select:none}
 .folded .bn,.folded .glabel,.folded .ncount,.folded .wn{display:none}

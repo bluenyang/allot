@@ -455,6 +455,27 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
     await expect(subs).toContainText('구독')
   })
 
+  test('(d) dragging the sidebar edge changes nothing else on the page, light and dark', async ({ page }) => {
+    await page.goto('/#subs')
+    await page.locator('header.ph h1').waitFor()
+    const look = () => page.evaluate(() => {
+      const c = (e: Element) => { const s = getComputedStyle(e); return `${s.backgroundColor}/${s.color}` }
+      return [c(document.body), c(document.querySelector('main.main')!), c(document.querySelector('header.ph h1')!), c(document.querySelector('header.topbar')!)].join(' | ')
+    })
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
+      const before = await look()
+      const box = (await page.getByRole('separator', { name: '사이드바 너비' }).boundingBox())!
+      await page.mouse.move(box.x + box.width / 2, 500)
+      await page.mouse.down()
+      await page.mouse.move(box.x + 40, 500, { steps: 4 })
+      await expect(page.locator('body')).toHaveClass(/resizing/)
+      expect(await look(), `${theme}: colours while dragging`).toBe(before)
+      await page.mouse.up()
+      expect(await look(), `${theme}: colours after the drag`).toBe(before)
+    }
+  })
+
   test('(c) the content column sits in the middle at 1920; the header lines up with it; the header holds at 761–1000 with either sidebar width', async ({ page }) => {
     for (const width of [1920, 1440]) {
       await page.setViewportSize({ width, height: 1000 })
