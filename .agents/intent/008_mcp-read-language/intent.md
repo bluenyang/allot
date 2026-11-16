@@ -2,9 +2,15 @@
 id: "008"
 slug: mcp-read-language
 version: 0.1.3
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-16"
+    words: "승인"
+    rev: 4124ab6
+    note: "같은 메시지: \"1. 그럽시다.\" (0.1.10에 MCP용 OAuth) \"2. 바로 다음이네. 오케이 이해했어.\""
 waivers: []
 supersedes: null
 ---
@@ -49,7 +55,7 @@ PM 해석:
 - `calc.ts` 순수 유지. 개발·확인은 `docker/compose.dev.yaml`.
 
 ## 열린 질문
-1. ~~휴대폰에서 쓰기~~ → 답함: (a) API 키만. MCP용 OAuth(휴대폰·claude.ai 원격 커넥터)는 계획되지 않은 가장 빠른 버전으로 — 0.1.10(확인 대기, 아래 기록).
+1. ~~휴대폰에서 쓰기~~ → 답함: (a) API 키만. MCP용 OAuth(휴대폰·claude.ai 원격 커넥터)는 계획되지 않은 가장 빠른 버전으로 — 0.1.10(사용자 확인 2026-11-16 "그럽시다", `docs/ROADMAP.md`에 올림).
 2. ~~읽기 도구 범위~~ → 답함: 제안대로(분배·구독·일정·플랜 예약·변경 내역·현황 계산). 수정(쓰기)은 0.1.4.
 3. ~~키 만료~~ → 답함: 만료 없는 키를 ON/OFF로. OFF면 만료 필수, 최대 1년.
 4. ~~언어~~ → 답함: 제안대로.
@@ -60,7 +66,7 @@ PM 해석:
   > 2. 그럼 수정은 몇 버전이야?
   > 3. ON/OFF 가능하게 해. OFF면 최대 1년.
   > 4. ㅇㅇ
-  - 1 → 0.1.3은 API 키만. 0.1.4~0.1.9가 계획돼 있어 가장 빠른 빈 버전은 0.1.10 — PM이 답하고 `.loctx/ROADMAP.local.md`에 적음. `docs/ROADMAP.md`에는 사용자 확인 뒤 올림.
+  - 1 → 0.1.3은 API 키만. 0.1.4~0.1.9가 계획돼 있어 가장 빠른 빈 버전은 0.1.10 — PM이 답하고 `.loctx/ROADMAP.local.md`에 적음. `docs/ROADMAP.md`에는 사용자 확인 뒤 올림 → 2026-11-16 "1. 그럽시다." 올림.
   - 2 → PM 답: 0.1.4(MCP 쓰기). 질문 2는 제안대로로 읽음(PM 해석).
   - 3 → 아래 "에이전트가 정한 것"의 만료 설정.
 

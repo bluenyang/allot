@@ -70,6 +70,7 @@ Decisions from the committee review (2026-11-11), accepted by the user ("그렇�
 | 0.1.7 | Transactions: file import and card statements from Gmail; matching against expected payments (paid, delayed, foreign-currency amount); the actual salary drives the month |
 | 0.1.8 | Payslip deductions and month-end close |
 | 0.1.9 | Mobile app (Capacitor): payment notifications on Android; on iOS what Shortcuts and the share sheet allow |
+| 0.1.10 | MCP over OAuth: remote connectors that take only OAuth (claude.ai, the phone app); 0.1.3 ships API keys only (added 2026-11-16: "a만. 지금 계획되지 않은 빠른 버전이 뭐지? 거기로 미루면 될거 같은데" / "그럽시다.") |
 
 ### 0.1.2 — redesign before rc.1
 
