@@ -63,6 +63,11 @@ export const manText = (n: number, l: Lang = lang.value) => {
   return tl(l, 'format.manShort', { n: Number.isInteger(v) ? v.toString() : v.toFixed(1) })
 }
 
+/** Short month ("11월", "Nov") and weekday ("토", "Sat") names in the screen language. */
+export const monthShort = (n: number, l: Lang = lang.value) => new Date(2000, n - 1, 1).toLocaleString(l === 'en' ? 'en-US' : 'ko-KR', { month: 'short' })
+export const monthLong = (n: number, l: Lang = lang.value) => new Date(2000, n - 1, 1).toLocaleString(l === 'en' ? 'en-US' : 'ko-KR', { month: 'long' })
+export const weekdayShort = (d: Date, l: Lang = lang.value) => d.toLocaleString(l === 'en' ? 'en-US' : 'ko-KR', { weekday: 'short' })
+
 /** A date (YYYY-MM-DD or Date) as 2026-11-14, 2026. 11. 14. or 11/14/2026. */
 export function dateText(d: string | Date, p: Fmt): string {
   const s = typeof d === 'string' ? d : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
