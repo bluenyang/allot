@@ -41,9 +41,11 @@ test('a dirty drizzle/ exits 2 and the edit survives', () => {
   const dir = clone()
   try {
     const f = join(dir, 'drizzle/meta/_journal.json')
-    writeFileSync(f, readFileSync(f, 'utf8') + '\n')
+    const edited = readFileSync(f, 'utf8') + '\n'
+    writeFileSync(f, edited)
     const r = run(dir)
     assert.equal(r.status, 2)
     assert.match(git(dir, 'status', '--porcelain', '--', 'drizzle'), /_journal\.json/)
+    assert.equal(readFileSync(f, 'utf8'), edited)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
