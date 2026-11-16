@@ -12,7 +12,7 @@ files:
   .claude/skills/roadmap/SKILL.md: 06d5464ca1c9acab
   .claude/skills/spec/SKILL.md: 43c313a211ac6906
   .claude/skills/test/SKILL.md: 1f2c2489ea92d39a
-  .agents/harness/run-gates.sh: 8611544210f4de8d
+  .agents/harness/run-gates.sh: a6ea7c65e7d7619e
   .claude/settings.json: 4f351c827a6531f1
 owned:
   .claude/settings.json:

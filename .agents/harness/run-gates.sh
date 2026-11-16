@@ -47,5 +47,6 @@ run() {
 }
 run 'pnpm typecheck'
 run 'pnpm build'
+run 'pnpm test:unit'
 printf 'exit: %s\n' "$code" >>"$log"
 exit "$code"
