@@ -88,3 +88,33 @@ test('the screen language: the account first, else the browser (en… = English,
   assert.equal(languageOf('en'), 'en')
   assert.equal(languageOf('ko'), 'ko')
 })
+
+test('keys built from data exist for every value (categories, kinds, states, tables…)', () => {
+  const families: Record<string, string[]> = {
+    'label.category': ['ai', 'telecom', 'content', 'tool', 'insurance', 'life'],
+    'label.path': ['direct', 'google', 'apple', 'telecom'],
+    'label.status': ['active', 'cancelled', 'company'],
+    'label.cycle': ['monthly', 'yearly'],
+    'label.eventKind': ['bank', 'sub', 'split', 'policy', 'tax', 'card', 'saving', 'income', 'loan', 'invest'],
+    'label.allocDetail': ['living', 'subscriptions', 'fixed', 'remainder'],
+    'label.allocKind': ['living', 'subscriptions', 'fixed', 'remainder'],
+    'payroll.kind': ['living', 'subscriptions', 'fixed', 'remainder'],
+    'timeline.state': ['todo', 'doing', 'done'],
+    'subscriptions.filter': ['all', 'active', 'company', 'cancelled'],
+    'settings.general.units': ['won', 'thousand', 'man'],
+    'settings.general.shifts': ['before', 'after', 'none'],
+    'settings.tabs': ['general', 'theme', 'ai', 'security'],
+    'shell.pages': ['home', 'subs', 'pay', 'events', 'history', 'settings', 'admin', 'dev'],
+    'calendar.kind': ['pay', 'transfer', 'billing', 'sub', 'change', 'holiday'],
+    'history.table': ['settings', 'living', 'subscription', 'plan_change', 'phase', 'plan_event', 'check_item', 'bank_account', 'debt', 'allocation_target', 'phase_amount', 'remainder_split', 'preference', 'holiday_set'],
+    'history.op': ['insert', 'update', 'delete'],
+    'admin.admission': ['seed', 'admin', 'approval', 'rule', 'bootstrap'],
+    'admin.signup': ['closed', 'approval', 'rules'],
+    'settingsTheme.preset': ['green', 'teal', 'blue', 'navy', 'graphite', 'orange', 'amber', 'brick', 'purple'],
+    'settingsTheme.radius': ['sharp', 'base', 'soft'],
+    'settingsTheme.density': ['base', 'compact'],
+    'common.weekday': ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'],
+  }
+  const missing = Object.entries(families).flatMap(([f, ids]) => ids.map((id) => `${f}.${id}`)).filter((k) => !(k in fko))
+  assert.deepEqual(missing, [])
+})
