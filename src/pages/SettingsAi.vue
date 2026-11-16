@@ -2,6 +2,7 @@
 import { computed, onActivated, onDeactivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import { ApiError } from '../lib/api'
+import { lang, t } from '../i18n'
 import { createKey, listKeys, revokeKey, type KeyItem } from '../lib/keys'
 
 // 설정 › AI·연동 (spec 008 S-4): API keys for the read-only MCP endpoint, and how to connect.
@@ -22,7 +23,7 @@ async function load() {
     max.value = r.max
     loaded.value = true
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : '키 목록을 불러오지 못했어요.'
+    error.value = e instanceof ApiError ? e.message : t('settingsAi.loadFailed')
   }
 }
 onMounted(load)
@@ -44,8 +45,8 @@ async function make() {
   const d = draft.value
   if (!d) return
   const name = d.name.trim()
-  if (!name) return (draftError.value = '키 이름을 적어 주세요.')
-  if (name.length > 32) return (draftError.value = '키 이름은 32자까지예요.')
+  if (!name) return (draftError.value = t('settingsAi.needName'))
+  if (name.length > 32) return (draftError.value = t('settingsAi.nameMax'))
   busy.value = true
   draftError.value = ''
   try {
@@ -55,22 +56,22 @@ async function make() {
     draft.value = null
     await load()
   } catch (e) {
-    draftError.value = e instanceof ApiError ? e.message : '키를 만들지 못했어요.'
+    draftError.value = e instanceof ApiError ? e.message : t('settingsAi.createFailed')
   } finally {
     busy.value = false
   }
 }
 
 async function revoke(k: KeyItem) {
-  if (!confirm(`'${k.name}' 키를 폐기할까요? 이 키로 연결한 앱은 바로 연결이 끊겨요.`)) return
+  if (!confirm(t('settingsAi.confirmRevoke', { name: k.name }))) return
   error.value = ''
   busy.value = true
   try {
     await revokeKey(k.id)
-    notice.value = `'${k.name}' 키를 폐기했어요.`
+    notice.value = t('settingsAi.revoked', { name: k.name })
     await load()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : '폐기하지 못했어요.'
+    error.value = e instanceof ApiError ? e.message : t('settingsAi.revokeFailed')
   } finally {
     busy.value = false
   }
@@ -83,80 +84,81 @@ async function copy(text: string, what: string) {
   try {
     await navigator.clipboard.writeText(text)
   } catch {
-    const t = document.createElement('textarea')
-    t.value = text
-    t.setAttribute('readonly', '')
-    t.style.position = 'fixed'
-    t.style.opacity = '0'
-    document.body.appendChild(t)
-    t.select()
+    const box = document.createElement('textarea')
+    box.value = text
+    box.setAttribute('readonly', '')
+    box.style.position = 'fixed'
+    box.style.opacity = '0'
+    document.body.appendChild(box)
+    box.select()
     const ok = document.execCommand('copy')
-    t.remove()
-    if (!ok) return (error.value = '복사하지 못했어요. 직접 선택해서 복사해 주세요.')
+    box.remove()
+    if (!ok) return (error.value = t('settingsAi.copyFailed'))
   }
-  notice.value = `${what}을(를) 복사했어요.`
+  notice.value = t('settingsAi.copied', { what })
 }
 
 // ── how to connect ──
 const url = `${window.location.origin}/api/mcp`
-const command = `claude mcp add --transport http allot ${url} --header "Authorization: Bearer <키>"`
+const command = computed(() => `claude mcp add --transport http allot ${url} --header "Authorization: Bearer ${t('settingsAi.keyPh')}"`)
 
-const when = (at: string | null) => (at ? new Date(at).toLocaleDateString('ko-KR', { dateStyle: 'medium' }) : '')
-const used = (at: string | null) => (at ? new Date(at).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }) : '아직 안 씀')
-const scope = (k: KeyItem) => ((k.permissions.mcp ?? []).includes('write') ? '읽기·쓰기' : '읽기')
+const loc = () => (lang.value === 'en' ? 'en-US' : 'ko-KR')
+const when = (at: string | null) => (at ? new Date(at).toLocaleDateString(loc(), { dateStyle: 'medium' }) : '')
+const used = (at: string | null) => (at ? new Date(at).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }) : t('settingsAi.neverUsed'))
+const scope = (k: KeyItem) => ((k.permissions.mcp ?? []).includes('write') ? t('settingsAi.readWrite') : t('settingsAi.read'))
 </script>
 
 <template>
   <section>
-    <p class="lede">AI 클라이언트(Claude Code 등)가 내 데이터를 읽을 수 있게 API 키를 만들어요. 키는 읽기만 되고, 이 서버의 MCP 주소에서만 쓸 수 있어요.</p>
-    <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
+    <p class="lede">{{ t('settingsAi.lede') }}</p>
+    <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">{{ t('common.close') }}</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
 
-    <div v-if="fresh" class="panel fresh" role="status" aria-label="새 API 키">
-      <h3>'{{ fresh.name }}' 키를 만들었어요</h3>
-      <p class="small">지금만 볼 수 있어요. 이 창을 닫으면 다시 볼 수 없으니 안전한 곳에 복사해 두세요.</p>
+    <div v-if="fresh" class="panel fresh" role="status" :aria-label="t('settingsAi.newKeyTitle')">
+      <h3>{{ t('settingsAi.made', { name: fresh.name }) }}</h3>
+      <p class="small">{{ t('settingsAi.shownOnce') }}</p>
       <div class="keybox">
-        <input class="in mono" readonly :value="fresh.key" aria-label="API 키" @focus="($event.target as HTMLInputElement).select()">
-        <button class="btn pri" type="button" @click="copy(fresh.key, '키')">복사</button>
+        <input class="in mono" readonly :value="fresh.key" :aria-label="t('settingsAi.apiKey')" @focus="($event.target as HTMLInputElement).select()">
+        <button class="btn pri" type="button" @click="copy(fresh.key, t('settingsAi.whatKey'))">{{ t('settingsAi.copy') }}</button>
       </div>
-      <div class="btns"><button class="btn" type="button" @click="fresh = null">닫기</button></div>
+      <div class="btns"><button class="btn" type="button" @click="fresh = null">{{ t('common.close') }}</button></div>
     </div>
 
     <div class="panel">
-      <h3>API 키</h3>
+      <h3>{{ t('settingsAi.apiKey') }}</h3>
       <div class="btns head">
-        <button class="btn pri" type="button" :disabled="full" @click="open()">+ 키 만들기</button>
+        <button class="btn pri" type="button" :disabled="full" @click="open()">{{ t('settingsAi.makeKey') }}</button>
         <span class="small muted">{{ keys.length }} / {{ max }}</span>
       </div>
 
-      <EditSheet v-if="draft" title="새 API 키" :error="draftError" :busy="busy" @save="make" @cancel="draft = null">
-        <div class="field"><label for="k-name">이름 (이 키를 쓰는 곳)</label><input id="k-name" v-model="draft.name" class="in" maxlength="32" autocomplete="off" placeholder="예: 노트북 Claude Code"></div>
-        <div class="field"><label for="k-exp">만료</label>
+      <EditSheet v-if="draft" :title="t('settingsAi.newKeyTitle')" :error="draftError" :busy="busy" @save="make" @cancel="draft = null">
+        <div class="field"><label for="k-name">{{ t('settingsAi.nameLabel') }}</label><input id="k-name" v-model="draft.name" class="in" maxlength="32" autocomplete="off" :placeholder="t('settingsAi.namePh')"></div>
+        <div class="field"><label for="k-exp">{{ t('settingsAi.expiry') }}</label>
           <select id="k-exp" v-model="draft.expires" class="in">
-            <option v-for="d in DAYS" :key="d" :value="String(d)">{{ d }}일 뒤</option>
-            <option v-if="noExpiry" value="none">만료 없음</option>
+            <option v-for="d in DAYS" :key="d" :value="String(d)">{{ t('settingsAi.daysLater', { n: d }) }}</option>
+            <option v-if="noExpiry" value="none">{{ t('settingsAi.noExpiry') }}</option>
           </select>
         </div>
-        <div class="field"><label>범위</label><p class="small" style="margin:0">읽기 전용 — 내 데이터를 읽기만 하고 바꾸지 못해요.</p></div>
+        <div class="field"><label>{{ t('settingsAi.scopeLabel') }}</label><p class="small" style="margin:0">{{ t('settingsAi.readOnly') }}</p></div>
         <template #after>
-          <p v-if="!noExpiry" class="small muted">이 서버는 만료 없는 키를 허용하지 않아요. 키는 최대 365일 쓸 수 있어요.</p>
-          <p class="small muted">만든 뒤 키 값을 한 번만 보여 줘요.</p>
+          <p v-if="!noExpiry" class="small muted">{{ t('settingsAi.noExpiryOff') }}</p>
+          <p class="small muted">{{ t('settingsAi.shownOnceNote') }}</p>
         </template>
       </EditSheet>
 
-      <p v-if="loaded && !keys.length" class="muted empty">아직 만든 키가 없어요.</p>
+      <p v-if="loaded && !keys.length" class="muted empty">{{ t('settingsAi.none') }}</p>
       <div v-else-if="keys.length" class="scroll-x">
         <table class="tbl">
-          <thead><tr><th>이름</th><th>키</th><th>범위</th><th>만든 날</th><th>만료</th><th>마지막 사용</th><th><span class="sr">폐기</span></th></tr></thead>
+          <thead><tr><th>{{ t('settingsAi.colName') }}</th><th>{{ t('settingsAi.colKey') }}</th><th>{{ t('settingsAi.scopeLabel') }}</th><th>{{ t('settingsAi.colCreated') }}</th><th>{{ t('settingsAi.expiry') }}</th><th>{{ t('settingsAi.colLastUsed') }}</th><th><span class="sr">{{ t('settingsAi.revoke') }}</span></th></tr></thead>
           <tbody>
             <tr v-for="k in keys" :key="k.id">
               <td>{{ k.name }}</td>
               <td class="mono">{{ k.start }}…</td>
               <td>{{ scope(k) }}</td>
               <td class="n">{{ when(k.createdAt) }}</td>
-              <td class="n">{{ k.expiresAt ? when(k.expiresAt) : '없음' }}</td>
+              <td class="n">{{ k.expiresAt ? when(k.expiresAt) : t('common.none') }}</td>
               <td class="n">{{ used(k.lastUsedAt) }}</td>
-              <td><button class="btn" type="button" :disabled="busy" :aria-label="`${k.name} 키 폐기`" @click="revoke(k)">폐기</button></td>
+              <td><button class="btn" type="button" :disabled="busy" :aria-label="t('settingsAi.revokeLabel', { name: k.name })" @click="revoke(k)">{{ t('settingsAi.revoke') }}</button></td>
             </tr>
           </tbody>
         </table>
@@ -164,12 +166,12 @@ const scope = (k: KeyItem) => ((k.permissions.mcp ?? []).includes('write') ? '�
     </div>
 
     <div class="panel">
-      <h3>연결 방법</h3>
-      <p class="small">MCP 주소 <span class="mono url">{{ url }}</span> <button class="btn" type="button" @click="copy(url, '주소')">복사</button></p>
-      <p class="small">Claude Code에서는 이렇게 추가해요. <span class="mono">&lt;키&gt;</span> 자리에 위에서 만든 키를 넣어요.</p>
-      <div class="cmd"><code class="mono">{{ command }}</code><button class="btn" type="button" @click="copy(command, '명령')">복사</button></div>
-      <p class="small muted">키는 이 주소에서만 통하고 다른 API에는 쓸 수 없어요. 폐기하면 바로 쓸 수 없게 돼요.</p>
-      <p class="small muted">claude.ai의 원격 커넥터와 휴대폰 앱은 OAuth 로그인이 필요해서 0.1.10에서 지원할 예정이에요.</p>
+      <h3>{{ t('settingsAi.connect') }}</h3>
+      <p class="small">{{ t('settingsAi.mcpUrl') }} <span class="mono url">{{ url }}</span> <button class="btn" type="button" @click="copy(url, t('settingsAi.whatUrl'))">{{ t('settingsAi.copy') }}</button></p>
+      <i18n-t keypath="settingsAi.addHow" tag="p" class="small"><template #ph><span class="mono">{{ t('settingsAi.keyPh') }}</span></template></i18n-t>
+      <div class="cmd"><code class="mono">{{ command }}</code><button class="btn" type="button" @click="copy(command, t('settingsAi.whatCommand'))">{{ t('settingsAi.copy') }}</button></div>
+      <p class="small muted">{{ t('settingsAi.keyScope') }}</p>
+      <p class="small muted">{{ t('settingsAi.later') }}</p>
     </div>
   </section>
 </template>
