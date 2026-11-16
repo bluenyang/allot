@@ -132,7 +132,7 @@ summary_for_user: |
   - E2E `tests/e2e/i18n.spec.ts`: 설정 › 일반에서 English → 사이드바·페이지 제목이 영어, `html[lang=en]`, 새로고침 뒤에도 영어(서버 저장). 로그아웃 → 로그인 화면이 English. 새 브라우저 문맥 `locale: 'en-US'` → 로그인 화면 English, `ko-KR` → 한국어. English 상태에서 잘못된 입력 저장 → 서버 오류 문구가 영어. 금액 단위 세 가지의 영어 표기.
 - V-9 기존 동작: 0.1.2의 E2E 전부(`pnpm e2e`)와 `tests/api/*.mjs`가 통과(기본 한국어, 문구 그대로). `/api/state` 응답이 W-3 전후로 같다(시드 계정, JSON 비교).
 - V-10 실제 클라이언트: dev 스택에서 Claude Code로 `claude mcp add --transport http allot http://<host>:15173/api/mcp --header "Authorization: Bearer <키>"` → 도구 목록 6개, `get_overview` 호출 결과를 적는다(값은 적지 않고 성공 여부와 필드 이름만). 이 기기에서 `claude` CLI를 쓸 수 없으면 rc 서버에서 사용자가 한다고 적는다.
-- V-11 rc 테스트 서버: rc 이미지를 `allot-rc`(:13000)로 올려 마이그레이션 적용, 테스트 계정으로 키 만들기 → MCP `tools/list`·`get_overview` 성공, 언어 English 전환 확인.
+- V-11 rc 테스트 서버: rc 이미지를 `allot-rc`(:13000 → 2026-11-16부터 :15174, A-20)로 올려 마이그레이션 적용, 테스트 계정으로 키 만들기 → MCP `tools/list`·`get_overview` 성공, 언어 English 전환 확인.
 
 ## 조정 기록
 - A-1 (2026-11-16, W-1) 플러그인 `keyExpiration.defaultExpiresIn`을 두지 않고, 만료 기본값 90일은 `POST /api/keys`가 정한다 · 플러그인은 `expiresIn: null`을 `defaultExpiresIn`으로 바꿔 "만료 없음"을 만들 수 없다(`expiresIn ? … : defaultExpiresIn ? … : null`). 최소 1일·최대 365일은 플러그인 설정 그대로 · 62f819f
@@ -154,6 +154,7 @@ summary_for_user: |
 - A-17 (2026-11-16, W-3) 키별 요청 제한(RATE_LIMITED)에 걸렸을 때도 키의 소유자(저장된 해시로 조회, 사용 횟수는 올리지 않음)가 쓸 수 있는 계정(active, 차단 아님)일 때만 429를 주고, 아니면 공통 401(실패 횟수도 센다) · 코드 검토 3: 플러그인은 제한을 마지막에 검사하므로 제한에 걸린 키는 그 밖에는 유효하다. 그래도 차단·승인 대기 계정이 429로 키의 존재를 알 수 있었다 · 1997764
 - A-18 (2026-11-16, W-6) 메시지 키 없이 던져진 zod 이슈는 `issue.code`로 일반 문구를 고른다(`invalid_type`, `too_small`, `too_big`, `invalid_value`, `invalid_format`, `unrecognized_keys`, `custom` 등 → ko·en 6개 키 추가). 명시한 키는 그대로이고, 키가 아니던 `YYYY-MM-DD`·`YYYY-MM` 두 문구는 키(`dateFormat`, `monthFormat`)로 바꿨다 · 코드 검토 4: `{ expiresInDays: "90" }` 같은 형식 오류가 한국어 요청에도 zod의 영어로 나갔다 · d6e0372
 - A-19 (2026-11-16, V-9) tests/api/mobile.mjs가 앱 요청을 Fetch Metadata 헤더 없이 보낸다 · Node fetch가 sec-fetch-mode: cors를 붙여 Better Auth가 Origin을 요구 — 네이티브 앱은 이 헤더를 보내지 않는다. master에서도 같은 실패. 기대 결과는 그대로, 헤더가 있으면 403인 검사를 더함 · 8bafdfb
+- A-20 (2026-11-16, V-11) 테스트 서버 포트를 13000에서 15174로 · 사용자 "앞으로 테스트용은 13000번 내리고 15174번으로 테스트해." V-11은 :15174에서 다시 실행(release/rc1-server-15174b.log, stable-server.log) · 회고 0.1.3 커밋
 
 ## 우려
 - 플러그인의 클라이언트 경로 목록이 버전마다 다를 수 있다 — 닫을 때 경로를 하나씩 적지 않고 `/api-key/` 접두로 막고, V-2에서 `/api/auth/api-key/create`·`list`·`delete`·`update`가 막힌 것을 확인한다.

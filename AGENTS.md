@@ -25,7 +25,7 @@ Allot — a self-hosted web app for personal money management: splitting the mon
 - Build scripts are denied unless set to `true` under `allowBuilds` in `pnpm-workspace.yaml`; add a package there only when it needs one.
 - pnpm's `minimumReleaseAge` rejects versions published less than a day ago. Pick the newest version that passes; never add `minimumReleaseAgeExclude` entries to get around it. `minimumReleaseAgeStrict: true` makes `pnpm add` fail instead of adding them silently.
 - **Development and every local test server run in Docker with `docker/compose.dev.yaml`** (values in `docker/.env.dev`: test values copied from `.env.example`, gitignored): `docker compose -f docker/compose.dev.yaml up -d --build -V --wait`, open `http://<host>:15173` (LAN). Only 15173 is published; api and db stay on the compose network. Rebuild with `-V` after dependency changes.
-- Release test server (user, 2026-11-11: "테스트 서버는 계속 올려두고, rc나 stable 때 검증도 할 겸 올려."): after each rc or stable, the released image runs as container `allot-rc` on the dev compose network, published on port 13000, read-only, with its own database `allot_rc` (non-superuser role) and a seeded test account. It is the one local server outside `docker/compose.dev.yaml`.
+- Release test server (user, 2026-11-11: "테스트 서버는 계속 올려두고, rc나 stable 때 검증도 할 겸 올려."): after each rc or stable, the released image runs as container `allot-rc` on the dev compose network, published on port 15174 (user, 2026-11-16: "앞으로 테스트용은 13000번 내리고 15174번으로 테스트해."), read-only, with its own database `allot_rc` (non-superuser role) and a seeded test account. It is the one local server outside `docker/compose.dev.yaml`.
 - `docker/compose.yaml` is the production example (released image, Traefik) and uses `docker/.env`, the user's real values: never create or read that file, and never start `compose.yaml` locally.
 
 | Command | What |
@@ -51,7 +51,7 @@ Gates (`.agents/harness/gates.yaml`, order: typecheck → build → test; e2e is
 - Default branch: **`master`** (there is no `main`). Work on `type/topic` branches and merge into `master`; never commit to `master` directly.
 - Merges go through a **GitHub PR** on origin (user, 2026-11-10: "GitHub PR로"); when to push, open a PR and merge follows the flow section below. There is no CI yet: put the local gate output (typecheck, build, unit tests) and the test summary in the PR body.
 - The gates in `gates.yaml` are the same for every role.
-- Commit messages: `<type>: <summary>` (e.g. `init:`, `chore:`, `feat:`, `fix:`), English.
+- Commit messages: `<type>: <summary>` (e.g. `init:`, `chore:`, `feat:`, `fix:`), English. PR titles and bodies are English too (user, 2026-11-17: "커밋과 PR은 영어를 선호함").
 - Pure calculation goes in `src/lib/calc.ts`; types in `src/data/types.ts`; pages in `src/pages/`, shared UI in `src/components/`.
 - Every change goes to the API first; the store takes the server's answer (`src/lib/store.ts`). New list editors use `EditSheet` + `useEditor`.
 - API bodies are validated with zod in `server/validation.ts`; schema changes go through `pnpm db:generate`, never hand-written SQL. A data move that the schema diff cannot express goes in a `drizzle-kit generate --custom` migration.
@@ -62,6 +62,7 @@ Gates (`.agents/harness/gates.yaml`, order: typecheck → build → test; e2e is
 - Do not touch Syncthing files: `.stfolder/`, `.stignore`.
 - Secret files (`.env*`, keys, certificates — see `.claude/settings.json` deny rules and `common-red-lines.yaml` C4) are never read or edited.
   - One exception, given by the user on 2026-11-10 (".env 는 그냥 복사해서 네가 테스트용으로만 써라"): `docker/.env.dev`, which the agent creates from `docker/.env.example` with random test values and uses only with `docker/compose.dev.yaml`. It never applies to `docker/.env` or any other env file.
+  - A second exception, given by the user on 2026-11-17 ("b, 예외 허락"): `.loctx/rc/allot-rc.secrets` (mode 600, gitignored with `.loctx/`), which the PM creates with random test values for the release test server — its database password, auth secret, master key and the test account — and uses only to start `allot-rc`. It keeps the test server's database across versions; the test account's password goes to the user in the chat. It never applies to `docker/.env` or any other env file.
   - A command that loads an env file reads it: `docker compose` with an `env_file:` (`up`, `run`, and `config` without `--no-env-resolution`), `source`/`.`, `dotenv`, `direnv`, `cat`/`grep` on it. Locally only `docker/compose.dev.yaml` runs; compose files are checked with `--env-file docker/.env.example config --no-env-resolution`; output that could hold env values is never written to a file before it is checked (user, 2026-11-11, after audit 0.1.1 A-1). `scripts/guard-env.mjs` is the PreToolUse hook that enforces this (on, in `.claude/settings.json`).
 
 <!-- reins:begin notice v=0.3.0 -->

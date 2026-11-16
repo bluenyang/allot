@@ -1,7 +1,7 @@
 ---
 id: 2026-11-16_review-before-pr-even-when-told
 kind: decision
-status: active
+status: superseded
 supersedes: 2026-11-12_review-after-review-commits
 topics: [review, merge]
 decisions: [late-commits-get-reviewed]
