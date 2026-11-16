@@ -80,9 +80,11 @@ const REPO = 'https://github.com/bluenyang/allot'
 // ── Sidebar width and folding (spec 007 S-20): drag or arrow keys on the edge, double-click for the default.
 const side = ref<HTMLElement | null>(null)
 let dragging = false
+let grab = 0 // where on the handle it was grabbed, so the edge does not jump to the pointer
 const resizing = ref(false)
 const onGripDown = (e: PointerEvent) => {
-  if (e.button !== 0) return
+  if (e.button !== 0 || !side.value) return
+  grab = sideWidth.value - (e.clientX - side.value.getBoundingClientRect().left)
   dragging = true
   resizing.value = true
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -90,7 +92,7 @@ const onGripDown = (e: PointerEvent) => {
 }
 const onGripMove = (e: PointerEvent) => {
   if (!dragging || !side.value) return
-  setSideWidth(e.clientX - side.value.getBoundingClientRect().left, false)
+  setSideWidth(e.clientX - side.value.getBoundingClientRect().left + grab, false)
 }
 const onGripUp = () => {
   if (!dragging) return
@@ -139,10 +141,11 @@ const onGripKey = (e: KeyboardEvent) => {
         </div>
         <button v-else class="logout" type="button" @click="logout">로그아웃</button>
       </div>
-      <div v-if="!sideFolded" class="grip" role="separator" aria-orientation="vertical" aria-label="사이드바 너비" aria-controls="side" tabindex="0"
-        :aria-valuemin="SIDE.min" :aria-valuemax="SIDE.max" :aria-valuenow="sideWidth" title="끌어서 너비 조정 · 두 번 클릭하면 기본 너비"
-        @pointerdown="onGripDown" @pointermove="onGripMove" @pointerup="onGripUp" @pointercancel="onGripUp" @lostpointercapture="onGripUp" @keydown="onGripKey" @dblclick="setSideWidth(SIDE.default)"></div>
     </aside>
+    <!-- On the sidebar's border line, outside its scroll box so the knob can straddle it (S-20) -->
+    <div v-if="!sideFolded" class="grip" role="separator" aria-orientation="vertical" aria-label="사이드바 너비" aria-controls="side" tabindex="0"
+      :aria-valuemin="SIDE.min" :aria-valuemax="SIDE.max" :aria-valuenow="sideWidth" title="끌어서 너비 조정 · 두 번 클릭하면 기본 너비"
+      @pointerdown="onGripDown" @pointermove="onGripMove" @pointerup="onGripUp" @pointercancel="onGripUp" @lostpointercapture="onGripUp" @keydown="onGripKey" @dblclick="setSideWidth(SIDE.default)"><span class="knob" aria-hidden="true"></span></div>
 
     <div class="col">
       <header class="topbar">
@@ -209,10 +212,16 @@ const onGripKey = (e: KeyboardEvent) => {
 /* Sidebar width and folding (spec 007 S-20) */
 .brand .fold{margin-left:auto;width:30px;height:30px;color:var(--muted);flex:none}
 .brand .fold svg{width:18px;height:18px}
-.grip{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;touch-action:none;z-index:5}
-.grip::after{content:"";position:absolute;top:0;bottom:0;right:0;width:2px;background:transparent;transition:background .15s}
-.grip:hover::after,.grip:focus-visible::after,.app.resizing .grip::after{background:var(--primary-text)}
-.grip:focus-visible{outline:none}
+.grip{display:none}
+@media (min-width:761px){
+  .grip{display:block;position:fixed;top:0;bottom:0;left:calc(var(--side-w) - 5px);width:10px;cursor:col-resize;touch-action:none;z-index:35}
+  .grip::after{content:"";position:absolute;top:0;bottom:0;left:4px;width:2px;background:transparent;transition:background .15s}
+  /* the knob: shows the edge can be dragged (the user, after rc.2) */
+  .knob{position:absolute;top:50%;left:50%;width:10px;height:44px;transform:translate(-50%,-50%);border-radius:5px;border:1px solid var(--border-strong);background:linear-gradient(var(--subtle),var(--subtle)) center/2px 18px no-repeat,var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.08);transition:border-color .15s,background .15s;z-index:1}
+  .grip:hover::after,.grip:focus-visible::after,.app.resizing .grip::after{background:var(--primary-text)}
+  .grip:hover .knob,.grip:focus-visible .knob,.app.resizing .knob{border-color:var(--primary-text);background:linear-gradient(var(--primary-text),var(--primary-text)) center/2px 18px no-repeat,var(--surface)}
+  .grip:focus-visible{outline:none}
+}
 :global(body.resizing){cursor:col-resize;user-select:none}
 .folded .bn,.folded .glabel,.folded .ncount,.folded .wn{display:none}
 .folded .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
