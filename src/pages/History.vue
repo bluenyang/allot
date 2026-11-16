@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lang, t, te, type MessageKey } from '../i18n'
 import PageHeader from '../components/PageHeader.vue'
 import { fmtDate } from '../lib/display'
 import { onActivated, onMounted, ref } from 'vue'
@@ -27,13 +28,8 @@ interface ChangeSet {
   changes: Change[]
 }
 
-const TABLE: Record<string, string> = {
-  settings: '설정', living: '생활비', subscription: '구독', plan_change: '요금 변경', phase: '구간',
-  plan_event: '일정', check_item: '체크리스트', bank_account: '통장', debt: '부채',
-  allocation_target: '분배 대상', phase_amount: '구간 금액', remainder_split: '나머지 배분',
-  preference: '표시 설정', holiday_set: '공휴일 세트',
-}
-const OP = { insert: '추가', update: '수정', delete: '삭제' } as const
+const tableName = (name: string) => { const k = `history.table.${name}`; return te(k) ? t(k as MessageKey) : name }
+const OP = { insert: 'insert', update: 'update', delete: 'delete' } as const
 const HIDDEN = new Set(['userId', 'seq', 'id'])
 
 const sets = ref<ChangeSet[]>([])
@@ -54,7 +50,7 @@ async function load(reset = true) {
     sets.value = reset ? page : [...sets.value, ...page]
     more.value = page.length === PAGE
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : '변경 내역을 불러오지 못했어요.'
+    error.value = e instanceof ApiError ? e.message : t('history.loadFailed')
   } finally {
     busy.value = false
   }
@@ -63,7 +59,7 @@ onMounted(() => load())
 onActivated(() => load())
 
 // The date follows the display settings (spec 007 S-8, review 1 R10); the time is added after it.
-const fmt = (at: string) => { const d = new Date(at); return `${fmtDate(d)} ${d.toLocaleTimeString('ko-KR', { timeStyle: 'short' })}` }
+const fmt = (at: string) => { const d = new Date(at); return `${fmtDate(d)} ${d.toLocaleTimeString(lang.value === 'en' ? 'en-US' : 'ko-KR', { timeStyle: 'short' })}` }
 /** A subscription's name, also when it has been deleted since (taken from the loaded history). */
 const subLabel = (id: string) => {
   if (store.subscriptions.some((x) => x.id === id)) return subName(id)
@@ -71,7 +67,7 @@ const subLabel = (id: string) => {
     const r = ch.tableName === 'subscription' && ch.rowKey.id === id ? ch.after ?? ch.before : null
     if (typeof r?.name === 'string') return r.name
   }
-  return '삭제된 구독'
+  return t('history.deletedSub')
 }
 const targetName = (id: string) => store.targets.find((x) => x.id === id)?.name ?? id
 const phaseName = (id: string) => { const p = store.phases.find((x) => x.id === id); return p ? `${p.label} ${p.name}` : id }
@@ -83,12 +79,12 @@ const label = (c: Change) => {
   return typeof name === 'string' && name ? name : Object.values(c.rowKey).join(' · ')
 }
 // Single-row tables (settings, preferences) have no name: no trailing separator (spec 007 V-9 b).
-const title = (c: Change) => { const l = label(c); return `${TABLE[c.tableName] ?? c.tableName} ${OP[c.op]}${l ? ` · ${l}` : ''}` }
+const title = (c: Change) => { const l = label(c); return `${tableName(c.tableName)} ${t(`history.op.${OP[c.op]}`)}${l ? ` · ${l}` : ''}` }
 const summary = (s: ChangeSet) => {
   const first = s.changes[0]
-  if (!first) return '변경 없음'
+  if (!first) return t('history.noChange')
   const head = title(first)
-  return s.changes.length > 1 ? `${head} 외 ${s.changes.length - 1}건` : head
+  return s.changes.length > 1 ? t('history.andMore', { head, n: s.changes.length - 1 }) : head
 }
 /** Fields that differ (update), or every visible field (insert / delete). */
 const fields = (c: Change) => {
@@ -100,17 +96,17 @@ const fields = (c: Change) => {
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
 
 async function revert(s: ChangeSet) {
-  if (!confirm(`이 변경을 되돌릴까요?\n${summary(s)}\n\n되돌린 내용도 새 변경으로 남아요.`)) return
+  if (!confirm(t('history.confirmRevert', { summary: summary(s) }))) return
   busy.value = true
   error.value = ''
   notice.value = ''
   try {
     await api('POST', `/api/changes/${s.id}/revert`)
-    notice.value = '되돌렸어요.'
+    notice.value = t('history.reverted')
     await loadState() // the screens show what the server holds now
     await load()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : '되돌리지 못했어요.'
+    error.value = e instanceof ApiError ? e.message : t('history.revertFailed')
   } finally {
     busy.value = false
   }
@@ -119,21 +115,21 @@ async function revert(s: ChangeSet) {
 
 <template>
   <section>
-    <PageHeader title="변경 내역" desc="저장 한 번이 변경 하나로 남아요. 되돌리면 반대 변경이 새로 저장돼요. 그 뒤에 같은 항목이 다시 바뀌었으면 되돌릴 수 없어요." />
-    <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">닫기</button></p>
+    <PageHeader :title="t('history.title')" :desc="t('history.desc')" />
+    <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">{{ t('common.close') }}</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
 
     <div class="panel">
-      <ul class="list" aria-label="변경 목록">
+      <ul class="list" :aria-label="t('history.listLabel')">
         <li v-for="s in sets" :key="s.id" class="chg" :data-set="s.id">
           <button type="button" class="ev-t" :aria-expanded="open === s.id" @click="open = open === s.id ? null : s.id">
-            <span v-if="s.revertOf" class="pill mute">되돌림</span>
+            <span v-if="s.revertOf" class="pill mute">{{ t('history.revertOf') }}</span>
             <span v-if="s.actorKind === 'api_key'" class="pill mute">AI</span>
             {{ summary(s) }}
             <span class="at mono small muted">{{ fmt(s.at) }}</span>
           </button>
-          <span v-if="s.revertedBy" class="pill mute">되돌려짐</span>
-          <button v-else type="button" class="btn" :disabled="busy" @click="revert(s)">되돌리기</button>
+          <span v-if="s.revertedBy" class="pill mute">{{ t('history.revertedBy') }}</span>
+          <button v-else type="button" class="btn" :disabled="busy" @click="revert(s)">{{ t('history.revertBtn') }}</button>
           <div v-if="open === s.id" class="chg-body">
             <div v-for="c in s.changes" :key="c.id" class="chg-row">
               <b class="small">{{ title(c) }}</b>
@@ -151,8 +147,8 @@ async function revert(s: ChangeSet) {
           </div>
         </li>
       </ul>
-      <p v-if="!sets.length && !busy" class="empty">아직 변경이 없어요.</p>
-      <div v-if="more && sets.length" class="btns" style="margin-top:12px"><button class="btn" type="button" :disabled="busy" @click="load(false)">더 보기</button></div>
+      <p v-if="!sets.length && !busy" class="empty">{{ t('history.empty') }}</p>
+      <div v-if="more && sets.length" class="btns" style="margin-top:12px"><button class="btn" type="button" :disabled="busy" @click="load(false)">{{ t('history.more') }}</button></div>
     </div>
   </section>
 </template>

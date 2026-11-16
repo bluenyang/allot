@@ -75,6 +75,9 @@ type Vars = Record<string, string | number>
 /** A message in the current language; `{name}` is replaced from `vars`. */
 export const t = (key: MessageKey, vars?: Vars): string => (vars ? i18n.global.t(key, vars) : i18n.global.t(key))
 
+/** Does this message key exist (for keys built from data, e.g. a table name)? */
+export const te = (key: string): boolean => i18n.global.te(key)
+
 /** A message in a given language (for the pure formatters, which take the language as an argument). */
 export const tl = (l: Lang, key: MessageKey, vars?: Vars): string => i18n.global.t(key, vars ?? {}, { locale: l })
 
