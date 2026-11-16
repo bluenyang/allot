@@ -11,6 +11,13 @@ approvals:
     words: "승인"
     rev: 4124ab6
     note: "같은 메시지: \"1. 그럽시다.\" (0.1.10에 MCP용 OAuth) \"2. 바로 다음이네. 오케이 이해했어.\""
+  - role: user
+    kind: release
+    by: BlueNyang
+    at: "2026-11-17"
+    words: "stable로 하자. 허용되지 않은 주소는 tmi 같음. 혹시나 모를 보안취약점이 있을 수 있으니 less-info가 맞는거 같음."
+    rev: fc4d3bb
+    note: "0.1.3 정식 릴리스 지시(rc.1 = fc4d3bb, 테스트 서버 :15174에서 사용자 확인). 출처 거절 문구는 바꾸지 않는다(정보를 적게 주는 쪽)."
 waivers: []
 supersedes: null
 ---

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-11-17
+
+Same code as 0.1.3-rc.1, checked on the test server.
+
 ## 0.1.3-rc.1 — 2026-11-16
 
 Read-only MCP endpoint, API keys, and a Korean/English interface. Intent 008 (`.agents/intent/008_mcp-read-language/`).
