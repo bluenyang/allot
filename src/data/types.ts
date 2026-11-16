@@ -56,6 +56,8 @@ export interface Preferences {
   dateFormat: 'iso' | 'dot' | 'us'
   amountUnit: 'won' | 'thousand' | 'man'
   negative: 'minus' | 'paren' | 'red'
+  /** Screen and message language (spec 008 S-9); null follows the browser. */
+  language: 'ko' | 'en' | null
 }
 
 /**

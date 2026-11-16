@@ -13,12 +13,13 @@ import { and, count, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from './db/client'
 import * as a from './db/auth-schema'
 import { oidcAccountKey } from './providers'
+import { langOfCtx, text, type Lang, type MsgKey } from './messages'
 
 // set-role and ban-user live in server/admin-routes.ts, where the last-admin check and the change
 // share one locked transaction (review 1, R3).
 export const ADMIN_CLOSED_PATHS = ['/admin/impersonate-user', '/admin/stop-impersonating', '/admin/remove-user', '/admin/set-role', '/admin/ban-user']
 
-const bad = (code: string, message: string) => APIError.from('BAD_REQUEST', { code, message })
+const bad = (code: string, key: MsgKey, lang: Lang) => APIError.from('BAD_REQUEST', { code, message: text(lang, key) })
 
 type Ctx = { path: string; body?: unknown; context: unknown; headers?: Headers; request?: Request }
 const bodyOf = (ctx: Ctx) => (ctx.body ?? {}) as Record<string, unknown>
@@ -28,6 +29,7 @@ export async function guardAdminPath(ctx: Ctx) {
   if (!ctx.path.startsWith('/admin/')) return
   if (ADMIN_CLOSED_PATHS.includes(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
   const b = bodyOf(ctx)
+  const lang = langOfCtx(ctx)
   const me = (await getSessionFromCtx(ctx as never).catch(() => null))?.user.id
   // Not an admin: the plugin refuses with 403; checking anything first would tell them about the target.
   if (!me || !(await isActiveAdmin(me))) return
@@ -35,14 +37,14 @@ export async function guardAdminPath(ctx: Ctx) {
     case '/admin/update-user': {
       const data = (b.data ?? {}) as Record<string, unknown>
       const keys = Object.keys(data)
-      if (!keys.length || keys.some((k) => k !== 'name' && k !== 'status')) throw bad('FIELD_NOT_ALLOWED', '이름과 승인만 바꿀 수 있어요.')
-      if ('status' in data && data.status !== 'active') throw bad('FIELD_NOT_ALLOWED', '승인(활성)으로만 바꿀 수 있어요.')
-      if ('name' in data && (typeof data.name !== 'string' || !data.name.trim() || data.name.length > 100)) throw bad('BAD_NAME', '이름을 확인해 주세요.')
+      if (!keys.length || keys.some((k) => k !== 'name' && k !== 'status')) throw bad('FIELD_NOT_ALLOWED', 'adminFieldsOnly', lang)
+      if ('status' in data && data.status !== 'active') throw bad('FIELD_NOT_ALLOWED', 'adminStatusOnly', lang)
+      if ('name' in data && (typeof data.name !== 'string' || !data.name.trim() || data.name.length > 100)) throw bad('BAD_NAME', 'badName', lang)
       break
     }
     case '/admin/create-user': {
-      if (b.data !== undefined) throw bad('FIELD_NOT_ALLOWED', '추가 필드는 받을 수 없어요.')
-      if (b.role !== undefined && b.role !== 'admin' && b.role !== 'user') throw bad('BAD_ROLE', "역할은 'admin' 또는 'user'예요.")
+      if (b.data !== undefined) throw bad('FIELD_NOT_ALLOWED', 'extraFields', lang)
+      if (b.role !== undefined && b.role !== 'admin' && b.role !== 'user') throw bad('BAD_ROLE', 'badRole', lang)
       break
     }
   }

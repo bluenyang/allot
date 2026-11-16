@@ -29,36 +29,40 @@ const gregorianBody = (r: Map<string, string>) => [...r].filter(([k]) => k !== '
 const DTSTART = 'DTSTART;VALUE=DATE:19000101'
 const DANGI_KEYS = new Set(['FREQ', 'RSCALE', 'BYMONTH', 'BYMONTHDAY'])
 
+/** Why a rule is refused: a code (the messages `rule.<code>` / `rule_<code>`) and its values, so each language words it. */
+export interface RuleProblem { code: string; vars?: Record<string, string> }
+const bad = (code: string, vars?: Record<string, string>): RuleProblem => ({ code, vars })
+
 /** Why this RRULE body cannot be a holiday rule, or null when it can. */
-export function ruleProblem(rrule: string): string | null {
-  if (rrule.length > 200) return '규칙이 너무 길어요.'
+export function ruleProblem(rrule: string): RuleProblem | null {
+  if (rrule.length > 200) return bad('tooLong')
   const r = parseRule(rrule)
-  if (r.get('FREQ') !== 'YEARLY') return '공휴일 규칙은 FREQ=YEARLY만 쓸 수 있어요.'
+  if (r.get('FREQ') !== 'YEARLY') return bad('freq')
   const scale = r.get('RSCALE') ?? 'GREGORIAN'
   if (scale === 'DANGI') {
-    for (const k of r.keys()) if (!DANGI_KEYS.has(k)) return `음력 규칙(RSCALE=DANGI)에는 ${k}를 쓸 수 없어요.`
+    for (const k of r.keys()) if (!DANGI_KEYS.has(k)) return bad('dangiKey', { key: k })
     const m = r.get('BYMONTH') ?? ''
     const d = r.get('BYMONTHDAY') ?? ''
-    if (!/^\d{1,2}$/.test(m) || +m < 1 || +m > 12) return '음력 규칙의 BYMONTH는 1~12 하나예요(윤달은 쓸 수 없어요).'
-    if (!DAY.test(d) || +d === 0 || +d > 30 || +d < -2) return '음력 규칙의 BYMONTHDAY는 1~30 또는 -1, -2 하나예요.'
+    if (!/^\d{1,2}$/.test(m) || +m < 1 || +m > 12) return bad('dangiMonth')
+    if (!DAY.test(d) || +d === 0 || +d > 30 || +d < -2) return bad('dangiDay')
     return null
   }
-  if (scale !== 'GREGORIAN') return `RSCALE=${scale}는 쓸 수 없어요. 양력은 생략, 음력은 DANGI예요.`
-  for (const k of r.keys()) if (!GREGORIAN_KEYS.has(k)) return `규칙에 ${k}를 쓸 수 없어요.`
+  if (scale !== 'GREGORIAN') return bad('rscale', { scale })
+  for (const k of r.keys()) if (!GREGORIAN_KEYS.has(k)) return bad('key', { key: k })
   // The library accepts some out-of-range values silently (BYMONTH=13 gives no date): check them here.
   const list = (k: string) => (r.get(k) ?? '').split(',').filter(Boolean)
   const intIn = (v: string, lo: number, hi: number) => /^[+-]?\d+$/.test(v) && +v !== 0 && Math.abs(+v) >= lo && Math.abs(+v) <= hi
-  if (!list('BYMONTH').length) return '양력 규칙에는 BYMONTH(1~12)가 있어야 해요.'
-  if (list('BYMONTH').some((v) => !/^\d+$/.test(v) || +v < 1 || +v > 12)) return 'BYMONTH는 1~12예요.'
-  if (list('BYMONTHDAY').some((v) => !intIn(v, 1, 31))) return 'BYMONTHDAY는 1~31 또는 -1~-31이에요.'
-  if (list('BYDAY').some((v) => !/^([+-]?[1-5])?(MO|TU|WE|TH|FR|SA|SU)$/.test(v))) return 'BYDAY는 MO~SU, 몇째 주는 1MO·-1FR처럼 써요.'
-  if (list('BYSETPOS').some((v) => !intIn(v, 1, 366))) return 'BYSETPOS 값이 범위를 벗어났어요.'
+  if (!list('BYMONTH').length) return bad('needMonth')
+  if (list('BYMONTH').some((v) => !/^\d+$/.test(v) || +v < 1 || +v > 12)) return bad('month')
+  if (list('BYMONTHDAY').some((v) => !intIn(v, 1, 31))) return bad('monthday')
+  if (list('BYDAY').some((v) => !/^([+-]?[1-5])?(MO|TU|WE|TH|FR|SA|SU)$/.test(v))) return bad('byday')
+  if (list('BYSETPOS').some((v) => !intIn(v, 1, 366))) return bad('setpos')
   try {
     const rule = new RRuleTemporal({ rruleString: `${DTSTART}\nRRULE:${gregorianBody(r)}` })
     // 2000 is a leap year, so 2/29 rules count.
-    if (!rule.between(new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2003, 11, 31)), true).length) return '이 규칙으로는 날짜가 나오지 않아요.'
+    if (!rule.between(new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2003, 11, 31)), true).length) return bad('noDates')
   } catch (e) {
-    return `규칙을 읽지 못했어요: ${(e as Error).message}`
+    return bad('parse', { reason: (e as Error).message })
   }
   return null
 }

@@ -63,6 +63,8 @@ export const preference = pgTable('preference', {
   dateFormat: text('date_format').$type<'iso' | 'dot' | 'us'>().notNull().default('iso'),
   amountUnit: text('amount_unit').$type<'won' | 'thousand' | 'man'>().notNull().default('won'),
   negative: text('negative').$type<'minus' | 'paren' | 'red'>().notNull().default('minus'),
+  // Screen and message language (spec 008 S-9); null = follow the browser.
+  language: text('language').$type<'ko' | 'en'>(),
 }, (t) => [userScoped(t.userId)])
 
 /**

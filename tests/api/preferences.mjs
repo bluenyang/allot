@@ -37,7 +37,7 @@ ok(!!prefs0 && Array.isArray(before.holidaySets) && 'dayShift' in settings0, '/a
 const made = []
 try {
   // (a) PUT → state, and the rules refuse bad input without touching the row
-  const want = { themeMode: 'dark', primary: '#1f5f8b', accent: '#7A5AB8', radius: 'sharp', density: 'compact', dateFormat: 'dot', amountUnit: 'man', negative: 'paren' }
+  const want = { themeMode: 'dark', primary: '#1f5f8b', accent: '#7A5AB8', radius: 'sharp', density: 'compact', dateFormat: 'dot', amountUnit: 'man', negative: 'paren', language: 'en' }
   const put = await A('PUT', '/api/preferences', want)
   ok(put.status === 200 && put.json.primary === '#1F5F8B', `PUT /api/preferences → ${put.status}, colour stored upper-case (${put.json?.primary})`)
   const read = (await A('GET', '/api/state')).json.preferences
@@ -48,6 +48,7 @@ try {
     ['unknown unit', { ...want, amountUnit: 'billion' }],
     ['extra key', { ...want, font: 'x' }],
     ['missing key', { ...want, negative: undefined }],
+    ['unknown language', { ...want, language: 'fr' }],
   ]) {
     const r = await A('PUT', '/api/preferences', bad)
     ok(r.status === 400, `${why} → ${r.status} (want 400)`)

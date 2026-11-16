@@ -17,6 +17,7 @@ import { ADMIN_CLOSED_PATHS, adminCanSignInWithout, afterAdminPath, guardAdminPa
 import { EXTERNAL, loadAuthConfig, usable, type AuthConfig, type ProviderId } from './auth-config'
 import { APP_RETURN_URLS } from './app-login'
 import { afterNewUser, makeValidateUserInfo, newUserFields, refusePending } from './auth-policy'
+import { m, MsgError, text, langOfCtx } from './messages'
 import { fetchDiscovery, oidcProviders, socialProviders, type Discovery } from './providers'
 import { dropTokenUpdates, sealNewAccountTokens } from './token-crypto'
 import { db } from './db/client'
@@ -181,10 +182,10 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
         if (!m) return
         // Code flow only: a client-supplied ID token is never a way in.
         if (ctx.path === '/sign-in/social' && (ctx.body as { idToken?: unknown } | undefined)?.idToken) {
-          throw deny('ID_TOKEN_SIGN_IN_DISABLED', '이 방식으로는 로그인할 수 없어요.')
+          throw deny('ID_TOKEN_SIGN_IN_DISABLED', text(langOfCtx(ctx), 'idTokenDisabled'))
         }
         const latest = currentConfig ?? cfg
-        if (m === 'unknown' || !usable(latest, m)) throw deny('METHOD_DISABLED', '사용할 수 없는 로그인 방식이에요.')
+        if (m === 'unknown' || !usable(latest, m)) throw deny('METHOD_DISABLED', text(langOfCtx(ctx), 'methodDisabled'))
       }),
       // Admin actions: end sessions after a password reset, one log line per action.
       after: createAuthMiddleware(async (ctx) => {
@@ -223,7 +224,7 @@ async function build(): Promise<{ auth: Auth; cfg: AuthConfig; issuer?: string; 
     try {
       discovery = await fetchDiscovery(cfg.providers.oidc.discoveryUrl, !!TRUSTED_ORIGINS)
     } catch (e) {
-      cfg.problems.oidc = (e as Error).message
+      cfg.problems.oidc = e instanceof MsgError ? e.ref : m('discoveryConnect')
       discoveryFailed = true
     }
   }
@@ -297,7 +298,7 @@ function retryDiscovery(failed: boolean) {
 /** First build at start. Problems with an enabled provider are logged; that provider stays off. */
 export async function initAuth() {
   const cfg = await withAuthLock(buildAndInstall)
-  for (const [id, why] of Object.entries(cfg.problems)) console.warn(`WARNING: login method ${id} is enabled but cannot be used: ${why}`)
+  for (const [id, why] of Object.entries(cfg.problems)) console.warn(`WARNING: login method ${id} is enabled but cannot be used: ${text('en', why)}`)
 }
 
 /**

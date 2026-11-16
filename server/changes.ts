@@ -9,6 +9,7 @@ import type { Db } from './db/client'
 import { hasIdentity, OWNED, type OwnedTable } from './db/owned'
 import * as t from './db/schema'
 import { lockFor } from './db/scope'
+import { m, MsgError, type Msg } from './messages'
 
 export type RowKey = Record<string, string>
 type Row = Record<string, unknown>
@@ -80,11 +81,12 @@ export async function readRow(q: Db, table: OwnedTable, uid: string, key: RowKey
 }
 
 // ── Revert ──
-export class Conflict extends Error {
-  constructor(message: string, public table: string, public key: RowKey) { super(message) }
+// These carry a message to be worded in the request's language (server/messages.ts).
+export class Conflict extends MsgError {
+  constructor(ref: Msg, public table: string, public key: RowKey) { super(ref) }
 }
-export class NotFound extends Error {}
-export class RuleBroken extends Error {}
+export class NotFound extends MsgError {}
+export class RuleBroken extends MsgError {}
 
 /**
  * Every lock the write paths take, in their order, so a revert cannot race them (a missing
@@ -101,8 +103,8 @@ async function lockAll(q: Db, uid: string) {
 export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
   await lockAll(q, uid)
   const [set] = await q.select().from(t.changeSet).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id))).for('update')
-  if (!set) throw new NotFound('변경 묶음을 찾을 수 없어요.')
-  if (set.revertedBy) throw new Conflict('이미 되돌린 변경이에요. 되돌린 묶음을 되돌리면 다시 적용돼요.', 'change_set', { id })
+  if (!set) throw new NotFound(m('changeNotFound'))
+  if (set.revertedBy) throw new Conflict(m('changeReverted'), 'change_set', { id })
   const logs = await q.select().from(t.changeLog).where(and(eq(t.changeLog.userId, uid), eq(t.changeLog.setId, id))).orderBy(desc(t.changeLog.id))
   const hadRemainder = await remainderCount(q, uid)
 
@@ -112,12 +114,12 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
     const current = await readRow(q, table, uid, log.rowKey)
     const expected = log.op === 'delete' ? null : log.after
     if (!same(current, expected)) {
-      throw new Conflict('이후에 바뀐 항목이 있어 되돌릴 수 없어요.', log.tableName, log.rowKey)
+      throw new Conflict(m('changeLater'), log.tableName, log.rowKey)
     }
     if (log.op === 'insert') {
       // Rows of this set that hang off this one were removed first (reverse order); any left came later.
       if (await hasChildren(q, uid, table, log.rowKey)) {
-        throw new Conflict('이후에 연결된 항목이 생겨서 되돌릴 수 없어요.', log.tableName, log.rowKey)
+        throw new Conflict(m('changeChild'), log.tableName, log.rowKey)
       }
       await q.delete(table).where(whereKey(table, uid, log.rowKey))
       await rec.record(table, log.rowKey, 'delete', current, null)
@@ -163,16 +165,16 @@ async function checkRules(q: Db, uid: string, hadRemainder: number) {
   const end = (x: string | null) => x ?? '9999-12'
   for (const [i, a] of phases.entries()) {
     const b = phases.slice(i + 1).find((o) => o.from <= end(a.to) && a.from <= end(o.to))
-    if (b) throw new RuleBroken(`되돌리면 '${a.label} ${a.name}' 구간과 '${b.label} ${b.name}' 구간이 겹쳐요.`)
+    if (b) throw new RuleBroken(m('revertOverlap', { a: `${a.label} ${a.name}`, b: `${b.label} ${b.name}` }))
   }
   const amounts = await q.select({ targetId: t.phaseAmount.targetId }).from(t.phaseAmount).where(eq(t.phaseAmount.userId, uid))
   if (amounts.length) {
     const ids = [...new Set(amounts.map((a) => a.targetId))]
     const fixed = await q.select({ id: t.allocationTarget.id }).from(t.allocationTarget)
       .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), eq(t.allocationTarget.kind, 'fixed')))
-    if (fixed.length !== ids.length) throw new RuleBroken('되돌리면 고정 대상이 아닌 곳에 구간 금액이 생겨요.')
+    if (fixed.length !== ids.length) throw new RuleBroken(m('revertAmounts'))
   }
-  if (hadRemainder > 0 && (await remainderCount(q, uid)) === 0) throw new RuleBroken('되돌리면 나머지 대상이 없어져요.')
+  if (hadRemainder > 0 && (await remainderCount(q, uid)) === 0) throw new RuleBroken(m('revertRemainder'))
 }
 
 // ── Listing ──

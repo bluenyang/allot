@@ -155,6 +155,13 @@
       "when": 1794818196447,
       "tag": "0021_strong_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794821062535,
+      "tag": "0022_loud_enchantress",
+      "breakpoints": true
     }
   ]
 }

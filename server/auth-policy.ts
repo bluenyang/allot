@@ -9,6 +9,7 @@
 //                existing account found by email) → only an admin-created account that has no
 //                login yet, else account_not_linked
 // The bootstrap admin (ADMIN_OIDC_SUBJECT) gets in whatever the policy says.
+import { langOfCtx, text } from './messages'
 import { APIError, getOAuthState } from 'better-auth/api'
 import { eq, sql } from 'drizzle-orm'
 import { usable, type AuthConfig, type ExternalId } from './auth-config'
@@ -58,10 +59,11 @@ const refuse = (error: string, errorDescription: string) => ({ error, errorDescr
 export function makeValidateUserInfo(getCfg: () => AuthConfig) {
   return async (data: ValidateData, ctx: unknown) => {
     const src = data.source
+    const lang = langOfCtx(ctx)
     if (src.method !== 'oauth' || !src.oauth) return // admin create-user; password sign-up is closed
     const id = src.oauth.providerId as ExternalId
     const cfg = getCfg()
-    if (!['oidc', 'github', 'google'].includes(id) || !usable(cfg, id)) return refuse('METHOD_DISABLED', '사용할 수 없는 로그인 방식이에요.')
+    if (!['oidc', 'github', 'google'].includes(id) || !usable(cfg, id)) return refuse('METHOD_DISABLED', text(lang, 'methodDisabled'))
     const profile = (src.oauth.profile ?? {}) as Profile
     const email = data.user.email ?? undefined
     const verified = data.user.emailVerified === true
@@ -73,20 +75,20 @@ export function makeValidateUserInfo(getCfg: () => AuthConfig) {
         decisions.set(ctx as object, { status: 'active', admission: 'bootstrap', admin: true })
         return
       }
-      if (p.signup === 'closed') return refuse('SIGNUP_CLOSED', '이 로그인 방식으로는 새 계정을 만들 수 없어요.')
+      if (p.signup === 'closed') return refuse('SIGNUP_CLOSED', text(lang, 'signupClosed'))
       if (p.signup === 'approval') {
         decisions.set(ctx as object, { status: 'pending', admission: 'approval' })
         return
       }
-      if (!ruleMatch(cfg, id, profile, email, verified)) return refuse('NOT_ALLOWED', '허용된 사용자가 아니에요.')
+      if (!ruleMatch(cfg, id, profile, email, verified)) return refuse('NOT_ALLOWED', text(lang, 'notAllowed'))
       decisions.set(ctx as object, { status: 'active', admission: 'rule' })
       return
     }
 
     const uid = data.user.id
-    if (!uid) return refuse('validation_failed', '사용자를 찾을 수 없어요.')
+    if (!uid) return refuse('validation_failed', text(lang, 'userNotFound'))
     const [row] = await db.select({ admission: a.user.admission }).from(a.user).where(eq(a.user.id, uid))
-    if (!row) return refuse('validation_failed', '사용자를 찾을 수 없어요.')
+    if (!row) return refuse('validation_failed', text(lang, 'userNotFound'))
 
     if (src.action === 'sign-in') {
       // An account that came in by a rule keeps needing one at every external login, whatever the
@@ -95,7 +97,7 @@ export function makeValidateUserInfo(getCfg: () => AuthConfig) {
       // account in for good by giving it a password or another login (sign-in with those is
       // not an external rule check).
       if (row.admission === 'rule' && !ruleMatch(cfg, id, profile, email, verified)) {
-        return refuse('NOT_ALLOWED', '허용된 사용자가 아니에요.')
+        return refuse('NOT_ALLOWED', text(lang, 'notAllowed'))
       }
       return
     }
@@ -106,7 +108,7 @@ export function makeValidateUserInfo(getCfg: () => AuthConfig) {
       // Found by email only: allowed for an account the admin created and nobody signed in to yet.
       const [{ n }] = await db.execute<{ n: number }>(sql`select count(*)::int as n from "account" where "user_id" = ${uid}`) as unknown as [{ n: number }]
       if (row.admission === 'admin' && n === 0) return
-      return refuse('account_not_linked', '이미 있는 계정과 연결되어 있지 않아요.')
+      return refuse('account_not_linked', text(lang, 'notLinked'))
     }
   }
 }
@@ -130,7 +132,7 @@ export async function afterNewUser(user: { id: string }, ctx: { path?: string } 
 export async function refusePending(session: { userId: string }) {
   const [row] = await db.select({ status: a.user.status }).from(a.user).where(eq(a.user.id, session.userId))
   if (row?.status !== 'active') {
-    throw APIError.from('FORBIDDEN', { code: 'PENDING_APPROVAL', message: '관리자 승인을 기다리고 있어요.' })
+    throw APIError.from('FORBIDDEN', { code: 'PENDING_APPROVAL', message: text('ko', 'pendingApproval') })
   }
 }
 

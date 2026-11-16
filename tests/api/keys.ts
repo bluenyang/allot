@@ -90,7 +90,7 @@ if (mode === 'seal') {
   // (R6) the configuration still loads: only the provider with the unopenable secret is unusable
   let cfg: Awaited<ReturnType<typeof loadAuthConfig>> | undefined
   try { cfg = await loadAuthConfig({}) } catch (e) { ok(false, `loadAuthConfig threw: ${(e as Error).message}`) }
-  ok(!!cfg && !!cfg.problems.github?.includes('풀 수 없어요') && cfg.providers.password.enabled, `config loads; github: ${cfg?.problems.github ?? 'no problem'}`)
+  ok(!!cfg && !!cfg.problems.github?.key === 'lostSecret' && cfg.providers.password.enabled, `config loads; github: ${cfg?.problems.github?.key ?? 'no problem'}`)
   const envSecret = await loadAuthConfig({ AUTH_GITHUB_CLIENT_SECRET: 'from-env' })
   ok(!envSecret.problems.github && envSecret.providers.github.clientSecret === 'from-env', 'an env secret replaces the unopenable one')
   let explained = ''

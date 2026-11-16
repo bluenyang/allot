@@ -5,6 +5,7 @@
 import type { GenericOAuthConfig } from 'better-auth/plugins/generic-oauth'
 import type { AuthConfig } from './auth-config'
 import { usable } from './auth-config'
+import { m, MsgError } from './messages'
 
 /** The OIDC account key: issuer and subject, so another issuer's subject never matches. */
 export const SUBJECT_SEPARATOR = ' ' // cannot appear in an issuer URL
@@ -18,15 +19,15 @@ export async function fetchDiscovery(url: string, production: boolean): Promise<
   try {
     res = await fetch(url, { headers: { accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(10_000) })
   } catch {
-    throw new Error('discovery URL에 연결하지 못했어요.')
+    throw new MsgError(m('discoveryConnect'))
   }
-  if (!res.ok) throw new Error(`discovery URL이 ${res.status}로 답했어요.`)
+  if (!res.ok) throw new MsgError(m('discoveryStatus', { status: res.status }))
   let d: Partial<Discovery>
-  try { d = await res.json() as Partial<Discovery> } catch { throw new Error('discovery 응답이 JSON이 아니에요.') }
+  try { d = await res.json() as Partial<Discovery> } catch { throw new MsgError(m('discoveryJson')) }
   for (const k of ['issuer', 'authorization_endpoint', 'token_endpoint', 'jwks_uri'] as const) {
-    if (typeof d[k] !== 'string' || !d[k]) throw new Error(`discovery 문서에 ${k}가 없어요.`)
+    if (typeof d[k] !== 'string' || !d[k]) throw new MsgError(m('discoveryField', { field: k }))
   }
-  if (production && !d.issuer!.startsWith('https://')) throw new Error('운영에서는 issuer가 https여야 해요.')
+  if (production && !d.issuer!.startsWith('https://')) throw new MsgError(m('issuerHttps'))
   return d as Discovery
 }
 
