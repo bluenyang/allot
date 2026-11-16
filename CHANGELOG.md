@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 — 2026-11-16
+
+Stable. Same application code as 0.1.2-rc.3. Login and admin (intent 006) and the redesign with display settings, holiday rule sets and the calendar (intent 007); the upgrade notes are under 0.1.2-rc.1.
+
 ## 0.1.2-rc.3 — 2026-11-16
 
 ### Changed

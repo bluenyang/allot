@@ -29,6 +29,12 @@ approvals:
     words: "감사하고 이후로 다음 intent 전까지 진행해"
     rev: 77b2b95
     note: "PR #12 머지 뒤. 범위: 0.1.2 감사 보충(intent 007), 그 뒤 release·retro 단계까지. 각 단계 지침의 멈춤 조건(정식 릴리스 등)은 그대로 따른다."
+  - role: user
+    by: BlueNyang
+    at: "2026-11-16"
+    words: "stable로 진행. 다음 버전이 뭐인지 먼저 말하고 진행"
+    rev: 93d78d0
+    note: "0.1.2 정식 릴리스 지시(rc.3 = 93d78d0, 테스트 서버에서 사용자 확인). 0.1.2는 intent 006과 007을 함께 낸다. PM이 다음 버전(0.1.3: MCP 읽기, 화면 언어 설정)을 먼저 말하고 진행."
 waivers: []
 supersedes: null
 ---
