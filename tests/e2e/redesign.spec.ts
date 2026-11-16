@@ -444,7 +444,7 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
     await expect(subs).toContainText('구독')
   })
 
-  test('(c) the content column sits in the middle at 1920; the header lines up with it', async ({ page }) => {
+  test('(c) the content column sits in the middle at 1920; the header lines up with it; one header line at 1000', async ({ page }) => {
     for (const width of [1920, 1440]) {
       await page.setViewportSize({ width, height: 1000 })
       await page.goto('/#home')
@@ -460,5 +460,8 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
       expect(Math.abs(m.headR), `${width}: header ends with the content`).toBeLessThanOrEqual(1)
       if (width === 1920) expect(m.left, 'there is room on both sides at 1920').toBeGreaterThan(100)
     }
+    await page.setViewportSize({ width: 1000, height: 800 })
+    const tops = await page.locator('header.topbar > *').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top + e.getBoundingClientRect().height / 2)))
+    expect(Math.max(...tops) - Math.min(...tops), 'header items share one line at 1000').toBeLessThanOrEqual(4)
   })
 })

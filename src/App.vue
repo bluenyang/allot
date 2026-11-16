@@ -220,21 +220,21 @@ const onGripKey = (e: KeyboardEvent) => {
 .topbar{display:none}
 .topbar .sp{flex:1}
 @media (min-width:761px){
-  .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px var(--col-pad);min-height:61px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
+  .topbar{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;padding:12px var(--col-pad);min-height:61px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
 }
 .crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--subtle)}
 .crumbs svg{width:14px;height:14px}
 .crumbs b{color:var(--text);font-weight:600}
-.monthnav{display:flex;align-items:center;gap:4px}
-.monthnav .btn{width:32px;height:32px;color:var(--muted)}
-.monthnav .ml{font-weight:600;padding:0 10px;font-variant-numeric:tabular-nums}
-.phasebadge{margin-left:8px;font-size:12px;color:var(--muted);padding:2px 8px;border:1px solid var(--border);border-radius:var(--r-badge);background:var(--surface-2)}
-.search{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface-2);width:300px;max-width:100%;color:var(--subtle)}
+.monthnav{display:flex;align-items:center;gap:4px;flex:0 1 auto;min-width:0}
+.monthnav .btn{width:32px;height:32px;color:var(--muted);flex:none}
+.monthnav .ml{font-weight:600;padding:0 10px;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+.phasebadge{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin-left:8px;font-size:12px;color:var(--muted);padding:2px 8px;border:1px solid var(--border);border-radius:var(--r-badge);background:var(--surface-2)}
+.search{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface-2);flex:0 20 300px;min-width:0;color:var(--subtle)}
 .search svg{width:16px;height:16px;flex:none}
 .search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text)}
 .search:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
 .search kbd{font:11px var(--f-mono);border:1px solid var(--border);border-radius:var(--r-badge);padding:0 5px;background:var(--surface)}
-.tb{width:36px;height:36px;position:relative;color:var(--muted)}
+.tb{width:36px;height:36px;position:relative;color:var(--muted);flex:none}
 .tb svg{width:18px;height:18px}
 .dotn{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--accent);border:1.5px solid var(--surface)}
 .toast{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:80;margin:0;padding:8px 14px;border-radius:var(--r-ctl);background:var(--text);color:var(--surface);font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
