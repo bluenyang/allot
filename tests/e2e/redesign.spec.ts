@@ -443,4 +443,22 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
     expect(await sideW(page), 'the width it had').toBe(open)
     await expect(subs).toContainText('구독')
   })
+
+  test('(c) the content column sits in the middle at 1920; the header lines up with it', async ({ page }) => {
+    for (const width of [1920, 1440]) {
+      await page.setViewportSize({ width, height: 1000 })
+      await page.goto('/#home')
+      await page.locator('.strip').waitFor()
+      const m = await page.evaluate(() => {
+        const r = (e: Element) => e.getBoundingClientRect()
+        const col = r(document.querySelector('.col')!), strip = r(document.querySelector('.strip')!)
+        const nav = r(document.querySelector('header.topbar .monthnav')!), last = r([...document.querySelectorAll('header.topbar .tb')].at(-1)!)
+        return { left: strip.left - col.left, right: col.right - strip.right, headL: nav.left - strip.left, headR: last.right - strip.right }
+      })
+      expect(Math.abs(m.left - m.right), `${width}: left ${m.left} / right ${m.right}`).toBeLessThanOrEqual(2)
+      expect(Math.abs(m.headL), `${width}: header starts with the content`).toBeLessThanOrEqual(1)
+      expect(Math.abs(m.headR), `${width}: header ends with the content`).toBeLessThanOrEqual(1)
+      if (width === 1920) expect(m.left, 'there is room on both sides at 1920').toBeGreaterThan(100)
+    }
+  })
 })

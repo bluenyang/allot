@@ -220,7 +220,7 @@ const onGripKey = (e: KeyboardEvent) => {
 .topbar{display:none}
 .topbar .sp{flex:1}
 @media (min-width:761px){
-  .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 32px;min-height:61px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
+  .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px var(--col-pad);min-height:61px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
 }
 .crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--subtle)}
 .crumbs svg{width:14px;height:14px}
@@ -249,6 +249,6 @@ const onGripKey = (e: KeyboardEvent) => {
 .foot-bar a:hover{text-decoration:underline}
 .foot-bar .where{display:flex;align-items:center;gap:6px}
 .foot-bar .where svg{width:14px;height:14px}
-@media (min-width:761px){.foot-bar{padding:16px 32px}}
+@media (min-width:761px){.foot-bar{padding:16px var(--col-pad)}}
 @media (max-width:760px){.col .main{padding-bottom:16px}}
 </style>
