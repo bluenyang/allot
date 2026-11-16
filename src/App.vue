@@ -151,7 +151,7 @@ const onGripKey = (e: KeyboardEvent) => {
         </div>
         <nav v-else class="crumbs" aria-label="현재 위치"><span>{{ GROUP_OF[route.page] }}</span><Icon name="chev" /><b>{{ crumbPage }}</b></nav>
         <span class="sp"></span>
-        <form v-if="tools" class="search" role="search" @submit="onSearch">
+        <form v-if="tools" class="search" role="search" @submit="onSearch" @click="notReady('검색')">
           <Icon name="search" />
           <input type="search" aria-label="검색" placeholder="거래, 구독, 메모 검색" @focus="notReady('검색')">
           <kbd>/</kbd>
@@ -219,7 +219,7 @@ const onGripKey = (e: KeyboardEvent) => {
 .folded nav a{justify-content:center;padding:0;gap:0}
 .folded .grp + .grp{border-top:1px solid var(--border);padding-top:10px}
 .folded .who{flex-direction:column;padding:6px 0 0;gap:8px}
-.col{display:flex;flex-direction:column;min-width:0;min-height:100vh}
+.col{display:flex;flex-direction:column;min-width:0;min-height:100vh;container:col / inline-size}
 .topbar{display:none}
 .topbar .sp{flex:1}
 @media (min-width:761px){
@@ -237,6 +237,9 @@ const onGripKey = (e: KeyboardEvent) => {
 .search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text)}
 .search:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
 .search kbd{font:11px var(--f-mono);border:1px solid var(--border);border-radius:var(--r-badge);padding:0 5px;background:var(--surface)}
+/* A narrow content column (small window or a wide sidebar): the hint goes first, then the box becomes its icon (review 22) */
+@container col (max-width: 720px){ .search kbd{display:none} }
+@container col (max-width: 600px){ .search{flex:none;width:36px;padding:0;justify-content:center;position:relative;cursor:pointer} .search input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none} }
 .tb{width:36px;height:36px;position:relative;color:var(--muted);flex:none}
 .tb svg{width:18px;height:18px}
 .dotn{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--accent);border:1.5px solid var(--surface)}

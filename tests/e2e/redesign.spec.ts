@@ -455,7 +455,7 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
     await expect(subs).toContainText('구독')
   })
 
-  test('(c) the content column sits in the middle at 1920; the header lines up with it; one header line at 1000', async ({ page }) => {
+  test('(c) the content column sits in the middle at 1920; the header lines up with it; the header holds at 761–1000 with either sidebar width', async ({ page }) => {
     for (const width of [1920, 1440]) {
       await page.setViewportSize({ width, height: 1000 })
       await page.goto('/#home')
@@ -471,8 +471,33 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
       expect(Math.abs(m.headR), `${width}: header ends with the content`).toBeLessThanOrEqual(1)
       if (width === 1920) expect(m.left, 'there is room on both sides at 1920').toBeGreaterThan(100)
     }
-    await page.setViewportSize({ width: 1000, height: 800 })
-    const tops = await page.locator('header.topbar > *').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top + e.getBoundingClientRect().height / 2)))
-    expect(Math.max(...tops) - Math.min(...tops), 'header items share one line at 1000').toBeLessThanOrEqual(4)
+    // The header at narrow desktop widths, with the default and the widest sidebar: one line, nothing overflows or overlaps (review 22).
+    for (const sidebar of ['default', 'End'] as const) {
+      for (const width of [761, 800, 1000]) {
+        await page.setViewportSize({ width, height: 800 })
+        await page.goto('/#home')
+        await page.locator('header.topbar').waitFor()
+        if (sidebar === 'End') { await page.getByRole('separator', { name: '사이드바 너비' }).focus(); await page.keyboard.press('End') }
+        const h = await page.locator('header.topbar').evaluate((bar) => {
+          const box = bar.getBoundingClientRect(), cs = getComputedStyle(bar)
+          const inner = { left: box.left + parseFloat(cs.paddingLeft) - 0.5, right: box.right - parseFloat(cs.paddingRight) + 0.5 }
+          const kids = [...bar.children].filter((e) => getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0).map((e) => e.getBoundingClientRect())
+          const search = bar.querySelector('.search') as HTMLElement
+          return {
+            overflow: bar.scrollWidth - bar.clientWidth,
+            rows: Math.max(...kids.map((r) => r.top + r.height / 2)) - Math.min(...kids.map((r) => r.top + r.height / 2)),
+            outside: kids.filter((r) => r.left < inner.left || r.right > inner.right).length,
+            overlaps: kids.slice(1).filter((r, i) => r.left < kids[i]!.right - 0.5).length,
+            searchOverflow: search.scrollWidth - search.clientWidth,
+          }
+        })
+        const at = `${width}px, sidebar ${sidebar === 'End' ? 360 : 272}`
+        expect(h.overflow, `${at}: header scrolls sideways`).toBeLessThanOrEqual(0)
+        expect(h.rows, `${at}: one line`).toBeLessThanOrEqual(4)
+        expect(h.outside, `${at}: items inside the header`).toBe(0)
+        expect(h.overlaps, `${at}: items do not overlap`).toBe(0)
+        expect(h.searchOverflow, `${at}: the search box holds its contents`).toBeLessThanOrEqual(0)
+      }
+    }
   })
 })
