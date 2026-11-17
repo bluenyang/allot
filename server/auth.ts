@@ -113,6 +113,9 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
         defaultPrefix: 'allot_',
         enableSessionForAPIKeys: false,
         permissions: { defaultPermissions: { mcp: ['read'] } },
+        // The confirmation method of a write key (spec 009 S-5) lives in `metadata`. Only our own create
+        // route sets it (the plugin's HTTP paths are closed), so a client cannot send or change it.
+        enableMetadata: true,
         keyExpiration: { minExpiresIn: 1, maxExpiresIn: 365 },
         rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 120 },
         // The prefix is 6 characters: store 12 so a list can tell keys apart (prefix + 6 of the random part).

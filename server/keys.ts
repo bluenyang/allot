@@ -1,6 +1,8 @@
 // API keys for the read-only MCP endpoint (spec 008 S-1, S-3), behind the session check in app.ts:
 //   GET    /api/keys        my keys (never the key or its hash) and the expiry policy
-//   POST   /api/keys        { name, expiresInDays? }  → { key, item }; `key` is in this response only
+//   POST   /api/keys        { name, expiresInDays?, write?, confirm? }  → { key, item }; `key` is in this response only.
+//                           write adds the write scope; confirm 'ui' (default) | 'chat' is where its proposals are
+//                           confirmed. Both are fixed when the key is made: no route changes a key.
 //   DELETE /api/keys/:id    my key; someone else's id is 404
 // A key itself cannot reach these routes: it is no session, and the plugin's own HTTP paths are closed.
 import { and, count, eq, gt, isNull, or } from 'drizzle-orm'
@@ -26,6 +28,7 @@ interface PluginKey {
   name?: string | null
   start?: string | null
   permissions?: Record<string, string[]> | null
+  metadata?: { confirm?: unknown } | string | null
   createdAt: Date | string
   expiresAt?: Date | string | null
   lastRequest?: Date | string | null
@@ -33,10 +36,19 @@ interface PluginKey {
 
 const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null)
 
+/** How a write key's proposals are confirmed; null for a key that cannot write. */
+export function confirmOf(k: Pick<PluginKey, 'permissions' | 'metadata'>): 'ui' | 'chat' | null {
+  if (!(k.permissions?.mcp ?? []).includes('write')) return null
+  let meta = k.metadata
+  if (typeof meta === 'string') { try { meta = JSON.parse(meta) as typeof meta } catch { meta = null } }
+  // A write key without a recorded method gets the safer one.
+  return typeof meta === 'object' && meta?.confirm === 'chat' ? 'chat' : 'ui'
+}
+
 /** What the screen and the API show of a key: no key, no hash. */
 function item(k: PluginKey) {
   return {
-    id: k.id, name: k.name ?? '', start: k.start ?? '', permissions: k.permissions ?? {},
+    id: k.id, name: k.name ?? '', start: k.start ?? '', permissions: k.permissions ?? {}, confirm: confirmOf(k),
     createdAt: iso(k.createdAt), expiresAt: iso(k.expiresAt), lastUsedAt: iso(k.lastRequest),
   }
 }
@@ -60,7 +72,7 @@ keyRoutes.get('/', async (c) => {
 
 keyRoutes.post('/', body(v.keyCreate), async (c) => {
   const uid = uidOf(c)
-  const { name, expiresInDays } = c.req.valid('json')
+  const { name, expiresInDays, write, confirm } = c.req.valid('json')
   const policy = await loadKeyPolicy()
   if (expiresInDays === null && !policy.noExpiry) {
     return c.json({ error: msg(c, 'keyNoExpiry'), path: 'expiresInDays' }, 400)
@@ -70,9 +82,13 @@ keyRoutes.post('/', body(v.keyCreate), async (c) => {
   const days = expiresInDays === undefined ? DEFAULT_DAYS : expiresInDays
   let created
   try {
+    // A server call (no request): the scope and the metadata may only be set this way. The user is the session's.
     created = await getAuth().api.createApiKey({
-      headers: c.req.raw.headers,
-      body: { name, expiresIn: days === null ? null : days * DAY },
+      body: {
+        name, userId: uid, expiresIn: days === null ? null : days * DAY,
+        permissions: { mcp: write ? ['read', 'write'] : ['read'] },
+        ...(write ? { metadata: { confirm: confirm ?? 'ui' } } : {}),
+      },
     })
   } catch (e) {
     // The plugin's own checks (name length, expiry range) are already covered by the schema; anything else is ours to hide.

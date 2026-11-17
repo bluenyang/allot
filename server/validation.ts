@@ -169,11 +169,17 @@ export const userBan = z.object({ reason: z.string().trim().max(200).optional() 
 export const userDelete = z.object({ confirmEmail: z.string().trim().min(1).max(254) }).strict()
 
 // ── API keys (spec 008 S-1, S-3) ──
-/** POST /api/keys — expiresInDays: absent = 90 days, null = no expiry (only while the server allows it). */
+/**
+ * POST /api/keys — expiresInDays: absent = 90 days, null = no expiry (only while the server allows it).
+ * `write` adds the write scope (spec 009 S-5); `confirm` says where its proposals are confirmed
+ * (default 'ui') and belongs to a write key only. Neither can be changed after the key is made.
+ */
 export const keyCreate = z.object({
   name: z.string().trim().min(1, 'keyNameReq').max(32, 'keyNameMax'),
   expiresInDays: z.number().int('keyDaysInt').min(1, 'keyDaysMin').max(365, 'keyDaysMax').nullable().optional(),
-}).strict()
+  write: z.boolean().optional(),
+  confirm: z.enum(['ui', 'chat']).optional(),
+}).strict().refine((k) => k.confirm === undefined || k.write === true, { message: 'keyConfirmNeedsWrite', path: ['confirm'] })
 
 /** PUT /api/admin/api-keys */
 export const keyPolicy = z.object({ noExpiry: z.boolean() }).strict()
