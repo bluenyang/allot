@@ -107,6 +107,9 @@ export async function ensureAdmin(email: string, password: string, replaceEmail?
     const [from] = old ? await q.select({ id: u.id }).from(u).where(eq(u.email, old)) : []
     if (old && !from) throw new Error(`--replace-admin: no account with the email ${old}`)
     const [found] = await q.select({ id: u.id }).from(u).where(eq(u.email, target))
+    // Data locks first (spec 009 review): an apply holds a user's data lock and then reads that user's row,
+    // so nothing here may touch an account row and only then ask for the data lock. Both users, in a fixed order.
+    for (const id of [...new Set([from?.id, found?.id].filter((x): x is string => !!x))].sort()) await lockFor(q as unknown as Db, 'data', id)
     let userId = found?.id
     if (userId) {
       const updated = await q.update(a).set({ password: hash, updatedAt: new Date() })

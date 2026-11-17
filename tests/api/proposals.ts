@@ -12,6 +12,7 @@ import { asUser } from '../../server/db/scope'
 import { Recorder } from '../../server/changes'
 import { applyOps, parseOp } from '../../server/ops'
 import { applyProposal, getProposal, listProposals, MAX_PENDING, propose, ProposalError, rejectProposal, type KeyInfo } from '../../server/proposals'
+import { ensureAdmin } from '../../server/db/seed'
 import { readState } from '../../server/state'
 import { overview } from '../../server/mcp/views'
 import { today, ymOf } from '../../src/lib/calc'
@@ -27,10 +28,10 @@ const living = (food: number) => ({ food, transit: 2, allowance: 3 })
 // ── two connections and a barrier (review 2, 3) ──
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 /** Is some session waiting for an advisory lock? (the apply under test, held back by the write below) */
-async function waitBlocked() {
+async function waitBlocked(atLeast = 1) {
   for (let i = 0; i < 100; i++) {
     const [r] = await sqlClient`select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted`
-    if ((r as { n: number }).n > 0) return true
+    if ((r as { n: number }).n >= atLeast) return true
     await sleep(50)
   }
   return false
@@ -251,6 +252,26 @@ try {
     release()
     await holder
     ok(await result === 'expired' && (await getProposal(A, pp.id)).status === 'expired', 'a proposal that expires while the apply waits for the key row: refused → expired')
+  }
+
+  // ── re-review 1: seed account replacement and an apply for the same user do not deadlock ──
+  {
+    const D = await newUser('dest')
+    const F = await newUser('from')
+    const kD = await newKey(D, 'dest-key', 'ui')
+    const [du] = await db.select({ email: a.user.email }).from(a.user).where(eq(a.user.id, D))
+    const [fu] = await db.select({ email: a.user.email }).from(a.user).where(eq(a.user.id, F))
+    const pp = await propose(D, kD, { changes: [{ resource: 'living', action: 'update', data: living(940_000) }] })
+    const w = await holdWrite(D, { resource: 'checks', action: 'create', data: { text: 'hold-seed', done: false } })
+    const applying = applyProposal(D, pp.id, { kind: 'user' }).then(() => 'ok', (e: unknown) => (e instanceof ProposalError ? e.code : `error:${(e as Error).message}`))
+    ok(await waitBlocked(1), 'the apply queues for the data lock')
+    // the replacement queues behind it: first for the data locks (fixed), not after touching the account row (inverted)
+    const replacing = ensureAdmin(du!.email, 'seed-pass-12345', fu!.email).then(() => 'ok', (e: unknown) => `error:${(e as Error).message}`)
+    ok(await waitBlocked(2), 'the replacement queues for the data locks too')
+    w.release()
+    await w.done
+    const [applied, replaced] = await Promise.all([applying, replacing])
+    ok((applied === 'ok' || applied === 'stale') && replaced === 'ok', `both finish without a deadlock (apply ${applied}, replacement ${replaced})`)
   }
 
   // ── V-8: a revert is proposed and applied like any change ──
