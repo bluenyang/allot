@@ -22,13 +22,15 @@ export interface State {
   remainderSplit: RemainderSplit[]
   preferences: Preferences
   holidaySets: HolidaySet[]
+  /** Proposals from an AI key that wait for the user (the sidebar badge; spec 009). */
+  pendingProposals: number
 }
 
 const empty = (): State => ({
   settings: { ...DEFAULT_SETTINGS },
   living: { ...DEFAULT_LIVING },
   preferences: { ...DEFAULT_PREFERENCES },
-  targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [],
+  targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [], pendingProposals: 0,
 })
 
 export const store = reactive<State>(empty())

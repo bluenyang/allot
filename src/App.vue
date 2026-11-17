@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
 import Dashboard from './pages/Dashboard.vue'
@@ -25,6 +25,7 @@ const PAGES: Record<string, Page> = {
   subs: { id: 'subs', comp: Subscriptions },
   pay: { id: 'pay', comp: Payroll },
   events: { id: 'events', comp: Timeline },
+  pending: { id: 'pending', comp: defineAsyncComponent(() => import('./pages/Pending.vue')) }, // loaded when opened: the first screen stays small
   history: { id: 'history', comp: History },
   settings: { id: 'settings', comp: Settings },
   admin: { id: 'admin', comp: Admin },
@@ -33,9 +34,11 @@ const PAGES: Record<string, Page> = {
 const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 const groups = [
   { id: 'overview', items: ['home'] },
-  { id: 'manage', items: ['subs', 'pay', 'events', 'history'] },
+  { id: 'manage', items: ['subs', 'pay', 'events', 'pending', 'history'] },
 ]
-const bottom = ['home', 'subs', 'pay', 'events', 'history', 'settings']
+const BOTTOM = ['home', 'subs', 'pay', 'events', 'history', 'settings']
+/** The pending page has a place on the phone's bar only while something waits there. */
+const bottom = computed(() => (store.pendingProposals ? [...BOTTOM.slice(0, 4), 'pending', ...BOTTOM.slice(4)] : BOTTOM))
 
 interface Me { name: string; email: string; role: string }
 const me = ref<Me | null>(null)
@@ -65,7 +68,7 @@ const activeSubs = computed(() => store.subscriptions.filter((s) => s.status ===
 
 // ── Header bar (spec 007 S-15): where you are (the dashboard: its month and phase), search and
 // notifications as drawn (not there yet → "not available yet"), and the light/dark switch (S-16).
-const GROUP_OF: Record<string, 'groupOverview' | 'groupManage' | 'groupSettings'> = { home: 'groupOverview', subs: 'groupManage', pay: 'groupManage', events: 'groupManage', history: 'groupManage', settings: 'groupSettings', admin: 'groupSettings', dev: 'groupSettings' }
+const GROUP_OF: Record<string, 'groupOverview' | 'groupManage' | 'groupSettings'> = { home: 'groupOverview', subs: 'groupManage', pay: 'groupManage', events: 'groupManage', pending: 'groupManage', history: 'groupManage', settings: 'groupSettings', admin: 'groupSettings', dev: 'groupSettings' }
 const crumbPage = computed(() => (route.value.page === 'settings'
   ? t(`settings.tabs.${['general', 'theme', 'ai', 'security'].includes(route.value.sub) ? route.value.sub : 'general'}` as MessageKey)
   : label(route.value.page)))
@@ -130,6 +133,7 @@ const onGripKey = (e: KeyboardEvent) => {
           <a v-for="id in g.items" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? label(id) : undefined">
             <Icon :name="id" /><span class="grow lbl">{{ label(id) }}</span>
             <span v-if="id === 'subs'" class="ncount" :aria-label="t('shell.activeSubs', { n: activeSubs })">{{ activeSubs }}</span>
+            <span v-if="id === 'pending' && store.pendingProposals" class="ncount badge" :aria-label="t('shell.pendingN', { n: store.pendingProposals })">{{ store.pendingProposals }}</span>
           </a>
         </div>
       </nav>
@@ -205,6 +209,7 @@ const onGripKey = (e: KeyboardEvent) => {
 .glabel{font-size:11px;font-weight:600;color:var(--subtle);padding:0 10px 6px;letter-spacing:.04em}
 .grow{flex-grow:1}
 .ncount{font-size:12px;color:var(--subtle);font-variant-numeric:tabular-nums}
+.ncount.badge{color:var(--accent-text);background:var(--accent-soft);border-radius:var(--r-badge);padding:0 6px;font-weight:600}
 .lower{margin-top:auto;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);padding-top:12px}
 .who{display:flex;align-items:center;gap:10px;padding:6px 4px 0 10px}
 .ava{width:32px;height:32px;border-radius:var(--r-ctl);background:var(--fill);color:var(--text-2);display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
