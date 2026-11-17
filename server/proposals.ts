@@ -275,14 +275,16 @@ export async function applyProposal(uid: string, id: string, by: Decider): Promi
     if (p.status !== 'pending') throw new ProposalError('not_pending', m('proposalNotPending'), undefined, `${text('en', m('proposalNotPending'))} Its state is ${p.status}.`)
     if (by.kind === 'key' && p.confirm !== 'chat') throw new ProposalError('wrong_confirm', m('proposalUiOnly'), undefined, 'This proposal is confirmed in the Allot screen (Pending changes), not by the AI. Ask the user to confirm it there.')
     const decided = { decidedAt: new Date().toISOString() }
+    if (!(await accountUsable(q, uid))) throw new ProposalError('key_unusable', m('proposalAccount'))
+    const key = await keyFor(q, uid, p.keyId)
+    if (!key) throw new ProposalError('key_unusable', m('proposalKeyGone'))
+    // Expiry is checked last, after every wait for a lock above (the account and key rows can be held for a while),
+    // and right before the proposal is applied.
     if (new Date(p.expiresAt).getTime() <= Date.now()) {
       await q.update(t.mcpProposal).set({ status: 'expired', ...decided }).where(eq(t.mcpProposal.id, id))
       failure = new ProposalError('expired', m('proposalExpired'))
       return null
     }
-    if (!(await accountUsable(q, uid))) throw new ProposalError('key_unusable', m('proposalAccount'))
-    const key = await keyFor(q, uid, p.keyId)
-    if (!key) throw new ProposalError('key_unusable', m('proposalKeyGone'))
     if (hashState(await readState(q, uid)) !== p.baseHash) {
       await q.update(t.mcpProposal).set({ status: 'stale', ...decided }).where(eq(t.mcpProposal.id, id))
       failure = new ProposalError('stale', m('proposalStale'))

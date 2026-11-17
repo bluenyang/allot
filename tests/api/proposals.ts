@@ -227,6 +227,32 @@ try {
     await rejectProposal(A, old.id)
   }
 
+  // ── re-review: expiry is checked after the waits for the account and key rows, right before applying ──
+  {
+    const k = await newKey(A, 'hold-row', 'ui')
+    const pp = await propose(A, k, { changes: [{ resource: 'living', action: 'update', data: living(930_000) }] })
+    await sqlClient`update mcp_proposal set expires_at = now() + interval '2 seconds' where id = ${pp.id}`
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    let held!: () => void
+    const heldP = new Promise<void>((r) => { held = r })
+    // another connection holds the key's row (a key being changed) past the proposal's time
+    const holder = sqlClient.begin(async (tx) => {
+      await tx`select id from apikey where id = ${k.id} for update`
+      held()
+      await gate
+    })
+    await heldP
+    const result = code(applyProposal(A, pp.id, { kind: 'user' }))
+    await sleep(500)
+    const [w] = await sqlClient`select count(*)::int as n from pg_locks where not granted`
+    ok((w as { n: number }).n > 0, 'the apply waits for the key row')
+    await sleep(2500) // past expires_at
+    release()
+    await holder
+    ok(await result === 'expired' && (await getProposal(A, pp.id)).status === 'expired', 'a proposal that expires while the apply waits for the key row: refused → expired')
+  }
+
   // ── V-8: a revert is proposed and applied like any change ──
   const before8 = JSON.stringify(await state(A))
   const p8 = await propose(A, kChat, { changes: [
