@@ -140,8 +140,25 @@ jobs:
             echo "package.json already at ${NEW_VERSION} — no version commit"
           fi
           git tag -a "$TAG" -m "Allot ${NEW_VERSION}"
-          git push origin "$TAG"
-          echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          HEAD_SHA=$(git rev-parse HEAD)
+          remote_tag() { git ls-remote --tags origin "refs/tags/${TAG}^{}" | cut -f1; }
+          if [[ "$(remote_tag)" == "$HEAD_SHA" ]]; then
+            echo "tag ${TAG} already on the remote at ${HEAD_SHA} — nothing to push"
+          else
+            for attempt in 1 2 3; do
+              git push origin "$TAG" && break
+              [[ $attempt -eq 3 ]] && { echo "tag push failed after 3 attempts" >&2; exit 1; }
+              pause=$(( attempt == 1 ? 5 : 15 ))
+              echo "tag push failed (attempt ${attempt}); retrying in ${pause} s" >&2
+              sleep "$pause"
+            done
+            REMOTE_SHA=$(remote_tag)
+            if [[ "$REMOTE_SHA" != "$HEAD_SHA" ]]; then
+              echo "tag ${TAG} on the remote points at '${REMOTE_SHA}', expected ${HEAD_SHA}" >&2
+              exit 1
+            fi
+          fi
+          echo "ref=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
 
   gates:
     name: Gates (typecheck, build)
