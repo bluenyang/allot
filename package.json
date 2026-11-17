@@ -14,6 +14,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit && tsc -p tsconfig.server.json",
+    "review:mark": "node scripts/guard-review.mjs --mark",
     "prepare": "node scripts/prepare.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx server/db/migrate-cli.ts",

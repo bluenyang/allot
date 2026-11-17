@@ -39,6 +39,7 @@ Allot — a self-hosted web app for personal money management: splitting the mon
 | `pnpm db:migrate` / `pnpm db:seed [file]` | apply migrations / upsert seed data and the login account |
 | `pnpm check:logs <files>` | verify evidence logs made by `scripts/check-run.sh` (rev, command, exit per step; no pipes) |
 | `pnpm check:migrations` | migration drift check: `db:generate` must report no schema changes |
+| `pnpm review:mark` | after a review with no open findings: record the reviewed head of the branch |
 | `pnpm e2e` | Playwright E2E against a running stack (`BASE`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`) — optional gate, not run by the hooks |
 | `node tests/api/crud.mjs create\|verify\|cleanup` | API check (restart api between create and verify) |
 | `pnpm build:server` | esbuild bundle of the API → `dist-server/` (production image) |
@@ -56,6 +57,7 @@ Gates (`.agents/harness/gates.yaml`, order: typecheck → build → test; e2e is
 - Commit messages: `<type>: <summary>` (e.g. `init:`, `chore:`, `feat:`, `fix:`), English.
 - Every check whose log is evidence (V-n, re-runs, the release test server) runs through `scripts/check-run.sh`; a log is evidence only after `pnpm check:logs` passes on it. Delegated checks get the same instruction. A schema change runs `pnpm check:migrations` before its PR. A failed release run's log is saved at once (`gh run view <id> --log-failed`) under `.loctx/reports/<version>/`.
 - Every check whose log is evidence (V-n, re-runs, the release test server) runs through `scripts/check-run.sh`; a log is evidence only after `pnpm check:logs` passes on it. Delegated checks get the same instruction. A schema change runs `pnpm check:migrations` before its PR. A failed release run's log is saved at once (`gh run view <id> --log-failed`) under `.loctx/reports/<version>/`.
+- `scripts/guard-review.mjs` (PreToolUse hook, enabled by the user in `.claude/settings.json`) refuses `gh pr create` / `gh pr merge` while the branch has commits after its last review mark.
 - Pure calculation goes in `src/lib/calc.ts`; types in `src/data/types.ts`; pages in `src/pages/`, shared UI in `src/components/`.
 - Every change goes to the API first; the store takes the server's answer (`src/lib/store.ts`). New list editors use `EditSheet` + `useEditor`.
 - API bodies are validated with zod in `server/validation.ts`; schema changes go through `pnpm db:generate`, never hand-written SQL. A data move that the schema diff cannot express goes in a `drizzle-kit generate --custom` migration.
