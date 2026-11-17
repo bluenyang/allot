@@ -53,6 +53,8 @@ export function isCandidate(raw) {
     const c = JSON.parse(text)?.tool_input?.command
     if (typeof c === 'string') views.push(c)
   } catch { /* raw views only */ }
+  // shell line continuations (backslash-newline) vanish before the shell splits words: join them first
+  for (const v of [...views]) views.push(v.replace(/\\\r?\n/g, ''))
   // ANSI-C / locale quoting ($'..', $"..") can spell any word: always a candidate
   return views.some((v) => /\$['"]/.test(v) || looksLikePr(v.replace(/\\/g, ' ').replace(/['"]/g, '')) || looksLikePr(v.replace(/[\\'"]/g, '')))
 }

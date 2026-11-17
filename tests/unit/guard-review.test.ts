@@ -163,6 +163,9 @@ test('hook input: candidates must be readable JSON with a string command', () =>
       assert.equal(raw(`{"tool_input":{"command":"${e}"}`), 2, `truncated ${e}`)
     for (const c of ["gh pr $'\\155erge' 24", "gh pr $'\\x6derge' 24", 'gh pr ${x}ge 24', 'gh pr $(echo merge) 24'])
       assert.equal(t.hook(c).status, 2, c)
+    // shell line continuations inside words (review 5): bash joins them, so must the hook
+    for (const c of ['g\\\nh pr merge 24', 'gh p\\\nr merge 24', 'gh pr mer\\\nge 24', 'gh pr crea\\\nte --head x'])
+      assert.equal(t.hook(c).status, 2, JSON.stringify(c))
     for (const c of ['gh pr comment 24 --body-file f', "printf '%s\\n' x"]) assert.equal(t.hook(c).status, 0, c)
     // a Bash call without a string command is refused; a command-less non-Bash input is not
     assert.equal(raw('{"tool_name":"Bash","tool_input":{}}'), 2)
