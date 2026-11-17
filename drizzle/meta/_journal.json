@@ -162,6 +162,20 @@
       "when": 1794821062535,
       "tag": "0022_loud_enchantress",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794934030305,
+      "tag": "0023_mcp_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794934031123,
+      "tag": "0024_force_rls_proposals",
+      "breakpoints": true
     }
   ]
 }

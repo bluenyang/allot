@@ -16,25 +16,38 @@ type Row = Record<string, unknown>
 
 export interface Actor { kind: 'user' | 'api_key'; id: string }
 
-/** Collects one request's row changes into one change set (created on the first change). */
+/** One row change as the recorder saw it. */
+export interface Collected { table: string; key: RowKey; op: 'insert' | 'update' | 'delete'; before: Row | null; after: Row | null }
+
+/**
+ * Collects one request's row changes into one change set (created on the first change).
+ * With `collect` (a preview, spec 009 S-3) nothing is stored: the changes are pushed to that list.
+ */
 export class Recorder {
   private setId: string | null = null
   constructor(
     private q: Db,
     private uid: string,
     private actor: Actor,
-    private meta: { method: string; path: string; revertOf?: string },
+    private meta: { method: string; path: string; revertOf?: string; actorLabel?: string; proposalId?: string },
+    private collect?: Collected[],
   ) {}
 
   get id() { return this.setId }
 
   async record(table: PgTable, key: RowKey, op: 'insert' | 'update' | 'delete', before: Row | null, after: Row | null) {
     if (op === 'update' && same(before, after)) return
+    if (this.collect) {
+      this.setId ??= 'preview'
+      this.collect.push({ table: getTableName(table), key, op, before: before ? plain(before) : null, after: after ? plain(after) : null })
+      return
+    }
     if (!this.setId) {
       this.setId = randomUUID()
       await this.q.insert(t.changeSet).values({
         userId: this.uid, id: this.setId, actorKind: this.actor.kind, actorId: this.actor.id,
         method: this.meta.method, path: this.meta.path, revertOf: this.meta.revertOf ?? null,
+        actorLabel: this.meta.actorLabel ?? null, proposalId: this.meta.proposalId ?? null,
       })
     }
     await this.q.insert(t.changeLog).values({
@@ -92,7 +105,7 @@ export class RuleBroken extends MsgError {}
  * Every lock the write paths take, in their order, so a revert cannot race them (a missing
  * settings/living row cannot be locked by FOR UPDATE; the advisory lock covers it).
  */
-async function lockAll(q: Db, uid: string) {
+export async function lockAll(q: Db, uid: string) {
   for (const name of ['phase', 'allocation_target', 'settings', 'living', 'preference']) await lockFor(q, name, uid)
 }
 
