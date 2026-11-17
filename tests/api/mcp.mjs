@@ -384,7 +384,8 @@ async function writeMode() {
   ok(JSON.stringify(pc?.inputSchema ?? {}).includes('subscriptions') && JSON.stringify(pc?.inputSchema ?? {}).includes('remainder-split'), 'propose_changes advertises the resource shapes')
   console.log(`INFO propose_changes input schema: ${JSON.stringify(pc?.inputSchema ?? {}).length} bytes`)
 
-  const wState = async () => (await W('GET', '/api/state')).json
+  // without the badge's number, which a proposal changes by existing
+  const wState = async () => { const { pendingProposals: _p, ...rest } = (await W('GET', '/api/state')).json; return rest }
   const wSets = async () => (await W('GET', '/api/changes?limit=200')).json
   const proposalCount = async (uid) => Number((await sql`select count(*)::int as n from mcp_proposal where user_id = ${uid}`)[0].n)
   const SUB = (name, over = {}) => ({ name, category: 'tool', plan: 'p', amount: 12000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false, ...over })
@@ -440,6 +441,49 @@ async function writeMode() {
   ok(failedCall(cross) && /not_found/.test(cross.text), "a key cannot read another key's proposal")
   const crossApply = await tool(kChat.key, 'apply_proposal', { proposalId: pr2.data.proposalId })
   ok(failedCall(crossApply), "a key cannot apply another key's proposal")
+
+  // ── V-6 (screen API): the user confirms or rejects ──
+  const listed = await W('GET', '/api/proposals?status=pending')
+  const mine = (listed.json ?? []).find((x) => x.id === pr2.data.proposalId)
+  ok(listed.status === 200 && !!mine && mine.keyName === 'w-ui' && mine.confirm === 'ui' && mine.keyUsable === true && mine.preview?.rows?.length === 1 && mine.baseHash === undefined && mine.userId === undefined, 'GET /api/proposals lists it with its key, method and preview (no fingerprint, no owner)')
+  ok((await W('GET', '/api/state')).json.pendingProposals === (listed.json ?? []).length, 'the state carries the pending count for the badge')
+  ok((await W('GET', '/api/proposals?status=nope')).status === 400, 'an unknown status filter is 400')
+  ok((await W('GET', `/api/proposals/${pr2.data.proposalId}`)).json?.id === pr2.data.proposalId, 'GET /api/proposals/:id')
+  for (const [m, path] of [['GET', ''], ['POST', '/apply'], ['POST', '/reject']]) {
+    const r = await X(m, `/api/proposals/${pr2.data.proposalId}${path}`)
+    ok(r.status === 404, `X: ${m} W's proposal${path} → ${r.status} (want 404)`)
+  }
+  ok((await X('GET', '/api/proposals')).json.length === 0, "X's list holds none of W's")
+  const anon = await mcp(A, kUi.key, { jsonrpc: '2.0', id: 9, method: 'tools/list' })
+  ok(anon.status === 200, 'the key still works at the MCP endpoint')
+  const viaKey = await W('GET', '/api/proposals', undefined, { authorization: `Bearer ${kUi.key}`, cookie: '' })
+  ok(viaKey.status === 401, `a key is no session: GET /api/proposals with a key → ${viaKey.status} (want 401)`)
+  const en = await W('POST', `/api/proposals/${pr1.data.proposalId}/apply`, undefined, { 'accept-language': 'en' })
+  const ko = await W('POST', `/api/proposals/${pr1.data.proposalId}/apply`, undefined, { 'accept-language': 'ko' })
+  ok(en.status === 409 && /already been handled/.test(en.json?.error) && ko.status === 409 && /이미 처리/.test(ko.json?.error) && en.json?.code === 'not_pending', 'a handled proposal: 409 in the request language, with a code')
+  const okApply = await W('POST', `/api/proposals/${pr2.data.proposalId}/apply`)
+  ok(okApply.status === 200 && typeof okApply.json?.changeSet === 'string', `POST /api/proposals/:id/apply → ${okApply.status}`)
+  ok((await wState()).living.food === 222000, 'the screen confirmation applied it')
+  const afterSets = await wSets()
+  ok(afterSets[0].id === okApply.json.changeSet && afterSets[0].actorKind === 'api_key' && afterSets[0].actorId === kUi.id && afterSets[0].actorLabel === 'w-ui' && afterSets[0].proposalId === pr2.data.proposalId, "confirming on the screen: the actor is still the proposing key and the set names the proposal")
+  const dec = await sql`select decided_by, status, change_set_id from mcp_proposal where id = ${pr2.data.proposalId}`
+  ok(dec[0].decided_by === 'user' && dec[0].status === 'applied' && dec[0].change_set_id === okApply.json.changeSet, 'the proposal records that the user decided')
+  const prRej = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(555000) }] })
+  const rj = await W('POST', `/api/proposals/${prRej.data.proposalId}/reject`)
+  ok(rj.status === 204 && (await tool(kUi.key, 'get_proposal', { proposalId: prRej.data.proposalId })).data?.status === 'rejected', 'reject → 204 and get_proposal says rejected')
+  ok((await W('POST', `/api/proposals/${prRej.data.proposalId}/apply`)).status === 409, 'a rejected proposal cannot be applied (409)')
+  ok((await W('POST', `/api/proposals/${prRej.data.proposalId}/reject`)).status === 409, 'nor rejected again (409)')
+  ok((await wState()).living.food === 222000, 'and nothing changed')
+  ok((await W('POST', '/api/proposals/nope/apply')).status === 404, 'an unknown id is 404')
+  // a revoked key: its pending proposal can no longer be confirmed, on the screen either
+  const kGone = await mk(W, { name: 'w-gone', write: true })
+  const prGone = await tool(kGone.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(666000) }] })
+  ok((await W('DELETE', `/api/keys/${kGone.id}`)).status === 204, 'the key is revoked')
+  const ga = await W('POST', `/api/proposals/${prGone.data.proposalId}/apply`)
+  ok(ga.status === 409 && ga.json?.code === 'key_unusable' && (await wState()).living.food === 222000, `the revoked key's proposal cannot be applied on the screen → ${ga.status} ${ga.json?.code}`)
+  const gl = (await W('GET', '/api/proposals?status=pending')).json.find((x) => x.id === prGone.data.proposalId)
+  ok(gl?.keyUsable === false, 'the list says its key is no longer usable')
+  ok((await W('POST', `/api/proposals/${prGone.data.proposalId}/reject`)).status === 204, 'the user can still reject it')
 
   // ── V-7: stale, expired, the pending cap ──
   const pr3 = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(333000) }] })

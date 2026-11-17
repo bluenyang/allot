@@ -38,9 +38,9 @@ export class ProposalError extends Error {
   get status() { return this.code === 'not_found' ? 404 : this.code === 'invalid' || this.code === 'rule' ? 400 : 409 }
 }
 
-/** The sentence for a ProposalError in `lang` (the screen's) — the MCP tools use English. */
+/** The sentence for a ProposalError in `lang` (the screen's) — the MCP tools use English, with the detail an AI needs. */
 export function proposalText(e: ProposalError, lang: 'ko' | 'en'): string {
-  if (e.detail) return e.detail
+  if (e.detail && lang === 'en') return e.detail
   const at = e.index === undefined ? '' : text(lang, 'proposalAt', { n: e.index + 1 })
   return at + text(lang, e.ref)
 }

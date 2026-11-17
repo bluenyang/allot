@@ -14,8 +14,9 @@ import type { AppEnv } from './app-env'
 import type { Db } from './db/client'
 import { asUser } from './db/scope'
 import { body } from './body'
-import { msg } from './messages'
+import { langOf, msg } from './messages'
 import { applyOp, RESOURCES, Rejected, SINGLES, type ListName, type SingleName } from './ops'
+import { applyProposal, getProposal, listProposals, pendingCount, ProposalError, proposalText, rejectProposal, type ProposalStatus } from './proposals'
 import { readState } from './state'
 
 function pgCode(e: unknown): string | undefined {
@@ -95,7 +96,8 @@ function single(r: Hono<AppEnv>, path: string, resource: SingleName) {
 
 export const routes = new Hono<AppEnv>()
 
-routes.get('/state', async (c) => c.json(await asUser(uidOf(c), (q) => readState(q, uidOf(c)))))
+// `pendingProposals` is the badge's number; it is not part of readState(), which is what a proposal's fingerprint covers.
+routes.get('/state', async (c) => c.json(await asUser(uidOf(c), async (q) => ({ ...(await readState(q, uidOf(c))), pendingProposals: await pendingCount(q, uidOf(c)) }))))
 
 single(routes, '/settings', 'settings')
 single(routes, '/living', 'living')
@@ -106,6 +108,49 @@ for (const [path, resource] of [
   ['/checks', 'checks'], ['/accounts', 'accounts'], ['/debts', 'debts'], ['/remainder-split', 'remainder-split'],
   ['/holiday-sets', 'holiday-sets'], ['/targets', 'targets'],
 ] as const) crud(routes, path, resource)
+
+// ── Proposals from an AI key (spec 009 S-4, S-9): the screen confirms or rejects them (a session only) ──
+//   GET  /api/proposals?status=pending   newest first, with their previews
+//   GET  /api/proposals/:id
+//   POST /api/proposals/:id/apply        confirm: applies the proposal as one change set → { changeSet }
+//   POST /api/proposals/:id/reject
+const STATUSES = ['pending', 'applied', 'rejected', 'expired', 'stale'] as const
+const proposalFail = (c: Context<AppEnv>, e: unknown) => {
+  if (e instanceof ProposalError) return c.json({ error: proposalText(e, langOf(c)), code: e.code }, e.status as 400 | 404 | 409)
+  return dbError(c, e)
+}
+
+routes.get('/proposals', async (c) => {
+  const status = c.req.query('status')
+  if (status !== undefined && !(STATUSES as readonly string[]).includes(status)) return c.json({ error: msg(c, 'invalidInput'), path: 'status' }, 400)
+  return c.json(await listProposals(uidOf(c), status as ProposalStatus | undefined))
+})
+
+routes.get('/proposals/:id', async (c) => {
+  try {
+    return c.json(await getProposal(uidOf(c), c.req.param('id')))
+  } catch (e) {
+    return proposalFail(c, e)
+  }
+})
+
+routes.post('/proposals/:id/apply', async (c) => {
+  try {
+    const done = await applyProposal(uidOf(c), c.req.param('id'), { kind: 'user' })
+    return c.json({ changeSet: done.changeSetId })
+  } catch (e) {
+    return proposalFail(c, e)
+  }
+})
+
+routes.post('/proposals/:id/reject', async (c) => {
+  try {
+    await rejectProposal(uidOf(c), c.req.param('id'))
+    return c.body(null, 204)
+  } catch (e) {
+    return proposalFail(c, e)
+  }
+})
 
 // ── Change sets (spec 005 S-3) ──
 //   GET  /api/changes?before=<at>&beforeId=<id>&limit=50   newest first, with their row changes;
