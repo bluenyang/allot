@@ -79,7 +79,7 @@ summary_for_user: |
 - [x] W-3 제안: `mcp_proposal` 표·`change_set` 열·마이그레이션(`pnpm check:migrations`), `server/proposals.ts`(제안·미리보기·지문·만료·적용·거절), `OWNED`·완전 삭제, 단위 테스트(미리보기 = 적용 결과, 지문 불일치, 만료). (S-3, S-7, S-8) — 커밋 61cf536, 2fc7b35
 - [x] W-4 MCP 쓰기 도구 4개, 키 범위에 따른 등록, `tests/api/mcp.mjs`에 `write` 모드(제안·적용·확인 방식·격리·되돌리기·폐기된 키). (S-6, S-8) — 커밋 99b70d6
 - [x] W-5 화면: `/api/proposals`, "대기 중인 변경" 화면·배지, 변경 내역 행위자, i18n(ko·en), E2E `tests/e2e/proposals.spec.ts`. (S-9, S-7) — 커밋 231baf4, 7ca68d1, 236f98d, fdbc57a
-- [ ] W-6 문서: CHANGELOG, README, ROADMAP. (intent 영향 범위)
+- [x] W-6 문서: CHANGELOG, README, ROADMAP. (intent 영향 범위) — 커밋 ed2d828
 
 ## 검증 기준
 모든 검사는 `scripts/check-run.sh`로 돌리고, 로그는 `pnpm check:logs`를 통과해야 증거다(AGENTS.md). 로그는 `.loctx/reports/0.1.4/`. 위임한 검사도 같다.
@@ -119,6 +119,7 @@ summary_for_user: |
 - 지문이 `readState` 전체라서 제안과 상관없는 변경(예: 표시 설정)도 `stale`을 만든다. 안전한 쪽으로 틀리는 것이라 그대로 둔다. 불편하면 대상 표만 지문에 넣는 조정(A-n)으로.
 - `propose_changes`의 입력 스키마가 크다(자원별 유니언). 클라이언트가 큰 스키마를 잘 다루는지 V-11에서 확인한다.
 - 화면 확인 키의 24시간 만료가 짧거나 길 수 있다 — rc에서 사용자 확인.
+- 새 분배 대상과 그 대상을 쓰는 금액(단계의 고정 금액)은 한 제안에 함께 담을 수 없다(서버가 새 행의 id를 정한다). 알려진 한계로 두고, `propose_changes` 도구 설명이 AI에게 제안을 두 번(대상 먼저, 금액은 그 뒤) 하라고 알려 준다.
 
 ## 범위 밖
 - 계좌·부채·공휴일 세트·표시 설정 쓰기(0.1.6 등에서).
