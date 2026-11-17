@@ -18,72 +18,92 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Fail closed: one canonical form is allowed (a single `gh pr create` or `gh pr merge`, run from the
-// project, without -R/--repo, GH_REPO/GH_HOST, cd or pushd); anything the hook cannot resolve with
-// certainty is refused with the form to use. Quotes are not parsed, so `echo "gh pr create"` also
-// matches: the guard errs on blocking.
-const GH = /(?:^|[\s;&|(`{])gh(?=\s)([^;&|\n)`]*)/g
-const VALUE_FLAGS = new Set([
-  '--head', '-H', '--base', '-B', '--body', '-b', '--body-file', '-F', '--title', '-t', '--subject',
-  '--author-email', '--match-head-commit', '--assignee', '-a', '--label', '-l',
-  '--milestone', '-m', '--project', '-p', '--reviewer', '-r', '--template', '-T',
-])
+// Allowlist: a command that looks like a PR operation is allowed only in one canonical form,
+// standing alone; everything else is refused with the forms to use.
+export const FORMS = [
+  'gh pr create --head <branch> [--base <b>] [--title <t>] [--body-file <f>] [--draft]',
+  'gh pr merge <number> [--merge] [--subject <s>] [--body <b>] [--body-file <f>] [--delete-branch]',
+  '(each flag as its own token with its value as the next token; the command stands alone: no ; && || | & newline ` $ < >, no env assignment, plain `gh`)',
+].join('\n  ')
 
-const unquote = (s) => s.replace(/^["']|["']$/g, '')
-const words = (s) => (s.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(unquote)
-
-/**
- * Reads a command: { kind: 'create'|'merge'|null, arg, head, problems }.
- * `problems` lists why the command is refused regardless of the review record.
- */
-export function parse(command) {
-  const cmd = String(command ?? '').replace(/\\\r?\n/g, ' ')
-  const problems = []
-  const ops = []
-  for (const m of cmd.matchAll(GH)) {
-    const w = words(m[1])
-    const pr = w.indexOf('pr')
-    if (w.includes('api') && (pr < 0 || w.indexOf('api') < pr)) {
-      const write = /(^|\s)(-X|--method)[ =]?(POST|PUT|PATCH)\b/i.test(m[1]) || w.some((x) => ['-f', '-F', '--field', '--raw-field'].includes(x))
-      if (write && /\/merge\b|pulls/.test(m[1])) problems.push('`gh api` writes to pull requests; use `gh pr create` / `gh pr merge`')
-      continue
-    }
-    if (pr < 0) continue
-    let i = pr + 1
-    while (i < w.length && w[i].startsWith('-')) i++
-    if (w[i] !== 'create' && w[i] !== 'merge') continue
-    const op = { kind: w[i], arg: null, head: null, segment: m[0] }
-    const rest = w.slice(i + 1)
-    for (let j = 0; j < rest.length; j++) {
-      const x = rest[j]
-      const eq = x.startsWith('-') ? x.indexOf('=') : -1
-      const flag = eq > 0 ? x.slice(0, eq) : x
-      if (flag === '--head' || flag === '-H') op.head = eq > 0 ? x.slice(eq + 1) : (rest[++j] ?? null)
-      else if (x.startsWith('-')) { if (eq < 0 && VALUE_FLAGS.has(flag)) j++ }
-      else if (op.arg === null) op.arg = x
-    }
-    if (op.kind === 'create') op.arg = null
-    ops.push(op)
-  }
-  if (ops.length > 1) problems.push('more than one `gh pr create` / `gh pr merge` in one command; run one operation per command')
-  if (ops.length) {
-    if (ops.some((o) => w2(o.segment).some((x) => x === '-R' || x.startsWith('-R=') || x.startsWith('--repo')))) problems.push('-R/--repo is not allowed; run the PR command in the repository checkout without it')
-    if (/\bGH_(REPO|HOST)=/.test(cmd)) problems.push('GH_REPO/GH_HOST assignments are not allowed; run the PR command in the repository checkout without them')
-    if (/(^|[\s;&|(`{])(cd|pushd)(\s|$)/.test(cmd)) problems.push('cd/pushd in the same command is not allowed; run the PR command from the project directory')
-  }
-  const o = ops[0]
-  return { kind: o?.kind ?? null, arg: o?.arg ?? null, head: o?.head ?? null, problems }
+/** Candidate check on the raw hook input: backslashes and quotes removed first. */
+export function isCandidate(raw) {
+  const t = String(raw ?? '').replace(/[\\'"]/g, '')
+  return (/\bgh\b/.test(t) && /\bpr\b/.test(t) && /\b(create|merge)\b/.test(t)) ||
+    (/\bgh\b/.test(t) && /\bapi\b/.test(t) && /\b(pulls|merge)\b/.test(t))
 }
-const w2 = (s) => words(s)
 
-/** True when a command (or raw hook input) looks like a PR operation at all. */
-export const isPrOperation = (text) => { const p = parse(text); return p.kind !== null || p.problems.length > 0 }
+/** Small POSIX-shell-word tokenizer. Returns an array of words, or null (unbalanced/unsupported). */
+export function tokenize(cmd) {
+  if (/[;&|\n\r`<>$]/.test(cmd)) return null
+  const out = []
+  let cur = ''
+  let inTok = false
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i]
+    if (c === "'") {
+      const j = cmd.indexOf("'", i + 1)
+      if (j < 0) return null
+      cur += cmd.slice(i + 1, j); inTok = true; i = j
+    } else if (c === '"') {
+      inTok = true
+      let j = i + 1
+      for (; j < cmd.length && cmd[j] !== '"'; j++) {
+        if (cmd[j] === '\\' && '"\\$`'.includes(cmd[j + 1] ?? '')) j++
+        cur += cmd[j]
+      }
+      if (j >= cmd.length) return null
+      i = j
+    } else if (c === '\\') {
+      if (i + 1 >= cmd.length) return null
+      cur += cmd[++i]; inTok = true
+    } else if (c === ' ' || c === '\t') {
+      if (inTok) { out.push(cur); cur = ''; inTok = false }
+    } else { cur += c; inTok = true }
+  }
+  if (inTok) out.push(cur)
+  return out
+}
+
+/** Checks a candidate command against the allowed forms: { kind, arg, head } or { error }. */
+export function check(command) {
+  const bad = (why) => ({ error: `${why}. Allowed forms:\n  ${FORMS}` })
+  const w = tokenize(String(command ?? ''))
+  if (!w) return bad('unbalanced quote or unsupported shell construct in a PR command')
+  if (w[0] !== 'gh' || w[1] !== 'pr' || (w[2] !== 'create' && w[2] !== 'merge')) return bad(`not an allowed PR command (${w.slice(0, 3).join(' ')} ...)`)
+  const kind = w[2]
+  const rest = w.slice(3)
+  let arg = null
+  let head = null
+  const seen = new Set()
+  const bare = kind === 'create' ? ['--draft'] : ['--merge', '--delete-branch']
+  const valued = kind === 'create' ? ['--base', '--head', '--title', '--body-file'] : ['--subject', '--body', '--body-file']
+  let i = 0
+  if (kind === 'merge') {
+    if (!/^\d+$/.test(rest[0] ?? '')) return bad('gh pr merge needs a plain PR number first')
+    arg = rest[i++]
+  }
+  for (; i < rest.length; i++) {
+    const f = rest[i]
+    if (seen.has(f)) return bad(`repeated flag ${f}`)
+    seen.add(f)
+    if (bare.includes(f)) continue
+    if (!valued.includes(f)) return bad(`flag or argument not allowed: ${f}`)
+    const v = rest[++i]
+    if (v === undefined || v === '') return bad(`${f} needs a value`)
+    if (f === '--head') {
+      if (!/^[A-Za-z0-9._/-]+$/.test(v)) return bad(`--head must be a plain branch name of this repository (got ${v})`)
+      head = v
+    }
+  }
+  if (kind === 'create' && !head) return bad('--head is required')
+  return { kind, arg, head }
+}
 
 /** Returns the reason a PR command is refused, or null. */
 export function decide({ command, branch, headSha, recorded }) {
-  const p = parse(command)
-  if (p.problems.length) return p.problems.join('; ')
-  if (p.kind === null) return null
+  const c = check(command)
+  if (c.error) return c.error
   if (recorded && recorded === headSha) return null
   const fix = recorded
     ? `review the commits ${recorded.slice(0, 12)}..${String(headSha).slice(0, 12)}, then \`pnpm review:mark\``
@@ -125,56 +145,37 @@ function mark(args) {
 
 function selfTest() {
   let bad = 0
-  const check = (label, got, want) => {
+  const t = (label, got, want) => {
     const pass = JSON.stringify(got) === JSON.stringify(want)
     if (!pass) bad++
     console.log(`${pass ? 'ok  ' : 'FAIL'} ${label}`)
   }
-  const P = (c) => parse(c)
-  check('chained create', [P('git push && gh pr create --base master --head x').kind, P('git push && gh pr create --head x').head], ['create', 'x'])
-  check('merge spaces', P('gh  pr   merge 24 --merge').arg, '24')
-  check('pr view', P('gh pr view 24').kind, null)
-  check('echo gh pr list', P('echo gh pr list').kind, null)
-  check('ghx', P('ghx pr create').kind, null)
-  check('-R blocks', P('gh -R o/r pr merge 24').problems.length > 0, true)
-  check('GH_REPO blocks', P('GH_REPO=o/r gh pr merge 24').problems.length > 0, true)
-  check('gh api merge blocks', P('gh api -X PUT repos/o/r/pulls/24/merge').problems.length > 0, true)
-  check('backslash newline', P('gh pr \\\nmerge 24').kind, 'merge')
-  check('two operations block', P('gh pr merge 24; gh pr merge 25').problems.length > 0, true)
-  check('cd blocks', P('cd /x && gh pr merge 24').problems.length > 0, true)
-  const cmd = 'gh pr create'
-  check('no record blocks', decide({ command: cmd, branch: 'b', headSha: 'aaa', recorded: null }) !== null, true)
-  check('equal allows', decide({ command: cmd, branch: 'b', headSha: 'aaa', recorded: 'aaa' }), null)
-  check('different blocks', decide({ command: cmd, branch: 'b', headSha: 'bbb', recorded: 'aaa' }) !== null, true)
-  check('other command allows', decide({ command: 'git status', branch: 'b', headSha: 'bbb', recorded: null }), null)
-  check('collision-free path', recordFile('/p', 'feat/a') !== recordFile('/p', 'feat__a'), true)
+  const okc = (c) => !check(c).error
+  t('create ok', okc('gh pr create --head x --base master --title "a b" --draft'), true)
+  t('merge ok', okc("gh pr merge 24 --merge --subject 's t'"), true)
+  for (const c of ['/usr/bin/gh pr merge 24', 'gh -Rother/repo pr merge 24', 'gh pr create -Hother',
+    'git push x && gh pr merge 24', 'gh pr create --head=x', 'gh pr create --head o:x', 'gh pr create', 'gh pr merge 24 --admin',
+    'gh pr merge feat', 'GH_REPO=o/r gh pr merge 24', 'gh pr merge 24; gh pr merge 25', 'gh pr merge "24']) t(`block ${c}`, okc(c), false)
+  t('candidates', ['gh pr mer\\ge 24', 'gh api --raw-field=t=x repos/o/r/pulls', '"gh" "pr" "merge"'].map(isCandidate), [true, true, true])
+  t('not candidates', ['git push -u origin x', 'gh pr view 24', 'gh pr checks 24', 'gh pr edit 24 --body-file f', 'gh pr close 22', 'git commit -F msg.txt'].map(isCandidate), [false, false, false, false, false, false])
+  t('equal allows', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'aaa', recorded: 'aaa' }), null)
+  t('different blocks', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'bbb', recorded: 'aaa' }) !== null, true)
+  t('collision-free path', recordFile('/p', 'feat/a') !== recordFile('/p', 'feat__a'), true)
   console.log(bad ? `${bad} FAILED` : 'all ok')
   process.exit(bad ? 1 : 0)
-}
-
-function originOwner(dir) {
-  const url = git(dir, 'remote', 'get-url', 'origin')
-  const m = /[:/]([^/:]+)\/[^/]+?(?:\.git)?\/?$/.exec(url)
-  return m ? m[1] : null
 }
 
 function resolveHead(dir, p) {
   const ghBin = process.env.GUARD_REVIEW_GH || 'gh'
   if (p.kind === 'create') {
-    let branch = p.head
-    if (branch && branch.includes(':')) {
-      const [owner, ...r] = branch.split(':')
-      const mine = originOwner(dir)
-      if (!mine || owner.toLowerCase() !== mine.toLowerCase()) throw new Error(`--head ${branch} names another owner than origin; use --head <branch> of this repository`)
-      branch = r.join(':')
-    }
-    branch = branch || git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')
+    const branch = p.head
     const line = git(dir, 'ls-remote', 'origin', `refs/heads/${branch}`).split('\n')[0]
     const remote = line ? line.split(/\s+/)[0] : ''
     if (!remote) throw new Error(`branch ${branch} is not on origin; push the branch first`)
     let local = null
     try { local = git(dir, 'rev-parse', '--verify', `refs/heads/${branch}^{commit}`) } catch { /* no local branch */ }
-    if (local && local !== remote) throw new Error(`local ${branch} (${local}) differs from origin (${remote}); push the branch first`)
+    if (!local) throw new Error(`no local branch ${branch}`)
+    if (local !== remote) throw new Error(`local ${branch} (${local}) differs from origin (${remote}); push the branch first`)
     return { branch, headSha: remote }
   }
   const out = execFileSync(ghBin, ['pr', 'view', ...(p.arg ? [p.arg] : []), '--json', 'headRefName,headRefOid,isCrossRepository'],
@@ -190,16 +191,12 @@ function hook() {
   process.stdin.on('data', (d) => { input += d })
   process.stdin.on('end', () => {
     const block = (why) => { console.error(`guard-review: ${why}`); process.exit(2) }
-    let command = ''
-    try {
-      command = JSON.parse(input)?.tool_input?.command ?? ''
-    } catch {
-      if (isPrOperation(input)) block('unreadable hook input that looks like a PR command; refusing')
-      process.exit(0)
-    }
-    const p = parse(command)
-    if (p.problems.length) block(p.problems.join('; '))
-    if (p.kind === null) process.exit(0)
+    if (!isCandidate(input)) process.exit(0)
+    let command
+    try { command = JSON.parse(input)?.tool_input?.command } catch { /* handled below */ }
+    if (typeof command !== 'string') block(`unreadable hook input that looks like a PR command; refusing. Allowed forms:\n  ${FORMS}`)
+    const p = check(command)
+    if (p.error) block(p.error)
     let dir, branch, headSha
     try {
       dir = projectDir()

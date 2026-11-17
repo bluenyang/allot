@@ -5,46 +5,46 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 // @ts-expect-error plain .mjs without types
-import { parse, decide, recordFile } from '../../scripts/guard-review.mjs'
+import { check, isCandidate, tokenize, decide, recordFile } from '../../scripts/guard-review.mjs'
 
 const script = resolve('scripts/guard-review.mjs')
 
-test('parse: canonical forms', () => {
-  const c = parse('git push && gh pr create --base master --head x')
-  assert.deepEqual([c.kind, c.head, c.problems], ['create', 'x', []])
-  assert.equal(parse('gh  pr   merge 24 --merge').arg, '24')
-  assert.equal(parse('gh pr merge --body "x y" feat/a').arg, 'feat/a')
+test('check: canonical forms pass', () => {
+  assert.deepEqual(check('gh pr create --base master --head x --title "a b" --draft'), { kind: 'create', arg: null, head: 'x' })
+  assert.deepEqual(check("gh  pr   merge 24 --merge --subject 's t' --delete-branch"), { kind: 'merge', arg: '24', head: null })
+  assert.equal(check('gh pr mer\\ge 24').kind, 'merge') // the shell runs merge, so it is checked as merge
 })
-test('parse: unrelated commands are null', () => {
-  for (const c of ['gh pr view 24', 'echo gh pr list', 'ghx pr create', 'git status']) {
-    const p = parse(c)
-    assert.deepEqual([p.kind, p.problems], [null, []], c)
+test('check: every other form is an error that names the allowed forms', () => {
+  for (const c of [
+    '/usr/bin/gh pr merge 24', 'gh -R other/repo pr merge 24', 'gh -Rother/repo pr merge 24', 'gh pr merge 24 -R other/repo',
+    'GH_REPO=o/r gh pr merge 24', 'GH_HOST=h gh pr create --head x', 'gh pr create -Hother', 'gh pr create -H other', 'gh pr create --head=x',
+    'gh pr create --head owner:x', 'gh pr create', 'gh pr create --head x --fill', 'gh pr create --head x --head y',
+    'git push x && gh pr merge 24', 'gh pr merge 24; gh pr merge 25', 'gh pr merge 24\ngh pr merge 25', 'gh pr merge 24 | cat',
+    'cd /e && gh pr merge 24', 'gh pr merge $(echo 24)', 'gh pr merge 24 `x`', 'gh pr merge 24 > f', 'gh pr merge "24', "gh pr merge '24",
+    'gh pr merge feat/a', 'gh pr merge', 'gh pr merge 24 --admin', 'gh pr merge 24 --subject', 'gh pr merge https://x/pull/24',
+    'gh api --raw-field=title=x repos/o/r/pulls', 'gh api -X PUT repos/o/r/pulls/24/merge', 'gh pr create \\\n --head x',
+  ]) {
+    const r = check(c)
+    assert.ok(r.error?.includes('Allowed forms'), c)
   }
 })
-test('parse: bypass forms are problems', () => {
-  for (const c of [
-    'gh -R other/repo pr merge 24',
-    'gh pr merge 24 -R other/repo',
-    'GH_REPO=o/r gh pr merge 24',
-    'GH_HOST=h gh pr create',
-    'gh api -X PUT repos/o/r/pulls/24/merge',
-    'gh api repos/o/r/pulls -f title=x',
-    'gh pr merge 24; gh pr merge 25',
-    'gh pr merge 24\ngh pr merge 25',
-    'cd /elsewhere && gh pr merge 24',
-    'pushd /elsewhere; gh pr create',
-  ]) assert.ok(parse(c).problems.length > 0, c)
+test('isCandidate: raw text, quotes and backslashes removed', () => {
+  for (const c of ['gh pr mer\\ge 24', 'gh api --raw-field=t=x repos/o/r/pulls', '"gh" "pr" "merge"', '{"tool_input":{"command":"gh pr merge 24"}'])
+    assert.equal(isCandidate(c), true, c)
+  for (const c of ['git push -u origin x', 'gh pr view 24', 'gh pr checks 24', 'gh pr edit 24 --body-file f', 'gh pr close 22', 'git commit -F msg.txt', 'echo hi', '{}', 'not json'])
+    assert.equal(isCandidate(c), false, c)
 })
-test('parse: backslash-newline continuation is joined', () => {
-  assert.equal(parse('gh pr \\\n merge 24').kind, 'merge')
+test('tokenize: quotes and escapes', () => {
+  assert.deepEqual(tokenize(`a 'b c' "d \\" e" f\\ g ''`), ['a', 'b c', 'd " e', 'f g', ''])
+  assert.equal(tokenize('a "b'), null)
+  assert.equal(tokenize('a && b'), null)
 })
-test('decide: no record blocks, equal allows, different blocks', () => {
-  const command = 'gh pr create'
+test('decide: no record blocks, equal allows, different names the range', () => {
+  const command = 'gh pr merge 1'
   assert.match(decide({ command, branch: 'b', headSha: 'aaa', recorded: null }), /recorded none/)
   assert.equal(decide({ command, branch: 'b', headSha: 'aaa', recorded: 'aaa' }), null)
   assert.match(decide({ command, branch: 'b', headSha: 'bbb', recorded: 'aaa' }), /aaa\.\.bbb/)
-  assert.equal(decide({ command: 'git status', branch: 'b', headSha: 'bbb', recorded: null }), null)
-  assert.match(decide({ command: 'gh -R o/r pr merge 1', branch: 'b', headSha: 'a', recorded: 'a' }), /-R/)
+  assert.match(decide({ command: 'gh -R o/r pr merge 1', branch: 'b', headSha: 'a', recorded: 'a' }), /Allowed forms/)
 })
 test('recordFile: feat/a and feat__a do not collide', () => {
   assert.notEqual(recordFile('/p', 'feat/a'), recordFile('/p', 'feat__a'))
@@ -69,7 +69,7 @@ function setup() {
   git('add', 'a')
   git('commit', '-q', '-m', 'one')
   // fake gh: prints $FAKE_GH_OUT, exits $FAKE_GH_EXIT
-  writeFileSync(join(root, 'fakegh'), '#!/bin/sh\nprintf "%s" "$FAKE_GH_OUT"\nexit "${FAKE_GH_EXIT:-0}"\n')
+  writeFileSync(join(root, 'fakegh'), '#!/bin/sh\n[ "$*" = "pr view 24 --json headRefName,headRefOid,isCrossRepository" ] || { echo "fake gh: unexpected args: $*" >&2; exit 1; }\nprintf "%s" "$FAKE_GH_OUT"\nexit "${FAKE_GH_EXIT:-0}"\n')
   chmodSync(join(root, 'fakegh'), 0o755)
   const hook = (command: string | null, extra: Record<string, string> = {}) =>
     sh(dir, 'node', [script], JSON.stringify({ tool_input: command === null ? {} : { command } }), { ...env, ...extra })
@@ -77,45 +77,54 @@ function setup() {
   return { root, dir, env, sh, git, hook, commit }
 }
 
-test('create: --mark and hook against a bare origin', () => {
+test('create: bare origin, local tip, remote tip and record', () => {
   const t = setup()
   try {
-    const create = 'git push && gh pr create --base master'
-    assert.equal(t.hook(create).status, 2) // not pushed
+    const create = 'gh pr create --base master --head feat/x'
+    assert.equal(t.hook(create).status, 2) // not on origin
+    assert.match(t.hook(create).stderr, /push the branch first/)
     t.git('push', '-q', 'origin', 'feat/x')
-    assert.equal(t.hook(create).status, 2) // pushed, no record
-    const m = t.sh(t.dir, 'node', [script, '--mark'])
-    assert.equal(m.status, 0, m.stderr)
+    assert.match(t.hook(create).stderr, /recorded none/)
     const first = t.git('rev-parse', 'HEAD')
-    assert.match(m.stdout, new RegExp(first))
-    assert.equal(t.hook(create).status, 0)
-    assert.equal(t.hook('git status').status, 0)
-    assert.equal(t.hook(null).status, 0) // no command field
-    // local ahead of origin: local != remote
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark']).status, 0)
+    assert.equal(t.hook(create).status, 0) // reviewed: from here only the named check can block
+    for (const c of [
+      'gh pr create --base master --head owner1:feat/x', 'gh pr create --head=feat/x', 'gh pr create -Hfeat/x', 'gh pr create -H feat/x',
+      'gh pr create', 'gh -R o/r pr create --head feat/x', 'GH_REPO=o/r gh pr create --head feat/x', '/usr/bin/gh pr create --head feat/x',
+      'git push origin feat/x && gh pr create --head feat/x', 'gh api -X POST repos/o/r/pulls', 'gh api --raw-field=title=x repos/o/r/pulls',
+    ]) assert.equal(t.hook(c).status, 2, c)
+    assert.equal(t.hook('git push -u origin feat/x').status, 0)
+    assert.equal(t.hook(null).status, 0)
+    // local ahead of origin (record = remote tip): only local != remote can block
     const second = t.commit('2')
     const ahead = t.hook(create)
     assert.equal(ahead.status, 2)
     assert.match(ahead.stderr, /differs from origin/)
-    // pushed but unreviewed: the range is named
+    // pushed but not reviewed: the range is named
     t.git('push', '-q', 'origin', 'feat/x')
     const blocked = t.hook(create)
     assert.equal(blocked.status, 2)
     assert.ok(blocked.stderr.includes(`${first.slice(0, 12)}..${second.slice(0, 12)}`), blocked.stderr)
-    // other owner in --head
-    assert.equal(t.hook('gh pr create --head someone:feat/x').status, 2)
-    assert.equal(t.hook('gh pr create --head owner1:feat/x').status, 2) // owner ok, but unreviewed
-    // reviewed local branch at A must not authorise a remote at B (covered above); bypass forms
-    for (const c of ['gh -R o/r pr create', 'GH_REPO=o/r gh pr create', 'gh api -X POST repos/o/r/pulls', 'gh pr create \\\n --head x; gh pr create']) {
-      assert.equal(t.hook(c).status, 2, c)
-    }
+    // reviewed local branch, other branch on origin: head names the branch whose tip is checked
+    t.git('branch', 'feat/y', first)
+    assert.equal(t.hook('gh pr create --head feat/y').status, 2) // feat/y not on origin
   } finally { rmSync(t.root, { recursive: true, force: true }) }
 })
 
-test('malformed stdin: PR text blocks, other text allows', () => {
+test('hook input: candidates must be readable JSON with a string command', () => {
   const t = setup()
   try {
-    assert.equal(t.sh(t.dir, 'node', [script], 'not json', t.env).status, 0)
-    assert.equal(t.sh(t.dir, 'node', [script], 'not json gh pr merge 5', t.env).status, 2)
+    const raw = (input: string) => t.sh(t.dir, 'node', [script], input, t.env).status
+    assert.equal(raw('not json'), 0)
+    assert.equal(raw('{}'), 0)
+    assert.equal(raw('{"tool_input":{}}'), 0)
+    assert.equal(raw('not json gh pr merge 5'), 2)
+    assert.equal(raw('{"tool_input":{"command":"gh pr merge 24"}'), 2) // truncated
+    assert.equal(raw('{"tool_input":{"command":["gh pr merge 24"]}}'), 2) // not a string
+    assert.equal(raw('{"tool_input":{"command":"git push x && gh pr merge 24"}}'), 2)
+    assert.equal(raw('{"tool_input":{"command":"gh pr mer\\\\ge 24"}}'), 2) // checked as merge; fake gh is not set up for it here
+    for (const c of ['git push -u origin x', 'gh pr view 24', 'gh pr checks 24', 'gh pr edit 24 --body-file f', 'gh pr close 22', 'git commit -F msg.txt'])
+      assert.equal(t.hook(c).status, 0, c)
   } finally { rmSync(t.root, { recursive: true, force: true }) }
 })
 
@@ -141,7 +150,7 @@ test('--mark: branch must exist, sha must be tip or ancestor', () => {
   } finally { rmSync(t.root, { recursive: true, force: true }) }
 })
 
-test('merge: fake gh decides the head', () => {
+test('merge: fake gh (exact args) decides the head', () => {
   const t = setup()
   try {
     const head = t.git('rev-parse', 'HEAD')
@@ -150,9 +159,17 @@ test('merge: fake gh decides the head', () => {
     assert.equal(t.hook('gh pr merge 24 --merge', out(view)).status, 2) // unreviewed
     assert.equal(t.sh(t.dir, 'node', [script, '--mark']).status, 0)
     assert.equal(t.hook('gh pr merge 24 --merge', out(view)).status, 0) // reviewed
-    assert.equal(t.hook('gh pr merge 24', out({ ...view, headRefOid: 'f'.repeat(40) })).status, 2) // moved
+    assert.equal(t.hook('gh pr merge 24 --merge --delete-branch', out(view)).status, 0)
+    assert.equal(t.hook('gh pr merge 25 --merge', out(view)).status, 2) // fake gh only answers for 24: number is passed through
+    assert.equal(t.hook('gh pr merge 24', out({ ...view, headRefOid: 'f'.repeat(40) })).status, 2) // head moved
     assert.equal(t.hook('gh pr merge 24', out({ ...view, isCrossRepository: true })).status, 2)
-    assert.equal(t.hook('gh pr merge 24', out({ headRefName: 'feat/x', headRefOid: head })).status, 2) // missing field
-    assert.equal(t.hook('gh pr merge 24', { FAKE_GH_OUT: '', FAKE_GH_EXIT: '1' }).status, 2) // gh fails
+    for (const k of ['headRefName', 'headRefOid', 'isCrossRepository']) {
+      const o: Record<string, unknown> = { ...view }
+      delete o[k]
+      const r = t.hook('gh pr merge 24', out(o)) // valid JSON, exit 0, one field missing
+      assert.equal(r.status, 2, k)
+      assert.match(r.stderr, /incomplete fields/, k)
+    }
+    assert.equal(t.hook('gh pr merge 24', { ...out(view), FAKE_GH_EXIT: '1' }).status, 2) // gh exits 1 with valid output
   } finally { rmSync(t.root, { recursive: true, force: true }) }
 })
