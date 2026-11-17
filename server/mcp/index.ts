@@ -10,6 +10,7 @@ import type { AppEnv } from '../app-env'
 import { getAuth, parseOrigins } from '../auth'
 import { db } from '../db/client'
 import * as a from '../db/auth-schema'
+import { usableUser } from './account'
 import { hostAndOriginOk } from './guard'
 import { FailureLimiter } from './limiter'
 import { buildMcpServer } from './tools'
@@ -20,13 +21,6 @@ const KEY_SCOPE = { mcp: ['read'] }
 const failures = new FailureLimiter(20, 600_000)
 
 const unauthorized = (c: Context) => c.json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer' })
-
-/** The user a verified key belongs to, when that user may use the app: active and not banned. */
-async function usableUser(id: string): Promise<boolean> {
-  const [u] = await db.select({ status: a.user.status, banned: a.user.banned, banExpires: a.user.banExpires }).from(a.user).where(eq(a.user.id, id))
-  if (!u || u.status !== 'active') return false
-  return !(u.banned && (!u.banExpires || u.banExpires.getTime() > Date.now()))
-}
 
 /** The owner of a key by its stored form (SHA-256, base64url; the plugin's default hash), without counting a use. */
 async function keyOwner(key: string): Promise<string | null> {

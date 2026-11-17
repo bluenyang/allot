@@ -22,6 +22,21 @@ type Row = Record<string, unknown>
 /** A rule the request breaks: the transaction rolls back and the client gets 400 with this message. */
 export class Rejected extends MsgError {}
 
+/** A rule one operation of a list breaks; `index` is its place in the list (0-based). */
+export class OpRejected extends Rejected {
+  constructor(public index: number, ref: Msg) { super(ref) }
+}
+
+/** The message for a database constraint error (a bad reference, a duplicate, a value out of range); null for any other error. */
+export function constraintMessage(e: unknown): Msg | null {
+  const err = e as { code?: string; cause?: { code?: string } }
+  const code = err?.code ?? err?.cause?.code
+  if (code === '23503') return m('fkMissing')
+  if (code === '23505') return m('duplicate')
+  if (['23514', '22P02', '22003', '22007', '22008'].includes(code ?? '')) return m('outOfRange')
+  return null
+}
+
 /** Phases may not overlap (per user): [from, to] with an open end meaning "forever". */
 export async function phaseOverlap(q: Db, uid: string, p: { from: string; to: string | null }, exceptId?: string): Promise<Msg | null> {
   const mine = eq(t.phase.userId, uid)
@@ -306,9 +321,17 @@ export async function applyOps(q: Db, uid: string, rec: Recorder, ops: Op[]): Pr
   const need = new Set(ops.flatMap(locksOf))
   for (const name of LOCK_ORDER) if (need.has(name)) await lockFor(q, name, uid)
   const results: OpResult[] = []
-  for (const op of ops) {
-    const res = await applyOp(q, uid, rec, op)
-    if (!res.found) throw new Rejected(m('itemNotFound'))
+  for (const [i, op] of ops.entries()) {
+    let res: OpResult
+    try {
+      res = await applyOp(q, uid, rec, op)
+    } catch (e) {
+      if (e instanceof Rejected) throw new OpRejected(i, e.ref)
+      const known = constraintMessage(e)
+      if (known) throw new OpRejected(i, known)
+      throw e
+    }
+    if (!res.found) throw new OpRejected(i, m('itemNotFound'))
     results.push(res)
   }
   return results
