@@ -111,6 +111,21 @@ test('create: bare origin, local tip, remote tip and record', () => {
   } finally { rmSync(t.root, { recursive: true, force: true }) }
 })
 
+test('create: branch on origin but not local is blocked by the local-branch check only', () => {
+  const t = setup()
+  try {
+    t.git('push', '-q', 'origin', 'feat/x')
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark']).status, 0) // reviewed, recorded at the remote tip
+    const create = 'gh pr create --head feat/x'
+    assert.equal(t.hook(create).status, 0)
+    t.git('checkout', '-q', '-b', 'other')
+    t.git('branch', '-D', 'feat/x')
+    const r = t.hook(create)
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /no local branch feat\/x/)
+  } finally { rmSync(t.root, { recursive: true, force: true }) }
+})
+
 test('hook input: candidates must be readable JSON with a string command', () => {
   const t = setup()
   try {
@@ -122,7 +137,23 @@ test('hook input: candidates must be readable JSON with a string command', () =>
     assert.equal(raw('{"tool_input":{"command":"gh pr merge 24"}'), 2) // truncated
     assert.equal(raw('{"tool_input":{"command":["gh pr merge 24"]}}'), 2) // not a string
     assert.equal(raw('{"tool_input":{"command":"git push x && gh pr merge 24"}}'), 2)
-    assert.equal(raw('{"tool_input":{"command":"gh pr mer\\\\ge 24"}}'), 2) // checked as merge; fake gh is not set up for it here
+    assert.equal(raw('{"tool_input":{"command":"gh pr mer\\\\ge 24"}}'), 2)
+    for (const sep of ['\t', '\n', '\u00a0', '\u2003']) {
+      const cmd = ['gh', 'pr', 'merge', '24'].join(sep)
+      assert.equal(isCandidate(JSON.stringify({ tool_input: { command: cmd } })), true, JSON.stringify(sep))
+      assert.equal(raw(JSON.stringify({ tool_input: { command: cmd } })), 2, JSON.stringify(sep))
+    }
+    // hand-written escapes, as the raw text a client might send
+    for (const e of ['gh\\tpr\\tmerge\\t24', 'gh\\u0020pr\\u0020merge 24', 'gh\\npr\\nmerge 24', '\\u0067h pr merge 24'])
+      assert.equal(raw(`{"tool_input":{"command":"${e}"}}`), 2, e)
+    // unparseable JSON: only the decoded-escape reading can see the command
+    for (const e of ['gh\\tpr\\tmerge\\t24', 'gh\\npr\\nmerge 24'])
+      assert.equal(raw(`{"tool_input":{"command":"${e}"}`), 2, `truncated ${e}`)
+    // a Bash call without a string command is refused; a command-less non-Bash input is not
+    assert.equal(raw('{"tool_name":"Bash","tool_input":{}}'), 2)
+    assert.equal(raw('{"tool_name":"Bash","tool_input":{"command":5}}'), 2)
+    assert.equal(raw('{"tool_name":"Bash"}'), 2)
+    assert.equal(raw('{"tool_name":"Read","tool_input":{}}'), 0) // checked as merge; fake gh is not set up for it here
     for (const c of ['git push -u origin x', 'gh pr view 24', 'gh pr checks 24', 'gh pr edit 24 --body-file f', 'gh pr close 22', 'git commit -F msg.txt'])
       assert.equal(t.hook(c).status, 0, c)
   } finally { rmSync(t.root, { recursive: true, force: true }) }

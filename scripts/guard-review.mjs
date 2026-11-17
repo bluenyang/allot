@@ -26,11 +26,26 @@ export const FORMS = [
   '(each flag as its own token with its value as the next token; the command stands alone: no ; && || | & newline ` $ < >, no env assignment, plain `gh`)',
 ].join('\n  ')
 
-/** Candidate check on the raw hook input: backslashes and quotes removed first. */
+const looksLikePr = (t) =>
+  (/\bgh\b/.test(t) && /\bpr\b/.test(t) && /\b(create|merge)\b/.test(t)) ||
+  (/\bgh\b/.test(t) && /\bapi\b/.test(t) && /\b(pulls|merge)\b/.test(t))
+
+const decodeEscapes = (t) =>
+  t.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\([tnr/bf"\\])/g, (_, c) => ({ t: '\t', n: '\n', r: '\r', b: '\b', f: '\f' })[c] ?? c)
+
+/**
+ * Candidate check on the raw hook input. It is a candidate when any reading of the text looks like
+ * a PR operation: backslashes as spaces or removed, JSON escapes decoded or not, quotes removed.
+ */
 export function isCandidate(raw) {
-  const t = String(raw ?? '').replace(/[\\'"]/g, '')
-  return (/\bgh\b/.test(t) && /\bpr\b/.test(t) && /\b(create|merge)\b/.test(t)) ||
-    (/\bgh\b/.test(t) && /\bapi\b/.test(t) && /\b(pulls|merge)\b/.test(t))
+  const text = String(raw ?? '')
+  const views = [text, decodeEscapes(text)]
+  try {
+    const c = JSON.parse(text)?.tool_input?.command
+    if (typeof c === 'string') views.push(c)
+  } catch { /* raw views only */ }
+  return views.some((v) => looksLikePr(v.replace(/\\/g, ' ').replace(/['"]/g, '')) || looksLikePr(v.replace(/[\\'"]/g, '')))
 }
 
 /** Small POSIX-shell-word tokenizer. Returns an array of words, or null (unbalanced/unsupported). */
@@ -191,9 +206,14 @@ function hook() {
   process.stdin.on('data', (d) => { input += d })
   process.stdin.on('end', () => {
     const block = (why) => { console.error(`guard-review: ${why}`); process.exit(2) }
+    // A non-candidate cannot contain a PR operation, so unreadable or command-less input that is not a
+    // candidate is allowed: blocking every call on a format change would stop all work. A Bash call
+    // without a string command is the one input-contract failure that is refused.
+    let parsed
+    try { parsed = JSON.parse(input) } catch { /* not JSON */ }
+    const command = parsed?.tool_input?.command
+    if (parsed?.tool_name === 'Bash' && typeof command !== 'string') block('hook input without a command (tool_name Bash); refusing')
     if (!isCandidate(input)) process.exit(0)
-    let command
-    try { command = JSON.parse(input)?.tool_input?.command } catch { /* handled below */ }
     if (typeof command !== 'string') block(`unreadable hook input that looks like a PR command; refusing. Allowed forms:\n  ${FORMS}`)
     const p = check(command)
     if (p.error) block(p.error)
