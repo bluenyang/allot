@@ -74,6 +74,9 @@ test('pending: the list, the badge and the preview; confirming applies it and th
   await expect(card).toContainText(`구독 추가 · ${SUB}`)
   await expect(card).toContainText(`체크리스트 추가 · ${CHECK}`)
   await expect(card).toContainText('구독 이체액')
+  // the fields have names, not property names
+  await expect(card).toContainText('다음 결제일')
+  await expect(card).not.toContainText('nextDate')
   await expect(card.getByText('이체·분배').first()).toBeVisible()
   await expect(card.getByText('→').first()).toBeVisible()
   // the sidebar badge counts the waiting proposals
@@ -159,6 +162,8 @@ test('pending in English: make a write key, the same flow, the history', async (
   await expect(card).toContainText(`Proposed by key ${KEY_NAME}`)
   await expect(card).toContainText(`${SUB}`)
   await expect(card).toContainText('Subscription transfer')
+  await expect(card).toContainText('Next payment')
+  await expect(card).not.toContainText('nextDate')
   await card.getByRole('button', { name: 'Confirm and apply' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Applied.' })).toBeVisible()
   await expect(page.getByRole('list', { name: 'Handled proposals' }).getByRole('listitem').first()).toContainText('Applied')

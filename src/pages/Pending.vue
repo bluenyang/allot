@@ -113,6 +113,7 @@ const fields = (c: RowChange) => {
     .map((k) => ({ k, b: c.before?.[k], a: c.after?.[k] }))
     .filter((f) => c.op !== 'update' || JSON.stringify(f.b) !== JSON.stringify(f.a))
 }
+const fieldName = (k: string) => { const key = `pending.fields.${k}`; return te(key) ? t(key as MessageKey) : k }
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
 const summary = (p: Proposal) => {
   const first = p.preview.rows[0]
@@ -154,7 +155,7 @@ const STATUS: Record<Status, MessageKey> = { pending: 'pending.status.pending', 
           <table class="small">
             <tbody>
               <tr v-for="f in fields(c)" :key="f.k">
-                <th scope="row">{{ f.k }}</th>
+                <th scope="row">{{ fieldName(f.k) }}</th>
                 <td v-if="c.op !== 'insert'" class="muted">{{ show(f.b) }}</td>
                 <td v-if="c.op === 'update'">→</td>
                 <td v-if="c.op !== 'delete'">{{ show(f.a) }}</td>
