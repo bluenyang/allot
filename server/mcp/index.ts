@@ -1,4 +1,4 @@
-// POST /api/mcp — the read-only MCP endpoint (spec 008 S-5, S-8): Streamable HTTP, stateless,
+// POST /api/mcp — the MCP endpoint (spec 008 S-5, S-8; write tools for a write key, spec 009 S-6): Streamable HTTP, stateless,
 // JSON responses. `Authorization: Bearer <API key>` is the only way in; a key is no session and
 // works nowhere else. Every failure to authenticate is the same 401, whatever the reason, and is
 // counted per client address.
@@ -10,8 +10,10 @@ import type { AppEnv } from '../app-env'
 import { getAuth, parseOrigins } from '../auth'
 import { db } from '../db/client'
 import * as a from '../db/auth-schema'
+import { usableUser } from './account'
 import { hostAndOriginOk } from './guard'
 import { FailureLimiter } from './limiter'
+import { confirmOf } from '../keys'
 import { buildMcpServer } from './tools'
 
 /** A request body over this is refused (413). */
@@ -20,13 +22,6 @@ const KEY_SCOPE = { mcp: ['read'] }
 const failures = new FailureLimiter(20, 600_000)
 
 const unauthorized = (c: Context) => c.json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer' })
-
-/** The user a verified key belongs to, when that user may use the app: active and not banned. */
-async function usableUser(id: string): Promise<boolean> {
-  const [u] = await db.select({ status: a.user.status, banned: a.user.banned, banExpires: a.user.banExpires }).from(a.user).where(eq(a.user.id, id))
-  if (!u || u.status !== 'active') return false
-  return !(u.banned && (!u.banExpires || u.banExpires.getTime() > Date.now()))
-}
 
 /** The owner of a key by its stored form (SHA-256, base64url; the plugin's default hash), without counting a use. */
 async function keyOwner(key: string): Promise<string | null> {
@@ -72,7 +67,9 @@ async function handle(c: Context, clientIp: (c: Context) => string): Promise<Res
   }
 
   // One server and one transport per request: the user is bound to the request, nothing is shared.
-  const server = buildMcpServer(uid)
+  // A key with the write scope also gets the proposal tools (spec 009 S-6); a read key never sees them.
+  const confirm = confirmOf({ permissions: checked.key.permissions, metadata: checked.key.metadata as never })
+  const server = buildMcpServer(uid, confirm ? { id: checked.key.id, name: checked.key.name ?? '', confirm } : null)
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

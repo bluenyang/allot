@@ -4,14 +4,14 @@ import { eq, getTableColumns } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type { Db } from './client'
 import * as t from './schema'
-import { setUser } from './scope'
+import { lockFor, setUser } from './scope'
 
 export type OwnedTable = PgTable & { userId: PgColumn }
 
 export const OWNED: OwnedTable[] = [
   t.settings, t.living, t.subscription, t.phase, t.allocationTarget, t.planEvent,
   t.checkItem, t.bankAccount, t.debt, t.remainderSplit, t.planChange, t.phaseAmount,
-  t.preference, t.holidaySet,
+  t.preference, t.holidaySet, t.mcpProposal,
 ]
 
 /** Moved with the data when an account is replaced: the data tables, then the change history. */
@@ -28,6 +28,8 @@ export const hasIdentity = (table: PgTable) => Object.values(getTableColumns(tab
  * sees one user at a time: read and delete as `from`, then insert as `to`.
  */
 export async function moveOwner(q: Db, from: string, to: string) {
+  // both users' data locks, in a fixed order (and before anything else), so a proposal cannot apply mid-move
+  for (const uid of [from, to].sort()) await lockFor(q, 'data', uid)
   await setUser(q, from)
   const rows = new Map<OwnedTable, Record<string, unknown>[]>()
   for (const table of MOVED) rows.set(table, await q.select().from(table as never).where(eq(table.userId, from)) as Record<string, unknown>[])

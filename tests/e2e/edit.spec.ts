@@ -304,7 +304,8 @@ test('JSON export has every list, equal to the API (V-11)', async ({ page, reque
   await go(page, 'dev', '현재 데이터')
   const text = await page.locator('pre code').textContent()
   const shown = JSON.parse(text!)
-  const api = await (await request.get('/api/state')).json()
+  // the badge's number (spec 009) is in /api/state but is not data: the export is the data
+  const { pendingProposals: _badge, ...api } = await (await request.get('/api/state')).json()
   for (const k of ['accounts', 'debts', 'remainderSplit', 'targets']) expect(shown).toHaveProperty(k)
   expect(shown).toEqual(api)
 })

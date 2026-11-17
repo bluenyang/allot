@@ -21,6 +21,8 @@ interface ChangeSet {
   id: string
   at: string
   actorKind: 'user' | 'api_key'
+  /** The AI key's name when an AI key made the set (spec 009). */
+  actorLabel: string | null
   method: string
   path: string
   revertOf: string | null
@@ -124,7 +126,7 @@ async function revert(s: ChangeSet) {
         <li v-for="s in sets" :key="s.id" class="chg" :data-set="s.id">
           <button type="button" class="ev-t" :aria-expanded="open === s.id" @click="open = open === s.id ? null : s.id">
             <span v-if="s.revertOf" class="pill mute">{{ t('history.revertOf') }}</span>
-            <span v-if="s.actorKind === 'api_key'" class="pill mute">AI</span>
+            <span v-if="s.actorKind === 'api_key'" class="pill mute">{{ s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : 'AI' }}</span>
             {{ summary(s) }}
             <span class="at mono small muted">{{ fmt(s.at) }}</span>
           </button>

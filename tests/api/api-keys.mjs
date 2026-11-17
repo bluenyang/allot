@@ -136,6 +136,32 @@ try {
   const d1 = await U('POST', '/api/keys', { name: 'd1', expiresInDays: 1 })
   ok(d1.status === 201 && within(d1.json?.item?.expiresAt, DAY), `1 day is allowed → ${d1.status}`)
 
+  // ── write scope and confirmation method (spec 009 V-3, S-5): chosen when the key is made, fixed after ──
+  ok(d1.json?.item?.confirm === null && JSON.stringify(d1.json?.item?.permissions) === '{"mcp":["read"]}', 'a read key shows no confirmation method and read scope')
+  const w1 = await U('POST', '/api/keys', { name: 'w-default', expiresInDays: 30, write: true })
+  ok(w1.status === 201 && w1.json?.item?.confirm === 'ui' && JSON.stringify(w1.json?.item?.permissions) === '{"mcp":["read","write"]}', `a write key defaults to confirm ui → ${w1.status} ${w1.json?.item?.confirm}`)
+  const w2 = await U('POST', '/api/keys', { name: 'w-chat', expiresInDays: 30, write: true, confirm: 'chat' })
+  ok(w2.status === 201 && w2.json?.item?.confirm === 'chat', `a write key can confirm in chat → ${w2.status} ${w2.json?.item?.confirm}`)
+  const w3 = await U('POST', '/api/keys', { name: 'w-ui', expiresInDays: 30, write: true, confirm: 'ui' })
+  ok(w3.status === 201 && w3.json?.item?.confirm === 'ui', `confirm ui → ${w3.status}`)
+  const wl = (await U('GET', '/api/keys')).json?.keys ?? []
+  ok(wl.find((k) => k.id === w1.json?.item?.id)?.confirm === 'ui' && wl.find((k) => k.id === w2.json?.item?.id)?.confirm === 'chat' && wl.find((k) => k.id === d1.json?.item?.id)?.confirm === null,
+    'the list shows scope and confirmation method of each key')
+  const [wrow] = await sql`select permissions, metadata from apikey where id = ${w2.json?.item?.id}`
+  ok(String(wrow?.permissions).includes('write') && String(wrow?.metadata).includes('chat'), 'DB holds the scope and the confirmation method')
+  await bad({ name: 'x', write: false, confirm: 'ui' }, 'write false with confirm')
+  await bad({ name: 'x', confirm: 'chat' }, 'confirm without write')
+  await bad({ name: 'x', write: true, confirm: 'both' }, 'an unknown confirmation method')
+  await bad({ name: 'x', write: 'yes' }, 'write that is not a boolean')
+  await bad({ name: 'x', write: true, metadata: { confirm: 'chat' } }, 'metadata in the body')
+  for (const [method, body] of [['PUT', { name: 'x' }], ['PATCH', { write: true }], ['PATCH', { confirm: 'chat' }]]) {
+    const r = await U(method, `/api/keys/${w1.json?.item?.id}`, body)
+    ok(r.status === 404 || r.status === 405, `${method} /api/keys/:id → ${r.status} (no way to change a key)`)
+  }
+  const still = ((await U('GET', '/api/keys')).json?.keys ?? []).find((k) => k.id === w1.json?.item?.id)
+  ok(still?.confirm === 'ui' && still?.permissions?.mcp?.includes('write'), 'the key is unchanged after those attempts')
+  for (const r of [w1, w2, w3]) await U('DELETE', `/api/keys/${r.json?.item?.id}`)
+
   // ── at most 10 live keys ──
   const have = (await U('GET', '/api/keys')).json.keys.length
   const made = []

@@ -244,6 +244,10 @@ export const changeSet = pgTable('change_set', {
   revertOf: text('revert_of'),
   /** That set undid this one. */
   revertedBy: text('reverted_by'),
+  /** The key's name when an AI key made the set; stays when the key is deleted (spec 009 S-7). */
+  actorLabel: text('actor_label'),
+  /** The proposal this set applied (spec 009 S-3). */
+  proposalId: text('proposal_id'),
 }, (t) => [
   userScoped(t.userId),
   unique('change_set_user_id_id').on(t.userId, t.id),
@@ -264,6 +268,39 @@ export const changeLog = pgTable('change_log', {
   userScoped(t.userId),
   foreignKey({ name: 'change_log_set_fk', columns: [t.userId, t.setId], foreignColumns: [changeSet.userId, changeSet.id] }).onDelete('cascade'),
   index('change_log_set').on(t.setId),
+])
+
+// ── Proposals from an AI key (spec 009 S-3): a list of operations with the preview computed by applying
+// them and rolling back, kept until it is confirmed, rejected or expired. No foreign keys to the key
+// (a key may be revoked) or to the set it produced (the history is pruned by age). ──
+export const mcpProposal = pgTable('mcp_proposal', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  keyId: text('key_id').notNull(),
+  keyName: text('key_name').notNull(),
+  /** Where it is confirmed: 'ui' (Pending changes) or 'chat' (the apply tool). Copied from the key. */
+  confirm: text('confirm').notNull(),
+  ops: jsonb('ops').$type<unknown[]>().notNull(),
+  note: text('note'),
+  /** SHA-256 of the user's data when it was proposed; a different one at apply time means stale. */
+  baseHash: text('base_hash').notNull(),
+  preview: jsonb('preview').$type<Record<string, unknown>>().notNull(),
+  status: text('status').notNull().default('pending'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
+  decidedAt: timestamp('decided_at', { withTimezone: true, mode: 'string' }),
+  /** 'user' (on the screen) or 'key' (the apply tool). */
+  decidedBy: text('decided_by'),
+  changeSetId: text('change_set_id'),
+  /** A proposal to revert that set (then `ops` is empty). */
+  revertOf: text('revert_of'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('mcp_proposal_user_id_id').on(t.userId, t.id),
+  index('mcp_proposal_user_status').on(t.userId, t.status),
+  check('mcp_proposal_confirm', sql`${t.confirm} in ('ui', 'chat')`),
+  check('mcp_proposal_status', sql`${t.status} in ('pending', 'applied', 'rejected', 'expired', 'stale')`),
+  check('mcp_proposal_decided_by', sql`${t.decidedBy} is null or ${t.decidedBy} in ('user', 'key')`),
 ])
 
 // ── Data keys for envelope encryption (spec 006 S-5, server/crypto/) ──

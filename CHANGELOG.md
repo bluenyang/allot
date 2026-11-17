@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.4 — unreleased
+
+MCP write through proposals. Intent 009 (`.agents/intent/009_mcp-write/`).
+
+### Added
+- Write scope for API keys, chosen when the key is created (`write`, with `confirm`): it cannot be changed afterwards, make a new key instead. A key without it sees no write tools. A write key never changes keys, logins or admin settings.
+- Four MCP tools for a write key: `propose_changes` (1 to 20 changes, all applied together or not at all), `propose_revert`, `get_proposal` and `apply_proposal`. The AI can create, update and delete subscriptions, plan changes, phases (with their fixed amounts per allocation target), allocation targets, the remainder split, plan events and check items, and update the settings (net pay, pay days, exchange rate) and the living costs. Accounts, debts, holiday sets and display settings cannot be changed.
+- Nothing changes when the AI proposes. The server applies the changes inside a transaction and rolls it back to build the preview: the rows before and after, and the subscription transfer and salary distribution of this month and the next, before and after. A change that breaks a rule makes no proposal and returns the reason.
+- Confirmation per key, chosen at creation: on the Allot screen (default), or in the chat, where the AI calls `apply_proposal` after you agree. A screen-confirmed proposal cannot be applied by the AI.
+- "Pending changes" screen with a badge in the sidebar: each proposal's changes, rows before and after and the transfer and distribution before and after, with confirm and reject.
+- Applying checks everything again: a proposal is refused when the data changed since it was proposed (stale), when it expired (24 hours for screen confirmation, 15 minutes for chat), or when its key was revoked, has expired or lost the write scope, or the account is not active. At most 20 pending proposals per account.
+- An applied proposal is one change set labelled "AI · <key name>" in the change history. It can be reverted there like any other, or by an AI `propose_revert`, which is limited to the same resources the AI may change.
+- One per-user data lock now orders every write to a user's data (screen, API, proposals, account moves, seeding), so a proposal that is applied while the screen saves cannot interleave.
+
+### Known limitations
+- A new allocation target and the phase amounts that use it need two proposals: the server assigns the id of the new target. The tool description tells the AI to propose in two steps.
+
 ## 0.1.3 — 2026-11-17
 
 Same code as 0.1.3-rc.1, checked on the test server.

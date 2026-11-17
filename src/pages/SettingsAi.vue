@@ -33,10 +33,10 @@ onDeactivated(() => { fresh.value = null })
 
 // ── make a key ──
 const DAYS = [30, 90, 180, 365]
-interface Draft { name: string; expires: string }
+interface Draft { name: string; expires: string; write: boolean; confirm: 'ui' | 'chat' }
 const draft = ref<Draft | null>(null)
 const draftError = ref('')
-const open = () => { draft.value = { name: '', expires: '90' }; draftError.value = '' }
+const open = () => { draft.value = { name: '', expires: '90', write: false, confirm: 'ui' }; draftError.value = '' }
 const full = computed(() => keys.value.length >= max.value)
 /** Shown once after a key is made; leaving the page or closing the box forgets it. */
 const fresh = ref<{ key: string; name: string } | null>(null)
@@ -50,7 +50,10 @@ async function make() {
   busy.value = true
   draftError.value = ''
   try {
-    const r = await createKey(name, d.expires === 'none' ? null : Number(d.expires))
+    const r = await createKey({
+      name, expiresInDays: d.expires === 'none' ? null : Number(d.expires),
+      ...(d.write ? { write: true, confirm: d.confirm } : {}),
+    })
     fresh.value = { key: r.key, name: r.item.name }
     notice.value = ''
     draft.value = null
@@ -105,7 +108,10 @@ const command = computed(() => `claude mcp add --transport http allot ${url} --h
 const loc = () => (lang.value === 'en' ? 'en-US' : 'ko-KR')
 const when = (at: string | null) => (at ? new Date(at).toLocaleDateString(loc(), { dateStyle: 'medium' }) : '')
 const used = (at: string | null) => (at ? new Date(at).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }) : t('settingsAi.neverUsed'))
-const scope = (k: KeyItem) => ((k.permissions.mcp ?? []).includes('write') ? t('settingsAi.readWrite') : t('settingsAi.read'))
+const scope = (k: KeyItem) => {
+  if (!(k.permissions.mcp ?? []).includes('write')) return t('settingsAi.read')
+  return `${t('settingsAi.readWrite')} · ${k.confirm === 'chat' ? t('settingsAi.confirmChatShort') : t('settingsAi.confirmUiShort')}`
+}
 </script>
 
 <template>
@@ -139,7 +145,18 @@ const scope = (k: KeyItem) => ((k.permissions.mcp ?? []).includes('write') ? t('
             <option v-if="noExpiry" value="none">{{ t('settingsAi.noExpiry') }}</option>
           </select>
         </div>
-        <div class="field"><label>{{ t('settingsAi.scopeLabel') }}</label><p class="small" style="margin:0">{{ t('settingsAi.readOnly') }}</p></div>
+        <div class="field"><label>{{ t('settingsAi.scopeLabel') }}</label>
+          <p v-if="!draft.write" class="small" style="margin:0">{{ t('settingsAi.readOnly') }}</p>
+          <p v-else class="small" style="margin:0">{{ t('settingsAi.readWriteNote') }}</p>
+          <label class="chk" style="border:0"><input id="k-write" v-model="draft.write" type="checkbox"><span>{{ t('settingsAi.allowWrite') }}</span></label>
+        </div>
+        <fieldset v-if="draft.write" class="field confirm">
+          <legend>{{ t('settingsAi.confirmLabel') }}</legend>
+          <label class="chk" style="border:0"><input v-model="draft.confirm" type="radio" name="k-confirm" value="ui"><span>{{ t('settingsAi.confirmUi') }}</span></label>
+          <label class="chk" style="border:0"><input v-model="draft.confirm" type="radio" name="k-confirm" value="chat"><span>{{ t('settingsAi.confirmChat') }}</span></label>
+          <p class="small muted" style="margin:4px 0 0">{{ draft.confirm === 'ui' ? t('settingsAi.confirmUiNote') : t('settingsAi.confirmChatNote') }}</p>
+          <p class="small warn" role="note">{{ t('settingsAi.writeWarn') }}</p>
+        </fieldset>
         <template #after>
           <p v-if="!noExpiry" class="small muted">{{ t('settingsAi.noExpiryOff') }}</p>
           <p class="small muted">{{ t('settingsAi.shownOnceNote') }}</p>
@@ -180,6 +197,9 @@ const scope = (k: KeyItem) => ((k.permissions.mcp ?? []).includes('write') ? t('
 .panel{margin-bottom:14px}
 .head{margin:0 0 12px;margin-top:0}
 .empty{margin:8px 0 0}
+.confirm{border:0;padding:0;margin:0 0 12px;min-width:0}
+.confirm legend{padding:0;margin-bottom:4px;font-size:13px}
+.warn{color:var(--neg-text);margin:6px 0 0}
 .fresh{border-color:var(--accent-line);background:var(--accent-soft)}
 .fresh h3{color:var(--accent-text)}
 .keybox{display:flex;gap:8px;align-items:center;margin:10px 0}

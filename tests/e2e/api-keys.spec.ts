@@ -156,3 +156,21 @@ test('policy: when env sets it, the switch is locked and says so', async ({ page
   await expect(page.getByText('env(')).toContainText('ALLOT_API_KEY_NO_EXPIRY')
   expect((await request.put('/api/admin/api-keys', { data: { noExpiry: !p.noExpiry } })).status()).toBe(409)
 })
+
+test('keys: a write key chooses its confirmation method when it is made (spec 009)', async ({ page, request }) => {
+  await openAi(page)
+  await page.getByRole('button', { name: '+ 키 만들기' }).click()
+  const s = sheet(page, '새 API 키')
+  await s.getByLabel('이름', { exact: false }).first().fill(`${NAME}-w`)
+  await expect(s.getByText('읽기 전용')).toBeVisible()
+  // no confirmation method for a read key
+  await expect(s.getByRole('radio')).toHaveCount(0)
+  await s.getByLabel('쓰기 허용').check()
+  await expect(s.getByRole('radio', { name: 'Allot 화면에서 확인' })).toBeChecked()
+  await expect(s.getByText('가장 안전해요')).toBeVisible()
+  await s.getByRole('radio', { name: '대화 안에서 확인' }).check()
+  await saveSheet(page, '새 API 키')
+  await expect(page.getByRole('row', { name: new RegExp(`${NAME}-w`) })).toContainText('읽기·쓰기 · 대화에서 확인')
+  const made = ((await (await request.get('/api/keys')).json()) as { keys: { name: string; confirm: string | null }[] }).keys.find((k) => k.name === `${NAME}-w`)
+  expect(made?.confirm).toBe('chat')
+})

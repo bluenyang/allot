@@ -9,6 +9,8 @@
 //   isolation  V-5: users A and B each put marked data in; A's key calls all six tools and nothing of B shows, and back.
 //   tools      V-6: tools/list (six, read-only), get_overview for this month and three months on against calc.ts,
 //              an unknown tool and bad arguments, list_changes paging.
+//   write      spec 009 V-3…V-9 through the tools: scope, proposals, previews, apply, confirmation methods,
+//              stale / expired / revoked, revert, isolation (a fresh user W; keys are made through the API).
 //   auth       V-4: every refusal is the same 401, the per-address limit (21st failure → 429), the per-key
 //              limit, a session or a key on the wrong path, GET, a big body, a foreign Origin.
 //              Ends by exhausting the address limit: restart the api before the next mode.
@@ -17,7 +19,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import postgres from 'postgres'
 
 const mode = process.argv[2]
-if (!['auth', 'isolation', 'tools'].includes(mode)) throw new Error('usage: mcp.mjs auth|isolation|tools')
+if (!['auth', 'isolation', 'tools', 'write'].includes(mode)) throw new Error('usage: mcp.mjs auth|isolation|tools|write')
 let failed = 0
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
 const BASE = process.env.BASE ?? 'http://127.0.0.1:3000'
@@ -59,9 +61,9 @@ const mcp = (A, key, body = RPC, extra = {}) => mcpAuth(A, bearer(key), body, ex
 /** Insert a key the way the plugin stores it. */
 async function insertKey(userId, over = {}) {
   const key = newKey()
-  await sql`insert into apikey (id, config_id, name, start, reference_id, prefix, key, enabled, rate_limit_enabled, rate_limit_time_window, rate_limit_max, request_count, permissions, expires_at, created_at, updated_at)
+  await sql`insert into apikey (id, config_id, name, start, reference_id, prefix, key, enabled, rate_limit_enabled, rate_limit_time_window, rate_limit_max, request_count, permissions, metadata, expires_at, created_at, updated_at)
     values (${randomBytes(12).toString('hex')}, 'default', ${over.name ?? 'v4'}, ${key.slice(0, 6)}, ${userId}, 'allot_', ${sha(key)}, ${over.enabled ?? true}, true, 60000, 120, 0,
-      ${over.permissions ?? '{"mcp":["read"]}'}, ${over.expiresAt ?? new Date(Date.now() + 30 * 86_400_000)}, now(), now())`
+      ${over.permissions ?? '{"mcp":["read"]}'}, ${over.metadata ?? null}, ${over.expiresAt ?? new Date(Date.now() + 30 * 86_400_000)}, now(), now())`
   return key
 }
 
@@ -345,8 +347,239 @@ async function toolsMode() {
   } else skip('list_changes paging (only one set in the history)')
 }
 
+
+async function writeMode() {
+  const PASS = 'v4-pass-12345'
+  const wId = await createUser('w')
+  const xId = await createUser('x')
+  const W = client()
+  const X = client()
+  const wEmail = made.find((u) => u.id === wId).email
+  const xEmail = made.find((u) => u.id === xId).email
+  ok((await W.signIn(wEmail, PASS)).status === 200 && (await X.signIn(xEmail, PASS)).status === 200, 'W and X sign in')
+  const mk = async (U, body) => {
+    const r = await U('POST', '/api/keys', { expiresInDays: 30, ...body })
+    if (r.status !== 201) throw new Error(`create key ${JSON.stringify(body)} → ${r.status} ${r.text}`)
+    return { key: r.json.key, id: r.json.item.id }
+  }
+  const kRead = await mk(W, { name: 'w-read' })
+  const kUi = await mk(W, { name: 'w-ui', write: true })
+  const kChat = await mk(W, { name: 'w-chat', write: true, confirm: 'chat' })
+  const kX = await mk(X, { name: 'x-chat', write: true, confirm: 'chat' })
+  const WRITE_TOOLS = ['propose_changes', 'propose_revert', 'get_proposal', 'apply_proposal']
+  const names = async (k) => ((await mcp(A, k)).json?.result?.tools ?? []).map((t) => t.name)
+
+  // ── V-3: scope ──
+  const rn = await names(kRead.key)
+  ok(rn.length === 6 && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the six read tools and no write tool')
+  for (const [name, args] of [['propose_changes', { changes: [] }], ['apply_proposal', { proposalId: 'x' }], ['get_proposal', { proposalId: 'x' }], ['propose_revert', { changeSetId: 'x' }]]) {
+    ok(failedCall(await tool(kRead.key, name, args)), `a read key calling ${name} is an MCP error`)
+  }
+  const un = await mcp(A, kUi.key)
+  const utools = un.json?.result?.tools ?? []
+  ok(utools.length === 10 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: ten tools (${utools.length})`)
+  ok(utools.find((t) => t.name === 'apply_proposal')?.annotations?.destructiveHint === true && utools.find((t) => t.name === 'get_proposal')?.annotations?.readOnlyHint === true && utools.find((t) => t.name === 'propose_changes')?.annotations?.readOnlyHint === false, 'annotations: apply is destructive, get is read-only, propose is not read-only')
+  ok(utools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'write tool descriptions are English text')
+  const pc = utools.find((t) => t.name === 'propose_changes')
+  ok(JSON.stringify(pc?.inputSchema ?? {}).includes('subscriptions') && JSON.stringify(pc?.inputSchema ?? {}).includes('remainder-split'), 'propose_changes advertises the resource shapes')
+  console.log(`INFO propose_changes input schema: ${JSON.stringify(pc?.inputSchema ?? {}).length} bytes`)
+
+  // without the badge's number, which a proposal changes by existing
+  const wState = async () => { const { pendingProposals: _p, ...rest } = (await W('GET', '/api/state')).json; return rest }
+  const wSets = async () => (await W('GET', '/api/changes?limit=200')).json
+  const proposalCount = async (uid) => Number((await sql`select count(*)::int as n from mcp_proposal where user_id = ${uid}`)[0].n)
+  const SUB = (name, over = {}) => ({ name, category: 'tool', plan: 'p', amount: 12000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false, ...over })
+  const LIV = (food) => ({ food, transit: 20000, allowance: 30000 })
+
+  // ── V-4: propose changes nothing ──
+  const s0 = JSON.stringify(await wState())
+  const n0 = (await wSets()).length
+  const pr1 = await tool(kChat.key, 'propose_changes', { note: 'v4', changes: [
+    { resource: 'subscriptions', action: 'create', data: SUB('mcp-sub') },
+    { resource: 'living', action: 'update', data: LIV(111000) },
+  ] })
+  ok(!failedCall(pr1) && typeof pr1.data?.proposalId === 'string' && pr1.data.confirm === 'chat' && pr1.data.status === 'pending', `propose_changes → proposal ${pr1.data?.status} (${pr1.data?.confirm})`)
+  ok(pr1.data?.preview?.rows?.length === 2 && pr1.data.preview.months?.length === 2 && pr1.data.preview.months[0].transferKrw.after !== undefined, 'the preview has rows and two months of transfer and distribution')
+  ok(/user agrees/.test(pr1.data?.next ?? ''), 'a chat proposal tells the AI to show the preview and wait for the user')
+  ok(JSON.stringify(await wState()) === s0 && (await wSets()).length === n0, 'the data and the history are unchanged after proposing')
+  const cnt1 = await proposalCount(wId)
+  const overlap = await tool(kChat.key, 'propose_changes', { changes: [
+    { resource: 'phases', action: 'create', data: { label: 'P', name: 'a', from: '2031-01', to: '2031-06', amounts: {} } },
+    { resource: 'phases', action: 'create', data: { label: 'P', name: 'b', from: '2031-03', to: null, amounts: {} } },
+  ] })
+  ok(failedCall(overlap) && /Change 2/.test(overlap.text) && /verlap/.test(overlap.text), `an overlapping phase: no proposal, the reason is returned (${overlap.text.slice(0, 120)})`)
+  ok(await proposalCount(wId) === cnt1, 'a refused proposal is not stored')
+  const many = await tool(kChat.key, 'propose_changes', { changes: Array.from({ length: 21 }, (_, i) => ({ resource: 'checks', action: 'create', data: { text: `c${i}`, done: false } })) })
+  ok(failedCall(many) && await proposalCount(wId) === cnt1, '21 changes are refused')
+  const badDate = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'create', data: SUB('x', { nextDate: '2031-02-30' }) }] })
+  ok(failedCall(badDate) && /[Nn]o such date|dateInvalid|date/.test(badDate.text) && !/dateInvalid|serviceNameReq/.test(badDate.text), `a rule message reaches the AI in English (${(badDate.error?.message ?? badDate.text).slice(0, 140)})`)
+  // envelopes are strict (review 6): nothing unknown is dropped silently
+  const cnt6 = await proposalCount(wId)
+  const withExtra = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'checks', action: 'create', data: { text: 'x', done: false }, extra: 1 }] })
+  ok(failedCall(withExtra) && /nrecognized/.test(withExtra.error?.message ?? withExtra.text), `an extra field on a change is refused (${(withExtra.error?.message ?? withExtra.text).slice(0, 100)})`)
+  const idOnSingle = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', id: 'x', data: LIV(1) }] })
+  ok(failedCall(idOnSingle), 'an id on a single-row resource (living) is refused, not dropped')
+  ok(failedCall(await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'checks', action: 'create', data: { text: 'x', done: false } }], force: true })), 'an extra top-level field is refused')
+  ok(failedCall(await tool(kChat.key, 'get_proposal', { proposalId: 'x', extra: 1 })) && failedCall(await tool(kChat.key, 'apply_proposal', { proposalId: 'x', extra: 1 })) && failedCall(await tool(kChat.key, 'propose_revert', { changeSetId: 'x', extra: 1 })), 'extra fields are refused by the other three tools')
+  ok(await proposalCount(wId) === cnt6, 'and no proposal was stored')
+  const acc = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'accounts', action: 'create', data: { name: 'x', role: '', inflow: '', outflow: '' } }] })
+  ok(failedCall(acc), 'accounts cannot be proposed')
+
+  // ── V-5: apply gives the preview's after ──
+  const ap = await tool(kChat.key, 'apply_proposal', { proposalId: pr1.data.proposalId })
+  ok(!failedCall(ap) && ap.data?.status === 'applied' && typeof ap.data?.changeSetId === 'string', 'apply_proposal (chat key) applies')
+  const s1 = await wState()
+  ok(s1.subscriptions.some((x) => x.name === 'mcp-sub') && s1.living.food === 111000, 'the data now holds both changes')
+  const ov = await tool(kChat.key, 'get_overview', {})
+  ok(ov.data?.subscriptionTransfer?.transferKrw === pr1.data.preview.months[0].transferKrw.after, `this month's transfer = the preview's after (${ov.data?.subscriptionTransfer?.transferKrw})`)
+  const sets = await wSets()
+  ok(sets.length === n0 + 1 && sets[0].id === ap.data.changeSetId && sets[0].actorKind === 'api_key' && sets[0].actorId === kChat.id && sets[0].actorLabel === 'w-chat' && sets[0].proposalId === pr1.data.proposalId, 'one new change set: api_key, key id, key name, proposal id')
+  const again = await tool(kChat.key, 'apply_proposal', { proposalId: pr1.data.proposalId })
+  ok(failedCall(again) && /not_pending/.test(again.text), 'applying again is refused (not_pending)')
+  ok((await wSets()).length === n0 + 1, 'and wrote nothing')
+
+  // ── V-6 (tools): a screen-confirm key cannot apply ──
+  const pr2 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(222000) }] })
+  ok(!failedCall(pr2) && pr2.data.confirm === 'ui' && /Pending changes/.test(pr2.data.next), 'a screen-confirm proposal says the user confirms it in Allot')
+  const refuse = await tool(kUi.key, 'apply_proposal', { proposalId: pr2.data.proposalId })
+  ok(failedCall(refuse) && /wrong_confirm/.test(refuse.text), 'apply_proposal is refused for a screen-confirm key')
+  const gp = await tool(kUi.key, 'get_proposal', { proposalId: pr2.data.proposalId })
+  ok(!failedCall(gp) && gp.data.status === 'pending' && gp.data.preview?.rows?.length === 1, 'get_proposal returns the state and preview')
+  ok((await wState()).living.food === 111000, 'nothing was applied')
+  const cross = await tool(kChat.key, 'get_proposal', { proposalId: pr2.data.proposalId })
+  ok(failedCall(cross) && /not_found/.test(cross.text), "a key cannot read another key's proposal")
+  const crossApply = await tool(kChat.key, 'apply_proposal', { proposalId: pr2.data.proposalId })
+  ok(failedCall(crossApply), "a key cannot apply another key's proposal")
+
+  // ── V-6 (screen API): the user confirms or rejects ──
+  const listed = await W('GET', '/api/proposals?status=pending')
+  const mine = (listed.json ?? []).find((x) => x.id === pr2.data.proposalId)
+  ok(listed.status === 200 && !!mine && mine.keyName === 'w-ui' && mine.confirm === 'ui' && mine.keyUsable === true && mine.preview?.rows?.length === 1 && mine.baseHash === undefined && mine.userId === undefined, 'GET /api/proposals lists it with its key, method and preview (no fingerprint, no owner)')
+  ok((await W('GET', '/api/state')).json.pendingProposals === (listed.json ?? []).length, 'the state carries the pending count for the badge')
+  ok((await W('GET', '/api/proposals?status=nope')).status === 400, 'an unknown status filter is 400')
+  const h1 = await W('GET', '/api/proposals?status=handled&limit=1')
+  ok(h1.status === 200 && h1.json.length === 1 && h1.json[0].status !== 'pending', 'status=handled lists handled proposals, a page at a time')
+  const h2 = await W('GET', `/api/proposals?status=handled&limit=1&before=${encodeURIComponent(h1.json[0]?.createdAt)}&beforeId=${encodeURIComponent(h1.json[0]?.id)}`)
+  ok(h2.status === 200 && (h2.json.length === 0 || h2.json[0].id !== h1.json[0].id), 'the next page starts after the last one shown')
+  ok((await W('GET', '/api/proposals?status=handled&before=2026-01-01')).status === 400, 'before without beforeId is 400')
+  ok((await W('GET', `/api/proposals/${pr2.data.proposalId}`)).json?.id === pr2.data.proposalId, 'GET /api/proposals/:id')
+  for (const [m, path] of [['GET', ''], ['POST', '/apply'], ['POST', '/reject']]) {
+    const r = await X(m, `/api/proposals/${pr2.data.proposalId}${path}`)
+    ok(r.status === 404, `X: ${m} W's proposal${path} → ${r.status} (want 404)`)
+  }
+  ok((await X('GET', '/api/proposals')).json.length === 0, "X's list holds none of W's")
+  const anon = await mcp(A, kUi.key, { jsonrpc: '2.0', id: 9, method: 'tools/list' })
+  ok(anon.status === 200, 'the key still works at the MCP endpoint')
+  const viaKey = await W('GET', '/api/proposals', undefined, { authorization: `Bearer ${kUi.key}`, cookie: '' })
+  ok(viaKey.status === 401, `a key is no session: GET /api/proposals with a key → ${viaKey.status} (want 401)`)
+  const en = await W('POST', `/api/proposals/${pr1.data.proposalId}/apply`, undefined, { 'accept-language': 'en' })
+  const ko = await W('POST', `/api/proposals/${pr1.data.proposalId}/apply`, undefined, { 'accept-language': 'ko' })
+  ok(en.status === 409 && /already been handled/.test(en.json?.error) && ko.status === 409 && /이미 처리/.test(ko.json?.error) && en.json?.code === 'not_pending', 'a handled proposal: 409 in the request language, with a code')
+  const okApply = await W('POST', `/api/proposals/${pr2.data.proposalId}/apply`)
+  ok(okApply.status === 200 && typeof okApply.json?.changeSet === 'string', `POST /api/proposals/:id/apply → ${okApply.status}`)
+  ok((await wState()).living.food === 222000, 'the screen confirmation applied it')
+  const afterSets = await wSets()
+  ok(afterSets[0].id === okApply.json.changeSet && afterSets[0].actorKind === 'api_key' && afterSets[0].actorId === kUi.id && afterSets[0].actorLabel === 'w-ui' && afterSets[0].proposalId === pr2.data.proposalId, "confirming on the screen: the actor is still the proposing key and the set names the proposal")
+  const dec = await sql`select decided_by, status, change_set_id from mcp_proposal where id = ${pr2.data.proposalId}`
+  ok(dec[0].decided_by === 'user' && dec[0].status === 'applied' && dec[0].change_set_id === okApply.json.changeSet, 'the proposal records that the user decided')
+  const prRej = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(555000) }] })
+  const rj = await W('POST', `/api/proposals/${prRej.data.proposalId}/reject`)
+  ok(rj.status === 204 && (await tool(kUi.key, 'get_proposal', { proposalId: prRej.data.proposalId })).data?.status === 'rejected', 'reject → 204 and get_proposal says rejected')
+  ok((await W('POST', `/api/proposals/${prRej.data.proposalId}/apply`)).status === 409, 'a rejected proposal cannot be applied (409)')
+  ok((await W('POST', `/api/proposals/${prRej.data.proposalId}/reject`)).status === 409, 'nor rejected again (409)')
+  ok((await wState()).living.food === 222000, 'and nothing changed')
+  ok((await W('POST', '/api/proposals/nope/apply')).status === 404, 'an unknown id is 404')
+  // a revoked key: its pending proposal can no longer be confirmed, on the screen either
+  const kGone = await mk(W, { name: 'w-gone', write: true })
+  const prGone = await tool(kGone.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(666000) }] })
+  ok((await W('DELETE', `/api/keys/${kGone.id}`)).status === 204, 'the key is revoked')
+  const ga = await W('POST', `/api/proposals/${prGone.data.proposalId}/apply`)
+  ok(ga.status === 409 && ga.json?.code === 'key_unusable' && (await wState()).living.food === 222000, `the revoked key's proposal cannot be applied on the screen → ${ga.status} ${ga.json?.code}`)
+  const gl = (await W('GET', '/api/proposals?status=pending')).json.find((x) => x.id === prGone.data.proposalId)
+  ok(gl?.keyUsable === false, 'the list says its key is no longer usable')
+  ok((await W('POST', `/api/proposals/${prGone.data.proposalId}/reject`)).status === 204, 'the user can still reject it')
+
+  // ── V-7: stale, expired, the pending cap ──
+  const pr3 = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(333000) }] })
+  ok((await W('PUT', '/api/living', LIV(120000))).status === 200, 'the data is changed on the screen after proposing')
+  const st = await tool(kChat.key, 'apply_proposal', { proposalId: pr3.data.proposalId })
+  ok(failedCall(st) && /stale/.test(st.text), 'apply → stale (propose again)')
+  ok((await tool(kChat.key, 'get_proposal', { proposalId: pr3.data.proposalId })).data?.status === 'stale' && (await wState()).living.food === 120000, 'the proposal is stale and the screen change stays')
+  const pr4 = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(444000) }] })
+  await sql`update mcp_proposal set expires_at = now() - interval '1 second' where id = ${pr4.data.proposalId}`
+  const ex = await tool(kChat.key, 'apply_proposal', { proposalId: pr4.data.proposalId })
+  ok(failedCall(ex) && /expired/.test(ex.text) && (await tool(kChat.key, 'get_proposal', { proposalId: pr4.data.proposalId })).data?.status === 'expired', 'an expired proposal is refused and marked expired')
+  const ttl = await sql`select extract(epoch from (expires_at - created_at))::int as s, confirm from mcp_proposal where id = ${pr2.data.proposalId}`
+  ok(ttl[0].s === 24 * 3600 && ttl[0].confirm === 'ui', 'a screen proposal expires after 24 hours')
+  const ttl2 = await sql`select extract(epoch from (expires_at - created_at))::int as s from mcp_proposal where id = ${pr3.data.proposalId}`
+  ok(ttl2[0].s === 15 * 60, 'a chat proposal expires after 15 minutes')
+  await sql`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
+  let last
+  for (let i = 0; i <= 20; i++) {
+    last = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'checks', action: 'create', data: { text: `cap${i}`, done: false } }] })
+    if (i < 20 && failedCall(last)) { ok(false, `pending proposal ${i + 1} refused early: ${last.text.slice(0, 100)}`); break }
+  }
+  ok(failedCall(last) && /too_many/.test(last.text), 'the 21st pending proposal is refused')
+  await sql`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
+
+  // ── V-8: the AI reverts what it applied ──
+  const before8 = JSON.stringify(await wState())
+  const pr5 = await tool(kChat.key, 'propose_changes', { changes: [
+    { resource: 'subscriptions', action: 'create', data: SUB('mcp-sub-2') },
+    { resource: 'events', action: 'create', data: { when: '2031-01', kind: 'k', title: 'mcp-event', state: 'todo' } },
+  ] })
+  const ap5 = await tool(kChat.key, 'apply_proposal', { proposalId: pr5.data.proposalId })
+  ok(!failedCall(ap5) && JSON.stringify(await wState()) !== before8, 'a second change is applied')
+  const rv = await tool(kChat.key, 'propose_revert', { changeSetId: ap5.data.changeSetId, note: 'undo' })
+  ok(!failedCall(rv) && rv.data.revertOf === ap5.data.changeSetId && rv.data.preview.rows.length === 2, 'propose_revert has the rows it would undo')
+  ok(JSON.stringify(await wState()) !== before8, 'proposing the revert changes nothing yet')
+  const rap = await tool(kChat.key, 'apply_proposal', { proposalId: rv.data.proposalId })
+  ok(!failedCall(rap) && JSON.stringify(await wState()) === before8, 'after applying the revert the data is as before')
+  const sets8 = await wSets()
+  ok(sets8[0].id === rap.data.changeSetId && sets8[0].revertOf === ap5.data.changeSetId && sets8[0].actorKind === 'api_key', 'the new set has revert_of and the key as actor')
+  ok(sets8.find((x) => x.id === ap5.data.changeSetId)?.revertedBy === rap.data.changeSetId, 'the original set is marked as reverted')
+  ok(failedCall(await tool(kChat.key, 'propose_revert', { changeSetId: ap5.data.changeSetId })), 'reverting it a second time is refused')
+  // the screen's own revert button works on an AI set (spec 009 V-8)
+  const pr6 = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'events', action: 'create', data: { when: '2031-02', kind: 'k', title: 'mcp-event-2', state: 'todo' } }] })
+  const ap6 = await tool(kChat.key, 'apply_proposal', { proposalId: pr6.data.proposalId })
+  const before6 = JSON.stringify((await wState()).events.filter((e) => e.title === 'mcp-event-2'))
+  const ui = await W('POST', `/api/changes/${ap6.data.changeSetId}/revert`)
+  ok(ui.status === 200 && before6 !== '[]' && (await wState()).events.every((e) => e.title !== 'mcp-event-2'), `the screen's revert works on an AI change set → ${ui.status}`)
+
+  // ── V-9: another user ──
+  const wSet = ap.data.changeSetId
+  const xs0 = JSON.stringify((await X('GET', '/api/state')).json)
+  const wDataNow = JSON.stringify(await wState())
+  ok(failedCall(await tool(kX.key, 'get_proposal', { proposalId: pr2.data.proposalId })), "X cannot read W's proposal")
+  ok(failedCall(await tool(kX.key, 'apply_proposal', { proposalId: pr2.data.proposalId })), "X cannot apply W's proposal")
+  const xr = await tool(kX.key, 'propose_revert', { changeSetId: wSet })
+  ok(failedCall(xr) && /not_found/.test(xr.text), "X cannot propose reverting W's change set")
+  const xu = await tool(kX.key, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'update', id: s1.subscriptions.find((x) => x.name === 'mcp-sub').id, data: SUB('hijacked') }] })
+  ok(failedCall(xu) && /not found|itemNotFound|Item not found/i.test(xu.text), "X cannot update W's row by id")
+  ok(JSON.stringify(await wState()) === wDataNow && JSON.stringify((await X('GET', '/api/state')).json) === xs0, "neither user's data changed")
+  // the table's row-level security: as a role that is not a superuser, another user sees no row
+  await sql`do $$ begin if not exists (select 1 from pg_roles where rolname = 'allot_rls_probe') then create role allot_rls_probe nosuperuser nobypassrls; end if; end $$`
+  await sql`grant select on mcp_proposal to allot_rls_probe`
+  const rls = await sql.begin(async (tx) => {
+    await tx`set local role allot_rls_probe`
+    await tx`select set_config('app.user_id', ${xId}, true)`
+    const other = await tx`select count(*)::int as n from mcp_proposal where user_id = ${wId}`
+    const all = await tx`select count(*)::int as n from mcp_proposal`
+    await tx`select set_config('app.user_id', ${wId}, true)`
+    const mine = await tx`select count(*)::int as n from mcp_proposal`
+    return { other: other[0].n, all: all[0].n, mine: mine[0].n }
+  })
+  ok(rls.other === 0 && rls.all === 0 && rls.mine > 0, `RLS on mcp_proposal: X sees ${rls.all} rows of W's, W sees ${rls.mine}`)
+
+  // ── revoked key ──
+  const dead = await W('DELETE', `/api/keys/${kChat.id}`)
+  ok(dead.status === 204 && (await mcp(A, kChat.key)).status === 401, 'a revoked key is 401 at the endpoint')
+  console.log(`INFO ${JSON.stringify({ wId, keyUi: kUi.id, proposalUi: pr2.data.proposalId })}`)
+}
+
 try {
-  if (mode === 'auth') await authMode()
+  if (mode === 'write') await writeMode()
+  else if (mode === 'auth') await authMode()
   else if (mode === 'isolation') await isolationMode()
   else await toolsMode()
 } finally {
