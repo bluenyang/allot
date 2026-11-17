@@ -180,6 +180,37 @@ try {
     ok(now.amount === 55_000 && (await getProposal(A, pp.id)).status === 'stale', "the screen's write is kept, not overwritten")
   }
 
+  // ── review 3: what is checked is checked after the wait for the lock ──
+  {
+    const waiting = async (tag: string, change: (keyId: string, proposalId: string) => Promise<void>) => {
+      const k = await newKey(A, `wait-${tag}`, 'ui')
+      const pp = await propose(A, k, { changes: [{ resource: 'living', action: 'update', data: living(910_000 + tag.length) }] })
+      const w = await holdWrite(A, { resource: 'checks', action: 'create', data: { text: `hold-${tag}`, done: false } })
+      const result = code(applyProposal(A, pp.id, { kind: 'user' }))
+      const blocked = await waitBlocked()
+      await change(k.id, pp.id)
+      w.release()
+      await w.done
+      return { blocked, result: await result, pp }
+    }
+    const rk = await waiting('revoked', async (keyId) => { await sqlClient`delete from apikey where id = ${keyId}` })
+    ok(rk.blocked && rk.result === 'key_unusable', `a key revoked while the apply waits: refused → ${rk.result}`)
+    const ex = await waiting('expired', async (_k, pid) => { await sqlClient`update mcp_proposal set expires_at = now() - interval '1 second' where id = ${pid}` })
+    ok(ex.blocked && ex.result === 'expired' && (await getProposal(A, ex.pp.id)).status === 'expired', `a proposal that expires while the apply waits: refused → ${ex.result}`)
+    const kx = await waiting('keyexp', async (keyId) => { await sqlClient`update apikey set expires_at = now() - interval '1 second' where id = ${keyId}` })
+    ok(kx.blocked && kx.result === 'key_unusable', `a key that expires while the apply waits: refused → ${kx.result}`)
+    const nw = await waiting('nowrite', async (keyId) => { await sqlClient`update apikey set permissions = '{"mcp":["read"]}' where id = ${keyId}` })
+    ok(nw.blocked && nw.result === 'key_unusable', `a key that loses write while the apply waits: refused → ${nw.result}`)
+    let banned: Awaited<ReturnType<typeof waiting>>
+    try {
+      banned = await waiting('banned', async () => { await sqlClient`update "user" set status = 'pending' where id = ${A}` })
+    } finally {
+      await sqlClient`update "user" set status = 'active' where id = ${A}`
+    }
+    ok(banned.blocked && banned.result === 'key_unusable', `an account that is disabled while the apply waits: refused → ${banned.result}`)
+    for (const p of await listProposals(A, 'pending')) await rejectProposal(A, p.id)
+  }
+
   // ── V-8: a revert is proposed and applied like any change ──
   const before8 = JSON.stringify(await state(A))
   const p8 = await propose(A, kChat, { changes: [

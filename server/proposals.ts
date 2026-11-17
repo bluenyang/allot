@@ -12,7 +12,6 @@ import * as a from './db/auth-schema'
 import * as t from './db/schema'
 import { asUser, lockFor } from './db/scope'
 import { m, text, type Msg } from './messages'
-import { usableUser } from './mcp/account'
 import type { Data } from './mcp/views'
 import { AI_LISTS, AI_SINGLES, applyOps, constraintMessage, OpInvalid, OpRejected, parseOp, Rejected, RESOURCES, SINGLES, type Op } from './ops'
 import { hashState, monthPreview } from './preview'
@@ -76,20 +75,35 @@ const view = (p: typeof t.mcpProposal.$inferSelect, keyUsable: boolean): Proposa
 // ── Keys ──
 interface LiveKey { id: string; name: string }
 
+/** Is the key on, not expired and with the write scope? */
+function keyCanWrite(k: { enabled: boolean | null; expiresAt: Date | null; permissions: string | null }): boolean {
+  if (k.enabled === false) return false
+  if (k.expiresAt && k.expiresAt.getTime() <= Date.now()) return false
+  let perms: { mcp?: string[] } = {}
+  try { perms = JSON.parse(k.permissions ?? '{}') as typeof perms } catch { /* no scope */ }
+  return !!perms.mcp?.includes('write')
+}
+
 /** The key, when it can still be used to apply a proposal of `uid`: it exists, is on, has not expired and may write. */
 async function liveKeys(uid: string, ids: string[]): Promise<Map<string, LiveKey>> {
   if (!ids.length) return new Map()
   const rows = await db.select().from(a.apikey).where(and(eq(a.apikey.referenceId, uid), inArray(a.apikey.id, ids)))
   const live = new Map<string, LiveKey>()
-  for (const k of rows) {
-    if (k.enabled === false) continue
-    if (k.expiresAt && k.expiresAt.getTime() <= Date.now()) continue
-    let perms: { mcp?: string[] } = {}
-    try { perms = JSON.parse(k.permissions ?? '{}') as typeof perms } catch { /* no scope */ }
-    if (!perms.mcp?.includes('write')) continue
-    live.set(k.id, { id: k.id, name: k.name ?? '' })
-  }
+  for (const k of rows) if (keyCanWrite(k)) live.set(k.id, { id: k.id, name: k.name ?? '' })
   return live
+}
+
+/** Is a verified key's owner active and not banned? Read in the transaction and locked (FOR SHARE) until it ends. */
+async function accountUsable(q: Db, uid: string): Promise<boolean> {
+  const [u] = await q.select({ status: a.user.status, banned: a.user.banned, banExpires: a.user.banExpires }).from(a.user).where(eq(a.user.id, uid)).for('share')
+  if (!u || u.status !== 'active') return false
+  return !(u.banned && (!u.banExpires || u.banExpires.getTime() > Date.now()))
+}
+
+/** The key of a proposal, when it can still apply it, read in the transaction and locked (FOR SHARE) until it ends. */
+async function keyFor(q: Db, uid: string, keyId: string): Promise<LiveKey | null> {
+  const [k] = await q.select().from(a.apikey).where(and(eq(a.apikey.referenceId, uid), eq(a.apikey.id, keyId))).for('share')
+  return k && keyCanWrite(k) ? { id: k.id, name: k.name ?? '' } : null
 }
 
 // ── Expiry ──
@@ -243,9 +257,11 @@ export type Decider = { kind: 'user' } | { kind: 'key'; keyId: string }
  * A proposal that expired or went stale is marked so and refused; one whose key is gone stays as it is.
  */
 export async function applyProposal(uid: string, id: string, by: Decider): Promise<{ changeSetId: string | null }> {
-  if (!(await usableUser(uid))) throw new ProposalError('key_unusable', m('proposalAccount'))
   let failure: ProposalError | null = null
   const changeSetId = await asUser(uid, async (q) => {
+    // Locks first. Whatever is checked is checked AFTER this wait, in this transaction (review 3): a key
+    // revoked, an account banned or a proposal expired while it waited are seen, and their rows stay as read until commit.
+    await lockAll(q, uid)
     await lockFor(q, 'proposal', uid)
     const [p] = await q.select().from(t.mcpProposal).where(and(eq(t.mcpProposal.userId, uid), eq(t.mcpProposal.id, id))).for('update')
     if (!p || (by.kind === 'key' && p.keyId !== by.keyId)) throw new ProposalError('not_found', m('proposalNotFound'))
@@ -257,9 +273,9 @@ export async function applyProposal(uid: string, id: string, by: Decider): Promi
       failure = new ProposalError('expired', m('proposalExpired'))
       return null
     }
-    const key = (await liveKeys(uid, [p.keyId])).get(p.keyId)
+    if (!(await accountUsable(q, uid))) throw new ProposalError('key_unusable', m('proposalAccount'))
+    const key = await keyFor(q, uid, p.keyId)
     if (!key) throw new ProposalError('key_unusable', m('proposalKeyGone'))
-    await lockAll(q, uid)
     if (hashState(await readState(q, uid)) !== p.baseHash) {
       await q.update(t.mcpProposal).set({ status: 'stale', ...decided }).where(eq(t.mcpProposal.id, id))
       failure = new ProposalError('stale', m('proposalStale'))
