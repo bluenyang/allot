@@ -281,15 +281,48 @@ try {
 
   // ── V-9: another user's proposal and change set ──
   const pa = await propose(A, kUi, { changes: [{ resource: 'living', action: 'update', data: living(400_000) }] })
+  // B's baseline is taken BEFORE the attempts (review 5)
+  const sb0 = JSON.stringify(await state(B))
+  const cb0 = await counts(B)
   ok(await code(getProposal(B, pa.id)) === 'not_found', "B cannot read A's proposal")
   ok(await code(applyProposal(B, pa.id, { kind: 'user' })) === 'not_found', "B cannot apply A's proposal")
   ok(await code(rejectProposal(B, pa.id)) === 'not_found', "B cannot reject A's proposal")
   ok((await listProposals(B)).length === 0, "B's list holds none of A's")
   ok(await code(propose(B, kB, { revertOf: ap8.changeSetId! })) === 'not_found', "B cannot propose reverting A's change set")
   ok(await code(getProposal(A, pa.id, kChat.id)) === 'not_found', "a key sees only its own proposals")
-  const sb0 = JSON.stringify(await state(B))
-  ok(sb0 === JSON.stringify(await state(B)), "B's data was not touched")
+  ok(sb0 === JSON.stringify(await state(B)) && JSON.stringify(cb0) === JSON.stringify(await counts(B)), "B's data, history and proposals were not touched by those attempts")
   await rejectProposal(A, pa.id)
+
+  // ── review 5: the table's row-level security is FORCEd, and holds for a role that owns it ──
+  {
+    const [cls] = await sqlClient`select relrowsecurity as on, relforcerowsecurity as forced from pg_class where relname = 'mcp_proposal'`
+    ok((cls as { on: boolean }).on === true && (cls as { forced: boolean }).forced === true, 'mcp_proposal has row-level security enabled and forced')
+    const [cu] = await sqlClient`select current_user as name`
+    await sqlClient`do $$ begin if not exists (select 1 from pg_roles where rolname = 'allot_rls_owner') then create role allot_rls_owner nologin nosuperuser nobypassrls; end if; end $$`
+    await sqlClient.unsafe(`grant "${(cu as { name: string }).name}" to allot_rls_owner`)
+    // a member of the owning role counts as the owner for RLS (without FORCE it would see every row); it has no BYPASSRLS
+    const seen = await sqlClient.begin(async (tx) => {
+      await tx`set local role allot_rls_owner`
+      await tx`select set_config('app.user_id', ${B}, true)`
+      const other = await tx`select count(*)::int as n from mcp_proposal where user_id = ${A}`
+      const everything = await tx`select count(*)::int as n from mcp_proposal`
+      await tx`select set_config('app.user_id', ${A}, true)`
+      const own = await tx`select count(*)::int as n from mcp_proposal`
+      return { other: (other[0] as { n: number }).n, everything: (everything[0] as { n: number }).n, own: (own[0] as { n: number }).n }
+    })
+    ok(seen.other === 0 && seen.everything === 0 && seen.own > 0, `as a role that owns the table and has no BYPASSRLS: B sees ${seen.everything} rows of A's, A sees ${seen.own}`)
+  }
+
+  // ── review 5: a stored operation that is invalid at apply time is refused (the apply validates again) ──
+  {
+    const stateBefore = JSON.stringify(await state(A))
+    const pv = await propose(A, kUi, { changes: [{ resource: 'subscriptions', action: 'create', data: sub('planted') }] })
+    await sqlClient`update mcp_proposal set ops = ${JSON.stringify([{ resource: 'subscriptions', action: 'create', data: { plan: 'p' } }])}::jsonb where id = ${pv.id}`
+    ok(await code(applyProposal(A, pv.id, { kind: 'user' })) === 'invalid' && JSON.stringify(await state(A)) === stateBefore, 'a stored operation that no longer validates is refused and nothing is applied')
+    await sqlClient`update mcp_proposal set ops = ${JSON.stringify([{ resource: 'accounts', action: 'create', data: { name: 'x', role: '', inflow: '', outflow: '' } }])}::jsonb where id = ${pv.id}`
+    ok(await code(applyProposal(A, pv.id, { kind: 'user' })) === 'invalid' && JSON.stringify(await state(A)) === stateBefore, 'a stored operation on a resource the AI may not change is refused')
+    await rejectProposal(A, pv.id)
+  }
 } catch (e) {
   console.log(`FAIL ${(e as Error).stack}`)
   failed++
