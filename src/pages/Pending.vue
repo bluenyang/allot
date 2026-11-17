@@ -36,20 +36,37 @@ interface Proposal {
   preview: { rows: RowChange[]; months: MonthPreview[] }
 }
 
-const items = ref<Proposal[]>([])
+const waiting = ref<Proposal[]>([])
+const handled = ref<Proposal[]>([])
+const moreHandled = ref(false)
 const loaded = ref(false)
 const busy = ref('')
 const error = ref('')
 const notice = ref('')
 const open = ref<string | null>(null)
+const HANDLED_PAGE = 20
+
+/** Every waiting proposal (at most 20 can wait), and so the number for the badge: this list is never cut short. */
+async function loadWaiting() {
+  waiting.value = await api<Proposal[]>('GET', '/api/proposals?status=pending')
+  store.pendingProposals = waiting.value.length
+  // The first one is open: the numbers are what the user came to see.
+  if (open.value === null) open.value = waiting.value[0]?.id ?? null
+}
+
+/** The handled ones, a page at a time, newest first. */
+async function loadHandled(more = false) {
+  const last = more ? handled.value.at(-1) : undefined
+  const after = last ? `&before=${encodeURIComponent(last.createdAt)}&beforeId=${encodeURIComponent(last.id)}` : ''
+  const page = await api<Proposal[]>('GET', `/api/proposals?status=handled&limit=${HANDLED_PAGE}${after}`)
+  handled.value = more ? [...handled.value, ...page] : page
+  moreHandled.value = page.length === HANDLED_PAGE
+}
 
 async function load() {
   try {
-    items.value = await api<Proposal[]>('GET', '/api/proposals')
-    store.pendingProposals = items.value.filter((p) => p.status === 'pending').length
+    await Promise.all([loadWaiting(), loadHandled()])
     loaded.value = true
-    // The first one is open: the numbers are what the user came to see.
-    if (open.value === null) open.value = items.value.find((p) => p.status === 'pending')?.id ?? null
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : t('pending.loadFailed')
   }
@@ -57,8 +74,9 @@ async function load() {
 onMounted(load)
 onActivated(load)
 
-const pending = () => items.value.filter((p) => p.status === 'pending')
-const decided = () => items.value.filter((p) => p.status !== 'pending')
+async function more() {
+  try { await loadHandled(true) } catch (e) { error.value = e instanceof ApiError ? e.message : t('pending.loadFailed') }
+}
 
 async function decide(p: Proposal, what: 'apply' | 'reject') {
   busy.value = p.id
@@ -116,8 +134,8 @@ const STATUS: Record<Status, MessageKey> = { pending: 'pending.status.pending', 
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">{{ t('common.close') }}</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
 
-    <p v-if="loaded && !pending().length" class="panel muted">{{ t('pending.none') }}</p>
-    <article v-for="p in pending()" :key="p.id" class="panel prop" :data-proposal="p.id" :aria-label="summary(p)">
+    <p v-if="loaded && !waiting.length" class="panel muted">{{ t('pending.none') }}</p>
+    <article v-for="p in waiting" :key="p.id" class="panel prop" :data-proposal="p.id" :aria-label="summary(p)">
       <header class="phead">
         <div class="pt">
           <span class="pill mute">AI</span>
@@ -168,14 +186,15 @@ const STATUS: Record<Status, MessageKey> = { pending: 'pending.status.pending', 
       </footer>
     </article>
 
-    <div v-if="decided().length" class="panel">
+    <div v-if="handled.length" class="panel">
       <h3>{{ t('pending.decided') }}</h3>
       <ul class="list" :aria-label="t('pending.decided')">
-        <li v-for="p in decided()" :key="p.id" class="done">
+        <li v-for="p in handled" :key="p.id" class="done">
           <span class="small">{{ t('pending.from', { key: p.keyName }) }} · {{ summary(p) }}<br><span class="muted mono">{{ when(p.decidedAt ?? p.createdAt) }}</span></span>
           <span class="pill" :class="p.status === 'applied' ? 'ok' : 'mute'">{{ t(STATUS[p.status]) }}</span>
         </li>
       </ul>
+      <div v-if="moreHandled" class="btns" style="margin-top:12px"><button class="btn" type="button" @click="more()">{{ t('history.more') }}</button></div>
     </div>
   </section>
 </template>

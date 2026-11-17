@@ -448,6 +448,11 @@ async function writeMode() {
   ok(listed.status === 200 && !!mine && mine.keyName === 'w-ui' && mine.confirm === 'ui' && mine.keyUsable === true && mine.preview?.rows?.length === 1 && mine.baseHash === undefined && mine.userId === undefined, 'GET /api/proposals lists it with its key, method and preview (no fingerprint, no owner)')
   ok((await W('GET', '/api/state')).json.pendingProposals === (listed.json ?? []).length, 'the state carries the pending count for the badge')
   ok((await W('GET', '/api/proposals?status=nope')).status === 400, 'an unknown status filter is 400')
+  const h1 = await W('GET', '/api/proposals?status=handled&limit=1')
+  ok(h1.status === 200 && h1.json.length === 1 && h1.json[0].status !== 'pending', 'status=handled lists handled proposals, a page at a time')
+  const h2 = await W('GET', `/api/proposals?status=handled&limit=1&before=${encodeURIComponent(h1.json[0]?.createdAt)}&beforeId=${encodeURIComponent(h1.json[0]?.id)}`)
+  ok(h2.status === 200 && (h2.json.length === 0 || h2.json[0].id !== h1.json[0].id), 'the next page starts after the last one shown')
+  ok((await W('GET', '/api/proposals?status=handled&before=2026-01-01')).status === 400, 'before without beforeId is 400')
   ok((await W('GET', `/api/proposals/${pr2.data.proposalId}`)).json?.id === pr2.data.proposalId, 'GET /api/proposals/:id')
   for (const [m, path] of [['GET', ''], ['POST', '/apply'], ['POST', '/reject']]) {
     const r = await X(m, `/api/proposals/${pr2.data.proposalId}${path}`)

@@ -156,15 +156,15 @@ try {
   const p6 = await propose(A, kGone, { changes: [{ resource: 'living', action: 'update', data: living(170_000) }] })
   await sqlClient`delete from apikey where id = ${kGone.id}`
   ok(await code(applyProposal(A, p6.id, { kind: 'user' })) === 'key_unusable', 'a revoked key: the screen cannot apply its proposal')
-  ok((await getProposal(A, p6.id)).status === 'pending' && (await listProposals(A, 'pending')).find((x) => x.id === p6.id)?.keyUsable === false, 'it stays pending and is marked as having no usable key')
+  ok((await getProposal(A, p6.id)).status === 'pending' && (await listProposals(A, { status: 'pending' })).find((x) => x.id === p6.id)?.keyUsable === false, 'it stays pending and is marked as having no usable key')
   const kRead = await newKey(A, 'read-only', 'ui', false)
   const p7 = await propose(A, kRead, { changes: [{ resource: 'living', action: 'update', data: living(180_000) }] })
   ok(await code(applyProposal(A, p7.id, { kind: 'user' })) === 'key_unusable', 'a key without write scope: its proposal cannot be applied')
   for (const p of [p6, p7]) await rejectProposal(A, p.id)
-  const pend = (await listProposals(A, 'pending')).length
+  const pend = (await listProposals(A, { status: 'pending' })).length
   for (let i = pend; i < MAX_PENDING; i++) await propose(A, kUi, { changes: [{ resource: 'events', action: 'create', data: { when: '2031-01', kind: 'k', title: `cap${i}`, state: 'todo' } }] })
   ok(await code(propose(A, kUi, { changes: [{ resource: 'events', action: 'create', data: { when: '2031-01', kind: 'k', title: 'cap-over', state: 'todo' } }] })) === 'too_many', `the ${MAX_PENDING + 1}th pending proposal is refused`)
-  for (const p of await listProposals(A, 'pending')) await rejectProposal(A, p.id)
+  for (const p of await listProposals(A, { status: 'pending' })) await rejectProposal(A, p.id)
 
   // ── review 2: a write that commits while an apply waits makes the apply stale; it is not overwritten ──
   {
@@ -208,7 +208,23 @@ try {
       await sqlClient`update "user" set status = 'active' where id = ${A}`
     }
     ok(banned.blocked && banned.result === 'key_unusable', `an account that is disabled while the apply waits: refused → ${banned.result}`)
-    for (const p of await listProposals(A, 'pending')) await rejectProposal(A, p.id)
+    for (const p of await listProposals(A, { status: 'pending' })) await rejectProposal(A, p.id)
+  }
+
+  // ── review 4: handled proposals never hide a pending one; they are paged ──
+  {
+    const old = await propose(A, kUi, { changes: [{ resource: 'living', action: 'update', data: living(920_000) }] })
+    for (let i = 0; i < 105; i++) {
+      await sqlClient`insert into mcp_proposal (user_id, id, key_id, key_name, confirm, ops, base_hash, preview, status, expires_at, created_at, decided_at)
+        values (${A}, ${`bulk-${String(i).padStart(3, '0')}`}, 'k', 'bulk', 'ui', '[]'::jsonb, 'h', '{"rows":[],"months":[]}'::jsonb, 'rejected', now() + interval '1 day', now() + ${i + 1} * interval '1 second', now())`
+    }
+    ok((await listProposals(A, { status: 'pending' })).some((x) => x.id === old.id), 'a pending proposal is listed after 105 newer handled ones')
+    const page1 = await listProposals(A, { status: 'handled', limit: 100 })
+    const last = page1[page1.length - 1]!
+    const page2 = await listProposals(A, { status: 'handled', limit: 100, before: { at: last.createdAt, id: last.id } })
+    ok(page1.length === 100 && page1.every((x) => x.status !== 'pending'), 'the handled list is a page of 100, none of them pending')
+    ok(page2.length > 0 && page2.every((x) => !page1.some((y) => y.id === x.id)), 'the next page continues after the last one shown, without repeats')
+    await rejectProposal(A, old.id)
   }
 
   // ── V-8: a revert is proposed and applied like any change ──

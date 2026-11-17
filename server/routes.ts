@@ -110,11 +110,12 @@ for (const [path, resource] of [
 ] as const) crud(routes, path, resource)
 
 // ── Proposals from an AI key (spec 009 S-4, S-9): the screen confirms or rejects them (a session only) ──
-//   GET  /api/proposals?status=pending   newest first, with their previews
+//   GET  /api/proposals?status=pending|handled|…&limit=100&before=<createdAt>&beforeId=<id>   newest first, with their previews;
+//        `handled` is every status but pending; the next page starts after the last one shown
 //   GET  /api/proposals/:id
 //   POST /api/proposals/:id/apply        confirm: applies the proposal as one change set → { changeSet }
 //   POST /api/proposals/:id/reject
-const STATUSES = ['pending', 'applied', 'rejected', 'expired', 'stale'] as const
+const STATUSES = ['pending', 'applied', 'rejected', 'expired', 'stale', 'handled'] as const
 const proposalFail = (c: Context<AppEnv>, e: unknown) => {
   if (e instanceof ProposalError) return c.json({ error: proposalText(e, langOf(c)), code: e.code }, e.status as 400 | 404 | 409)
   return dbError(c, e)
@@ -123,7 +124,12 @@ const proposalFail = (c: Context<AppEnv>, e: unknown) => {
 routes.get('/proposals', async (c) => {
   const status = c.req.query('status')
   if (status !== undefined && !(STATUSES as readonly string[]).includes(status)) return c.json({ error: msg(c, 'invalidInput'), path: 'status' }, 400)
-  return c.json(await listProposals(uidOf(c), status as ProposalStatus | undefined))
+  const at = c.req.query('before') || undefined
+  const id = c.req.query('beforeId') || undefined
+  if (at && Number.isNaN(Date.parse(at))) return c.json({ error: msg(c, 'beforeNotTime') }, 400)
+  if (!!at !== !!id) return c.json({ error: msg(c, 'beforeBoth') }, 400)
+  const limit = Number(c.req.query('limit') ?? 100) || 100
+  return c.json(await listProposals(uidOf(c), { status: status as ProposalStatus | 'handled' | undefined, limit, before: at && id ? { at, id } : undefined }))
 })
 
 routes.get('/proposals/:id', async (c) => {

@@ -4,7 +4,7 @@
 // the later apply are the same code. Applying re-checks everything: status, expiry, the key, the
 // fingerprint of the data, and every rule again.
 import { randomUUID } from 'node:crypto'
-import { and, count, desc, eq, getTableName, gt, inArray, lte } from 'drizzle-orm'
+import { and, count, desc, eq, getTableName, gt, inArray, lt, lte, ne, or } from 'drizzle-orm'
 import type { Collected } from './changes'
 import { Conflict, lockAll, NotFound, Recorder, revert, RuleBroken } from './changes'
 import { db, type Db } from './db/client'
@@ -225,12 +225,19 @@ export async function propose(uid: string, key: KeyInfo, input: ProposeInput): P
 }
 
 // ── Read ──
-export async function listProposals(uid: string, status?: ProposalStatus): Promise<ProposalView[]> {
+/** What to list: one status, every status, or `handled` (everything but pending), newest first, a page at a time. */
+export interface ListOptions { status?: ProposalStatus | 'handled'; limit?: number; before?: { at: string; id: string } }
+
+export async function listProposals(uid: string, o: ListOptions = {}): Promise<ProposalView[]> {
+  const limit = Math.min(Math.max(o.limit ?? 100, 1), 100)
   const rows = await asUser(uid, async (q) => {
     await expireDue(q, uid)
-    const mine = eq(t.mcpProposal.userId, uid)
-    return q.select().from(t.mcpProposal).where(status ? and(mine, eq(t.mcpProposal.status, status)) : mine)
-      .orderBy(desc(t.mcpProposal.createdAt)).limit(100)
+    const p = t.mcpProposal
+    const filters = [eq(p.userId, uid)]
+    if (o.status === 'handled') filters.push(ne(p.status, 'pending'))
+    else if (o.status) filters.push(eq(p.status, o.status))
+    if (o.before) filters.push(or(lt(p.createdAt, o.before.at), and(eq(p.createdAt, o.before.at), lt(p.id, o.before.id)))!)
+    return q.select().from(p).where(and(...filters)).orderBy(desc(p.createdAt), desc(p.id)).limit(limit)
   })
   const live = await liveKeys(uid, [...new Set(rows.map((r) => r.keyId))])
   return rows.map((r) => view(r, live.has(r.keyId)))
