@@ -18,7 +18,7 @@ import { hashPassword } from 'better-auth/crypto'
 import * as t from './schema'
 import * as authSchema from './auth-schema'
 import { moveOwner } from './owned'
-import { asUser } from './scope'
+import { asUser, lockFor } from './scope'
 
 export interface SeedData {
   settings: Settings
@@ -58,6 +58,7 @@ async function upsert<T extends PgTable & { id: PgColumn; userId: PgColumn }>(tx
 
 export async function seed(data: SeedData, uid: string, tx: Db = db) {
   await asUser(uid, async (d) => {
+    await lockFor(d, 'data', uid)
     await d.insert(t.settings).values({ userId: uid, ...data.settings }).onConflictDoUpdate({ target: t.settings.userId, set: data.settings })
     await d.insert(t.living).values({ userId: uid, ...data.living }).onConflictDoUpdate({ target: t.living.userId, set: data.living })
     await upsert(d, uid, t.subscription, data.subscriptions.map((s) => ({ ...s, note: s.note ?? null })))

@@ -102,11 +102,12 @@ export class NotFound extends MsgError {}
 export class RuleBroken extends MsgError {}
 
 /**
- * Every lock the write paths take, in their order, so a revert cannot race them (a missing
- * settings/living row cannot be locked by FOR UPDATE; the advisory lock covers it).
+ * Every lock the write paths take, in their order (data → phase → allocation_target → settings → living →
+ * preference), so a revert, a preview or an apply cannot race them (a missing settings/living row cannot be
+ * locked by FOR UPDATE; the advisory lock covers it). `data` comes first: every writer of user data takes it.
  */
 export async function lockAll(q: Db, uid: string) {
-  for (const name of ['phase', 'allocation_target', 'settings', 'living', 'preference']) await lockFor(q, name, uid)
+  for (const name of ['data', 'phase', 'allocation_target', 'settings', 'living', 'preference']) await lockFor(q, name, uid)
 }
 
 /**

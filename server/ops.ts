@@ -210,20 +210,21 @@ export interface Op { resource: string; action: 'create' | 'update' | 'delete'; 
 /** `row` is what the request answers with (absent for a delete); `found` is false when update/delete named no row. */
 export interface OpResult { found: boolean; row?: Row }
 
-/** The table locks an operation needs, in the global order (phase → allocation_target → settings → living → preference). */
-const LOCK_ORDER = ['phase', 'allocation_target', 'settings', 'living', 'preference']
+/** The locks an operation needs, in the global order (data → phase → allocation_target → settings → living → preference). Every operation takes `data`. */
+const LOCK_ORDER = ['data', 'phase', 'allocation_target', 'settings', 'living', 'preference']
 function locksOf(op: Op): string[] {
   const r = resourceOf(op.resource)
-  if (!r) return []
-  if (r.kind === 'single') return [r.lockName]
+  if (!r) return ['data']
+  if (r.kind === 'single') return ['data', r.lockName]
   const name = getTableName(r.table)
-  return r.lock ? [name, ...(r.alsoLocks ?? [])] : []
+  return r.lock ? ['data', name, ...(r.alsoLocks ?? [])] : ['data']
 }
 
 /** Apply one validated operation (`data` already parsed with the resource's schema). Throws Rejected for a rule it breaks. */
 export async function applyOp(q: Db, uid: string, rec: Recorder, op: Op): Promise<OpResult> {
   const r = resourceOf(op.resource)
   if (!r) throw new Error(`unknown resource: ${op.resource}`)
+  await lockFor(q, 'data', uid) // first, before any other lock (spec 009 review 2)
   if (r.kind === 'single') return applySingle(q, uid, rec, r, op)
   return applyList(q, uid, rec, r, op)
 }

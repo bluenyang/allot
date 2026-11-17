@@ -23,6 +23,33 @@ const code = async (p: Promise<unknown>) => { try { await p; return 'ok' } catch
 const sub = (name: string, over: Record<string, unknown> = {}) => ({ name, category: 'tool', plan: 'p', amount: 12000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false, ...over })
 const living = (food: number) => ({ food, transit: 2, allowance: 3 })
 
+
+// ── two connections and a barrier (review 2, 3) ──
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+/** Is some session waiting for an advisory lock? (the apply under test, held back by the write below) */
+async function waitBlocked() {
+  for (let i = 0; i < 100; i++) {
+    const [r] = await sqlClient`select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted`
+    if ((r as { n: number }).n > 0) return true
+    await sleep(50)
+  }
+  return false
+}
+/** An ordinary write (the screen's path) that stays open, holding what it locked, until release(). */
+async function holdWrite(uid: string, op: import('../../server/ops').Op) {
+  let release!: () => void
+  const gate = new Promise<void>((r) => { release = r })
+  let held!: () => void
+  const heldP = new Promise<void>((r) => { held = r })
+  const done = asUser(uid, async (q) => {
+    await applyOps(q, uid, new Recorder(q, uid, { kind: 'user', id: uid }, { method: 'PUT', path: '/api/test' }), [parseOp(op, 0)])
+    held()
+    await gate
+  })
+  await heldP
+  return { release, done }
+}
+
 const made: string[] = []
 async function newUser(tag: string) {
   const id = randomUUID()
@@ -138,6 +165,20 @@ try {
   for (let i = pend; i < MAX_PENDING; i++) await propose(A, kUi, { changes: [{ resource: 'events', action: 'create', data: { when: '2031-01', kind: 'k', title: `cap${i}`, state: 'todo' } }] })
   ok(await code(propose(A, kUi, { changes: [{ resource: 'events', action: 'create', data: { when: '2031-01', kind: 'k', title: 'cap-over', state: 'todo' } }] })) === 'too_many', `the ${MAX_PENDING + 1}th pending proposal is refused`)
   for (const p of await listProposals(A, 'pending')) await rejectProposal(A, p.id)
+
+  // ── review 2: a write that commits while an apply waits makes the apply stale; it is not overwritten ──
+  {
+    const target = (await state(A)).subscriptions.find((x) => x.name === 'v6-sub')!
+    const pp = await propose(A, kUi, { changes: [{ resource: 'subscriptions', action: 'update', id: target.id, data: sub('v6-sub', { amount: 77_000 }) }] })
+    const w = await holdWrite(A, { resource: 'subscriptions', action: 'update', id: target.id, data: sub('v6-sub', { amount: 55_000 }) })
+    const pending = code(applyProposal(A, pp.id, { kind: 'user' }))
+    ok(await waitBlocked(), 'the apply waits for the open write (ordinary writers take the data lock)')
+    w.release()
+    await w.done
+    ok(await pending === 'stale', 'the apply ends stale after the write commits')
+    const now = (await state(A)).subscriptions.find((x) => x.id === target.id)!
+    ok(now.amount === 55_000 && (await getProposal(A, pp.id)).status === 'stale', "the screen's write is kept, not overwritten")
+  }
 
   // ── V-8: a revert is proposed and applied like any change ──
   const before8 = JSON.stringify(await state(A))

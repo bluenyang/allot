@@ -24,7 +24,7 @@ import { encryptField, forgetUserKey, SYSTEM } from './crypto/keys'
 import { db, type Db } from './db/client'
 import * as a from './db/auth-schema'
 import { OWNED } from './db/owned'
-import { setUser } from './db/scope'
+import { lockFor, setUser } from './db/scope'
 import * as t from './db/schema'
 import { fetchDiscovery } from './providers'
 import * as v from './validation'
@@ -257,6 +257,7 @@ adminRoutes.delete('/users/:id', body(v.userDelete), async (c) => {
       }
       // Every row of the user (children first), then the account; sessions and logins cascade.
       await setUser(q, target)
+      await lockFor(q, 'data', target) // a proposal cannot apply while the data goes
       for (const table of [...OWNED].reverse()) await q.delete(table).where(eq(table.userId, target))
       await q.delete(t.changeLog).where(eq(t.changeLog.userId, target))
       await q.delete(t.changeSet).where(eq(t.changeSet.userId, target))

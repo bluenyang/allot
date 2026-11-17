@@ -19,8 +19,10 @@ export function asUser<R>(uid: string, fn: (q: Db) => Promise<R>, q: Db = db): P
 
 /**
  * Serialise writes to one kind of row for one user (advisory lock, released at commit).
- * Order, wherever more than one is taken: phase → allocation_target → settings → living.
+ * Order, wherever more than one is taken: data → phase → allocation_target → settings → living → preference → proposal.
+ * `data` is the lock of the user's whole data (spec 009 review 2): every writer of user data and every proposal
+ * preview and apply takes it FIRST, so a proposal's fingerprint check and its writes see one state.
  */
-export async function lockFor(q: Db, name: 'phase' | 'allocation_target' | 'settings' | 'living' | string, uid: string) {
+export async function lockFor(q: Db, name: 'data' | 'phase' | 'allocation_target' | 'settings' | 'living' | 'preference' | 'proposal' | string, uid: string) {
   await q.execute(sql`select pg_advisory_xact_lock(hashtext(${`allot:${name}:`} || ${uid}))`)
 }
