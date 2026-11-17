@@ -50,6 +50,7 @@ const ko = {
   proposalOwnKey: '이 키가 올린 제안만 다룰 수 있어요.',
   proposalTooMany: '대기 중인 제안이 {max}개예요. 먼저 확인하거나 거절해 주세요.',
   proposalNoEffect: '바뀌는 것이 없어요.',
+  proposalRevertScope: 'AI는 이 변경 묶음을 되돌릴 수 없어요. 계좌·부채·공휴일·표시 설정이 들어 있어요.',
   proposalAt: '{n}번째 변경: ',
   proposalAccount: '이 계정은 지금 쓸 수 없어요.',
   // validation (zod)
@@ -186,6 +187,7 @@ const en: Record<MsgKey, string> = {
   proposalOwnKey: 'A key can handle only the proposals it made.',
   proposalTooMany: 'There are already {max} pending proposals. Confirm or reject some first.',
   proposalNoEffect: 'Nothing would change.',
+  proposalRevertScope: 'An AI cannot revert this change set: it touches accounts, debts, holiday sets or display settings.',
   proposalAt: 'Change {n}: ',
   proposalAccount: 'This account cannot be used right now.',
   dateInvalid: 'That date does not exist.',

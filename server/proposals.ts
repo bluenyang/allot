@@ -4,7 +4,7 @@
 // the later apply are the same code. Applying re-checks everything: status, expiry, the key, the
 // fingerprint of the data, and every rule again.
 import { randomUUID } from 'node:crypto'
-import { and, count, desc, eq, gt, inArray, lte } from 'drizzle-orm'
+import { and, count, desc, eq, getTableName, gt, inArray, lte } from 'drizzle-orm'
 import type { Collected } from './changes'
 import { Conflict, lockAll, NotFound, Recorder, revert, RuleBroken } from './changes'
 import { db, type Db } from './db/client'
@@ -14,7 +14,7 @@ import { asUser, lockFor } from './db/scope'
 import { m, text, type Msg } from './messages'
 import { usableUser } from './mcp/account'
 import type { Data } from './mcp/views'
-import { applyOps, constraintMessage, OpInvalid, OpRejected, parseOp, Rejected, type Op } from './ops'
+import { AI_LISTS, AI_SINGLES, applyOps, constraintMessage, OpInvalid, OpRejected, parseOp, Rejected, RESOURCES, SINGLES, type Op } from './ops'
 import { hashState, monthPreview } from './preview'
 import { readState } from './state'
 import { addYm, today, ymOf } from '../src/lib/calc'
@@ -109,11 +109,28 @@ export async function pendingCount(q: Db, uid: string): Promise<number> {
 // ── Making the operations real, for a preview and for an apply ──
 const AI_META = { method: 'MCP', path: '/api/mcp' }
 
+/**
+ * The tables an AI may revert: those of the resources it may change (spec 009 S-2) and their child tables.
+ * A change set that touches any other table is refused whole.
+ */
+export const AI_REVERT_TABLES: ReadonlySet<string> = new Set(
+  [...AI_LISTS.map((r) => RESOURCES[r].table), ...AI_SINGLES.map((r) => SINGLES[r].table), t.phaseAmount].map((x) => getTableName(x)),
+)
+
+/** Refuse a revert whose change set touches a table the AI may not change. A set that does not exist is left to revert() to report. */
+async function checkRevertScope(q: Db, uid: string, setId: string) {
+  const rows = await q.selectDistinct({ table: t.changeLog.tableName }).from(t.changeLog)
+    .where(and(eq(t.changeLog.userId, uid), eq(t.changeLog.setId, setId)))
+  if (rows.some((r) => !AI_REVERT_TABLES.has(r.table))) throw new ProposalError('rule', m('proposalRevertScope'))
+}
+
 /** Run the proposal's operations (or its revert) in `q`; what they break becomes a ProposalError. */
 async function run(q: Db, uid: string, rec: Recorder, ops: Op[], revertOf: string | null) {
   try {
-    if (revertOf) await revert(q, uid, revertOf, rec)
-    else await applyOps(q, uid, rec, ops)
+    if (revertOf) {
+      await checkRevertScope(q, uid, revertOf)
+      await revert(q, uid, revertOf, rec)
+    } else await applyOps(q, uid, rec, ops)
   } catch (e) {
     if (e instanceof OpRejected) throw new ProposalError('rule', e.ref, e.index)
     if (e instanceof Rejected || e instanceof RuleBroken) throw new ProposalError('rule', e.ref)

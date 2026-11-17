@@ -156,6 +156,41 @@ try {
   ok(await code(propose(A, kChat, { revertOf: ap8.changeSetId! })) === 'conflict', 'reverting it again is refused')
   ok(await code(propose(A, kChat, { revertOf: 'nope' })) === 'not_found', 'an unknown change set is refused')
 
+  // ── review 1: an AI may revert only what it may change (spec 009 S-2) ──
+  const direct = async (ops: { resource: string; action: 'create' | 'update' | 'delete'; id?: string; data?: unknown }[]) => {
+    // written like the screen would (no AI allowlist), as one change set
+    let setId: string | null = null
+    await asUser(A, async (q) => {
+      const rec = new Recorder(q, A, { kind: 'user', id: A }, { method: 'POST', path: '/api/x' })
+      await applyOps(q, A, rec, ops)
+      setId = rec.id
+    })
+    return setId!
+  }
+  const excluded: [string, { resource: string; action: 'create'; data: unknown }][] = [
+    ['accounts', { resource: 'accounts', action: 'create', data: { name: 'rv-acc', role: '', inflow: '', outflow: '' } }],
+    ['debts', { resource: 'debts', action: 'create', data: { name: 'rv-debt', principal: 1, rate: '', method: '', plan: '' } }],
+    ['holiday sets', { resource: 'holiday-sets', action: 'create', data: { name: 'rv-hol', enabled: true, builtin: null, rules: [{ name: 'h', rdate: ['2031-05-05'] }] } }],
+  ]
+  for (const [label, op] of excluded) {
+    const sid = await direct([op])
+    ok(await code(propose(A, kChat, { revertOf: sid })) === 'rule', `reverting a change set of ${label} is refused when proposing`)
+  }
+  const prefSet = await direct([{ resource: 'preferences', action: 'update', data: { themeMode: 'dark', primary: null, accent: null, radius: 'base', density: 'base', dateFormat: 'iso', amountUnit: 'won', negative: 'minus' } }])
+  ok(await code(propose(A, kChat, { revertOf: prefSet })) === 'rule', 'reverting a change set of display settings is refused')
+  const mixed = await direct([{ resource: 'subscriptions', action: 'create', data: sub('rv-mixed') }, excluded[0]![1]])
+  ok(await code(propose(A, kChat, { revertOf: mixed })) === 'rule', 'a mixed change set is refused whole')
+  // the apply path checks too: a revert proposal stored before (planted as a row) is refused when applied
+  const allowedSet = await direct([{ resource: 'subscriptions', action: 'create', data: sub('rv-ok') }])
+  const planted = await propose(A, kUi, { revertOf: allowedSet })
+  const stateMixed = JSON.stringify(await state(A))
+  await asUser(A, (q) => q.update(t.mcpProposal).set({ revertOf: mixed }).where(eq(t.mcpProposal.id, planted.id)))
+  ok(await code(applyProposal(A, planted.id, { kind: 'user' })) === 'rule' && JSON.stringify(await state(A)) === stateMixed, 'applying a revert of an excluded change set is refused and changes nothing')
+  await rejectProposal(A, planted.id)
+  const okRevert = await propose(A, kUi, { revertOf: allowedSet })
+  ok((okRevert.preview as { rows: unknown[] }).rows.length === 1, 'a change set of allowed tables can still be reverted')
+  await rejectProposal(A, okRevert.id)
+
   // ── V-9: another user's proposal and change set ──
   const pa = await propose(A, kUi, { changes: [{ resource: 'living', action: 'update', data: living(400_000) }] })
   ok(await code(getProposal(B, pa.id)) === 'not_found', "B cannot read A's proposal")
