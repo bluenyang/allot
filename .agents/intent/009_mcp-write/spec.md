@@ -74,11 +74,11 @@ summary_for_user: |
 - CHANGELOG 0.1.4, README의 MCP 절(쓰기 키, 확인 방식, 도구), `docs/ROADMAP.md` 상태.
 
 ## 작업 단위
-- [ ] W-1 작업 함수: `server/ops.ts`, `routes.ts`가 그것을 부르게, 동작 그대로. 단위 테스트(작업 목록 적용·실패 시 전체 롤백). (S-1)
-- [ ] W-2 키 범위와 확인 방식: `POST /api/keys`의 `write`·`confirm`, 플러그인 metadata, 목록 표시, 설정 › AI·연동 화면(쓰기 허용, 확인 방식, 경고 문구), `tests/api/api-keys.mjs` 확장, i18n. (S-5, S-4 일부)
-- [ ] W-3 제안: `mcp_proposal` 표·`change_set` 열·마이그레이션(`pnpm check:migrations`), `server/proposals.ts`(제안·미리보기·지문·만료·적용·거절), `OWNED`·완전 삭제, 단위 테스트(미리보기 = 적용 결과, 지문 불일치, 만료). (S-3, S-7, S-8)
-- [ ] W-4 MCP 쓰기 도구 4개, 키 범위에 따른 등록, `tests/api/mcp.mjs`에 `write` 모드(제안·적용·확인 방식·격리·되돌리기·폐기된 키). (S-6, S-8)
-- [ ] W-5 화면: `/api/proposals`, "대기 중인 변경" 화면·배지, 변경 내역 행위자, i18n(ko·en), E2E `tests/e2e/proposals.spec.ts`. (S-9, S-7)
+- [x] W-1 작업 함수: `server/ops.ts`, `routes.ts`가 그것을 부르게, 동작 그대로. 단위 테스트(작업 목록 적용·실패 시 전체 롤백). (S-1) — 커밋 de8d4dc
+- [x] W-2 키 범위와 확인 방식: `POST /api/keys`의 `write`·`confirm`, 플러그인 metadata, 목록 표시, 설정 › AI·연동 화면(쓰기 허용, 확인 방식, 경고 문구), `tests/api/api-keys.mjs` 확장, i18n. (S-5, S-4 일부) — 커밋 9ebc29b, f251770
+- [x] W-3 제안: `mcp_proposal` 표·`change_set` 열·마이그레이션(`pnpm check:migrations`), `server/proposals.ts`(제안·미리보기·지문·만료·적용·거절), `OWNED`·완전 삭제, 단위 테스트(미리보기 = 적용 결과, 지문 불일치, 만료). (S-3, S-7, S-8) — 커밋 61cf536, 2fc7b35
+- [x] W-4 MCP 쓰기 도구 4개, 키 범위에 따른 등록, `tests/api/mcp.mjs`에 `write` 모드(제안·적용·확인 방식·격리·되돌리기·폐기된 키). (S-6, S-8) — 커밋 99b70d6
+- [x] W-5 화면: `/api/proposals`, "대기 중인 변경" 화면·배지, 변경 내역 행위자, i18n(ko·en), E2E `tests/e2e/proposals.spec.ts`. (S-9, S-7) — 커밋 231baf4, 7ca68d1, 236f98d, fdbc57a
 - [ ] W-6 문서: CHANGELOG, README, ROADMAP. (intent 영향 범위)
 
 ## 검증 기준
@@ -97,7 +97,13 @@ summary_for_user: |
 - V-12 테스트 서버: rc 이미지를 `allot-rc`(:15174)로, 비밀값은 `.loctx/rc/allot-rc.secrets`(AGENTS.md 예외)로 띄워 DB를 유지한 채 마이그레이션 적용 → V-11 흐름 한 번(쓰기 키, 제안, 화면 확인, 되돌리기 제안).
 
 ## 조정 기록
-—
+- A-1 (2026-11-18, W-5) `/api/state`에 `pendingProposals`를 더하면서 `readState()`(지문의 범위)에는 넣지 않았다(제안을 만들면 개수가 바뀌어 스스로 낡게 만들기 때문). E2E "JSON 내보내기 = API"는 이 숫자를 데이터가 아니라고 보고 뺀다 · fdbc57a
+- A-2 (2026-11-18, W-1·W-3) 단위 테스트는 DB 없이 도는 `tests/unit/`에 둘 수 없는 것(작업 목록 적용·롤백, 제안·미리보기=적용, 낡음·만료·폐기)을 `tests/api/ops.ts`·`tests/api/proposals.ts`(dev DB, tsx)로 두고, DB 없는 부분(지문·월 미리보기)은 `tests/unit/preview.test.ts` · de8d4dc, 2fc7b35
+- A-3 (2026-11-18, W-3) `mcp_proposal`에 `key_name` 열을 더했다(키가 폐기돼도 "누가 제안했나"를 화면에 보이기 위해; 설계 표에 없던 열) · 61cf536
+- A-4 (2026-11-18, W-2) 키는 서버 호출(`userId`·`permissions`·`metadata`, 요청 헤더 없음)로 만든다. 플러그인이 헤더가 있는 호출의 `permissions`를 거절하기 때문. 읽기 키도 같은 길(권한 `{mcp:['read']}`을 명시) · 9ebc29b
+- A-5 (2026-11-18, W-3) 마이그레이션 0024(FORCE RLS)는 drizzle-kit이 빈 파일로 만든 뒤 채웠고, dev 스택이 그 사이에 빈 파일을 적용해서 dev DB에는 `ALTER TABLE mcp_proposal FORCE ROW LEVEL SECURITY`를 손으로 한 번 실행했다(dev 전용; 새 DB는 0024가 적용됨) · 61cf536
+- A-6 (2026-11-18, W-3·W-4) 제안이 아무것도 바꾸지 않으면(`rows` 없음) 만들지 않고 거절한다(`invalid`, "Nothing would change."). `apply_proposal`은 쓰기 키 모두에 등록되고 화면 확인 키가 부르면 `wrong_confirm`으로 거절한다(V-6 문구대로) · 2fc7b35, 99b70d6
+- A-7 (2026-11-18, W-5) 폰의 아래 막대에는 "대기 중인 변경"이 기다리는 제안이 있을 때만 들어간다 · 7ca68d1
 
 ## 우려
 - 미리보기를 "적용 후 롤백"으로 만들면 제안 때 잠금을 잡는다. 짧은 트랜잭션이라 화면 쓰기와 잠깐 경합할 뿐이지만, 같은 잠금 순서를 지켜 교착을 막는다(설계 W-1).
