@@ -1,12 +1,16 @@
 // The MCP server of one request: built per request and bound to the user the key belongs to
-// (stateless; spec 008 S-5, S-6). Six tools, all read-only; each runs as that user under
-// row-level security, and what it computes comes from server/mcp/views.ts. Descriptions and errors
-// are in English (spec 008 S-10); the data is as the user entered it.
+// (stateless; spec 008 S-5, S-6). Six read-only tools for every key and, for a key with the write
+// scope, four more that propose changes and apply them after confirmation (spec 009 S-6); each runs
+// as that user under row-level security, and what the read tools compute comes from server/mcp/views.ts.
+// Descriptions and errors are in English (spec 008 S-10); the data is as the user entered it.
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 import { today, ymOf } from '../../src/lib/calc'
 import { listSets } from '../changes'
 import { asUser } from '../db/scope'
+import { issueText } from '../messages'
+import { AI_LISTS, AI_SINGLES, RESOURCES, SINGLES } from '../ops'
+import { applyProposal, getProposal, MAX_OPS, propose, ProposalError, proposalText, type KeyInfo, type ProposalView } from '../proposals'
 import { readState } from '../state'
 import { guarded, isTimestamp } from './safe'
 import { allocation, overview, planChangeList, schedule, subscriptionList, type Data } from './views'
@@ -21,9 +25,112 @@ const json = (data: Record<string, unknown>): CallToolResult => ({
   structuredContent: data,
 })
 
-export function buildMcpServer(uid: string): McpServer {
+const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const
+const APPLY = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } as const
+
+/** What can be proposed: one shape per resource, with the same rules (zod) as the screen's request body. */
+const change = z.discriminatedUnion('resource', ([
+  ...AI_LISTS.map((resource) => z.object({
+    resource: z.literal(resource),
+    action: z.enum(['create', 'update', 'delete']),
+    id: z.string().min(1).max(100).optional().describe('the row to update or delete; leave out for create (the server assigns it)'),
+    data: RESOURCES[resource].schema.optional().describe('the whole new row for create or update (an update replaces the row); leave out for delete'),
+  })),
+  ...AI_SINGLES.map((resource) => z.object({
+    resource: z.literal(resource),
+    action: z.literal('update'),
+    data: SINGLES[resource].schema.describe('the whole new record; it replaces the saved one'),
+  })),
+]) as unknown as [z.ZodObject<{ resource: z.ZodLiteral<string> }>, ...z.ZodObject<{ resource: z.ZodLiteral<string> }>[]])
+
+/** The same schema, with our rule messages in English (the SDK sends them to the client as they are). */
+function englishIssues<S extends z.ZodType>(schema: S) {
+  const std = schema['~standard']
+  type Res = Awaited<ReturnType<typeof std.validate>>
+  const fix = (r: Res): Res => ('issues' in r && r.issues ? { issues: r.issues.map((i) => ({ ...i, message: issueText('en', i.message) })) } : r)
+  return {
+    '~standard': {
+      ...std,
+      validate: (v: unknown) => { const r = std.validate(v); return r instanceof Promise ? r.then(fix) : fix(r) },
+    },
+  } as unknown as S
+}
+
+/** A failure the AI can act on: a code and a sentence (never SQL or internals — guarded() hides those). */
+const fail = (code: string, message: string): CallToolResult => ({
+  isError: true,
+  content: [{ type: 'text', text: JSON.stringify({ error: code, message }) }],
+})
+
+function proposalOut(p: ProposalView): Record<string, unknown> {
+  const next = p.status !== 'pending' ? undefined
+    : p.confirm === 'ui' ? 'The user confirms or rejects this in Allot, under Pending changes. You cannot apply it. Check its state with get_proposal.'
+      : 'Show the user this preview (what changes, and the transfer and distribution of this month and the next). Only after the user agrees in this conversation, call apply_proposal.'
+  return {
+    proposalId: p.id, status: p.status, confirm: p.confirm, expiresAt: p.expiresAt,
+    ...(p.revertOf ? { revertOf: p.revertOf } : {}), ...(p.note ? { note: p.note } : {}),
+    ...(p.changeSetId ? { changeSetId: p.changeSetId } : {}), preview: p.preview, ...(next ? { next } : {}),
+  }
+}
+
+/** Run a proposal tool: what the proposals refuse comes back as a readable failure, anything else is the generic one. */
+function proposalTool<A>(tool: string, fn: (args: A) => Promise<CallToolResult>) {
+  return guarded<A>(tool, async (args) => {
+    try {
+      return await fn(args)
+    } catch (e) {
+      if (e instanceof ProposalError) return fail(e.code, proposalText(e, 'en'))
+      throw e
+    }
+  })
+}
+
+/** The proposal tools of a write key. */
+function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
+  server.registerTool('propose_changes', {
+    title: 'Propose changes',
+    description: `Propose changes to the user's data. Nothing changes yet: the proposal is stored with a preview (the rows before and after, and the subscription transfer and salary distribution of this month and the next, before and after) and waits for the user's confirmation. Up to ${MAX_OPS} changes per proposal, all applied together or not at all. You can change subscriptions, plan changes, phases (with their fixed amounts per allocation target), allocation targets, the remainder split, plan events, check items, the settings (net pay, pay days, exchange rate) and the living costs; deleting is allowed. Read the current data with the other tools first; update and delete need the row's id. If a rule is broken (for example phases overlapping) no proposal is made and the reason is returned.`,
+    inputSchema: englishIssues(z.object({
+      changes: z.array(change).min(1).max(MAX_OPS).describe('the changes, in the order they are applied'),
+      note: z.string().max(500).optional().describe('why, in a sentence; the user sees it next to the proposal'),
+    })),
+    annotations: WRITE,
+  }, proposalTool('propose_changes', async ({ changes, note }) => json(proposalOut(await propose(uid, key, { changes, note })))))
+
+  server.registerTool('propose_revert', {
+    title: 'Propose reverting a change',
+    description: 'Propose undoing one saved change (a change set from list_changes), like git revert: the opposite change is applied as a new change. Nothing changes yet; it waits for confirmation like propose_changes. It is refused if the rows changed since, or a rule would break.',
+    inputSchema: z.object({
+      changeSetId: z.string().min(1).max(100).describe('the id of a change set from list_changes'),
+      note: z.string().max(500).optional().describe('why, in a sentence'),
+    }),
+    annotations: WRITE,
+  }, proposalTool('propose_revert', async ({ changeSetId, note }) => json(proposalOut(await propose(uid, key, { revertOf: changeSetId, note })))))
+
+  server.registerTool('get_proposal', {
+    title: 'State of a proposal',
+    description: 'The state of a proposal this key made: pending, applied, rejected, expired (not confirmed in time) or stale (the data changed after it was proposed), with its preview. Use it to see whether the user confirmed a proposal in Allot.',
+    inputSchema: z.object({ proposalId: z.string().min(1).max(100) }),
+    annotations: READ_ONLY,
+  }, proposalTool('get_proposal', async ({ proposalId }) => json(proposalOut(await getProposal(uid, proposalId, key.id)))))
+
+  server.registerTool('apply_proposal', {
+    title: 'Apply a confirmed proposal',
+    description: 'Apply a proposal after the user agreed to it in this conversation. Works only for a key whose proposals are confirmed in the conversation, and only for its own pending proposals; a proposal that is confirmed in Allot cannot be applied here. Everything is checked again: it is refused if it has expired, if the data changed since it was proposed (propose again), or if a rule would break. Applying makes one change set the user can revert in the change history.',
+    inputSchema: z.object({ proposalId: z.string().min(1).max(100) }),
+    annotations: APPLY,
+  }, proposalTool('apply_proposal', async ({ proposalId }) => {
+    const done = await applyProposal(uid, proposalId, { kind: 'key', keyId: key.id })
+    return json({ proposalId, status: 'applied', changeSetId: done.changeSetId })
+  }))
+}
+
+export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServer {
+  const base = 'one person\'s Allot data: monthly salary distribution, subscriptions, scheduled plan changes and the change history. Amounts are whole KRW; dates are ISO (YYYY-MM-DD, months YYYY-MM).'
   const server = new McpServer({ name: 'allot', version: SERVER_VERSION }, {
-    instructions: 'Read-only access to one person\'s Allot data: monthly salary distribution, subscriptions, scheduled plan changes and the change history. Amounts are whole KRW; dates are ISO (YYYY-MM-DD, months YYYY-MM).',
+    instructions: key
+      ? `Access to ${base} You can read it and propose changes; a proposal never changes anything until the user confirms it (${key.confirm === 'ui' ? 'in the Allot app, under Pending changes' : 'in this conversation, then you call apply_proposal'}).`
+      : `Read-only access to ${base}`,
   })
   const data = () => asUser(uid, (q) => readState(q, uid)) as Promise<Data>
 
@@ -81,5 +188,6 @@ export function buildMcpServer(uid: string): McpServer {
     return json({ sets, next: sets.length === n && lastSet ? { before: lastSet.at, beforeId: lastSet.id } : null })
   }))
 
+  if (key) registerWrite(server, uid, key)
   return server
 }
