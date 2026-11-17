@@ -18,6 +18,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// Threat model: this hook stops the agent's own accidental or habitual PR create/merge without a
+// review mark, including shell-quoting variants. It is not a sandbox against deliberate obfuscation
+// (decoding a payload and piping it to a shell); AGENTS.md's red lines already forbid that.
+//
 // Allowlist: a command that looks like a PR operation is allowed only in one canonical form,
 // standing alone; everything else is refused with the forms to use.
 export const FORMS = [
@@ -26,9 +30,13 @@ export const FORMS = [
   '(each flag as its own token with its value as the next token; the command stands alone: no ; && || | & newline ` $ < >, no env assignment, plain `gh`)',
 ].join('\n  ')
 
+const SAFE_PR = 'view|checks|list|diff|status|edit|close|comment|ready|reopen'
+// `gh pr` followed by anything but a literal safe subcommand (so `gh pr ${x}ge`, `gh pr $(echo merge)`)
+const UNKNOWN_PR = new RegExp(`\\bgh\\s+pr\\s+(?!(?:${SAFE_PR})(?=$|[\\s"'}\\],\\\;&|)]))`)
 const looksLikePr = (t) =>
   (/\bgh\b/.test(t) && /\bpr\b/.test(t) && /\b(create|merge)\b/.test(t)) ||
-  (/\bgh\b/.test(t) && /\bapi\b/.test(t) && /\b(pulls|merge)\b/.test(t))
+  (/\bgh\b/.test(t) && /\bapi\b/.test(t) && /\b(pulls|merge)\b/.test(t)) ||
+  UNKNOWN_PR.test(t)
 
 const decodeEscapes = (t) =>
   t.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
@@ -45,7 +53,8 @@ export function isCandidate(raw) {
     const c = JSON.parse(text)?.tool_input?.command
     if (typeof c === 'string') views.push(c)
   } catch { /* raw views only */ }
-  return views.some((v) => looksLikePr(v.replace(/\\/g, ' ').replace(/['"]/g, '')) || looksLikePr(v.replace(/[\\'"]/g, '')))
+  // ANSI-C / locale quoting ($'..', $"..") can spell any word: always a candidate
+  return views.some((v) => /\$['"]/.test(v) || looksLikePr(v.replace(/\\/g, ' ').replace(/['"]/g, '')) || looksLikePr(v.replace(/[\\'"]/g, '')))
 }
 
 /** Small POSIX-shell-word tokenizer. Returns an array of words, or null (unbalanced/unsupported). */

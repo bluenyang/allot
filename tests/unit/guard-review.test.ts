@@ -34,6 +34,18 @@ test('isCandidate: raw text, quotes and backslashes removed', () => {
   for (const c of ['git push -u origin x', 'gh pr view 24', 'gh pr checks 24', 'gh pr edit 24 --body-file f', 'gh pr close 22', 'git commit -F msg.txt', 'echo hi', '{}', 'not json'])
     assert.equal(isCandidate(c), false, c)
 })
+test('isCandidate: shell-quoting variants of merge and unknown gh pr subcommands', () => {
+  for (const c of ["gh $'pr' view 24", "gh $'\\x70r' view 24", "gh pr $'\\155erge' 24", "gh pr $'\\x6derge' 24", 'gh pr ${x}ge 24', "gh pr me''rge 24", 'gh pr $(echo merge) 24', 'gh pr "merge" 24', 'gh pr $"merge" 24'])
+    for (const raw of [c, JSON.stringify({ tool_name: 'Bash', tool_input: { command: c } })]) assert.equal(isCandidate(raw), true, raw)
+  for (const c of ['git push -u origin x', 'gh pr view 24', 'gh pr checks 24', 'gh pr edit 24 --body-file f', 'gh pr close 22', 'gh pr comment 24 --body-file f', 'gh pr list', 'git commit -F msg.txt', "printf '%s\\n' x"])
+    for (const raw of [c, JSON.stringify({ tool_name: 'Bash', tool_input: { command: c } })]) assert.equal(isCandidate(raw), false, raw)
+})
+test('check: quoting variants never pass as an allowed form', () => {
+  for (const c of ["gh pr $'\\155erge' 24", "gh pr $'\\x6derge' 24", 'gh pr ${x}ge 24', 'gh pr $(echo merge) 24'])
+    assert.ok(check(c).error, c)
+  assert.equal(check("gh pr me''rge 24").kind, 'merge') // the shell runs merge: goes through the review check
+  assert.equal(check('gh pr "merge" 24').kind, 'merge')
+})
 test('tokenize: quotes and escapes', () => {
   assert.deepEqual(tokenize(`a 'b c' "d \\" e" f\\ g ''`), ['a', 'b c', 'd " e', 'f g', ''])
   assert.equal(tokenize('a "b'), null)
@@ -149,6 +161,9 @@ test('hook input: candidates must be readable JSON with a string command', () =>
     // unparseable JSON: only the decoded-escape reading can see the command
     for (const e of ['gh\\tpr\\tmerge\\t24', 'gh\\npr\\nmerge 24'])
       assert.equal(raw(`{"tool_input":{"command":"${e}"}`), 2, `truncated ${e}`)
+    for (const c of ["gh pr $'\\155erge' 24", "gh pr $'\\x6derge' 24", 'gh pr ${x}ge 24', 'gh pr $(echo merge) 24'])
+      assert.equal(t.hook(c).status, 2, c)
+    for (const c of ['gh pr comment 24 --body-file f', "printf '%s\\n' x"]) assert.equal(t.hook(c).status, 0, c)
     // a Bash call without a string command is refused; a command-less non-Bash input is not
     assert.equal(raw('{"tool_name":"Bash","tool_input":{}}'), 2)
     assert.equal(raw('{"tool_name":"Bash","tool_input":{"command":5}}'), 2)
@@ -191,6 +206,8 @@ test('merge: fake gh (exact args) decides the head', () => {
     assert.equal(t.sh(t.dir, 'node', [script, '--mark']).status, 0)
     assert.equal(t.hook('gh pr merge 24 --merge', out(view)).status, 0) // reviewed
     assert.equal(t.hook('gh pr merge 24 --merge --delete-branch', out(view)).status, 0)
+    assert.equal(t.hook('gh pr "merge" 24', out(view)).status, 0) // quotes tokenise to merge: normal review check
+    assert.equal(t.hook("gh pr me''rge 24", out({ ...view, headRefOid: 'f'.repeat(40) })).status, 2)
     assert.equal(t.hook('gh pr merge 25 --merge', out(view)).status, 2) // fake gh only answers for 24: number is passed through
     assert.equal(t.hook('gh pr merge 24', out({ ...view, headRefOid: 'f'.repeat(40) })).status, 2) // head moved
     assert.equal(t.hook('gh pr merge 24', out({ ...view, isCrossRepository: true })).status, 2)
