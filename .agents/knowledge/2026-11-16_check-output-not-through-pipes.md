@@ -1,7 +1,7 @@
 ---
 id: 2026-11-16_check-output-not-through-pipes
 kind: failure
-status: active
+status: superseded
 supersedes: null
 topics: [test, evidence, audit, shell]
 decisions: [check-exit-from-the-script-itself]
