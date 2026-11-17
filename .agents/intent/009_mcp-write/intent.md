@@ -2,9 +2,14 @@
 id: "009"
 slug: mcp-write
 version: 0.1.4
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-17"
+    words: "승인"
+    rev: b34e477
 waivers: []
 supersedes: null
 ---
