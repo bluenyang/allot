@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.4 — unreleased
+## 0.1.4-rc.1 — 2026-11-18
 
 MCP write through proposals. Intent 009 (`.agents/intent/009_mcp-write/`).
 
