@@ -413,6 +413,15 @@ async function writeMode() {
   ok(failedCall(many) && await proposalCount(wId) === cnt1, '21 changes are refused')
   const badDate = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'create', data: SUB('x', { nextDate: '2031-02-30' }) }] })
   ok(failedCall(badDate) && /[Nn]o such date|dateInvalid|date/.test(badDate.text) && !/dateInvalid|serviceNameReq/.test(badDate.text), `a rule message reaches the AI in English (${(badDate.error?.message ?? badDate.text).slice(0, 140)})`)
+  // envelopes are strict (review 6): nothing unknown is dropped silently
+  const cnt6 = await proposalCount(wId)
+  const withExtra = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'checks', action: 'create', data: { text: 'x', done: false }, extra: 1 }] })
+  ok(failedCall(withExtra) && /nrecognized/.test(withExtra.error?.message ?? withExtra.text), `an extra field on a change is refused (${(withExtra.error?.message ?? withExtra.text).slice(0, 100)})`)
+  const idOnSingle = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', id: 'x', data: LIV(1) }] })
+  ok(failedCall(idOnSingle), 'an id on a single-row resource (living) is refused, not dropped')
+  ok(failedCall(await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'checks', action: 'create', data: { text: 'x', done: false } }], force: true })), 'an extra top-level field is refused')
+  ok(failedCall(await tool(kChat.key, 'get_proposal', { proposalId: 'x', extra: 1 })) && failedCall(await tool(kChat.key, 'apply_proposal', { proposalId: 'x', extra: 1 })) && failedCall(await tool(kChat.key, 'propose_revert', { changeSetId: 'x', extra: 1 })), 'extra fields are refused by the other three tools')
+  ok(await proposalCount(wId) === cnt6, 'and no proposal was stored')
   const acc = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'accounts', action: 'create', data: { name: 'x', role: '', inflow: '', outflow: '' } }] })
   ok(failedCall(acc), 'accounts cannot be proposed')
 

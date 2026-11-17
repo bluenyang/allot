@@ -35,12 +35,12 @@ const change = z.discriminatedUnion('resource', ([
     action: z.enum(['create', 'update', 'delete']),
     id: z.string().min(1).max(100).optional().describe('the row to update or delete; leave out for create (the server assigns it)'),
     data: RESOURCES[resource].schema.optional().describe('the whole new row for create or update (an update replaces the row); leave out for delete'),
-  })),
+  }).strict()),
   ...AI_SINGLES.map((resource) => z.object({
     resource: z.literal(resource),
     action: z.literal('update'),
     data: SINGLES[resource].schema.describe('the whole new record; it replaces the saved one'),
-  })),
+  }).strict()),
 ]) as unknown as [z.ZodObject<{ resource: z.ZodLiteral<string> }>, ...z.ZodObject<{ resource: z.ZodLiteral<string> }>[]])
 
 /** The same schema, with our rule messages in English (the SDK sends them to the client as they are). */
@@ -93,7 +93,7 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
     inputSchema: englishIssues(z.object({
       changes: z.array(change).min(1).max(MAX_OPS).describe('the changes, in the order they are applied'),
       note: z.string().max(500).optional().describe('why, in a sentence; the user sees it next to the proposal'),
-    })),
+    }).strict()),
     annotations: WRITE,
   }, proposalTool('propose_changes', async ({ changes, note }) => json(proposalOut(await propose(uid, key, { changes, note })))))
 
@@ -103,21 +103,21 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
     inputSchema: z.object({
       changeSetId: z.string().min(1).max(100).describe('the id of a change set from list_changes'),
       note: z.string().max(500).optional().describe('why, in a sentence'),
-    }),
+    }).strict(),
     annotations: WRITE,
   }, proposalTool('propose_revert', async ({ changeSetId, note }) => json(proposalOut(await propose(uid, key, { revertOf: changeSetId, note })))))
 
   server.registerTool('get_proposal', {
     title: 'State of a proposal',
     description: 'The state of a proposal this key made: pending, applied, rejected, expired (not confirmed in time) or stale (the data changed after it was proposed), with its preview. Use it to see whether the user confirmed a proposal in Allot.',
-    inputSchema: z.object({ proposalId: z.string().min(1).max(100) }),
+    inputSchema: z.object({ proposalId: z.string().min(1).max(100) }).strict(),
     annotations: READ_ONLY,
   }, proposalTool('get_proposal', async ({ proposalId }) => json(proposalOut(await getProposal(uid, proposalId, key.id)))))
 
   server.registerTool('apply_proposal', {
     title: 'Apply a confirmed proposal',
     description: 'Apply a proposal after the user agreed to it in this conversation. Works only for a key whose proposals are confirmed in the conversation, and only for its own pending proposals; a proposal that is confirmed in Allot cannot be applied here. Everything is checked again: it is refused if it has expired, if the data changed since it was proposed (propose again), or if a rule would break. Applying makes one change set the user can revert in the change history.',
-    inputSchema: z.object({ proposalId: z.string().min(1).max(100) }),
+    inputSchema: z.object({ proposalId: z.string().min(1).max(100) }).strict(),
     annotations: APPLY,
   }, proposalTool('apply_proposal', async ({ proposalId }) => {
     const done = await applyProposal(uid, proposalId, { kind: 'key', keyId: key.id })
