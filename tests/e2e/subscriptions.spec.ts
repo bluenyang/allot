@@ -242,6 +242,7 @@ test('(A-9) a help bubble stays inside the screen on a phone, and Escape closes 
 test('(A-9) the plan change always has the VAT field: for a KRW plan too, and when an earlier change made it USD', async ({ page, request }) => {
   const sub = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-usdlater`))).json as Sub
   await api(request, 'POST', '/api/plan-changes', { subId: sub.id, effective: '2020-01-01', to: { currency: 'USD', amount: 10 }, note: '' })
+  const krw = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-krwvat`))).json as Sub
   await go(page, 'subs', '변경 일정')
   await page.getByRole('button', { name: '+ 전환 예약' }).click()
   const s = sheet(page, '플랜 전환 예약')
@@ -250,7 +251,6 @@ test('(A-9) the plan change always has the VAT field: for a KRW plan too, and wh
   await expect(s.getByLabel('VAT (%)')).toBeVisible()
   await expect(s.getByText('VAT는 USD 결제에만')).toHaveCount(0)
   await s.getByRole('button', { name: '이전' }).click()
-  const krw = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-krwvat`))).json as Sub
   await s.getByLabel('대상 구독').selectOption({ label: krw.name })
   await s.getByRole('button', { name: '다음' }).click()
   await expect(s.getByLabel('VAT (%)')).toBeVisible() // a KRW plan, currency "그대로"
