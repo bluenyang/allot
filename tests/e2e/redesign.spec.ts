@@ -126,14 +126,19 @@ test('(V-6 d) the calendar shows the monthly dates and the holidays of the sets 
   }
 })
 
-test('(V-6 e) no menu, button or text for features that do not exist', async ({ page }) => {
-  // AI features stay hidden (the user's choice); controls drawn as in the design are tested in V-14 (c).
+test('(V-6 e) features that do not exist appear only as disabled "준비 중" entries', async ({ page }) => {
+  // Spec 010 S-3 (user: "비활성화 해두고 '준비중' 표기해놓자") replaces spec 007's "stay hidden":
+  // the names may be shown, but only inside an aria-disabled entry, never as a working control.
   // 설정 › AI·연동 is real since 0.1.3 (spec 008: API keys and the MCP connection), so it is not listed.
   const banned = ['명세서 분석', 'AI 어시스턴트', 'AI 분석', '명세서에서 채우기']
   for (const r of ROUTES) {
     await page.goto(`/#${r}`)
     await page.locator('header.ph h1').waitFor()
-    const text = await page.locator('body').innerText()
+    const text = await page.evaluate(() => {
+      const copy = document.body.cloneNode(true) as HTMLElement
+      copy.querySelectorAll('[aria-disabled="true"]').forEach((e) => e.remove())
+      return copy.textContent ?? ''
+    })
     for (const b of banned) expect(text, `#${r}`).not.toContain(b)
   }
 })
@@ -314,6 +319,9 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
   await expect(notice).toContainText('마지막 동기화')
   // the header's search box and bell are `Soon`: inert, with no notice of their own
   await page.reload()
+  // the page's own loading requests must be done before counting requests made by the controls
+  await page.locator('header.ph h1').waitFor()
+  await page.waitForLoadState('networkidle')
   const head = page.locator('header.topbar')
   const calls: string[] = []
   page.on('request', (req) => { if (req.url().includes('/api/')) calls.push(req.url()) })
