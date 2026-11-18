@@ -142,7 +142,7 @@ async function confirmDelete() { await remove() }
             </div>
           </div>
           <div v-if="edit.currency === 'USD'" class="field">
-            <div class="lrow"><label for="e-vat">VAT (%)</label><Tip :text="t('subscriptions.vatTip', { rate: fx })" end /></div>
+            <div class="lrow"><label for="e-vat">VAT (%)</label><Tip :text="t('subscriptions.vatTip', { rate: fx })" /></div>
             <MoneyInput id="e-vat" v-model="vat" decimal prefix="" />
           </div>
         </div>
@@ -162,7 +162,7 @@ async function confirmDelete() { await remove() }
             <select id="e-path" v-model="edit.path" class="in"><option v-for="k in PATH_IDS" :key="k" :value="k">{{ pathLabel(k) }}</option></select>
           </div>
           <div class="field">
-            <div class="lrow"><span class="flabel">{{ t('subscriptions.colReceipt') }}</span><Tip :text="t('subscriptions.receiptTip')" end /></div>
+            <div class="lrow"><span class="flabel">{{ t('subscriptions.colReceipt') }}</span><Tip :text="t('subscriptions.receiptTip')" /></div>
             <label class="vchk" for="e-ver"><input id="e-ver" v-model="edit.verified" type="checkbox"><span>{{ t('subscriptions.verifiedLabel') }}</span></label>
           </div>
         </div>

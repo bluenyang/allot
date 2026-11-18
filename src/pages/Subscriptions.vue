@@ -3,6 +3,7 @@ import { t, type MessageKey } from '../i18n'
 import { computed, defineAsyncComponent, onActivated, onDeactivated, ref } from 'vue'
 import SubTabs from '../components/SubTabs.vue'
 import PageHeader from '../components/PageHeader.vue'
+import TransferChart from '../components/TransferChart.vue'
 import Seg from '../components/Seg.vue'
 import Soon from '../components/Soon.vue'
 import Icon from '../components/Icon.vue'
@@ -10,7 +11,7 @@ import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, nextOccurrence, num, planAt, today, transferAt, usd, ymOf } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, nextOccurrence, num, planAt, today, transferAt, usd, ymOf, ymRange } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
 
 // The editors load when one is opened: the first screen stays small.
@@ -56,12 +57,14 @@ const usdCount = computed(() => active.value.filter((r) => r.p.currency === 'USD
 const status = ref<'all' | 'active' | 'company' | 'cancelled'>('active')
 const cat = ref('')
 const path = ref('')
+const q = ref('')
 const statusOpts = computed(() => (['all', 'active', 'company', 'cancelled'] as const).map((id) => ({
   id, label: t(`subscriptions.filter.${id}`),
   count: id === 'all' ? rows.value.length : rows.value.filter((r) => r.p.status === id).length,
 })))
 const shown = computed(() => rows.value
-  .filter((r) => (status.value === 'all' || r.p.status === status.value) && (!cat.value || r.p.category === cat.value) && (!path.value || r.p.path === path.value))
+  .filter((r) => (status.value === 'all' || r.p.status === status.value) && (!cat.value || r.p.category === cat.value) && (!path.value || r.p.path === path.value)
+    && (!q.value.trim() || r.p.name.toLowerCase().includes(q.value.trim().toLowerCase())))
   .sort((a, b) => (a.next ? a.next.getTime() : Infinity) - (b.next ? b.next.getTime() : Infinity)))
 const receipt = (r: (typeof rows.value)[number]) => r.p.status !== 'active'
   ? { cls: 'mute', text: statusLabel(r.p.status) }
@@ -91,9 +94,9 @@ const from = ref(ymOf(now))
 const nextDated = computed(() => store.planChanges.filter((c) => c.effective && c.effective.slice(0, 7) > ymOf(now)).map((c) => c.effective!.slice(0, 7)).sort()[0])
 const to = ref(nextDated.value ?? addYm(ymOf(now), 1))
 /** A month field keeps the old month when it is emptied. */
-function pickMonth(which: 'ym' | 'from' | 'to', e: Event) {
+function pickMonth(which: 'ym' | 'from' | 'to' | 'chartFrom', e: Event) {
   const el = e.target as HTMLInputElement
-  const r = { ym, from, to }[which]
+  const r = { ym, from, to, chartFrom }[which]
   if (/^\d{4}-\d{2}$/.test(el.value)) r.value = el.value
   else el.value = r.value
 }
@@ -152,6 +155,22 @@ function describe(c: PlanChange) {
   return parts.join(' · ')
 }
 
+// ---------- calc: 12-month chart and per-subscription share ----------
+const chartFrom = ref(ymOf(now))
+const series = computed(() =>
+  ymRange(chartFrom.value, 12).map((m) => ({
+    ym: m,
+    value: transferAt(store.subscriptions, store.planChanges, store.settings, m).needed,
+    changed: changesIn(store.planChanges, m).length > 0,
+  })),
+)
+const pick = ref(ymOf(now))
+const shares = computed(() => {
+  const x = transferAt(store.subscriptions, store.planChanges, store.settings, pick.value)
+  const total = x.monthlySum + x.yearlyMonthly
+  return x.items.map((i) => ({ id: i.sub.id, name: i.sub.name, plan: firstLine(i.sub.plan), monthly: i.monthly, pct: total ? Math.round((i.monthly / total) * 100) : 0 }))
+})
+
 // ---------- calc ----------
 const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
   const x = i === 0 ? xfer.value : xferNext.value
@@ -202,6 +221,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
           <div class="frow">
             <Seg v-model="status" :options="statusOpts" :label="t('subscriptions.byStatus')" />
             <span class="vr" aria-hidden="true"></span>
+            <label class="fsearch"><Icon name="search" /><input v-model="q" type="search" :aria-label="t('subscriptions.searchLabel')" :placeholder="t('subscriptions.searchPh')"></label>
             <select v-model="cat" class="in fsel" :aria-label="t('subscriptions.category')"><option value="">{{ t('subscriptions.allCategories') }}</option><option v-for="k in CATEGORY_IDS" :key="k" :value="k">{{ catLabel(k) }}</option></select>
             <select v-model="path" class="in fsel" :aria-label="t('subscriptions.path')"><option value="">{{ t('subscriptions.allPaths') }}</option><option v-for="k in PATH_IDS" :key="k" :value="k">{{ pathLabel(k) }}</option></select>
             <label class="fmonth">{{ t('subscriptions.baseMonth') }}<input class="in" type="month" :value="ym" @change="pickMonth('ym', $event)"></label>
@@ -300,6 +320,20 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
             </div>
           </div>
           <p class="foot">{{ t('subscriptions.calcFoot') }}</p>
+          <div class="frow chartbar">
+            <h2 class="sec">{{ t('subscriptions.needed12') }} <small class="hint">{{ t('subscriptions.clickBar') }}</small></h2>
+            <label class="fmonth">{{ t('subscriptions.startMonth') }}<input class="in" type="month" :value="chartFrom" @change="pickMonth('chartFrom', $event)"></label>
+          </div>
+          <div class="chartwrap"><TransferChart :points="series" :selected="pick" @pick="(m) => (pick = m)" /></div>
+          <div class="tbl share">
+            <table>
+              <caption class="sr">{{ t('subscriptions.shareTitle', { ym: `${pick.slice(0, 4)}.${pick.slice(5, 7)}` }) }}</caption>
+              <thead><tr><th scope="col">{{ t('subscriptions.colService') }}</th><th scope="col">{{ t('subscriptions.colPlan') }}</th><th scope="col" class="n">{{ t('subscriptions.colMonthly') }}</th><th scope="col" class="n">{{ t('subscriptions.colShare') }}</th></tr></thead>
+              <tbody>
+                <tr v-for="i in shares" :key="i.id"><td>{{ i.name }}</td><td class="hint">{{ i.plan }}</td><td class="n">{{ fmtMoney(i.monthly) }}</td><td class="n hint">{{ i.pct }}%</td></tr>
+              </tbody>
+            </table>
+          </div>
         </template>
       </section>
     </div>
@@ -331,6 +365,15 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
 .fmonth{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .fmonth input,.fm2{width:150px;height:34px;font-size:13px}
 .count{margin-left:auto}
+.fsearch{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);flex:1 1 180px;max-width:260px;color:var(--subtle);background:var(--input)}
+.fsearch:focus-within{border-color:var(--primary-text)}
+.fsearch svg{width:16px;height:16px;flex:none}
+.fsearch input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:13px}
+.chartbar{border-top:1px solid var(--divider);justify-content:space-between}
+.sec{margin:0;font-size:15px;font-weight:600}
+.sec small{font-weight:400;margin-left:6px}
+.chartwrap{padding:0 16px 12px;overflow-x:auto}
+.share{border-top:1px solid var(--divider)}
 .pane .tbl{border:0;border-radius:0}
 .subs-t{min-width:1000px}
 .subs-t th.c,.subs-t td.c{text-align:center}

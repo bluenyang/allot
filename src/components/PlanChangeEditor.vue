@@ -80,11 +80,11 @@ const vat = field('vat', (v) => Number(v))
 const currency = field('currency', (v) => v as Plan['currency'])
 const cycle = field('cycle', (v) => v as Plan['cycle'])
 const status = field('status', (v) => v as Plan['status'])
-const resultCurrency = computed(() => edit.value?.to.currency ?? sub.value?.currency)
-// VAT only means something for USD; a value that is already set stays visible.
+const month = computed(() => (undated.value ? ymOf(now) : edit.value!.effective!.slice(0, 7)))
+// The currency the change starts from is the one the plan has at the month it applies (other changes count).
+const resultCurrency = computed(() => edit.value?.to.currency ?? (sub.value ? planAt(sub.value, others.value, month.value).currency : undefined))
 const showVat = computed(() => resultCurrency.value === 'USD' || edit.value?.to.vat != null)
 
-const month = computed(() => (undated.value ? ymOf(now) : edit.value!.effective!.slice(0, 7)))
 const mo = (p: Subscription) => (p.status === 'active' ? monthlyKrw(p, store.settings) : 0)
 /** Monthly amount of this subscription and the subscription transfer, without and with the change, in the month it applies (an undated one: this month). */
 const pv = computed(() => {
