@@ -227,8 +227,9 @@ test.describe('(V-9 a) phone width', () => {
       for (let i = 1; i < boxes.length; i++) expect(boxes[i]![0], `label ${i} starts after label ${i - 1} ends`).toBeGreaterThanOrEqual(boxes[i - 1]![1])
       await page.setViewportSize({ width: 390, height: 844 })
       await page.goto('/#subs')
-      const row = page.getByRole('row', { name: new RegExp(MARK) })
-      const [name, monthly] = await Promise.all([row.locator('td').nth(0).boundingBox(), row.locator('td').nth(4).boundingBox()])
+      // a phone shows each subscription as a card (spec 010 SB-21): name and plan, monthly amount on the right
+      const card = page.locator('.mcard', { hasText: MARK })
+      const [name, monthly] = await Promise.all([card.locator('.m-name b').boundingBox(), card.locator('.m-amt').boundingBox()])
       expect(Math.abs(name!.y - monthly!.y), 'name and monthly amount share the first line').toBeLessThan(name!.height)
       expect(monthly!.x, 'monthly amount on the right').toBeGreaterThan(name!.x + 100)
     } finally {
@@ -343,8 +344,11 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
   expect(page.url(), 'no navigation').toBe(url)
   expect(calls, 'no request').toEqual([])
   await page.goto('/#subs')
-  await page.getByRole('button', { name: 'CSV 내보내기' }).click()
-  await expect(notice).toContainText('CSV 내보내기')
+  // CSV 내보내기 is 준비 중 as well (spec 010 S-3, S-7): inert, no notice, no request
+  const csv = page.getByRole('button', { name: 'CSV 내보내기 (준비 중)' })
+  await expect(csv).toHaveAttribute('aria-disabled', 'true')
+  await csv.click({ force: true })
+  await expect(notice).toHaveCount(0)
 })
 
 // spec 010 V-8, V-9: the shell. Menu entries for features that do not exist yet are inert and have no route.
