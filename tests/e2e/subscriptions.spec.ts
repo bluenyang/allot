@@ -184,3 +184,107 @@ test('(V-10) in English: the same two-step add, a plan change, delete asks first
     await api(request, 'PUT', '/api/preferences', prefs)
   }
 })
+
+// ---- spec 010 A-9: the three kept features, help bubbles, the editor's steps ----
+
+test('(A-9) the name search narrows the list; the 12-month chart and the share table are on 이체액 계산', async ({ page, request }) => {
+  await api(request, 'POST', '/api/subscriptions', body(`${MARK}-find`, { amount: 3000 }))
+  await api(request, 'POST', '/api/subscriptions', body(`${MARK}-other`, { amount: 5000 }))
+  await go(page, 'subs', '목록')
+  const search = page.getByRole('searchbox', { name: '구독 검색' })
+  await search.fill(`${MARK}-FIND`) // not case-sensitive
+  await expect(page.getByRole('row', { name: new RegExp(`${MARK}-find`) })).toBeVisible()
+  await expect(page.getByRole('row', { name: new RegExp(`${MARK}-other`) })).toHaveCount(0)
+  await search.fill('')
+  await expect(page.getByRole('row', { name: new RegExp(`${MARK}-other`) })).toBeVisible()
+
+  await page.getByRole('tab', { name: '이체액 계산' }).click()
+  const chart = page.getByRole('img', { name: '월별 구독 필요 이체액' })
+  await expect(chart).toBeVisible()
+  await expect(chart.locator('g[style*="cursor"]')).toHaveCount(12)
+  const share = page.locator('.share')
+  await expect(share.getByRole('row', { name: new RegExp(`${MARK}-find`) })).toContainText('₩3,000')
+  await expect(share.getByRole('row', { name: new RegExp(`${MARK}-find`) })).toContainText('%')
+  const cap = share.locator('caption')
+  const before = await cap.textContent()
+  await chart.locator('g[style*="cursor"]').nth(5).click()
+  await expect(cap).not.toHaveText(before!)
+  await expect(share.getByRole('row', { name: new RegExp(`${MARK}-find`) })).toBeVisible()
+})
+
+test('(A-9) a help bubble stays inside the screen on a phone, and Escape closes it, not the editor', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await go(page, 'subs', '목록')
+  await page.getByRole('button', { name: '구독 추가' }).click()
+  const s = sheet(page, '구독 추가')
+  await s.getByLabel('서비스 이름').fill(`${MARK}-tip`)
+  await s.getByRole('button', { name: '다음' }).click()
+  await s.getByRole('button', { name: 'USD', exact: true }).click()
+  const tips = s.getByRole('img', { name: /^도움말/ })
+  await expect(tips).toHaveCount(3)
+  for (let i = 0; i < 3; i++) {
+    await tips.nth(i).focus()
+    const bub = tips.nth(i).getByRole('tooltip', { includeHidden: true })
+    await expect(bub).toBeVisible()
+    const box = (await bub.boundingBox())!
+    expect(box.x, `tip ${i} left`).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width, `tip ${i} right`).toBeLessThanOrEqual(390)
+    expect(box.y, `tip ${i} top`).toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height, `tip ${i} bottom`).toBeLessThanOrEqual(844)
+    await page.keyboard.press('Escape')
+    await expect(bub).toBeHidden()
+    await expect(s).toBeVisible()
+  }
+  await page.keyboard.press('Escape') // the focus is still in the dialog: now it cancels
+  await expect(s).toBeHidden()
+})
+
+test('(A-9) the plan change shows VAT when an earlier change made the subscription USD', async ({ page, request }) => {
+  const sub = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-usdlater`))).json as Sub
+  await api(request, 'POST', '/api/plan-changes', { subId: sub.id, effective: '2020-01-01', to: { currency: 'USD', amount: 10 }, note: '' })
+  await go(page, 'subs', '변경 일정')
+  await page.getByRole('button', { name: '+ 전환 예약' }).click()
+  const s = sheet(page, '플랜 전환 예약')
+  await s.getByLabel('대상 구독').selectOption({ label: sub.name })
+  await s.getByRole('button', { name: '다음' }).click()
+  await expect(s.getByLabel('VAT (%)')).toBeVisible()
+  await s.getByRole('button', { name: '취소', exact: true }).click()
+})
+
+test('(A-9) the editor: Enter on step 1 goes on, Back keeps both steps, a server error stays on step 2', async ({ page }) => {
+  await go(page, 'subs', '목록')
+  await page.getByRole('button', { name: '구독 추가' }).click()
+  const s = sheet(page, '구독 추가')
+  await s.getByLabel('서비스 이름').fill(`${MARK}-steps`)
+  await s.getByLabel('플랜').fill('플랜값')
+  await s.getByLabel('서비스 이름').press('Enter')
+  await expect(s.getByRole('listitem').filter({ hasText: '결제' })).toHaveAttribute('aria-current', 'step')
+  await s.getByLabel('금액', { exact: true }).fill('99999999999') // past what the server takes
+  await s.getByLabel('다음 결제일').fill('2031-01-15')
+  await s.getByRole('button', { name: '저장' }).click()
+  await expect(s.getByRole('alert')).toContainText('금액이 너무 커요.')
+  await expect(s.getByRole('listitem').filter({ hasText: '결제' })).toHaveAttribute('aria-current', 'step')
+  await s.getByRole('button', { name: '이전' }).click()
+  await expect(s.getByLabel('서비스 이름')).toHaveValue(`${MARK}-steps`)
+  await expect(s.getByLabel('플랜')).toHaveValue('플랜값')
+  await s.getByRole('button', { name: '다음' }).click()
+  await expect(s.getByLabel('금액', { exact: true })).toHaveValue('99,999,999,999')
+  await expect(s.getByLabel('다음 결제일')).toHaveValue('2031-01-15')
+  await s.getByRole('button', { name: '취소', exact: true }).click()
+  await expect(s).toBeHidden()
+})
+
+test('(A-9) browser Back after #subs?add leaves the page and the editor with it; Forward does not reopen it', async ({ page }) => {
+  await page.goto('/#home')
+  await page.getByRole('tab', { name: '이번 달' }).waitFor()
+  await page.evaluate(() => { location.hash = '#subs?add' })
+  await expect(sheet(page, '구독 추가')).toBeVisible()
+  await expect(page).toHaveURL(/#subs$/)
+  await page.goBack()
+  await expect(page).toHaveURL(/#home$/)
+  await expect(sheet(page, '구독 추가')).toHaveCount(0)
+  await page.goForward()
+  await expect(page).toHaveURL(/#subs$/)
+  await page.getByRole('tablist').first().waitFor()
+  await expect(sheet(page, '구독 추가')).toHaveCount(0)
+})
