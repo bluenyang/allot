@@ -7,7 +7,7 @@ import Icon from './Icon.vue'
 import Sheet from './Sheet.vue'
 import Soon from './Soon.vue'
 
-defineProps<{ modelValue: boolean; name: string; email: string; admin: boolean }>()
+defineProps<{ modelValue: boolean; name: string; email: string; admin: boolean; pending: number }>()
 const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
 </script>
 
@@ -30,6 +30,7 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
       <Soon v-for="id in ['statements', 'assistant']" :key="id" tag="div" class="sh-row mrow" :aria-label="`${t(`shell.pages.${id}` as MessageKey)} (${t('common.soon')})`">
         <span class="mi"><Icon :name="id" :stroke="1.75" /></span><span class="mx"><b>{{ t(`shell.pages.${id}` as MessageKey) }}</b><small class="hint">{{ t(`shell.moreHints.${id}` as MessageKey) }}</small></span>
       </Soon>
+      <a class="sh-row mrow" href="#pending"><span class="mi"><Icon name="pending" /></span><span class="mx"><b>{{ t('shell.pages.pending') }}</b><small class="hint">{{ t('shell.moreHints.pending') }}</small></span><span v-if="pending" class="pn" :aria-label="t('shell.pendingN', { n: pending })">{{ pending }}</span></a>
       <a class="sh-row mrow" href="#history"><span class="mi"><Icon name="history" /></span><span class="mx"><b>{{ t('shell.pages.history') }}</b><small class="hint">{{ t('shell.moreHints.history') }}</small></span></a>
       <a class="sh-row mrow" href="#settings"><span class="mi"><Icon name="settings" /></span><span class="mx"><b>{{ t('shell.pages.settings') }}</b><small class="hint">{{ t('shell.moreHints.settings') }}</small></span></a>
       <a v-if="admin" class="sh-row mrow" href="#admin"><span class="mi"><Icon name="admin" /></span><span class="mx"><b>{{ t('shell.pages.admin') }}</b><small class="hint">{{ t('shell.moreHints.admin') }}</small></span></a>
@@ -55,6 +56,7 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
 .msheet .sh-row.mrow{gap:14px;padding:0 16px;border-radius:8px}
 .msheet .sh-row.mrow.is-soon{color:var(--subtle)}
 .mi{width:36px;height:36px;border-radius:8px;background:var(--fill);color:var(--text-2);display:grid;place-items:center;flex:none}
+.pn{flex:none;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--accent-soft);color:var(--accent-text);font-size:11px;font-weight:600;display:grid;place-items:center}
 .mx{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start}
 .mx b{font-size:15px}
 .msheet .mlogout{gap:14px;min-height:52px;margin-top:6px;border-top:1px solid var(--border);border-radius:0;color:var(--neg-text);font-weight:600}

@@ -226,7 +226,7 @@ const onGripKey = (e: KeyboardEvent) => {
       </a>
       <button class="mi" :class="{ on: moreOn }" type="button" aria-haspopup="dialog" :aria-expanded="moreOpen" @click="moreOpen = true"><Icon name="more" />{{ t('shell.tabs.more') }}</button>
     </nav>
-    <MoreSheet v-model="moreOpen" :name="me?.name ?? ''" :email="me?.email ?? ''" :admin="isAdmin" @logout="logout" />
+    <MoreSheet v-model="moreOpen" :name="me?.name ?? ''" :email="me?.email ?? ''" :admin="isAdmin" :pending="store.pendingProposals" @logout="logout" />
   </div>
 </template>
 

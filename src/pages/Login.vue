@@ -81,7 +81,7 @@ async function social(id: string) {
 <style scoped>
 .lg{min-height:100vh;display:flex;flex-direction:column}
 .login{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 16px}
-.lcard{width:400px;max-width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-pop);overflow:hidden;box-shadow:var(--shadow-pop)}
+.lcard{width:400px;max-width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-pop);overflow:hidden;box-shadow:var(--shadow-login)}
 .brand{display:flex;align-items:center;gap:10px;padding:20px 24px 16px;border-bottom:1px solid var(--border)}
 .bn{display:flex;flex-direction:column;line-height:1.25}
 .bn b{font-weight:700;font-size:17px}

@@ -23,7 +23,7 @@ const build = (from: string, to: string) => (props.source === 'holidays' ? holid
 const narrow = ref(false)
 let mq: MediaQueryList | null = null
 const onMq = () => { narrow.value = !!mq?.matches }
-onMounted(() => { mq = window.matchMedia('(max-width: 759px)'); onMq(); mq.addEventListener('change', onMq) })
+onMounted(() => { mq = window.matchMedia('(max-width: 760px)'); onMq(); mq.addEventListener('change', onMq) })
 onBeforeUnmount(() => mq?.removeEventListener('change', onMq))
 
 // The pages stay alive (KeepAlive), so a change saved elsewhere — a holiday set turned off, a pay
@@ -111,10 +111,10 @@ const options = computed<CalendarOptions>(() => ({
 .cal .evk{flex:none;font-weight:600}
 .cal .evk:not([class*="ev-"])::after{content:" ·"}
 .cal .evt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media (max-width:759px){
+@media (max-width:760px){
   .cal .evc{white-space:normal}
   .cal .evt{white-space:normal}
   .cal .evk{font-size:11px;padding:1px 6px;border-radius:var(--r-badge)}
 }
-@media (max-width:759px){.cal{padding:10px}}
+@media (max-width:760px){.cal{padding:10px}}
 </style>

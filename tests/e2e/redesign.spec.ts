@@ -270,11 +270,11 @@ test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 ap
     // dark at once, a neutral grey (R, G, B within 4 of each other), kept after a reload
     await g.goto('/#settings/general')
     await g.getByRole('group', { name: '선호 테마' }).getByRole('button', { name: '다크' }).click()
-    await expect.poll(bg).toBe('rgb(17, 19, 21)')
+    await expect.poll(bg).toBe('rgb(15, 16, 17)')
     const [r, gg, b] = (await bg()).match(/\d+/g)!.map(Number)
     expect(Math.max(r!, gg!, b!) - Math.min(r!, gg!, b!)).toBeLessThanOrEqual(4)
     await g.reload()
-    await expect.poll(bg).toBe('rgb(17, 19, 21)')
+    await expect.poll(bg).toBe('rgb(15, 16, 17)')
     // 선호 테마 in settings applies without a save button
     await g.goto('/#settings/general')
     await g.getByRole('group', { name: '선호 테마' }).getByRole('button', { name: '라이트' }).click()
@@ -284,13 +284,13 @@ test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 ap
     // 시스템: follows the OS, also when the OS changes while the page is open (review 11)
     await g.goto('/#settings/general')
     await g.getByRole('group', { name: '선호 테마' }).getByRole('button', { name: '시스템' }).click()
-    await expect.poll(bg).toBe('rgb(17, 19, 21)') // this context's OS is dark
+    await expect.poll(bg).toBe('rgb(15, 16, 17)') // this context's OS is dark
     await g.emulateMedia({ colorScheme: 'light' })
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
     await g.emulateMedia({ colorScheme: 'dark' })
-    await expect.poll(bg).toBe('rgb(17, 19, 21)')
+    await expect.poll(bg).toBe('rgb(15, 16, 17)')
     await g.reload()
-    await expect.poll(bg).toBe('rgb(17, 19, 21)')
+    await expect.poll(bg).toBe('rgb(15, 16, 17)')
     expect((await (await g.request.get('/api/state')).json()).preferences.themeMode).toBe('system')
   } finally {
     await ctx.close()
@@ -315,12 +315,19 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
   // the header's search box and bell are `Soon`: inert, with no notice of their own
   await page.reload()
   const head = page.locator('header.topbar')
+  const calls: string[] = []
+  page.on('request', (req) => { if (req.url().includes('/api/')) calls.push(req.url()) })
+  const url = page.url()
   for (const name of ['검색 (준비 중)', '알림 (준비 중)']) {
     const el = head.getByRole('button', { name })
     await expect(el).toHaveAttribute('aria-disabled', 'true')
     await el.click({ force: true })
+    await el.focus()
+    await page.keyboard.press('Enter')
     await expect(notice).toHaveCount(0)
   }
+  expect(page.url(), 'no navigation').toBe(url)
+  expect(calls, 'no request').toEqual([])
   await page.goto('/#subs')
   await page.getByRole('button', { name: 'CSV 내보내기' }).click()
   await expect(notice).toContainText('CSV 내보내기')
@@ -367,6 +374,21 @@ test.describe('(V-8, V-9) shell', () => {
       return { left: main.left - col.left, right: col.right - main.right }
     })
     expect(Math.abs(m.left - m.right), `left ${m.left} / right ${m.right}`).toBeLessThanOrEqual(2)
+  })
+
+  test('(d) on a phone with no proposal waiting, 대기 중인 변경 is still reachable from the "더보기" sheet', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.route('**/api/state', async (route) => {
+      const res = await route.fetch()
+      await route.fulfill({ response: res, json: { ...(await res.json()), pendingProposals: 0 } })
+    })
+    await page.goto('/#home')
+    await page.locator('header.ph h1').waitFor()
+    const bar = page.getByRole('navigation', { name: '메뉴' }).last()
+    await expect(bar.getByRole('link', { name: /AI 제안/ })).toHaveCount(0)
+    await bar.getByRole('button', { name: '더보기' }).click()
+    await page.getByRole('dialog', { name: '더보기' }).getByRole('link', { name: /대기 중인 변경/ }).click()
+    await expect(page.locator('header.ph h1')).toHaveText('대기 중인 변경')
   })
 
   test('(c) on a phone: top bar, a bar of the entries that exist, and the "더보기" sheet', async ({ page }) => {

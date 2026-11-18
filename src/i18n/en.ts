@@ -57,7 +57,7 @@ export const en = {
     pages: { home: 'Overview', subs: 'Subscriptions', pay: 'Pay split', events: 'Schedule', history: 'Change history', pending: 'Pending changes', settings: 'Settings', admin: 'Admin', dev: 'Developer', living: 'Living', saving: 'Savings', invest: 'Investing', statements: 'Statement analysis', assistant: 'AI assistant' },
     tabs: { home: 'Overview', budget: 'Budget', events: 'Schedule', pending: 'AI', more: 'More' },
     more: 'More',
-    moreHints: { statements: 'Upload a card statement and the AI checks it', assistant: 'Ask about your data and get changes proposed', history: 'Who changed what, and when', settings: 'Display, currency, schedule, AI access', admin: 'Accounts and sign-in methods (admin)' },
+    moreHints: { pending: 'Review the changes the AI proposed', statements: 'Upload a card statement and the AI checks it', assistant: 'Ask about your data and get changes proposed', history: 'Who changed what, and when', settings: 'Display, currency, schedule, AI access', admin: 'Accounts and sign-in methods (admin)' },
     pendingN: '{n} pending',
     activeSubs: '{n} active',
     roleAdmin: 'Admin',

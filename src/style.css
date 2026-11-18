@@ -14,7 +14,7 @@
   --c1:#14705A; --c2:#B2581A; --c3:#2A6FA8; --c4:#8A6C10; --c5:#18797A; --c6:#7458B8; --c7:#A3ACA7;
   --av-ink:#FFFFFF;
   --scroll:#CBD0CD; --scroll-hover:#A3ACA7; --backdrop:rgba(16,24,20,.45);
-  --shadow-pop:0 16px 40px rgba(16,24,20,.18); --shadow-1:0 1px 2px rgba(16,24,20,.12);
+  --shadow-pop:0 16px 40px rgba(16,24,20,.18); --shadow-1:0 1px 2px rgba(16,24,20,.12); --shadow-login:0 16px 40px rgba(16,24,20,.08);
   --f-ui:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
   --r-tag:2px; --r-badge:3px; --r-ctl:4px; --r-card:6px; --r-pop:10px; --row-pad:11px;
@@ -33,7 +33,7 @@
   --c1:#5CCBA3; --c2:#F0A066; --c3:#6CB0EA; --c4:#E2C461; --c5:#58C3BB; --c6:#B39AF2; --c7:#5A5E64;
   --av-ink:#0F1011;
   --scroll:#3A3D42; --scroll-hover:#5A5E64; --backdrop:rgba(0,0,0,.61);
-  --shadow-pop:0 16px 40px rgba(0,0,0,.40); --shadow-1:0 1px 2px rgba(0,0,0,.26);
+  --shadow-pop:0 16px 40px rgba(0,0,0,.40); --shadow-1:0 1px 2px rgba(0,0,0,.26); --shadow-login:0 16px 40px rgba(0,0,0,.18);
   color-scheme:dark }}
 :root[data-theme="dark"]{
   --bg:#0F1011; --surface:#17181A; --surface-2:#1D1F21; --fill:#232528; --divider:#232528; --input:#111213; --ava:#2B2D31;
@@ -48,7 +48,7 @@
   --c1:#5CCBA3; --c2:#F0A066; --c3:#6CB0EA; --c4:#E2C461; --c5:#58C3BB; --c6:#B39AF2; --c7:#5A5E64;
   --av-ink:#0F1011;
   --scroll:#3A3D42; --scroll-hover:#5A5E64; --backdrop:rgba(0,0,0,.61);
-  --shadow-pop:0 16px 40px rgba(0,0,0,.40); --shadow-1:0 1px 2px rgba(0,0,0,.26);
+  --shadow-pop:0 16px 40px rgba(0,0,0,.40); --shadow-1:0 1px 2px rgba(0,0,0,.26); --shadow-login:0 16px 40px rgba(0,0,0,.18);
   color-scheme:dark }
 :root[data-radius="sharp"]{--r-ctl:2px; --r-card:3px}
 :root[data-radius="soft"]{--r-ctl:8px; --r-card:10px}
@@ -184,7 +184,7 @@ h2,h3{font-size:15px;font-weight:600;margin:0 0 12px}
 .cols > .panel{margin:0}
 @media (min-width:980px){.cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cols.wide{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}}
 .cols + .cols,.cols + .panel,.strip + .cols{margin-top:16px}
-@media (max-width:759px){.panel{padding:16px}}
+@media (max-width:760px){.panel{padding:16px}}
 
 /* KPI strip: one bordered box, cells split by lines; .hl = the primary cell */
 .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin:0 0 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden}
@@ -382,7 +382,7 @@ pre code{background:none;padding:0;font-size:inherit}
 .panel > .card-h:first-child,.panel > h3:first-child{margin:-20px -24px 18px;padding:14px 18px;border-bottom:1px solid var(--border)}
 .panel > .card-h:first-child h3,.panel > h3:first-child{font-size:15px;font-weight:600}
 .panel > h3:first-child{display:block}
-@media (max-width:759px){.panel > .card-h:first-child,.panel > h3:first-child{margin:-16px -16px 14px}}
+@media (max-width:760px){.panel > .card-h:first-child,.panel > h3:first-child{margin:-16px -16px 14px}}
 
 /* ---------- inside a modal (EditSheet, ConfirmDialog): larger controls (spec 010 SH-30) ---------- */
 dialog .field label,dialog .lbl{font-size:13px}

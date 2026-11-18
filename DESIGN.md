@@ -65,6 +65,7 @@ The light `--primary-hover`, `--primary-tint` and `--primary-line` are derived f
 | `--r-tag` / `--r-badge` / `--r-ctl` / `--r-card` | 2 / 3 / 4 / 6 px | tag, badge, control, card |
 | `--r-pop` | 10px | modal, popover, toast, login card, top of a sheet |
 | `--shadow-pop` | `0 16px 40px rgba(16,24,20,.18)`; dark `rgba(0,0,0,.40)` | modal, popover |
+| `--shadow-login` | `0 16px 40px rgba(16,24,20,.08)`; dark `rgba(0,0,0,.18)` | login card only (canvas value, lighter than `--shadow-pop`) |
 | `--shadow-1` | `0 1px 2px rgba(16,24,20,.12)`; dark `rgba(0,0,0,.26)` | small raise |
 | `--backdrop` | `rgba(16,24,20,.45)`; dark `rgba(0,0,0,.61)` | behind a modal |
 | fonts | IBM Plex Sans KR (UI), IBM Plex Mono (codes, dates), tabular figures for numbers | |
