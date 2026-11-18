@@ -12,7 +12,9 @@ test.afterEach(async ({ request }) => {
 })
 
 test('pending: a decided proposal of one account is not shown to the next account signed in on the same tab (A-10)', async ({ browser, request, baseURL }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
+  // the specs before this one sign in too: start with an empty login window (5 a minute)
+  await new Promise((r) => setTimeout(r, 60_000))
   const key = await makeKey(request, 'ui')
   const made = await propose(baseURL!, key)
   const email = `e2e-prop-${Date.now().toString(36)}@example.com`
