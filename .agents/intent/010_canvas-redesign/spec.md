@@ -1,7 +1,14 @@
 ---
 intent: "010"
-status: draft
-approvals: []
+status: accepted
+approvals:
+  - role: user
+    kind: summary
+    by: BlueNyang
+    at: "2026-11-19"
+    words: "진행"
+    rev: 0411af4
+    note: "요약의 PM 결정(나머지 대상 이름으로 '이번 달 투자'·'투자 계좌' 표시, 적용한 제안 되돌리기 = 변경 묶음 되돌리기·거절은 없음, '31일 이후' 1년 안 최대 3줄, 첫 화면 JS +30kB)은 이 진행으로 받아들임."
 summary_for_user: |
   캔버스(1795018444-7b61)대로 토큰·다크 팔레트 → 공용 컴포넌트 → 셸 → 화면 9개 순서로 다시 만들고, DESIGN.md와 docs/design/(Foundations 라이트·다크 HTML)을 남깁니다. 기능 없는 항목은 비활성 + "준비 중"입니다.
   서버 변경은 "나머지" 대상 규칙 풀기 하나뿐입니다(지울 수 있고 종류도 바꿀 수 있음, 없으면 남는 돈은 "급여 통장에"로 표시). 스키마는 그대로 둡니다. API는 지금 받는 값을 계속 다 받습니다.
