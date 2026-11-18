@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
+import Toast from './components/Toast.vue'
 import Dashboard from './pages/Dashboard.vue'
 import Subscriptions from './pages/Subscriptions.vue'
 import Payroll from './pages/Payroll.vue'
@@ -172,7 +173,7 @@ const onGripKey = (e: KeyboardEvent) => {
         <button v-if="tools" class="btn icon tb" type="button" :aria-label="t('shell.notifications')" @click="notReady('shell.notifications')"><Icon name="bell" /><i class="dotn" aria-hidden="true"></i></button>
         <button class="btn icon tb" type="button" :aria-label="dark ? t('shell.toLight') : t('shell.toDark')" :title="dark ? t('shell.toLightShort') : t('shell.toDarkShort')" @click="flipTheme"><Icon :name="dark ? 'sun' : 'moon'" /></button>
       </header>
-      <p v-if="view.notice" class="toast" role="status">{{ view.notice }}</p>
+      <Toast v-if="view.notice" :message="view.notice" />
       <main class="main">
         <div class="mtop">
           <span class="logo" aria-hidden="true">A</span><b>Allot</b><span class="ver">v{{ version }}</span>
@@ -263,7 +264,6 @@ const onGripKey = (e: KeyboardEvent) => {
 .tb{width:36px;height:36px;position:relative;color:var(--muted);flex:none}
 .tb svg{width:18px;height:18px}
 .dotn{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--accent);border:1.5px solid var(--surface)}
-.toast{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:80;margin:0;padding:8px 14px;border-radius:var(--r-ctl);background:var(--text);color:var(--surface);font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 .mtop .acct{background:var(--surface)}
 .col .main{flex:1;width:100%}
 .foot-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;padding:16px max(16px,env(safe-area-inset-right,0px)) calc(96px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border-top:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--subtle)}
