@@ -167,6 +167,91 @@ export function upcomingPayments(subs: Subscription[], changes: PlanChange[], s:
   return out.sort((a, b) => a.date.getTime() - b.date.getTime())
 }
 
+/** The first calendar day after `from` + `days` (local dates; no millisecond math, so a clock change cannot move it). */
+const dayPlus = (from: Date, days: number) => new Date(from.getFullYear(), from.getMonth(), from.getDate() + days)
+
+export interface LaterPayment {
+  date: Date
+  sub: Subscription
+  krw: number
+  /** why it is listed: a yearly charge, or a new plan / amount */
+  reason: 'yearly' | 'plan'
+}
+
+/**
+ * Payments after the next 31 days, for the "31일 이후" list (spec 010 S-6): within one year of `from`,
+ * per subscription the first payment that is yearly or charges a new plan or amount (a plan change
+ * that comes in), at most `max` rows (3), the soonest first. A subscription whose only payments
+ * are the plain monthly ones it pays now is left out.
+ */
+export function paysAfter31(subs: Subscription[], changes: PlanChange[], s: Settings, from: Date, max = 3): LaterPayment[] {
+  const start = dayPlus(from, 31)
+  const end = dayPlus(from, 365)
+  const out: LaterPayment[] = []
+  for (const base of subs) {
+    const now = planAt(base, changes, ymOf(from))
+    let d = nextOccurrence(base, from)
+    // Walk by the plan in force at each date (a plan change can change the cycle), as upcomingPayments does.
+    for (let k = 0; d && d <= end && k < 400; k++) {
+      const p = planAt(base, changes, ymOf(d))
+      if (d > start && p.status === 'active') {
+        const krw = chargeKrw(p, s)
+        const yearly = p.cycle === 'yearly'
+        const changed = p.plan !== now.plan || krw !== chargeKrw(now, s)
+        if (yearly || changed) {
+          out.push({ date: d, sub: p, krw, reason: yearly ? 'yearly' : 'plan' })
+          break
+        }
+      }
+      d = addMonths(d, p.cycle === 'yearly' ? 12 : 1)
+    }
+  }
+  return out.sort((a, b) => a.date.getTime() - b.date.getTime()).slice(0, max)
+}
+
+export interface Leftover {
+  /** the subscription transfer of `ym` (after rounding up) */
+  transfer: number
+  /** this transfer's day, and the day before the next month's transfer day (YYYY-MM-DD, both counted) */
+  from: string
+  to: string
+  /** what is charged in that window */
+  paid: number
+  count: number
+  /** transfer − paid; negative = the transfer does not cover the window */
+  left: number
+}
+
+/**
+ * "이체 후 남는 금액" (spec 010 D-9): the subscription transfer of `ym` minus the payments from that
+ * transfer day to the day before the next month's transfer day. This is not an account balance
+ * (the app holds none). `off` holds the holidays for the day shift, as in `monthDates`.
+ */
+export function leftoverAfterTransfer(
+  state: { subscriptions: Subscription[]; planChanges: PlanChange[]; settings: Settings },
+  ym: string,
+  off: ReadonlySet<string> = new Set(),
+): Leftover {
+  const { subscriptions, planChanges, settings } = state
+  const shift = settings.dayShift ?? 'none'
+  const from = monthDay(ym, settings.transferDay, shift, off).date
+  const nextStart = monthDay(addYm(ym, 1), settings.transferDay, shift, off).date
+  const startD = parseDate(from)
+  const last = ymd(dayPlus(parseDate(nextStart), -1))
+  const to = last < from ? from : last
+  // Ask for a few days more than the window, then cut by date: no clock arithmetic decides the edge.
+  const span = Math.round((parseDate(to).getTime() - startD.getTime()) / DAY) + 3
+  const inWindow = upcomingPayments(subscriptions, planChanges, settings, startD, span).filter((p) => ymd(p.date) >= from && ymd(p.date) <= to)
+  const paid = inWindow.reduce((a, p) => a + p.krw, 0)
+  const transfer = transferAt(subscriptions, planChanges, settings, ym).transfer
+  return { transfer, from, to, paid, count: inWindow.length, left: transfer - paid }
+}
+
+/** What is left of the pay when no target takes the remainder: the pay minus every target (negative = short). 0 when a remainder target exists. */
+export function unallocated(dist: Pick<Distribution, 'remainder' | 'remainderTarget'>): number {
+  return dist.remainderTarget ? 0 : dist.remainder
+}
+
 // ---------- payroll ----------
 export function phaseAt(phases: Phase[], ym: string): Phase | null {
   return phases.find((p) => p.from <= ym && (p.to === null || ym <= p.to)) ?? null
