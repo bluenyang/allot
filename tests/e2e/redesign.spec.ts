@@ -194,10 +194,18 @@ test.describe('(V-9 a) phone width', () => {
       const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
       expect(sw, `#${r} scrollWidth`).toBeLessThanOrEqual(iw)
     }
+    // spec 010 S-4: the bar reaches 현황, 예산 (월급 분배), 일정; the rest is in the "더보기" sheet
     const bar = page.getByRole('navigation', { name: '메뉴' }).last()
-    for (const [label, title] of [['현황', /현황$/], ['구독', '구독'], ['월급 분배', '월급 분배'], ['일정', '일정'], ['변경 내역', '변경 내역'], ['설정', '설정']] as const) {
+    for (const [label, title] of [['현황', /현황$/], ['예산', '월급 분배'], ['일정', '일정']] as const) {
       await bar.getByRole('link', { name: label }).click()
       await expect(page.locator('header.ph h1')).toHaveText(title)
+    }
+    const sheet = page.getByRole('dialog', { name: '더보기' })
+    for (const [label, title] of [['구독', '구독'], ['변경 내역', '변경 내역'], ['설정', '설정']] as const) {
+      await bar.getByRole('button', { name: '더보기' }).click()
+      await sheet.getByRole('link', { name: label }).click()
+      await expect(page.locator('header.ph h1')).toHaveText(title)
+      await expect(sheet).toBeHidden()
     }
   })
   test('(V-15) trend labels do not overlap; each subscription keeps its name and monthly amount on one line', async ({ page, request }) => {
@@ -244,7 +252,7 @@ test('(V-13 b) a 429 on the session check shows a wait note, not the login form,
   expect(times[2]! - times[1]!, 'and again').toBeGreaterThanOrEqual(5900)
 })
 
-test('(V-14 a, b) a new account starts light even on a dark OS; the header switch and 선호 테마 apply at once and stay', async ({ request, browser }) => {
+test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 applies at once and stays; the header has no theme switch (spec 010 D-10)', async ({ request, browser }) => {
   const email = `e2e-light-${Date.now().toString(36)}@example.com`
   expect((await api(request, 'POST', '/api/auth/admin/create-user', { email, name: 'E2E light', password: 'e2e-light-pass-1' })).status).toBe(200)
   const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] }, colorScheme: 'dark' })
@@ -257,8 +265,11 @@ test('(V-14 a, b) a new account starts light even on a dark OS; the header switc
     await g.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
     const bg = () => g.evaluate(() => getComputedStyle(document.body).backgroundColor)
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
-    // the header switch: dark at once, a neutral grey (R, G, B within 4 of each other), kept after a reload
-    await g.getByRole('button', { name: '다크 모드로 바꾸기' }).click()
+    // the theme is chosen in Settings only: no light/dark button in the header or the phone bar
+    await expect(g.getByRole('button', { name: /(라이트|다크) 모드로/ })).toHaveCount(0)
+    // dark at once, a neutral grey (R, G, B within 4 of each other), kept after a reload
+    await g.goto('/#settings/general')
+    await g.getByRole('group', { name: '선호 테마' }).getByRole('button', { name: '다크' }).click()
     await expect.poll(bg).toBe('rgb(17, 19, 21)')
     const [r, gg, b] = (await bg()).match(/\d+/g)!.map(Number)
     expect(Math.max(r!, gg!, b!) - Math.min(r!, gg!, b!)).toBeLessThanOrEqual(4)
@@ -276,10 +287,8 @@ test('(V-14 a, b) a new account starts light even on a dark OS; the header switc
     await expect.poll(bg).toBe('rgb(17, 19, 21)') // this context's OS is dark
     await g.emulateMedia({ colorScheme: 'light' })
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
-    await expect(g.getByRole('button', { name: '다크 모드로 바꾸기' })).toBeVisible()
     await g.emulateMedia({ colorScheme: 'dark' })
     await expect.poll(bg).toBe('rgb(17, 19, 21)')
-    await expect(g.getByRole('button', { name: '라이트 모드로 바꾸기' })).toBeVisible()
     await g.reload()
     await expect.poll(bg).toBe('rgb(17, 19, 21)')
     expect((await (await g.request.get('/api/state')).json()).preferences.themeMode).toBe('system')
@@ -297,17 +306,95 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
   }
   const notice = page.getByRole('status').filter({ hasText: '준비 중' })
   await page.goto('/#home')
-  for (const [name, what] of [['알림', '알림'], ['내보내기', '내보내기'], ['기록 추가', '기록 추가']] as const) {
+  for (const [name, what] of [['내보내기', '내보내기'], ['기록 추가', '기록 추가']] as const) {
     await page.getByRole('button', { name, exact: true }).click()
     await expect(notice).toContainText(what)
   }
   await page.getByRole('button', { name: '마지막 동기화 —' }).click()
   await expect(notice).toContainText('마지막 동기화')
-  await page.getByRole('searchbox', { name: '검색' }).click()
-  await expect(notice).toContainText('검색')
+  // the header's search box and bell are `Soon`: inert, with no notice of their own
+  await page.reload()
+  const head = page.locator('header.topbar')
+  for (const name of ['검색 (준비 중)', '알림 (준비 중)']) {
+    const el = head.getByRole('button', { name })
+    await expect(el).toHaveAttribute('aria-disabled', 'true')
+    await el.click({ force: true })
+    await expect(notice).toHaveCount(0)
+  }
   await page.goto('/#subs')
   await page.getByRole('button', { name: 'CSV 내보내기' }).click()
   await expect(notice).toContainText('CSV 내보내기')
+})
+
+// spec 010 V-8, V-9: the shell. Menu entries for features that do not exist yet are inert and have no route.
+test.describe('(V-8, V-9) shell', () => {
+  const SOON = ['생활', '저축', '투자', '명세서 분석', 'AI 어시스턴트']
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  test('(a) sidebar groups; the unfinished entries are visible, disabled, and do nothing; no 개발 entry; #dev still opens', async ({ page }) => {
+    const calls: string[] = []
+    await page.goto('/#home')
+    const side = page.locator('aside.side')
+    await expect(side.locator('.glabel')).toHaveText(['개요', '예산', '관리', 'AI'])
+    await expect(side.getByRole('link')).toContainText(['현황', '월급 분배', '구독', '일정', '대기 중인 변경', '변경 내역', '설정'])
+    await expect(side.getByRole('link', { name: '개발' })).toHaveCount(0)
+    page.on('request', (req) => { if (req.url().includes('/api/')) calls.push(req.url()) })
+    const before = page.url()
+    for (const name of SOON) {
+      const item = side.getByRole('button', { name: new RegExp(name) })
+      await expect(item, name).toHaveAttribute('aria-disabled', 'true')
+      await expect(item.locator('.soon-pill'), name).toHaveText('준비 중')
+      await item.click({ force: true })
+      await item.focus()
+      await page.keyboard.press('Enter')
+      await page.keyboard.press(' ')
+    }
+    expect(page.url(), 'no navigation').toBe(before)
+    expect(calls, 'no request').toEqual([])
+    await page.goto('/#dev')
+    await expect(page.locator('header.ph h1')).toBeVisible()
+    await expect(page.locator('header.topbar')).toContainText('시스템')
+  })
+
+  test('(b) the header has no theme button; the content column is in the middle at 1600', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 })
+    await page.goto('/#home')
+    await page.locator('.strip').waitFor()
+    await expect(page.locator('header.topbar').getByRole('button', { name: /모드/ })).toHaveCount(0)
+    const m = await page.evaluate(() => {
+      const r = (e: Element) => e.getBoundingClientRect()
+      const col = r(document.querySelector('.col')!), main = r(document.querySelector('main.main')!)
+      return { left: main.left - col.left, right: col.right - main.right }
+    })
+    expect(Math.abs(m.left - m.right), `left ${m.left} / right ${m.right}`).toBeLessThanOrEqual(2)
+  })
+
+  test('(c) on a phone: top bar, a bar of the entries that exist, and the "더보기" sheet', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/#home')
+    await page.locator('header.ph h1').waitFor()
+    await expect(page.locator('header.topbar')).toBeHidden()
+    await expect(page.locator('.mbar')).toBeVisible()
+    await expect(page.locator('.mbar').getByRole('button', { name: /검색/ })).toHaveAttribute('aria-disabled', 'true')
+    const bar = page.getByRole('navigation', { name: '메뉴' }).last()
+    await expect(bar.getByRole('link')).toContainText(['현황', '예산', '일정'])
+    const more = bar.getByRole('button', { name: '더보기' })
+    await more.click()
+    const sheet = page.getByRole('dialog', { name: '더보기' })
+    await expect(sheet).toBeVisible()
+    for (const name of ['생활', '저축', '투자', '명세서 분석', 'AI 어시스턴트']) await expect(sheet.getByRole('button', { name: new RegExp(name) })).toHaveAttribute('aria-disabled', 'true')
+    for (const name of ['구독', '변경 내역', '설정']) await expect(sheet.getByRole('link', { name })).toBeVisible()
+    await expect(sheet.getByRole('button', { name: '로그아웃' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(sheet).toBeHidden()
+    await more.click()
+    await page.mouse.click(195, 40) // outside the sheet
+    await expect(sheet).toBeHidden()
+    await more.click()
+    await sheet.getByRole('link', { name: '설정' }).click()
+    await expect(page.locator('header.ph h1')).toHaveText('설정')
+    await expect(more).toHaveClass(/on/)
+  })
 })
 
 test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (also of the months around), phone list, payment dates, light and dark', async ({ page, request }) => {
