@@ -333,9 +333,28 @@ test('(A-11) Escape closes every open help bubble (hover with focus elsewhere, t
 test('(A-11) the list shows the next payment by the schedule the calendar uses: a monthly charge repeats back from its date', async ({ page, request }) => {
   const now = new Date()
   const p2 = (n: number) => String(n).padStart(2, '0')
-  const anchor = new Date(now.getFullYear(), now.getMonth() + 2, 15)
+  const anchor = new Date(now.getFullYear(), now.getMonth() + 1, 15) // one cycle ahead: the 15th of this month is charged too while it is not past
   const sub = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-cyc`, { nextDate: `${anchor.getFullYear()}-${p2(anchor.getMonth() + 1)}-15` }))).json as Sub
   const next = new Date(now.getFullYear(), now.getMonth() + (now.getDate() <= 15 ? 0 : 1), 15)
   await go(page, 'subs', '목록')
   await expect(page.getByRole('row', { name: new RegExp(sub.name) }).locator('td').nth(5)).toHaveText(`${next.getFullYear()}-${p2(next.getMonth() + 1)}-15`)
+})
+
+test('(A-13) a help bubble left open behind the delete confirmation does not take its Escape', async ({ page, request }) => {
+  const sub = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-nest`))).json as Sub
+  await go(page, 'subs', '목록')
+  await page.getByRole('button', { name: `${sub.name} 수정` }).click()
+  const s = sheet(page, '구독 수정')
+  await s.getByRole('button', { name: '다음' }).click()
+  const tip = s.getByRole('img', { name: /^도움말/ }).first()
+  await tip.hover()
+  await expect(tip.getByRole('tooltip', { includeHidden: true })).toBeVisible()
+  // the mouse stays on the tip; the keyboard opens the confirmation
+  await s.getByRole('button', { name: '삭제' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('alertdialog')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('alertdialog')).toHaveCount(0) // the first Escape cancels the confirmation
+  await expect(s).toBeVisible()
+  expect((await mine(request)).some((x) => x.id === sub.id)).toBe(true)
 })
