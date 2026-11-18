@@ -535,6 +535,7 @@ export const en = {
     startMonth: 'Start month',
     colShare: 'Share',
     shareTitle: 'Share by subscription · {ym}',
+    vatUsdOnly: 'VAT only counts for USD payments.',
     keepChange: 'Keep it',
     cancelChangeBody: 'Removing it keeps the current plan and drops it from the transfer.',
   },

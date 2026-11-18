@@ -535,6 +535,7 @@ export const ko = {
     startMonth: '시작 월',
     colShare: '비중',
     shareTitle: '{ym} 구독별 비중',
+    vatUsdOnly: 'VAT는 USD 결제에만 쓰여요.',
     keepChange: '그대로 두기',
     cancelChangeBody: '예약을 지우면 지금 플랜을 그대로 쓰고, 이체액 계산에서도 빠져요.',
   },

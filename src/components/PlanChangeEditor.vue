@@ -81,9 +81,8 @@ const currency = field('currency', (v) => v as Plan['currency'])
 const cycle = field('cycle', (v) => v as Plan['cycle'])
 const status = field('status', (v) => v as Plan['status'])
 const month = computed(() => (undated.value ? ymOf(now) : edit.value!.effective!.slice(0, 7)))
-// The currency the change starts from is the one the plan has at the month it applies (other changes count).
-const resultCurrency = computed(() => edit.value?.to.currency ?? (sub.value ? planAt(sub.value, others.value, month.value).currency : undefined))
-const showVat = computed(() => resultCurrency.value === 'USD' || edit.value?.to.vat != null)
+// VAT is always there (it was before the redesign); it only counts for USD, which the hint says.
+const isUsd = computed(() => (edit.value?.to.currency ?? (sub.value ? planAt(sub.value, others.value, month.value).currency : undefined)) === 'USD')
 
 const mo = (p: Subscription) => (p.status === 'active' ? monthlyKrw(p, store.settings) : 0)
 /** Monthly amount of this subscription and the subscription transfer, without and with the change, in the month it applies (an undated one: this month). */
@@ -145,9 +144,10 @@ function canAdvance(from: number) {
             <MoneyInput id="c-amt" v-model="amount" decimal prefix="" />
           </div>
         </div>
-        <div v-if="showVat" class="field">
+        <div class="field">
           <label for="c-vat">VAT (%)</label>
           <MoneyInput id="c-vat" v-model="vat" decimal prefix="" />
+          <span v-if="!isUsd" class="hint">{{ t('subscriptions.vatUsdOnly') }}</span>
         </div>
         <div class="field">
           <span id="c-cy-l" class="flabel">{{ t('subscriptions.billingCycle') }}</span>
