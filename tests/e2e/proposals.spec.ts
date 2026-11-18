@@ -114,6 +114,41 @@ test('pending: the list, the badge and the preview; confirming applies it and th
   await expect(first).toContainText(`구독 추가 · ${SUB}`)
 })
 
+test('pending: an applied AI change set is reverted from 변경 내역 (the history keeps that revert)', async ({ page, request, baseURL }) => {
+  const key = await makeKey(request, 'ui')
+  const made = await propose(baseURL!, key)
+  expect((await request.post(`/api/proposals/${made.proposalId as string}/apply`)).status()).toBe(200)
+  expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(true)
+  await page.goto('/#history')
+  const list = page.getByRole('list', { name: '변경 목록' })
+  const first = list.getByRole('listitem').filter({ hasText: `AI · ${KEY_NAME}` }).first()
+  await expect(first).toContainText(`구독 추가 · ${SUB}`)
+  page.once('dialog', (d) => d.accept())
+  await first.getByRole('button', { name: '되돌리기' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '되돌렸어요.' })).toBeVisible()
+  expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(false)
+})
+
+test('pending: the toast Undo works before the proposal list has refreshed (the apply answer carries the change set)', async ({ page, request, baseURL }) => {
+  const key = await makeKey(request, 'ui')
+  const made = await propose(baseURL!, key)
+  await page.goto('/#pending')
+  const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
+  await expect(card).toBeVisible()
+  // hold the list refresh back after the decision
+  await page.route('**/api/proposals?status=*', async (route) => {
+    await new Promise((r) => setTimeout(r, 2500))
+    await route.continue()
+  })
+  await card.getByRole('button', { name: '확인하고 적용' }).click()
+  const toast = page.getByRole('status').filter({ hasText: '제안을 적용했어요' })
+  await expect(toast).toBeVisible()
+  await toast.getByRole('button', { name: '되돌리기' }).click()
+  await expect.poll(async () => (await state(request)).subscriptions.some((s) => s.name === SUB), { timeout: 8000 }).toBe(false)
+  await expect(card.locator('.pill', { hasText: '되돌림' })).toBeVisible({ timeout: 8000 })
+  await page.unroute('**/api/proposals?status=*')
+})
+
 test('pending: rejecting changes nothing and moves it to the handled list', async ({ page, request, baseURL }) => {
   const key = await makeKey(request, 'chat')
   const made = await propose(baseURL!, key)

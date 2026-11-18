@@ -461,7 +461,7 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
     return out
   }, root)
   const want = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`
-  const vars = () => page.evaluate(() => { const c = getComputedStyle(document.documentElement); return { sat: c.getPropertyValue('--info-text').trim(), sun: c.getPropertyValue('--neg-text').trim() } })
+  const vars = () => page.evaluate(() => { const c = getComputedStyle(document.documentElement); return { sat: c.getPropertyValue('--info-text').trim(), sun: c.getPropertyValue('--neg-text').trim(), boxSat: c.getPropertyValue('--sat').trim(), boxSun: c.getPropertyValue('--sun').trim() } })
   try {
     for (const theme of ['light', 'dark']) {
       await page.goto('/#events')
@@ -477,7 +477,7 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
       await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
       const boxes = (await read('.none')).filter(([, , other]) => !other)
       expect(new Set(boxes.map(([k]) => k)), `${theme}: a Saturday and a Sunday payment box`).toEqual(new Set(['sat', 'sun']))
-      for (const [kind, colour] of boxes) expect(colour, `${theme} payment box ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
+      for (const [kind, colour] of boxes) expect(colour, `${theme} payment box ${kind} (the --sat / --sun tokens, as the canvas draws them)`).toBe(want(kind === 'sat' ? v.boxSat : v.boxSun))
     }
     // Phone: the calendar is a list; each weekend day heading (date and weekday) takes the colour.
     await page.setViewportSize({ width: 390, height: 844 })

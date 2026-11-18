@@ -448,8 +448,8 @@ tr.sum td.n{font-weight:700}
 .dbox small{font-size:11px;color:var(--subtle)}
 .dbox small b{font-weight:700}
 /* Saturday blue, Sunday red: the day number and the weekday only (the user, 2026-11-15; canvas) */
-.dbox b.sat{color:var(--info-text)}
-.dbox b.sun{color:var(--neg-text)}
+.dbox b.sat{color:var(--sat)}
+.dbox b.sun{color:var(--sun)}
 .pn{flex-grow:1;display:flex;flex-direction:column;min-width:0}
 .pn b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pn span{font-size:12px;color:var(--subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

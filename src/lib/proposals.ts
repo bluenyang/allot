@@ -48,6 +48,8 @@ export const proposals = reactive({
   busy: '',
   error: '',
   decided: {} as Record<string, 'applied' | 'rejected' | 'reverted'>,
+  /** The proposals decided on this screen session, as the server confirmed them (its answer, then the list when it has them): kept apart from the paged history, which may not reach them. */
+  kept: {} as Record<string, Proposal>,
 })
 
 /** Every waiting proposal (at most 20 can wait), and so the number for the badge: this list is never cut short. */
@@ -86,23 +88,31 @@ export async function decide(p: Proposal, what: 'apply' | 'reject') {
   proposals.error = ''
   const name = proposalTitle(p)
   try {
-    await api('POST', `/api/proposals/${p.id}/${what}`)
+    // The apply answer carries the change set the proposal made; undo needs it before any list is reloaded.
+    const done = await api<{ changeSet: string | null } | undefined>('POST', `/api/proposals/${p.id}/${what}`)
+    const changeSetId = what === 'apply' ? done?.changeSet ?? null : null
     proposals.decided[p.id] = what === 'apply' ? 'applied' : 'rejected'
+    proposals.kept[p.id] = { ...p, status: what === 'apply' ? 'applied' : 'rejected', changeSetId, decidedAt: new Date().toISOString(), decidedBy: 'user' }
     if (what === 'apply') {
       await loadState() // the screens show what the server holds now
-      showToast(t('pending.appliedToast', { title: name }), { actionLabel: t('pending.undo'), onAction: () => { void undo(p.id) } })
+      showToast(t('pending.appliedToast', { title: name }), changeSetId ? { actionLabel: t('pending.undo'), onAction: () => { void undo(p.id) } } : {})
     } else showToast(t('pending.rejectedToast', { title: name }))
   } catch (e) {
     proposals.error = e instanceof ApiError ? e.message : t('pending.failed')
   } finally {
     proposals.busy = ''
     await loadProposals()
+    // The server's own record replaces ours once the list has it (the decision time, the key's state).
+    for (const id of Object.keys(proposals.kept)) {
+      const own = proposals.handled.find((x) => x.id === id)
+      if (own) proposals.kept[id] = { ...own, changeSetId: own.changeSetId ?? proposals.kept[id]!.changeSetId }
+    }
   }
 }
 
 /** Undo an applied proposal: revert its change set (the same revert as 변경 내역). The server may refuse (409); its reason is shown. */
 export async function undo(id: string) {
-  const p = [...proposals.waiting, ...proposals.handled].find((x) => x.id === id)
+  const p = proposals.kept[id] ?? [...proposals.waiting, ...proposals.handled].find((x) => x.id === id)
   if (!p?.changeSetId) return
   proposals.busy = id
   proposals.error = ''
@@ -187,11 +197,13 @@ export function shown(p: Proposal): { label: string; cls: string } {
 /** An applied proposal that was decided on this screen and not yet undone keeps its undo button. */
 export const canUndo = (p: Proposal) => p.status === 'applied' && !!p.changeSetId && proposals.decided[p.id] === 'applied'
 
-/** The cards a filter shows. "Waiting" also keeps the ones decided on this screen, so the card stays after the decision. */
+/** The cards a filter shows. The ones decided on this screen come first and stay (with an undo for an applied one) even when the history page does not reach them. */
 export function listFor(filter: 'waiting' | 'handled' | 'all'): Proposal[] {
-  const stay = proposals.handled.filter((p) => proposals.decided[p.id])
-  const rest = proposals.handled.filter((p) => !proposals.decided[p.id])
-  if (filter === 'waiting') return [...proposals.waiting, ...stay]
-  if (filter === 'handled') return proposals.handled
-  return [...proposals.waiting, ...stay, ...rest]
+  const stay = Object.values(proposals.kept).reverse()
+  const kept = new Set(stay.map((p) => p.id))
+  const waiting = proposals.waiting.filter((p) => !kept.has(p.id))
+  const rest = proposals.handled.filter((p) => !kept.has(p.id))
+  if (filter === 'waiting') return [...waiting, ...stay]
+  if (filter === 'handled') return [...stay, ...rest]
+  return [...waiting, ...stay, ...rest]
 }
