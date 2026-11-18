@@ -74,7 +74,7 @@ test('pending: the list, the badge and the preview; confirming applies it and th
   await expect(card.locator('.pill', { hasText: '확인 대기' })).toBeVisible()
   // the preview: rows before and after, and the month's transfer and distribution before and after
   await expect(card).toContainText(`구독 추가 · ${SUB}`)
-  await expect(card).toContainText(`체크리스트 추가 · ${CHECK}`)
+  await expect(card).toContainText(`체크리스트 · ${CHECK}`)
   await expect(card).toContainText('구독 이체액')
   // the fields have names, not property names
   await expect(card).toContainText('다음 결제일')

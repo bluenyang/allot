@@ -18,7 +18,7 @@ test('history: a save shows up, revert undoes it, the revert is listed', async (
   await expect(first).toContainText('text')
   page.once('dialog', (d) => d.accept())
   await first.getByRole('button', { name: '되돌리기' }).click()
-  await expect(page.getByRole('status')).toHaveText('되돌렸어요.')
+  await expect(page.getByRole('status').filter({ hasText: '되돌렸어요.' })).toBeVisible()
   await expect(list.getByRole('listitem').first()).toContainText('되돌림')
   await expect(list.getByRole('listitem').nth(1)).toContainText('되돌려짐')
 

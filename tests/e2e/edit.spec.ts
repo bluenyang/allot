@@ -318,7 +318,7 @@ test('record modal (spec 010 V-6, V-10): a 일정 with a month range saves and r
   await s.getByLabel('제목').fill(`${MARK}-ev`)
   await s.getByLabel('날짜 또는 월').fill('2031-01~02')
   await saveSheet(page, '기록 추가')
-  const events = (await (await request.get('/api/events')).json()) as { id: string; when: string; title: string; state: string }[]
+  const events = ((await (await request.get('/api/state')).json()) as { events: { id: string; when: string; title: string; state: string }[] }).events
   const made = events.find((e) => e.title === `${MARK}-ev`)
   expect(made?.when).toBe('2031-01~02')
   expect(made?.state).toBe('todo')
