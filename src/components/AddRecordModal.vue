@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 기록 추가 (spec 010 S-6, HM-37..41): what to record first, then the fields of that kind. 확인할 것 and
 // 일정 are saved through the same API as their own pages; the 일정 시기 stays a text field, because it takes
-// a month range (`2027-01~02`) which a month picker cannot. 구독 goes on to the subscriptions page, and
+// a month range (`2027-01~02`) which a month picker cannot. 구독 goes on to the add editor of the subscriptions page, and
 // 일회성 지출 has no data yet (준비 중).
 import { computed, ref } from 'vue'
 import EditSheet from './EditSheet.vue'
@@ -37,7 +37,7 @@ async function save() {
   error.value = ''
   if (kind.value === 'sub') {
     emit('close')
-    location.hash = '#subs'
+    location.hash = '#subs?add' // the subscriptions page opens its add editor
     return
   }
   if (kind.value === 'todo' && !text.value.trim()) return (error.value = t('dashboard.needDetails'))
