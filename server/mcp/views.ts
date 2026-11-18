@@ -3,7 +3,7 @@
 // so the AI and the screen see the same numbers. No database here: the unit tests run without one.
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
-  addYm, changesIn, chargeKrw, distributionAt, monthDates, monthlyKrw, nextOccurrence, parseDate, planAt, splitRemainder,
+  addYm, changesIn, chargeKrw, distributionAt, monthDates, monthlyKrw, nextPayment, parseDate, planAt, splitRemainder,
   transferAt, upcomingPayments, ymd, ymOf, type MonthDate,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
@@ -105,7 +105,7 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
   const ym = ymOf(now)
   const rows = d.subscriptions.map((base) => {
     const p = planAt(base, d.planChanges, ym)
-    const next = p.status === 'active' ? nextOccurrence(p, now) : null
+    const next = p.status === 'active' ? nextPayment(base, d.planChanges, now) : null
     return {
       id: base.id,
       name: base.name,

@@ -1,7 +1,7 @@
 // spec 008 V-6: what the MCP tools say is what calc.ts says for the same data (synthetic data).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { distributionAt, monthDates, monthlyKrw, nextOccurrence, parseDate, planAt, transferAt, upcomingPayments, ymd } from '../../src/lib/calc'
+import { distributionAt, monthDates, monthlyKrw, nextPayment, parseDate, planAt, transferAt, upcomingPayments, ymd } from '../../src/lib/calc'
 import type { Subscription } from '../../src/data/types'
 import { allocation, overview, planChangeList, schedule, subscriptionList, type Data } from '../../server/mcp/views'
 
@@ -86,7 +86,7 @@ test('subscription list: plan at this month, monthly KRW, next payment, status f
   assert.equal(all.subscriptions.length, 4)
   const s2 = all.subscriptions.find((s) => s.id === 's2')!
   assert.equal(s2.monthlyKrw, Math.round(monthlyKrw(planAt(data.subscriptions[1]!, data.planChanges, '2026-11'), data.settings)))
-  assert.equal(s2.nextPayment, ymd(nextOccurrence(data.subscriptions[1]!, now)!))
+  assert.equal(s2.nextPayment, ymd(nextPayment(data.subscriptions[1]!, data.planChanges, now)!))
   assert.equal(all.subscriptions.find((s) => s.id === 's4')!.nextPayment, null, 'a cancelled subscription has no next payment')
   assert.deepEqual(subscriptionList(data, now, 'cancelled').subscriptions.map((s) => s.id), ['s4'])
   // the plan change of January is not in force in November
@@ -105,8 +105,12 @@ test('subscription list: the next payment follows the plan in force, as the scre
   const row = subscriptionList(d, now).subscriptions[0]!
   const p = planAt(d.subscriptions[0]!, d.planChanges, '2026-11')
   assert.equal(p.cycle, 'yearly')
-  assert.equal(row.nextPayment, ymd(nextOccurrence(p, now)!))
-  assert.equal(row.nextPayment, '2027-10-20')
+  // the yearly charge falls in the month the change comes in (Nov 20), then a year on: the same dates the
+  // payment schedule gives (A-10: one recurrence for every view)
+  assert.equal(row.nextPayment, '2026-11-20')
+  const sched = schedule(d, '2026-11', 1).months[0]!.payments.filter((x) => x.subscriptionId === 'x1').map((x) => x.date)
+  assert.equal(sched[0], row.nextPayment)
+  assert.equal(ymd(upcomingPayments(d.subscriptions, d.planChanges, d.settings, now, 400)[1]!.date), '2027-11-20')
 })
 
 test('plan change list: dated first by date, undated last, with the monthly delta', () => {

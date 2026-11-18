@@ -1,4 +1,4 @@
-import type { AllocationKind, AllocationTarget, DayShift, Living, Phase, Plan, PlanChange, RemainderSplit, Settings, Subscription } from '../data/types'
+import type { AllocationKind, AllocationTarget, Cycle, DayShift, Living, Phase, Plan, PlanChange, RemainderSplit, Settings, Subscription } from '../data/types'
 
 export const DAY = 86_400_000
 
@@ -152,37 +152,51 @@ export interface Payment {
 }
 
 /**
- * The dates `base` is charged on within [from, end]: every month on the billing day (the day of
- * `nextDate`, or the month's last day when the month is shorter, so Jan 31 → Feb 28 → Mar 31), or once
- * a year in the billing month. The plan in force each month decides which (a scheduled plan change can
- * turn a monthly subscription yearly or the other way). A change to yearly bills in that month and
- * every twelve months after; a change to monthly bills every month from then on. The schedule is
- * walked from the billing anchor (or the first change), so it does not depend on `from`.
+ * The dates `base` is charged on within [from, end]. The schedule is fixed by the billing anchor
+ * (`nextDate`) and the scheduled plan changes alone, never by the window asked for: the billing day
+ * is the anchor's day, or the month's last day when the month is shorter (Jan 31 → Feb 28 → Mar 31).
+ * The plan's cycle is a series of segments between change months. A monthly segment charges every
+ * month; a yearly one once a year, in the billing month — the anchor's month, or the month a change
+ * from monthly to yearly came in (that month is charged too). Only the months of the window are
+ * visited, so an old anchor or a far window costs the same. Nothing before one cycle ahead of the
+ * anchor is charged (the date the user entered is the next one), and a cancelled plan is not charged.
  */
 export function paymentDates(base: Subscription, changes: PlanChange[], from: Date, end: Date): Date[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(base.nextDate)) return []
   const anchor = parseDate(base.nextDate)
   const day = anchor.getDate()
-  const own = changes.filter((c) => c.subId === base.id && c.effective).map((c) => c.effective!.slice(0, 7)).sort()
-  // Nothing before one billing cycle ahead of a future anchor (the date the user entered is the next one).
-  const floor = anchor >= from ? addMonths(anchor, base.cycle === 'yearly' ? -12 : -1) : from
-  const startYm = [ymOf(anchor), ymOf(from), own[0] ?? '9999-99'].reduce((x, y) => (x < y ? x : y))
+  const idx = (ym: string) => Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1
+  const ymAt = (i: number) => `${String(Math.floor(i / 12)).padStart(4, '0')}-${String((i % 12) + 1).padStart(2, '0')}`
+  // segments of one cycle each, between the months a change comes in
+  const cuts = [...new Set(changes.filter((c) => c.subId === base.id && c.effective).map((c) => idx(c.effective!.slice(0, 7))))].sort((x, y) => x - y)
+  const segs: { start: number; end: number; cycle: Cycle; bill: number }[] = []
+  let bill = anchor.getMonth()
+  for (let i = 0; i <= cuts.length; i++) {
+    const start = i === 0 ? -Infinity : cuts[i - 1]!
+    const cycle: Cycle = i === 0 ? base.cycle : planAt(base, changes, ymAt(start)).cycle
+    if (i > 0 && cycle === 'yearly' && segs[i - 1]!.cycle === 'monthly') bill = start % 12
+    segs.push({ start, end: i < cuts.length ? cuts[i]! : Infinity, cycle, bill })
+  }
+  const floor = addMonths(anchor, base.cycle === 'yearly' ? -12 : -1)
+  const lo = new Date(Math.max(from.getTime(), floor.getTime()))
+  const loI = lo.getFullYear() * 12 + lo.getMonth()
+  const hiI = end.getFullYear() * 12 + end.getMonth()
   const out: Date[] = []
-  let ym = startYm
-  let billMonth = anchor.getMonth() // the month a yearly charge falls in
-  let prev = planAt(base, changes, addYm(startYm, -1)).cycle
-  for (let k = 0; k < 1500 && ym <= ymOf(end); k++, ym = addYm(ym, 1)) {
-    const p = planAt(base, changes, ym)
-    const m = Number(ym.slice(5, 7)) - 1
-    if (p.cycle === 'yearly' && prev === 'monthly' && ym > startYm) billMonth = m
-    const due = p.cycle === 'monthly' || m === billMonth
-    prev = p.cycle
-    if (!due) continue
-    const y = Number(ym.slice(0, 4))
-    const d = new Date(y, m, Math.min(day, new Date(y, m + 1, 0).getDate()))
-    if (d >= from && d <= end && d >= floor && p.status === 'active') out.push(d)
+  for (const g of segs) {
+    for (let i = Math.max(loI, g.start); i <= Math.min(hiI, g.end - 1); i++) {
+      if (g.cycle === 'yearly' && i % 12 !== g.bill) continue
+      const y = Math.floor(i / 12)
+      const m = i % 12
+      const d = new Date(y, m, Math.min(day, new Date(y, m + 1, 0).getDate()))
+      if (d >= lo && d <= end && planAt(base, changes, ymAt(i)).status === 'active') out.push(d)
+    }
   }
   return out
+}
+
+/** The next charge on or after `from`, by the same schedule as `paymentDates` (null when none within three years). */
+export function nextPayment(base: Subscription, changes: PlanChange[], from: Date): Date | null {
+  return paymentDates(base, changes, from, new Date(from.getFullYear() + 3, from.getMonth(), from.getDate()))[0] ?? null
 }
 
 export function upcomingPayments(subs: Subscription[], changes: PlanChange[], s: Settings, from: Date, days: number): Payment[] {

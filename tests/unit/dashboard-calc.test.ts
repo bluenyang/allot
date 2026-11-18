@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { PlanChange, Settings, Subscription } from '../../src/data/types'
-import { leftoverAfterTransfer, paymentDates, paysAfter31, unallocated, upcomingPayments, ymd } from '../../src/lib/calc'
+import { leftoverAfterTransfer, nextPayment, paymentDates, paysAfter31, unallocated, upcomingPayments, ymd } from '../../src/lib/calc'
 
 const settings: Settings = { ...DEFAULT_SETTINGS, netPay: 3_000_000, transferDay: 26, subRound: 10_000, fxBuffer: 0 }
 let n = 0
@@ -149,4 +149,37 @@ test('plan changes between monthly and yearly: no payment is skipped', () => {
   const b = upcomingPayments([m], [toYearly], settings, from, 800)
   assert.deepEqual(b.map((p) => ymd(p.date)), ['2026-12-10', '2027-01-10', '2027-02-10', '2028-02-10'])
   assert.deepEqual(b.map((p) => p.krw), [10_000, 10_000, 100_000, 100_000])
+})
+
+test('paymentDates: the schedule does not depend on the window asked for (A-10)', () => {
+  // monthly anchor in June 2027, a change to yearly takes effect in February 2027 (before the anchor)
+  const m = sub({ id: 'fut', cycle: 'monthly', amount: 10_000, nextDate: '2027-06-15' })
+  const ch: PlanChange = { id: 'cf', subId: 'fut', effective: '2027-02-01', to: { cycle: 'yearly', amount: 100_000 }, note: '' }
+  const end = new Date(2028, 11, 31)
+  const a = days(paymentDates(m, [ch], new Date(2027, 0, 1), end))
+  const b = days(paymentDates(m, [ch], new Date(2027, 2, 1), end))
+  const c = days(paymentDates(m, [ch], new Date(2026, 5, 1), end))
+  assert.deepEqual(a, ['2028-02-15'])
+  assert.deepEqual(b, a, 'a later start gives the same dates')
+  assert.deepEqual(c, a)
+  // overlapping windows agree on the dates they share
+  const all = days(paymentDates(sub({ id: 'ov', nextDate: '2026-01-31' }), [], new Date(2026, 0, 1), new Date(2026, 11, 31)))
+  const part = days(paymentDates(sub({ id: 'ov', nextDate: '2026-01-31' }), [], new Date(2026, 4, 10), new Date(2026, 8, 10)))
+  assert.deepEqual(part, all.filter((d) => d >= '2026-05-10' && d <= '2026-09-10'))
+})
+
+test('paymentDates: an old anchor and a far window are not cut short (A-10)', () => {
+  assert.deepEqual(days(paymentDates(sub({ nextDate: '1900-01-15' }), [], new Date(2026, 10, 1), new Date(2026, 11, 31))), ['2026-11-15', '2026-12-15'])
+  assert.deepEqual(days(paymentDates(sub({ nextDate: '1900-03-10', cycle: 'yearly' }), [], new Date(2026, 0, 1), new Date(2027, 11, 31))), ['2026-03-10', '2027-03-10'])
+  assert.deepEqual(days(paymentDates(sub({ nextDate: '2026-01-15' }), [], new Date(2152, 10, 1), new Date(2152, 11, 31))), ['2152-11-15', '2152-12-15'])
+  assert.deepEqual(days(paymentDates(sub({ nextDate: '2026-01-15', cycle: 'yearly' }), [], new Date(2152, 0, 1), new Date(2152, 11, 31))), ['2152-01-15'])
+})
+
+test('nextPayment is the first date of the same schedule', () => {
+  const y = sub({ id: 'np', cycle: 'monthly', nextDate: '2026-10-20' })
+  const ch: PlanChange = { id: 'cn', subId: 'np', effective: '2026-11-01', to: { cycle: 'yearly', amount: 100_000 }, note: '' }
+  const now = new Date(2026, 10, 16)
+  assert.equal(ymd(nextPayment(y, [ch], now)!), '2026-11-20')
+  assert.equal(ymd(upcomingPayments([y], [ch], settings, now, 400)[0]!.date), '2026-11-20')
+  assert.equal(ymd(nextPayment(y, [ch], new Date(2026, 10, 21))!), '2027-11-20')
 })
