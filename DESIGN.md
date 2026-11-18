@@ -137,6 +137,9 @@ Two to five exclusive options on one track (`--fill` ground, 5px outer radius, 4
 ### Switch (`Switch.vue`, `.switch`)
 A button with `role="switch"` and `aria-checked`; on is `--primary`. Name it with `label`.
 
+### Tip (`Tip.vue`, `.tip`)
+A 16px round "?" beside a field label (beside it, not inside it, so the field's name stays short). Hover or focus opens a bubble below it (`--text` ground, 240px, 12px text); the name read aloud is "Help: …". For a sentence of help that does not fit under the control; it holds no action.
+
 ### Pill (`Pill.vue`, renders `.chip`)
 A fully rounded choice or filter, `aria-pressed` when selected. Selected: `--sel` ground with a `--primary-text` border. The count (`.c`) uses `--fill`; a signal count uses the soft accent.
 
