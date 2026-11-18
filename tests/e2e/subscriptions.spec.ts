@@ -111,7 +111,7 @@ test('(V-6) a cancelled subscription is still a target; an undated change and th
   const find = async () => (await state(request)).planChanges.find((c) => c.subId === sub.id)!
   expect((await find()).effective).toBeNull()
   expect((await find()).to).toEqual({ status: 'active', amount: 12.5 })
-  await expect(page.getByText('미반영')).toBeVisible()
+  await expect(page.getByRole('listitem').filter({ hasText: sub.name }).getByText('미반영')).toBeVisible()
   // the other two forms of the amount, through the editor of that change
   for (const [typed, want] of [['1,000', 1000], ['0', 0]] as const) {
     await page.getByRole('button', { name: `${sub.name} 전환 수정` }).click()
