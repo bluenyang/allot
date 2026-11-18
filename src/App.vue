@@ -268,8 +268,8 @@ const onGripKey = (e: KeyboardEvent) => {
 .search svg{width:16px;height:16px;flex:none}
 .search .st{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .search .kbds{display:inline-flex;gap:3px;flex:none}
-/* A narrow content column (small window or a wide sidebar): the hint goes first, then the box becomes its icon (review 22) */
-@container col (max-width: 720px){ .search .kbds{display:none} }
+/* A narrow content column (small window or a wide sidebar): the hints (keys, 준비 중 pill) go first, then the box becomes its icon (review 22) */
+@container col (max-width: 720px){ .search .kbds,.search .soon-pill{display:none} }
 @container col (max-width: 600px){ .search{flex:none;width:36px;padding:0;justify-content:center} .search .st,.search .soon-pill{display:none} }
 .tb{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface);color:var(--text-2);flex:none}
 .tb:hover{background:var(--surface);color:var(--text-2)}
