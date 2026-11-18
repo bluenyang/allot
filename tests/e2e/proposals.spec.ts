@@ -2,44 +2,9 @@
 // sidebar badge, confirming applies it and shows in 변경 내역 as "AI · key name" (and reverts), rejecting
 // changes nothing; the same flow in English; making a write key in English. Runs on the dev stack; the
 // markers it adds are removed and every proposal it made is rejected afterwards.
-import { expect, request as playwrightRequest, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { MARK, sheet } from './helpers'
-
-const KEY_NAME = `${MARK}-ai`
-const SUB = `${MARK}-sub`
-const CHECK = `${MARK}-check`
-
-interface Proposal { id: string; keyName: string; status: string }
-
-async function makeKey(request: APIRequestContext, confirm: 'ui' | 'chat', name = KEY_NAME) {
-  const r = await request.post('/api/keys', { data: { name, expiresInDays: 30, write: true, confirm } })
-  expect(r.status()).toBe(201)
-  return ((await r.json()) as { key: string }).key
-}
-
-/** A tool call with a key and no session. */
-async function tool(baseURL: string, key: string, name: string, args: Record<string, unknown>) {
-  const ctx = await playwrightRequest.newContext({ baseURL, storageState: { cookies: [], origins: [] } })
-  try {
-    const r = await ctx.post('/api/mcp', {
-      headers: { authorization: `Bearer ${key}`, accept: 'application/json, text/event-stream' },
-      data: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
-    })
-    const body = (await r.json()) as { result?: { isError?: boolean; structuredContent?: Record<string, unknown> } }
-    expect(body.result?.isError).not.toBe(true)
-    return body.result!.structuredContent!
-  } finally {
-    await ctx.dispose()
-  }
-}
-
-const propose = (baseURL: string, key: string) => tool(baseURL, key, 'propose_changes', {
-  note: `${MARK} note`,
-  changes: [
-    { resource: 'subscriptions', action: 'create', data: { name: SUB, category: 'tool', plan: 'p', amount: 9900, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false } },
-    { resource: 'checks', action: 'create', data: { text: CHECK, done: false } },
-  ],
-})
+import { CHECK, KEY_NAME, SUB, makeKey, propose, type Proposal } from './proposal-helpers'
 
 const state = async (request: APIRequestContext) => (await (await request.get('/api/state')).json()) as {
   subscriptions: { id: string; name: string }[]; checks: { id: string; text: string }[]
@@ -147,52 +112,6 @@ test('pending: the toast Undo works before the proposal list has refreshed (the 
   await expect.poll(async () => (await state(request)).subscriptions.some((s) => s.name === SUB), { timeout: 8000 }).toBe(false)
   await expect(card.locator('.pill', { hasText: '되돌림' })).toBeVisible({ timeout: 8000 })
   await page.unroute('**/api/proposals?status=*')
-})
-
-test('pending: a decided proposal of one account is not shown to the next account signed in on the same tab (A-10)', async ({ browser, request, baseURL }) => {
-  test.setTimeout(120_000)
-  const key = await makeKey(request, 'ui')
-  const made = await propose(baseURL!, key)
-  const email = `e2e-prop-${Date.now().toString(36)}@example.com`
-  const pass = 'e2e-prop-pass-1'
-  const created = await request.fetch('/api/auth/admin/create-user', { method: 'POST', data: { email, name: 'E2E prop', password: pass }, headers: { origin: baseURL! } })
-  expect(created.status()).toBe(200)
-  const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, locale: 'ko-KR' })
-  try {
-    const page = await ctx.newPage()
-    const login = async (e: string, p: string) => {
-      await page.goto('/')
-      await page.getByLabel('이메일').fill(e)
-      await page.getByLabel('비밀번호').fill(p)
-      await page.getByRole('button', { name: '로그인', exact: true }).click()
-      await page.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
-    }
-    await login(process.env.ADMIN_EMAIL!, process.env.ADMIN_PASSWORD!)
-    await page.goto('/#pending')
-    const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
-    await card.getByRole('button', { name: '거절', exact: true }).click()
-    await expect(card.locator('.pill', { hasText: '거절됨' })).toBeVisible()
-    // sign out and sign in as another account, with no page reload in between
-    await page.getByRole('button', { name: '로그아웃' }).first().click()
-    await page.getByLabel('이메일').waitFor()
-    await page.getByLabel('이메일').fill(email)
-    await page.getByLabel('비밀번호').fill(pass)
-    await page.getByRole('button', { name: '로그인', exact: true }).click()
-    // still on the 대기 중인 변경 route: the next account sees that page, not the previous one's cards
-    await expect(page.getByRole('heading', { name: '대기 중인 변경', exact: true })).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText('확인할 제안이 없어요')).toBeVisible()
-    await expect(page.locator('[data-proposal]')).toHaveCount(0)
-    await page.getByRole('button', { name: '처리함', exact: true }).click()
-    await expect(page.locator('[data-proposal]')).toHaveCount(0)
-    await expect(page.getByText(`${MARK} note`)).toHaveCount(0)
-  } finally {
-    await ctx.close()
-    // two sign-ins of its own: let the login rate window (5/min) pass before the next spec signs in
-    await new Promise((r) => setTimeout(r, 45_000))
-    const users = (await (await request.fetch('/api/auth/admin/list-users?limit=500', { headers: { origin: baseURL! } })).json()).users as { id: string; email: string }[]
-    const u = users.find((x) => x.email === email)
-    if (u) await request.fetch(`/api/admin/users/${u.id}`, { method: 'DELETE', data: { confirmEmail: email }, headers: { origin: baseURL! } })
-  }
 })
 
 test('pending: rejecting changes nothing and moves it to the handled list', async ({ page, request, baseURL }) => {
