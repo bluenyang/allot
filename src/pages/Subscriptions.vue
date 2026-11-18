@@ -11,7 +11,7 @@ import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, nextOccurrence, num, planAt, today, transferAt, usd, ymOf, ymRange } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, nextPayment, num, planAt, today, transferAt, usd, ymOf, ymRange } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
 
 // The editors load when one is opened: the first screen stays small.
@@ -41,7 +41,7 @@ const rows = computed(() =>
   store.subscriptions.map((base) => {
     const p = planAt(base, store.planChanges, ym.value)
     const pending = store.planChanges.some((c) => c.subId === base.id && (!c.effective || c.effective.slice(0, 7) > ym.value))
-    return { base, p, monthly: monthly(p), next: p.status === 'active' ? nextOccurrence(p, now) : null, pending }
+    return { base, p, monthly: monthly(p), next: p.status === 'active' ? nextPayment(base, store.planChanges, now) : null, pending }
   }),
 )
 const xfer = computed(() => transferAt(store.subscriptions, store.planChanges, store.settings, ym.value))
@@ -168,7 +168,7 @@ const pick = ref(ymOf(now))
 const shares = computed(() => {
   const x = transferAt(store.subscriptions, store.planChanges, store.settings, pick.value)
   const total = x.monthlySum + x.yearlyMonthly
-  return x.items.map((i) => ({ id: i.sub.id, name: i.sub.name, plan: firstLine(i.sub.plan), monthly: i.monthly, pct: total ? Math.round((i.monthly / total) * 100) : 0 }))
+  return x.items.map((i) => ({ id: i.sub.id, name: i.sub.name, plan: i.sub.plan, monthly: i.monthly, pct: total ? Math.round((i.monthly / total) * 100) : 0 }))
 })
 
 // ---------- calc ----------

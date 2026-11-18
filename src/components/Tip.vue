@@ -3,8 +3,24 @@
 // text in a bubble placed in the viewport (below the "?", above it when there is no room, never past
 // an edge); Escape closes the bubble only. The name read aloud is "도움말: …". Keep it beside the
 // <label>, not inside it, so the field's own name stays short.
-import { nextTick, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref } from 'vue'
 import { t } from '../i18n'
+
+// One Escape rule for every tip, however it was opened (focus, hover, both, several at once): while any
+// is open, Escape closes them all, is consumed (the editor's own Escape never starts) and focus stays.
+const openTips = new Set<() => void>()
+function onEscape(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || !openTips.size) return
+  e.preventDefault()
+  e.stopPropagation()
+  for (const close of [...openTips]) close()
+}
+function track(close: () => void, on: boolean) {
+  if (on) {
+    if (!openTips.size) document.addEventListener('keydown', onEscape, true)
+    openTips.add(close)
+  } else if (openTips.delete(close) && !openTips.size) document.removeEventListener('keydown', onEscape, true)
+}
 
 defineProps<{ text: string }>()
 const open = ref(false)
@@ -14,6 +30,7 @@ const pos = ref({ left: 0, top: 0, width: 240 })
 
 async function show() {
   open.value = true
+  track(hide, true)
   await nextTick()
   const r = el.value?.getBoundingClientRect()
   if (!r || !bub.value) return
@@ -23,17 +40,12 @@ async function show() {
   const top = r.bottom + 8 + h > window.innerHeight - 8 ? Math.max(8, r.top - 8 - h) : r.bottom + 8
   pos.value = { left, top, width }
 }
-const hide = () => { open.value = false }
-function esc(e: KeyboardEvent) {
-  if (!open.value) return
-  e.preventDefault() // the dialog's own Escape (cancel) never starts
-  e.stopPropagation()
-  hide()
-}
+const hide = () => { open.value = false; track(hide, false) }
+onBeforeUnmount(hide)
 </script>
 
 <template>
-  <span ref="el" class="tip" tabindex="0" role="img" :aria-label="`${t('common.help')}: ${text}`" :class="{ on: open }" @mouseenter="show" @mouseleave="hide" @focus="show" @blur="hide" @keydown.esc="esc">?<span v-show="open" ref="bub" class="bub" role="tooltip" aria-hidden="true" :style="{ left: `${pos.left}px`, top: `${pos.top}px`, width: `${pos.width}px` }">{{ text }}</span></span>
+  <span ref="el" class="tip" tabindex="0" role="img" :aria-label="`${t('common.help')}: ${text}`" :class="{ on: open }" @mouseenter="show" @mouseleave="hide" @focus="show" @blur="hide">?<span v-show="open" ref="bub" class="bub" role="tooltip" aria-hidden="true" :style="{ left: `${pos.left}px`, top: `${pos.top}px`, width: `${pos.width}px` }">{{ text }}</span></span>
 </template>
 
 <style scoped>
