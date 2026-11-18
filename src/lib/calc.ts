@@ -322,6 +322,19 @@ export function phaseAt(phases: Phase[], ym: string): Phase | null {
   return phases.find((p) => p.from <= ym && (p.to === null || ym <= p.to)) ?? null
 }
 
+/**
+ * The phase numbers shown on screen: 1, 2, 3 … in the order of the start months (the screen never
+ * asks for a symbol). Phases that start in the same month keep their list order. Keyed by phase id.
+ */
+export function phaseNumbers(phases: Pick<Phase, 'id' | 'from'>[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  phases
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => (a.p.from < b.p.from ? -1 : a.p.from > b.p.from ? 1 : a.i - b.i))
+    .forEach((x, n) => { out[x.p.id] = n + 1 })
+  return out
+}
+
 export interface AllocRow {
   key: string // target id
   name: string

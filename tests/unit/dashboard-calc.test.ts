@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { PlanChange, Settings, Subscription } from '../../src/data/types'
-import { leftoverAfterTransfer, nextPayment, paymentDates, paysAfter31, unallocated, upcomingPayments, ymd } from '../../src/lib/calc'
+import { leftoverAfterTransfer, nextPayment, paymentDates, paysAfter31, phaseNumbers, unallocated, upcomingPayments, ymd } from '../../src/lib/calc'
 
 const settings: Settings = { ...DEFAULT_SETTINGS, netPay: 3_000_000, transferDay: 26, subRound: 10_000, fxBuffer: 0 }
 let n = 0
@@ -201,4 +201,15 @@ test('nextPayment has no horizon: a first charge any distance away is found (A-1
   const m = sub({ nextDate: '2026-10-19' })
   assert.equal(ymd(nextPayment(m, [], new Date(2026, 10, 19))!), '2026-11-19')
   assert.equal(ymd(nextPayment(m, [], new Date(2026, 10, 20))!), '2026-12-19')
+})
+
+test('phaseNumbers: 1, 2, 3 by start month, list order breaks a tie, the stored label plays no part', () => {
+  const ph = (id: string, from: string, label = '') => ({ id, from, label })
+  assert.deepEqual(phaseNumbers([]), {})
+  // listed out of order: numbered by start month
+  assert.deepEqual(phaseNumbers([ph('b', '2027-03'), ph('a', '2026-01', '③'), ph('c', '2028-01')]), { a: 1, b: 2, c: 3 })
+  // the same start month: the list order
+  assert.deepEqual(phaseNumbers([ph('x', '2026-05'), ph('y', '2026-05'), ph('z', '2026-04')]), { z: 1, x: 2, y: 3 })
+  // one phase is 1
+  assert.deepEqual(phaseNumbers([ph('only', '2026-01')]), { only: 1 })
 })
