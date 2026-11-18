@@ -3,7 +3,8 @@
 // element stays focusable (`aria-disabled`, not `disabled`), nothing happens on click or Enter/Space
 // and nothing navigates, and a small "준비 중" / "Coming soon" badge says why. Wrap the content only;
 // the wrapper swallows click, auxclick and Enter/Space in the capture phase, before any descendant
-// handler or link navigation, and slotted focusable content gets tabindex -1. Its name includes the badge.
+// handler or link navigation, and the slotted content sits in an `inert` container, so nothing in it can take focus or be clicked, even
+// if it changes after mount. The wrapper is the one focus stop and its name includes the badge.
 import { computed, onMounted, onUpdated, ref, useAttrs } from 'vue'
 import { t } from '../i18n'
 
@@ -15,18 +16,20 @@ const rest = computed(() => Object.fromEntries(Object.entries(attrs).filter(([k]
 const props = withDefaults(defineProps<{ tag?: string; pill?: boolean; label?: string }>(), { tag: 'button', pill: true })
 const stop = (e: Event) => { e.preventDefault(); e.stopPropagation() }
 const root = ref<HTMLElement | null>(null)
-// Slotted links and buttons are taken out of the Tab order: the wrapper is the one focus stop.
-const sel = 'a[href],button,input,select,textarea,summary,[tabindex],[contenteditable]'
-const defocus = () => root.value?.querySelectorAll<HTMLElement>(sel).forEach((el) => { if (el.tabIndex !== -1) el.tabIndex = -1 })
-onMounted(defocus)
-onUpdated(defocus)
+const inner = ref<HTMLElement | null>(null)
+// The slotted content is inert (no focus, no clicks, however it changes later), so the accessible name is
+// taken from its text, with the badge text, unless the caller gives an aria-label.
+const name = ref('')
+const label = () => { name.value = `${inner.value?.textContent?.trim() ?? ''} (${props.label ?? t('common.soon')})`.trim() }
+onMounted(label)
+onUpdated(label)
 const keys = (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') stop(e) }
 </script>
 
 <template>
   <component
-    :is="props.tag" ref="root" v-bind="rest" class="is-soon" aria-disabled="true"
+    :is="props.tag" ref="root" v-bind="rest" :aria-label="(rest['aria-label'] as string | undefined) ?? name" class="is-soon" aria-disabled="true"
     :type="props.tag === 'button' ? 'button' : undefined" :role="props.tag === 'button' ? undefined : 'button'" :tabindex="props.tag === 'button' ? undefined : 0"
     @click.capture="stop" @auxclick.capture="stop" @keydown.capture="keys" @keyup.capture="keys"
-  ><slot /><span v-if="props.pill" class="soon-pill">{{ props.label ?? t('common.soon') }}</span></component>
+  ><span ref="inner" class="soon-in" inert><slot /></span><span v-if="props.pill" class="soon-pill">{{ props.label ?? t('common.soon') }}</span></component>
 </template>

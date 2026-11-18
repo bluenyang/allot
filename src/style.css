@@ -102,7 +102,8 @@ button,input,select,textarea{font:inherit}
 .side .ni .lbl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .side .ni:hover{background:var(--fill);color:var(--text)}
 .side .ni[aria-current="true"]{background:var(--sel);color:var(--primary-text);font-weight:600}
-.side .ni.is-soon,.side .ni.is-soon:hover{background:none;color:var(--subtle)}
+.side .ni.is-soon,.side .ni.is-soon .soon-in{display:contents}
+.is-soon:hover{background:none;color:var(--subtle)}
 .side .ncount{font-size:11px;font-weight:600;padding:0 6px;border-radius:var(--r-badge);background:var(--fill);color:var(--muted);font-variant-numeric:tabular-nums}
 .side .ncount.badge{background:var(--accent-soft);color:var(--accent-text)}
 .side .lower{margin-top:auto;display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--border);padding-top:12px}
