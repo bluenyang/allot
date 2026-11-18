@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { ACCENT_PRESETS, DEFAULT_ACCENT, DEFAULT_PRIMARY, GROUND, PRIMARY_PRESETS, contrast, derive } from '../../src/lib/theme'
+import { ACCENT_PRESETS, DEFAULT_ACCENT, DEFAULT_PRIMARY, GROUND, PRIMARY_PRESETS, contrast, derive, lift } from '../../src/lib/theme'
 import { dateText, money, moneyClass } from '../../src/lib/format'
 
 /** The pairs the theme promises (spec 007 S-7), per mode. */
@@ -53,6 +53,18 @@ test('the default colours derive exactly the tokens in style.css', () => {
   for (const [mode, have] of [['light', light], ['dark', dark]] as const) {
     for (const [k, v] of Object.entries(derive(DEFAULT_PRIMARY, DEFAULT_ACCENT, mode))) assert.equal(have[k], v, `${mode} --${k}`)
   }
+})
+
+test('canvas lift: the default colours lift to the canvas dark values', () => {
+  assert.equal(lift('#14705A', 0.46, 0.6), '#2FBC9A')
+  assert.equal(lift('#E0670E', 0.54, 0.85), '#ED7B26')
+  assert.equal(lift('#808080', 0.46, 0.6), '#808080') // grey stays grey
+})
+
+test('dark orange badge: the dark ink reads on the dark accent (D-10), the light text would not', () => {
+  const t = derive(DEFAULT_PRIMARY, DEFAULT_ACCENT, 'dark')
+  assert.ok(contrast(t['accent-ink']!, t.accent!) >= 4.5)
+  assert.ok(contrast('#ECEDEE', t.accent!) < 3)
 })
 
 test('display formats: units, negatives, dates', () => {
