@@ -36,7 +36,7 @@ Set in Settings; these are the defaults. The dark column is what `derive` gives 
 | `--primary-text` | #14705A | #2FBC9A | links, selected text, focus ring |
 | `--primary-soft` | #E8F1EF | #1B322E | ok badge, step marker |
 | `--primary-mid` | #7EB0A4 | #247260 | secondary green |
-| `--primary-hover` | #105B49 | #63CDB3 | link hover |
+| `--primary-hover` | #105B49 | #63CDB3 | link hover (4.5:1 on surface and bg) |
 | `--primary-tint` | #F4F8F7 | `var(--surface-2)` | selected choice, result box |
 | `--primary-line` | #D0E2DE | `var(--border)` | result box border |
 | `--accent` | #E0670E | #ED7B26 | signal fill |
@@ -45,7 +45,7 @@ Set in Settings; these are the defaults. The dark column is what `derive` gives 
 | `--accent-line` | #F3C29F | #77451F | signal border |
 | `--accent-text` | #9D480A | #ED7B26 | signal text |
 
-The light `--primary-hover`, `--primary-tint` and `--primary-line` are derived from the primary colour and sit within one or two steps per channel of the canvas values.
+The light `--primary-hover`, `--primary-tint` and `--primary-line` are derived from the primary colour (hover: the guarded fill mixed .19 toward black; tint and line: mixes with white) and sit within one or two steps per channel of the canvas values; the canvas values are hand-picked and no single formula reproduces them. `--primary-hover` is guarded to 4.5:1 on `--surface` and `--bg` in both modes, so a link stays readable for any user colour.
 
 ### Semantic
 
@@ -68,7 +68,7 @@ The light `--primary-hover`, `--primary-tint` and `--primary-line` are derived f
 | `--shadow-1` | `0 1px 2px rgba(16,24,20,.12)`; dark `rgba(0,0,0,.26)` | small raise |
 | `--backdrop` | `rgba(16,24,20,.45)`; dark `rgba(0,0,0,.61)` | behind a modal |
 | fonts | IBM Plex Sans KR (UI), IBM Plex Mono (codes, dates), tabular figures for numbers | |
-| sizes | KPI 26/700, H1 22/700, H2 15/600, body 14, table 13, small 12, label 11/600 | |
+| sizes | KPI 26/700, H1 22/700, H2 15/600, body 14, table 13, small 12, label 12/600 | |
 | spacing | 4-unit steps: 4, 8, 12, 16, 20, 24, 32 | |
 
 Focus: `:focus-visible` draws a 2px `--primary-text` outline with a 2px offset. Inputs keep that ring and also take a `--primary-text` border on focus. Links turn `--primary-hover` on hover.
@@ -107,43 +107,52 @@ Primary uses `lift(P, 0.46, 0.60)`; accent uses `lift(A, 0.54, 0.85)`. With `S` 
 
 ## Components
 
-These are the rules the shared components follow. They are built in `src/components/`.
+The shared components are in `src/components/`; their styles are in `src/style.css` and in the component files. Anything marked "not built" has no component yet.
 
 ### Buttons
-Height 36px, small 30px (inside a modal 40 and 32; login 44). Primary is `--primary` fill with `--primary-ink`; secondary is a bordered surface; the signal button is `--accent`; AI actions use the soft accent face with an accent line; delete is a bordered button in `--neg-text`. One primary button per view or modal.
+Class `.btn` (`.pri`, `.bad`, `.sm`, `.icon`, `.ghost`). Height 36px, small 30px (inside a modal 40 and 32; login 44). Primary is `--primary` fill with `--primary-ink`; secondary is a bordered surface; the signal button is `--accent`; delete (`.bad`) is bordered in `--neg-text`. One primary button per view or modal.
 
 ### Form, one field per row
-A form is a column of rows: label above, control below, optional help text under the control. Never two fields on one row. A mark `(선택)` / `(optional)` follows the label of a field that may be empty. The required star is presentation only: do not add `required` to a field the API accepts empty; the server decides what is valid. An error replaces the help text under the field, is tied to the input with `aria-describedby` and `aria-invalid`, and uses `--neg-text` on a `--neg` border.
+A form is a column of rows: label above, control below, optional help text under the control. Never two fields on one row. A mark `(선택)` / `(optional)` follows the label of a field that may be empty. The required star (`.star`, accent text) is presentation only: do not add `required` to a field the API accepts empty; the server decides what is valid. An error replaces the help text under the field, is tied to the input with `aria-describedby` and `aria-invalid`, and uses `--neg-text` on a `--neg` border.
 
-### Money input
-A text input with a right-aligned number, a currency prefix or suffix, and thousands separators while typing. It accepts everything a number input accepts (decimals, with or without commas, zero); it never narrows what the server takes.
+### MoneyInput (`MoneyInput.vue`, `.money`)
+A text input with a right-aligned number, an optional prefix or suffix, and thousands separators while typing. It accepts everything a number input accepts (decimals, with or without commas, zero); it never narrows what the server takes.
 
-### Modal
-Opens over `--backdrop`. Width 520px (full width minus 32px on a phone), radius `--r-pop`, `--border-strong` border, `--shadow-pop`. Header with the title (16px/600) and a close button; body scrolls; footer with the actions right-aligned (cancel left of the primary). A **stepped** modal puts a centred step list in the header (`ol` labelled for the steps, short connectors between steps) and the footer moves between steps. A **confirm** is a 440px `alertdialog` with a short sentence and two buttons; the destructive one is named by its action, not "OK". Escape and the backdrop close a modal unless input would be lost.
+### EditSheet (`EditSheet.vue`, `.modal`)
+The modal form. Width 520px by default (`width` also takes 440, 560 or 640; full width minus 32px on a phone), radius `--r-pop`, `--border-strong` border, `--shadow-pop`, over `--backdrop`. Header with the title and a close button; the body scrolls; the footer holds the actions right-aligned (cancel left of the primary). A stepped modal puts a centred step list (`ol.stp`, labelled for the steps, short connectors) in the header and the footer moves between steps.
 
-### Sheet
+### ConfirmDialog (`ConfirmDialog.vue`, `.cdlg`)
+A 440px `alertdialog` with a short sentence and two buttons; the destructive one is named by its action, not "OK" (`danger` makes it `.bad`).
+
+### Sheet (`Sheet.vue`, `.shd`)
 On a phone a bottom sheet replaces a popover or the "more" menu: radius `--r-pop` on top, a grabber, rows at least 56px tall, closes on Escape, the backdrop or a drag down.
 
-### Toast
-A short message at the bottom, radius `--r-pop`, `--shadow-pop`. It tells what happened ("Saved"), never asks a question, and goes away by itself; an error stays until dismissed.
+### Toast (`Toast.vue`, `.toast`)
+A short message at the bottom, radius `--r-pop`, `--shadow-pop`. It tells what happened ("Saved"), never asks a question, and goes away by itself; an error (`role="alert"`) stays until dismissed.
 
-### Seg (segmented control)
-Two to five exclusive options on one track (`--fill` ground, 5px outer radius, 4px buttons). The selected button is raised on the surface. Use it for a mode, not for navigation.
+### Seg (`Seg.vue`, `.seg`)
+Two to five exclusive options on one track (`--fill` ground, 5px outer radius, 4px buttons); the selected button (`aria-pressed`) is raised on the surface. `bordered` gives the joined variant with a `--sel` selected face. Use it for a mode, not for navigation.
 
-### Pill (chip)
-A fully rounded choice or filter. Selected: `--sel` ground with a `--primary-text` border. Count pills use `--fill`; signal counts use the soft accent.
+### Switch (`Switch.vue`, `.switch`)
+A button with `role="switch"` and `aria-checked`; on is `--primary`. Name it with `label`.
 
-### Tabs
-Icon and label, 42px tall; the selected tab has a `--sel` face and a 2px underline in `--primary-text`. For switching views of the same data on one page only.
+### Pill (`Pill.vue`, renders `.chip`)
+A fully rounded choice or filter, `aria-pressed` when selected. Selected: `--sel` ground with a `--primary-text` border. The count (`.c`) uses `--fill`; a signal count uses the soft accent.
+
+### SubTabs (`SubTabs.vue`, `.subtabs`)
+Icon and label, 42px tall; the selected tab has a `--sel` face and a 2px underline in `--primary-text`; overflow arrows when the row scrolls. For switching views of the same data on one page only.
 
 ### Table
-Header on `--surface-2` with `--subtle` text, row lines in `--divider`, amounts right-aligned with tabular figures, dates in the mono font.
+Header on `--surface-2` with `--subtle` text, row lines in `--divider`, amounts right-aligned with tabular figures, dates in the mono font. Plain markup (`.tbl`); not built as a component.
 
 ### Badges and callouts
-Badge: 12px/600, `--r-badge`, soft ground with matching text. Status badges: ok = primary soft, needs a look = accent soft, ended = fill. A callout is a soft face with an icon and one sentence.
+Badge: 12px/600, `--r-badge`, soft ground with matching text. Status badges: ok = primary soft, needs a look = accent soft, ended = fill. A callout is a soft face with an icon and one sentence. Plain markup; not built as components.
 
-### "준비 중" / Soon (a feature that is not there yet)
-A control or menu item for a planned feature is shown but disabled: `aria-disabled="true"` (not the `disabled` attribute, so it stays focusable and can explain itself), muted text, no hover face, `cursor: default`, and a small "준비 중" / "Soon" badge or tooltip. Activating it does nothing. It never takes the selected state and never navigates.
+### PageHeader, MonthPicker
+`PageHeader.vue` (`.ph`) is the page title with an optional description and an actions slot. `MonthPicker.vue` (`.ymbar`) steps a month back and forward.
+
+### "준비 중" / Soon (`Soon.vue`, `.is-soon`)
+A control or menu item for a planned feature is shown but disabled: `aria-disabled="true"` (not the `disabled` attribute, so it stays focusable), muted text, no hover face, and a small "준비 중" / "Soon" pill (`.soon-pill`). Activating it does nothing. It never takes the selected state and never navigates.
 
 ## Copy rules
 

@@ -15,13 +15,14 @@ function problems(primary: string, accent: string): string[] {
     const g = GROUND[mode]
     const pairs: [string, string, string, number][] = [
       ['primary-text', t['primary-text']!, 'surface', 4.5], ['primary-text', t['primary-text']!, 'surface-2', 4.5],
+      ['primary-hover', t['primary-hover']!, 'surface', 4.5], ['primary-hover', t['primary-hover']!, 'bg', 4.5],
       ['primary-text', t['primary-text']!, 'primary-soft', 4.5], ['primary-ink', t['primary-ink']!, 'primary', 4.5],
       ['accent-text', t['accent-text']!, 'surface', 4.5], ['accent-text', t['accent-text']!, 'accent-soft', 4.5],
       ['accent-ink', t['accent-ink']!, 'accent', 4.5],
       // fills stand out from the page ground (S-7 "primary/surface 3", review 1 R11)
       ['primary', t.primary!, 'surface', 3], ['accent', t.accent!, 'surface', 3],
     ]
-    const bg: Record<string, string> = { surface: g.surface, 'surface-2': g.surface2, 'primary-soft': t['primary-soft']!, primary: t.primary!, 'accent-soft': t['accent-soft']!, accent: t.accent! }
+    const bg: Record<string, string> = { bg: g.bg, surface: g.surface, 'surface-2': g.surface2, 'primary-soft': t['primary-soft']!, primary: t.primary!, 'accent-soft': t['accent-soft']!, accent: t.accent! }
     for (const [name, fg, on, min] of pairs) {
       const r = contrast(fg, bg[on]!)
       if (r < min) out.push(`${mode} ${primary}/${accent}: ${name} ${fg} on ${on} ${bg[on]} = ${r.toFixed(2)}`)

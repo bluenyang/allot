@@ -15,8 +15,8 @@ const WHITE = '#FFFFFF'
 const BLACK = '#000000'
 /** Grounds and text the colours sit on (style.css). */
 export const GROUND = {
-  light: { surface: '#FFFFFF', surface2: '#F9FAF9', text: '#16201B' },
-  dark: { surface: '#17181A', surface2: '#1D1F21', text: '#ECEDEE' },
+  light: { bg: '#F5F6F5', surface: '#FFFFFF', surface2: '#F9FAF9', text: '#16201B' },
+  dark: { bg: '#0F1011', surface: '#17181A', surface2: '#1D1F21', text: '#ECEDEE' },
 } as const
 /** Text on a filled dark primary / accent (the canvas ink pair); white is the fallback. */
 const DARK_PRIMARY_INK = '#0C0D0E'
@@ -123,7 +123,7 @@ export function derive(primary: string, accent: string, mode: 'light' | 'dark'):
     return {
       primary: p.fill, 'primary-ink': p.ink, 'primary-soft': pSoft, 'primary-mid': mix(P, WHITE, 0.45),
       'primary-text': ensure(P, [g.surface, g.surface2, pSoft], 4.5, 'darker'),
-      'primary-hover': mix(P, BLACK, 0.19), 'primary-tint': mix(P, WHITE, 0.952), 'primary-line': mix(P, WHITE, 0.8),
+      'primary-hover': ensure(mix(p.fill, BLACK, 0.19), [g.surface, g.bg], 4.5, 'darker'), 'primary-tint': mix(P, WHITE, 0.952), 'primary-line': mix(P, WHITE, 0.8),
       accent: a.fill, 'accent-ink': a.ink, 'accent-soft': aSoft, 'accent-line': mix(A, WHITE, 0.6),
       'accent-text': ensure(mix(A, BLACK, 0.3), [g.surface, aSoft], 4.5, 'darker'),
     }
@@ -137,7 +137,7 @@ export function derive(primary: string, accent: string, mode: 'light' | 'dark'):
   return {
     primary: p.fill, 'primary-ink': p.ink, 'primary-soft': pSoft, 'primary-mid': mix(p.fill, g.surface, 0.45),
     'primary-text': ensure(p.fill, [g.surface, g.surface2, pSoft], 4.5, 'lighter'),
-    'primary-hover': mix(p.fill, WHITE, 0.25),
+    'primary-hover': ensure(mix(p.fill, WHITE, 0.25), [g.surface, g.bg], 4.5, 'lighter'),
     accent: a.fill, 'accent-ink': a.ink, 'accent-soft': aSoft, 'accent-line': mix(a.fill, g.surface, 0.55),
     'accent-text': ensure(a.fill, [g.surface, aSoft], 4.5, 'lighter'),
   }

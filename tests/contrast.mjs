@@ -38,7 +38,7 @@ const PAIRS = [
   ['info-text', 'surface', 4.5], ['info-text', 'info-soft', 4.5],
   ['border-strong', 'surface', 1.3],
   ['primary', 'surface', 3], ['accent', 'surface', 3],
-  ['primary-hover', 'surface', 4.5], ['sat', 'surface', 4.5], ['sun', 'surface', 4.5], ['up', 'surface', 4.5], ['up', 'up-soft', 4.5],
+  ['primary-hover', 'surface', 4.5], ['primary-hover', 'bg', 4.5], ['sat', 'surface', 4.5], ['sun', 'surface', 4.5], ['up', 'surface', 4.5], ['up', 'up-soft', 4.5],
   // selected grounds (--sel is grey in dark) keep the selected text readable
   ['primary-text', 'fill', 4.5],
   // dark orange badge pair (D-10): a count badge on the accent colour takes the dark ink, never the light text
