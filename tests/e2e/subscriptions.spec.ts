@@ -239,7 +239,7 @@ test('(A-9) a help bubble stays inside the screen on a phone, and Escape closes 
   await expect(s).toBeHidden()
 })
 
-test('(A-9) the plan change shows VAT when an earlier change made the subscription USD', async ({ page, request }) => {
+test('(A-9) the plan change always has the VAT field: for a KRW plan too, and when an earlier change made it USD', async ({ page, request }) => {
   const sub = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-usdlater`))).json as Sub
   await api(request, 'POST', '/api/plan-changes', { subId: sub.id, effective: '2020-01-01', to: { currency: 'USD', amount: 10 }, note: '' })
   await go(page, 'subs', '변경 일정')
@@ -248,6 +248,13 @@ test('(A-9) the plan change shows VAT when an earlier change made the subscripti
   await s.getByLabel('대상 구독').selectOption({ label: sub.name })
   await s.getByRole('button', { name: '다음' }).click()
   await expect(s.getByLabel('VAT (%)')).toBeVisible()
+  await expect(s.getByText('VAT는 USD 결제에만')).toHaveCount(0)
+  await s.getByRole('button', { name: '이전' }).click()
+  const krw = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-krwvat`))).json as Sub
+  await s.getByLabel('대상 구독').selectOption({ label: krw.name })
+  await s.getByRole('button', { name: '다음' }).click()
+  await expect(s.getByLabel('VAT (%)')).toBeVisible() // a KRW plan, currency "그대로"
+  await s.getByLabel('VAT (%)').fill('9')
   await s.getByRole('button', { name: '취소', exact: true }).click()
 })
 
