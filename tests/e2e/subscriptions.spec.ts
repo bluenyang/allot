@@ -295,3 +295,47 @@ test('(A-9) browser Back after #subs?add leaves the page and the editor with it;
   await page.getByRole('tablist').first().waitFor()
   await expect(sheet(page, '구독 추가')).toHaveCount(0)
 })
+
+test('(A-11) Escape closes every open help bubble (hover with focus elsewhere, two at once) and keeps the editor and the focus', async ({ page }) => {
+  await go(page, 'subs', '목록')
+  await page.getByRole('button', { name: '구독 추가' }).click()
+  const s = sheet(page, '구독 추가')
+  await s.getByLabel('서비스 이름').fill(`${MARK}-esc`)
+  await s.getByRole('button', { name: '다음' }).click()
+  await s.getByRole('button', { name: 'USD', exact: true }).click()
+  const tips = s.getByRole('img', { name: /^도움말/ })
+  const bub = (i: number) => tips.nth(i).getByRole('tooltip', { includeHidden: true })
+  const amount = s.getByLabel('금액', { exact: true })
+  // opened by the mouse while the focus is in another field
+  await amount.focus()
+  await tips.nth(1).hover()
+  await expect(bub(1)).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(bub(1)).toBeHidden()
+  await expect(s).toBeVisible()
+  await expect(amount).toBeFocused()
+  // two at once: focus on one, mouse on another
+  await tips.nth(0).focus()
+  await tips.nth(2).hover()
+  await expect(bub(0)).toBeVisible()
+  await expect(bub(2)).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(bub(0)).toBeHidden()
+  await expect(bub(2)).toBeHidden()
+  await expect(s).toBeVisible()
+  await expect(tips.nth(0)).toBeFocused()
+  // none open: Escape cancels the editor as before
+  await page.mouse.move(0, 0)
+  await page.keyboard.press('Escape')
+  await expect(s).toBeHidden()
+})
+
+test('(A-11) the list shows the next payment by the schedule the calendar uses: a monthly charge repeats back from its date', async ({ page, request }) => {
+  const now = new Date()
+  const p2 = (n: number) => String(n).padStart(2, '0')
+  const anchor = new Date(now.getFullYear(), now.getMonth() + 2, 15)
+  const sub = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-cyc`, { nextDate: `${anchor.getFullYear()}-${p2(anchor.getMonth() + 1)}-15` }))).json as Sub
+  const next = new Date(now.getFullYear(), now.getMonth() + (now.getDate() <= 15 ? 0 : 1), 15)
+  await go(page, 'subs', '목록')
+  await expect(page.getByRole('row', { name: new RegExp(sub.name) }).locator('td').nth(5)).toHaveText(`${next.getFullYear()}-${p2(next.getMonth() + 1)}-15`)
+})
