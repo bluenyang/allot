@@ -100,7 +100,8 @@ export async function loadProposals() {
 }
 
 export async function moreProposals() {
-  try { await loadHandled(true) } catch (e) { proposals.error = e instanceof ApiError ? e.message : t('pending.loadFailed') }
+  const at = epoch
+  try { await loadHandled(true) } catch (e) { if (at === epoch) proposals.error = e instanceof ApiError ? e.message : t('pending.loadFailed') }
 }
 
 /** The proposal's title: the AI's own note, or else what it changes. */
@@ -120,6 +121,7 @@ export async function decide(p: Proposal, what: 'apply' | 'reject') {
     proposals.kept[p.id] = { ...p, status: what === 'apply' ? 'applied' : 'rejected', changeSetId, decidedAt: new Date().toISOString(), decidedBy: 'user' }
     if (what === 'apply') {
       await loadState() // the screens show what the server holds now
+      if (at !== epoch) return
       showToast(t('pending.appliedToast', { title: name }), changeSetId ? { actionLabel: t('pending.undo'), onAction: () => { void undo(p.id) } } : {})
     } else showToast(t('pending.rejectedToast', { title: name }))
   } catch (e) {
@@ -147,6 +149,7 @@ export async function undo(id: string) {
     if (at !== epoch) return
     proposals.decided[id] = 'reverted'
     await loadState()
+    if (at !== epoch) return
     showToast(t('pending.revertedToast', { title: proposalTitle(p) }))
   } catch (e) {
     if (at === epoch) proposals.error = e instanceof ApiError ? e.message : t('history.revertFailed')

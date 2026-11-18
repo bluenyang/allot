@@ -11,7 +11,7 @@ import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, nextPayment, num, parseDate, planAt, today, transferAt, usd, ymOf, ymRange } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, nextPayment, num, planAt, today, transferAt, usd, ymOf, ymRange } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
 
 // The editors load when one is opened: the first screen stays small.
@@ -37,13 +37,8 @@ const charge = (p: Plan) => p.currency === 'USD' ? `USD ${p.amount.toFixed(2)}${
 const monthly = (p: Plan) => (p.status === 'active' ? monthlyKrw(p, store.settings) : 0)
 
 // ---------- list ----------
-/** The next charge by the schedule the calendar and MCP use; a first charge more than three years away is the date typed. */
-function upcoming(base: Subscription) {
-  const d = nextPayment(base, store.planChanges, now)
-  if (d || !/^\d{4}-\d{2}-\d{2}$/.test(base.nextDate)) return d
-  const typed = parseDate(base.nextDate)
-  return typed.getTime() > new Date(now.getFullYear() + 3, now.getMonth(), now.getDate()).getTime() ? typed : null
-}
+/** The next charge by the schedule the calendar and MCP use (no horizon: a first charge any distance away shows). */
+const upcoming = (base: Subscription) => nextPayment(base, store.planChanges, now)
 const rows = computed(() =>
   store.subscriptions.map((base) => {
     const p = planAt(base, store.planChanges, ym.value)

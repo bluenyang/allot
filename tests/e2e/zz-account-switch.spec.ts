@@ -1,14 +1,19 @@
-// spec 010 A-10: what one account decided on the proposal screens is not shown to the next account that signs in on
-// the same tab. Runs late (alphabetical) with its own pacing: it signs in twice, and the login limit is 5 a minute.
+// spec 010 A-10, A-12: what one account decided on the proposal screens, and what a load still on its way
+// brings back, is not shown to the next account that signs in on the same tab. Runs late (alphabetical) with its
+// own pacing: it signs in twice, and the login limit is 5 a minute (it waits for an empty window before it
+// starts; nothing after it signs in, zz-i18n-signout uses the shared session).
 import { expect, test } from '@playwright/test'
 import { MARK } from './helpers'
-import { KEY_NAME, makeKey, propose } from './proposal-helpers'
+import { SUB, makeKey, propose } from './proposal-helpers'
 
 test.afterEach(async ({ request }) => {
   const props = (await (await request.get('/api/proposals?status=pending')).json()) as { id: string; keyName: string }[]
   for (const p of props.filter((x) => x.keyName.startsWith(MARK))) await request.post(`/api/proposals/${p.id}/reject`)
   const keys = (await (await request.get('/api/keys')).json()) as { keys: { id: string; name: string }[] }
   for (const k of keys.keys.filter((x) => x.name.startsWith(MARK))) await request.delete(`/api/keys/${k.id}`)
+  const st = (await (await request.get('/api/state')).json()) as { subscriptions: { id: string; name: string }[]; checks: { id: string; text: string }[] }
+  for (const x of st.subscriptions.filter((x) => x.name.startsWith(MARK))) await request.delete(`/api/subscriptions/${x.id}`)
+  for (const x of st.checks.filter((x) => x.text.startsWith(MARK))) await request.delete(`/api/checks/${x.id}`)
 })
 
 test('pending: a decided proposal of one account is not shown to the next account signed in on the same tab (A-10)', async ({ browser, request, baseURL }) => {
@@ -34,8 +39,15 @@ test('pending: a decided proposal of one account is not shown to the next accoun
     await login(process.env.ADMIN_EMAIL!, process.env.ADMIN_PASSWORD!)
     await page.goto('/#pending')
     const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
-    await card.getByRole('button', { name: '거절', exact: true }).click()
-    await expect(card.locator('.pill', { hasText: '거절됨' })).toBeVisible()
+    // hold back the reload of the state that follows the apply: it is still on its way when the account changes
+    let slow = false
+    await ctx.route('**/api/state', async (route) => {
+      if (slow) { slow = false; await new Promise((r) => setTimeout(r, 6000)) }
+      await route.continue()
+    })
+    slow = true
+    await card.getByRole('button', { name: '확인하고 적용', exact: true }).click()
+    await expect(card.locator('.pill', { hasText: '적용됨' })).toBeVisible()
     // sign out and sign in as another account, with no page reload in between
     await page.getByRole('button', { name: '로그아웃' }).first().click()
     await page.getByLabel('이메일').waitFor()
@@ -49,10 +61,14 @@ test('pending: a decided proposal of one account is not shown to the next accoun
     await page.getByRole('button', { name: '처리함', exact: true }).click()
     await expect(page.locator('[data-proposal]')).toHaveCount(0)
     await expect(page.getByText(`${MARK} note`)).toHaveCount(0)
+    // the delayed answer of the first account arrives now: nothing of it reaches this account
+    await page.waitForTimeout(8000)
+    await expect(page.getByRole('status').filter({ hasText: '제안을 적용했어요' })).toHaveCount(0)
+    await page.goto('/#subs')
+    await expect(page.getByRole('heading', { name: '구독', exact: true })).toBeVisible()
+    await expect(page.getByText(SUB)).toHaveCount(0)
   } finally {
     await ctx.close()
-    // two sign-ins of its own: let the login rate window (5/min) pass before the next spec signs in (zz-i18n-signout)
-    await new Promise((r) => setTimeout(r, 65_000))
     const users = (await (await request.fetch('/api/auth/admin/list-users?limit=500', { headers: { origin: baseURL! } })).json()).users as { id: string; email: string }[]
     const u = users.find((x) => x.email === email)
     if (u) await request.fetch(`/api/admin/users/${u.id}`, { method: 'DELETE', data: { confirmEmail: email }, headers: { origin: baseURL! } })

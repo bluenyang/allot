@@ -183,3 +183,22 @@ test('nextPayment is the first date of the same schedule', () => {
   assert.equal(ymd(upcomingPayments([y], [ch], settings, now, 400)[0]!.date), '2026-11-20')
   assert.equal(ymd(nextPayment(y, [ch], new Date(2026, 10, 21))!), '2027-11-20')
 })
+
+test('nextPayment has no horizon: a first charge any distance away is found (A-12)', () => {
+  const now = new Date(2026, 10, 19)
+  assert.equal(ymd(nextPayment(sub({ nextDate: '2031-01-15' }), [], now)!), '2030-12-15', 'one cycle ahead of the typed date')
+  assert.equal(ymd(nextPayment(sub({ nextDate: '2100-03-10', cycle: 'yearly' }), [], now)!), '2099-03-10')
+  // it agrees with the dates of the same schedule
+  const far = sub({ id: 'far', nextDate: '2031-01-31' })
+  assert.equal(ymd(nextPayment(far, [], now)!), ymd(paymentDates(far, [], now, new Date(2031, 11, 31))[0]!))
+  // a cancelled plan is not charged; one that comes back later is found
+  const gone = sub({ id: 'gone', status: 'cancelled', nextDate: '2026-12-10' })
+  assert.equal(nextPayment(gone, [], now), null)
+  const back: PlanChange = { id: 'cb', subId: 'gone', effective: '2040-05-01', to: { status: 'active' }, note: '' }
+  assert.equal(ymd(nextPayment(gone, [back], now)!), '2040-05-10')
+  assert.equal(ymd(paymentDates(gone, [back], now, new Date(2041, 0, 1))[0]!), '2040-05-10')
+  // mid-month: today's charge counts, yesterday's does not
+  const m = sub({ nextDate: '2026-10-19' })
+  assert.equal(ymd(nextPayment(m, [], new Date(2026, 10, 19))!), '2026-11-19')
+  assert.equal(ymd(nextPayment(m, [], new Date(2026, 10, 20))!), '2026-12-19')
+})

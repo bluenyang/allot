@@ -36,16 +36,24 @@ const empty = (): State => ({
 export const store = reactive<State>(empty())
 export const status = reactive({ loaded: false, loading: false, error: '' })
 
+// The state belongs to the signed-in session. `newSession` (called when the session changes) makes every
+// load that started before it a dead one: its answer, or its error, never reaches the next account's store.
+let generation = 0
+export function newSession() { generation++ }
+
 export async function loadState() {
+  const g = generation
   status.loading = true
   try {
-    Object.assign(store, await api<State>('GET', '/api/state'))
+    const next = await api<State>('GET', '/api/state')
+    if (g !== generation) return
+    Object.assign(store, next)
     status.loaded = true
     status.error = ''
   } catch (e) {
-    status.error = message(e)
+    if (g === generation) status.error = message(e)
   } finally {
-    status.loading = false
+    if (g === generation) status.loading = false
   }
 }
 

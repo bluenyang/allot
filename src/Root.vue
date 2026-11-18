@@ -4,7 +4,8 @@ import App from './App.vue'
 import Login from './pages/Login.vue'
 import { authClient, lastRetryAfter } from './lib/auth-client'
 import { ApiError, api, onUnauthorized } from './lib/api'
-import { loadState, status, store } from './lib/store'
+import { loadState, newSession, status, store } from './lib/store'
+import { hideToast } from './lib/toast'
 import { resetProposals } from './lib/proposals'
 import { applyTheme } from './lib/theme'
 import { applyPreference, languageBeforeSignIn, setLang, t } from './i18n'
@@ -52,7 +53,9 @@ async function handOver() {
 watch(
   () => session.value.data?.session.id,
   (id) => {
+    newSession() // loads still on their way belong to the session that ended
     resetProposals() // a proposal screen belongs to one account's session
+    hideToast() // and so does a message about what that account just did
     if (id && appReturn) handOver()
     else if (id) loadState()
     else status.loaded = false
