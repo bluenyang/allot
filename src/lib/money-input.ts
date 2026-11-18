@@ -5,17 +5,25 @@
 
 export type Parsed = { kind: 'empty' } | { kind: 'ok'; value: number } | { kind: 'bad' }
 
-const NUM = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i
+// Why separators are strict (spec 010 S-10, review A-2): a type="number" field holds "" for text that is not
+// a number, and a browser's number input does not read "1,00" or "12,50" as 100 or 1250. So a comma is
+// accepted only as thousands grouping of the whole part ("1,000", "1,234,567", also with spaces); any other
+// comma, and underscores, make the text "not a number" = the field's empty value (+ aria-invalid), exactly what
+// the number field reports today. Nothing the number field accepted is refused: it accepted no commas at all.
+const NUM = /^([+-]?)(\d{1,3}(?:[, ]\d{3})+|\d+)?(\.\d*)?(e[+-]?\d+)?$/i
 
-/** Thousands separators and spaces are dropped; the minus sign U+2212 counts as "-". */
-const strip = (s: string) => s.replace(/[,\s_]/g, '').replace(/−/g, '-')
+/** The minus sign U+2212 counts as "-". */
+const norm = (s: string) => s.trim().replace(/\u2212/g, '-')
+const SEP = /[, ]/g
 
 /** What the field means: nothing typed, a number, or text that is not a number (a number input holds "" for that). */
 export function parseMoney(text: string): Parsed {
-  const s = strip(text)
+  const s = norm(text)
   if (s === '') return { kind: 'empty' }
-  if (!NUM.test(s)) return { kind: 'bad' }
-  const n = Number(s)
+  const m = NUM.exec(s)
+  if (!m || (m[2] === undefined && (m[3] === undefined || m[3] === '.'))) return { kind: 'bad' }
+  if (m[4] !== undefined && m[2] === undefined && m[3] === undefined) return { kind: 'bad' }
+  const n = Number(`${m[1]}${(m[2] ?? '').replace(SEP, '')}${m[3] ?? ''}${m[4] ?? ''}`)
   if (!Number.isFinite(n)) return { kind: 'bad' }
   return { kind: 'ok', value: n === 0 ? 0 : n }
 }
@@ -24,7 +32,7 @@ const group = (int: string) => int.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3}
 
 /** The text shown while typing: the whole part grouped by thousands, the rest as typed ("1234.50" → "1,234.50", "-" stays). */
 export function groupMoney(text: string): string {
-  const s = strip(text)
+  const s = norm(text).replace(SEP, '')
   const m = /^([+-]?)(\d*)(\.\d*)?$/.exec(s)
   if (!m) return text
   return `${m[1]}${group(m[2]!)}${m[3] ?? ''}`
@@ -46,4 +54,33 @@ export function moneyValue(p: Parsed, empty: '' | null): number | '' | null {
 export function sameMoney(text: string, model: number | '' | null | undefined): boolean {
   const p = parseMoney(text)
   return p.kind === 'ok' ? model === p.value : model === '' || model === null || model === undefined
+}
+
+const nonSep = (s: string) => s.replace(SEP, '').length
+const canonical = (t: string) => t === '' || groupMoney(t) === t
+
+/**
+ * The field's text after an edit. `prev` is the text before, `raw` what the input holds now, `caret` its caret,
+ * `inputType` the InputEvent type. Typing or deleting in a grouped number regroups it ("1,234" + 5 → "12,345");
+ * a paste or any text with a comma not in thousands position is kept as it is and reads as "not a number".
+ * Deleting a generated separator (Delete before "1|,234", Backspace after it) removes the neighbouring digit instead.
+ */
+export function editMoney(prev: string, raw: string, caret: number, inputType = ''): { text: string; caret: number } {
+  let i = 0
+  while (i < prev.length && i < raw.length && prev[i] === raw[i]) i++
+  let j = 0
+  while (j < prev.length - i && j < raw.length - i && prev[prev.length - 1 - j] === raw[raw.length - 1 - j]) j++
+  const removed = prev.slice(i, prev.length - j)
+  const added = raw.slice(i, raw.length - j)
+  let base = raw
+  let at = caret
+  if (/^delete/.test(inputType) && added === '' && removed.length === 1 && /[, ]/.test(removed) && canonical(prev)) {
+    const k = inputType.endsWith('Forward') ? i : i - 1
+    if (k >= 0 && k < raw.length) { base = raw.slice(0, k) + raw.slice(k + 1); at = k }
+  }
+  const text = canonical(prev) && !/[, ]/.test(added) ? groupMoney(base) : parseMoney(base).kind === 'ok' ? groupMoney(base) : base
+  const want = nonSep(base.slice(0, at))
+  let n = 0, pos = 0
+  while (pos < text.length && n < want) { if (!/[, ]/.test(text[pos]!)) n++; pos++ }
+  return { text, caret: at >= base.length ? text.length : pos }
 }

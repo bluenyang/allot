@@ -32,7 +32,9 @@ const last = computed(() => !stepped.value || cur.value === props.steps!.length 
 
 const focusFirst = async () => {
   await nextTick()
-  dlg.value?.querySelector<HTMLElement>('.body input, .body select, .body textarea')?.focus()
+  // the first control that is shown (a step's other sections may be display:none)
+  const all = dlg.value?.querySelectorAll<HTMLElement>('.body input, .body select, .body textarea') ?? []
+  ;[...all].find((el) => !el.hasAttribute('disabled') && el.getClientRects().length > 0)?.focus()
 }
 onMounted(() => {
   dlg.value?.showModal()

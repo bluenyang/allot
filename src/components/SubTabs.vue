@@ -20,10 +20,20 @@ function measure() {
 }
 const go = (dir: -1 | 1) => list.value?.scrollBy({ left: dir * Math.max(120, list.value.clientWidth * 0.6), behavior: 'smooth' })
 
+// The list box and every tab button are watched: a label or count that changes width moves the overflow.
+function observe() {
+  if (typeof ResizeObserver === 'undefined' || !list.value) return
+  ro ??= new ResizeObserver(measure)
+  ro.disconnect()
+  ro.observe(list.value)
+  list.value.querySelectorAll('[role="tab"]').forEach((b) => ro!.observe(b))
+}
 onMounted(() => {
   measure()
-  if (typeof ResizeObserver !== 'undefined' && list.value) { ro = new ResizeObserver(measure); ro.observe(list.value) }
+  observe()
+  void document.fonts?.ready.then(measure) // web fonts change the widths after first paint
 })
+watch(() => props.tabs.map((x) => `${x.id}\u0000${x.label}\u0000${x.count ?? ''}`).join('\u0001'), async () => { await nextTick(); observe(); measure() })
 onBeforeUnmount(() => ro?.disconnect())
 // The selected tab stays in view.
 watch(() => props.modelValue, async () => { await nextTick(); list.value?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) })

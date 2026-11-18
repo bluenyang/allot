@@ -5,8 +5,8 @@
 // number, or the field's own "empty" (`''` like v-model.number, or `null` with `empty="null"`);
 // text that is not a number is "empty" too, as a number input reports it. Attributes (id, class on
 // the input via `inputClass`, aria-*, placeholder, disabled, @change) go to the <input>.
-import { computed, nextTick, ref, watch } from 'vue'
-import { groupMoney, moneyText, moneyValue, parseMoney, sameMoney } from '../lib/money-input'
+import { computed, ref, watch } from 'vue'
+import { editMoney, moneyText, moneyValue, parseMoney, sameMoney } from '../lib/money-input'
 
 defineOptions({ inheritAttrs: false })
 const props = withDefaults(defineProps<{
@@ -29,23 +29,15 @@ const bad = computed(() => parseMoney(text.value).kind === 'bad')
 
 watch(() => props.modelValue, (m) => { if (!sameMoney(text.value, m)) text.value = moneyText(m) })
 
-// The caret stays after the same characters when separators are added or removed.
-const sig = (s: string) => s.replace(/[^\d.eE+\-−]/g, '').length
-
 function onInput(e: Event) {
   const input = e.target as HTMLInputElement
-  const raw = input.value
-  const caret = input.selectionStart ?? raw.length
-  const before = sig(raw.slice(0, caret))
-  const shown = groupMoney(raw)
-  text.value = shown
-  if (input.value !== shown) {
-    input.value = shown
-    let n = 0, pos = 0
-    while (pos < shown.length && n < before) { if (sig(shown[pos]!) === 1) n++; pos++ }
-    void nextTick(() => input.setSelectionRange(pos, pos))
+  const r = editMoney(text.value, input.value, input.selectionStart ?? input.value.length, (e as InputEvent).inputType)
+  text.value = r.text
+  if (input.value !== r.text) {
+    input.value = r.text
+    input.setSelectionRange(r.caret, r.caret)
   }
-  emit('update:modelValue', moneyValue(parseMoney(shown), props.empty === 'null' ? null : ''))
+  emit('update:modelValue', moneyValue(parseMoney(r.text), props.empty === 'null' ? null : ''))
 }
 function onBlur() {
   // A finished number reads in its plain form ("5." → "5", "007" → "7"); other text is left to be seen.

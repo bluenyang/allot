@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Bottom sheet on a native <dialog> (spec 010 S-5; the phone "더보기"). Opens with v-model; closes on
 // Esc, the backdrop, the close button or a drag down on the grabber. Focus goes back to the opener.
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '../i18n'
 
 const props = defineProps<{ modelValue: boolean; title: string }>()
@@ -13,7 +13,7 @@ let startY: number | null = null
 
 const close = () => emit('update:modelValue', false)
 
-watch(() => props.modelValue, async (open) => {
+async function sync(open: boolean) {
   const d = dlg.value
   if (!d) return
   if (open && !d.open) {
@@ -26,7 +26,9 @@ watch(() => props.modelValue, async (open) => {
     d.close()
     if (opener?.isConnected) opener.focus()
   }
-}, { flush: 'post' })
+}
+watch(() => props.modelValue, sync, { flush: 'post' })
+onMounted(() => { if (props.modelValue) void sync(true) })
 onBeforeUnmount(() => { if (dlg.value?.open) dlg.value.close() })
 
 const backdrop = (e: MouseEvent) => { if (e.target === dlg.value) close() }
