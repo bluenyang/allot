@@ -76,7 +76,7 @@ summary_for_user: |
 - [x] W-1 토큰·다크 팔레트·테마 계산·대비 검사 + `DESIGN.md` + `docs/design/`. (S-2) — 커밋 229553a
 - [x] W-2 공용 컴포넌트(S-5 목록, `Soon` 포함)와 `EditSheet`·`useEditor` 새 모양. 기존 화면은 깨지지 않게(모양만 바뀜). (S-3, S-5) — 커밋 65310e0
 - [x] W-3 셸: 사이드바·헤더·푸터·가운데 정렬·휴대폰 막대·더보기 시트·개발 메뉴 제거·로그인. (S-4) — 커밋 2a05ec1
-- [ ] W-4 현황 + 대기 중인 변경, `calc.ts`의 `leftoverAfterTransfer`·`paysAfter31`·`unallocated` + 단위 테스트. (S-6)
+- [x] W-4 현황 + 대기 중인 변경, `calc.ts`의 `leftoverAfterTransfer`·`paysAfter31`·`unallocated` + 단위 테스트. (S-6)
 - [ ] W-5 구독: 목록, 추가·수정 2단계, 삭제·해지 모달, 플랜 전환 2단계. (S-7, S-10)
 - [ ] W-6 월급 분배: 새 모양, 자동 N단계(`phaseNumbers`), 올림 단위 선택, 나머지 규칙 풀기(서버 + API 검사), 남는 돈, 나머지 나누기·생활비 세 칸·통장 칸 유지. (S-8, S-10)
 - [ ] W-7 일정 + 변경 내역. (S-9)
