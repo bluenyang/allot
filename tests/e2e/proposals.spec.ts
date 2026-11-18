@@ -149,6 +149,49 @@ test('pending: the toast Undo works before the proposal list has refreshed (the 
   await page.unroute('**/api/proposals?status=*')
 })
 
+test('pending: a decided proposal of one account is not shown to the next account signed in on the same tab (A-10)', async ({ browser, request, baseURL }) => {
+  const key = await makeKey(request, 'ui')
+  const made = await propose(baseURL!, key)
+  const email = `e2e-prop-${Date.now().toString(36)}@example.com`
+  const pass = 'e2e-prop-pass-1'
+  const created = await request.fetch('/api/auth/admin/create-user', { method: 'POST', data: { email, name: 'E2E prop', password: pass }, headers: { origin: baseURL! } })
+  expect(created.status()).toBe(200)
+  const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, locale: 'ko-KR' })
+  try {
+    const page = await ctx.newPage()
+    const login = async (e: string, p: string) => {
+      await page.goto('/')
+      await page.getByLabel('이메일').fill(e)
+      await page.getByLabel('비밀번호').fill(p)
+      await page.getByRole('button', { name: '로그인', exact: true }).click()
+      await page.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
+    }
+    await login(process.env.ADMIN_EMAIL!, process.env.ADMIN_PASSWORD!)
+    await page.goto('/#pending')
+    const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
+    await card.getByRole('button', { name: '거절', exact: true }).click()
+    await expect(card.locator('.pill', { hasText: '거절됨' })).toBeVisible()
+    // sign out and sign in as another account, with no page reload in between
+    await page.getByRole('button', { name: '로그아웃' }).first().click()
+    await page.getByLabel('이메일').waitFor()
+    await page.getByLabel('이메일').fill(email)
+    await page.getByLabel('비밀번호').fill(pass)
+    await page.getByRole('button', { name: '로그인', exact: true }).click()
+    // still on the 대기 중인 변경 route: the next account sees that page, not the previous one's cards
+    await expect(page.getByRole('heading', { name: '대기 중인 변경', exact: true })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('확인할 제안이 없어요')).toBeVisible()
+    await expect(page.locator('[data-proposal]')).toHaveCount(0)
+    await page.getByRole('button', { name: '처리함', exact: true }).click()
+    await expect(page.locator('[data-proposal]')).toHaveCount(0)
+    await expect(page.getByText(`${MARK} note`)).toHaveCount(0)
+  } finally {
+    await ctx.close()
+    const users = (await (await request.fetch('/api/auth/admin/list-users?limit=500', { headers: { origin: baseURL! } })).json()).users as { id: string; email: string }[]
+    const u = users.find((x) => x.email === email)
+    if (u) await request.fetch(`/api/admin/users/${u.id}`, { method: 'DELETE', data: { confirmEmail: email }, headers: { origin: baseURL! } })
+  }
+})
+
 test('pending: rejecting changes nothing and moves it to the handled list', async ({ page, request, baseURL }) => {
   const key = await makeKey(request, 'chat')
   const made = await propose(baseURL!, key)

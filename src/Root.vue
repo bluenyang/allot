@@ -5,6 +5,7 @@ import Login from './pages/Login.vue'
 import { authClient, lastRetryAfter } from './lib/auth-client'
 import { ApiError, api, onUnauthorized } from './lib/api'
 import { loadState, status, store } from './lib/store'
+import { resetProposals } from './lib/proposals'
 import { applyTheme } from './lib/theme'
 import { applyPreference, languageBeforeSignIn, setLang, t } from './i18n'
 
@@ -51,6 +52,7 @@ async function handOver() {
 watch(
   () => session.value.data?.session.id,
   (id) => {
+    resetProposals() // a proposal screen belongs to one account's session
     if (id && appReturn) handOver()
     else if (id) loadState()
     else status.loaded = false

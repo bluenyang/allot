@@ -39,6 +39,11 @@ export interface Proposal {
 
 export const HANDLED_PAGE = 20
 
+// What the screens hold here belongs to the signed-in account. `resetProposals` (called when the session
+// changes: sign-out, another account) empties it, and `epoch` lets an answer that arrives after that be
+// dropped instead of filling the next account's screen.
+let epoch = 0
+
 /** What the screens share. `decided` holds the proposals the user decided on this screen session: their cards stay, with an undo for an applied one. */
 export const proposals = reactive({
   waiting: [] as Proposal[],
@@ -52,27 +57,45 @@ export const proposals = reactive({
   kept: {} as Record<string, Proposal>,
 })
 
+export function resetProposals() {
+  epoch++
+  proposals.waiting = []
+  proposals.handled = []
+  proposals.moreHandled = false
+  proposals.loaded = false
+  proposals.busy = ''
+  proposals.error = ''
+  proposals.decided = {}
+  proposals.kept = {}
+}
+
 /** Every waiting proposal (at most 20 can wait), and so the number for the badge: this list is never cut short. */
 export async function loadWaiting() {
-  proposals.waiting = await api<Proposal[]>('GET', '/api/proposals?status=pending')
-  store.pendingProposals = proposals.waiting.length
+  const e = epoch
+  const list = await api<Proposal[]>('GET', '/api/proposals?status=pending')
+  if (e !== epoch) return
+  proposals.waiting = list
+  store.pendingProposals = list.length
 }
 
 /** The handled ones, a page at a time, newest first. */
 export async function loadHandled(more = false) {
   const last = more ? proposals.handled.at(-1) : undefined
   const after = last ? `&before=${encodeURIComponent(last.createdAt)}&beforeId=${encodeURIComponent(last.id)}` : ''
+  const e = epoch
   const page = await api<Proposal[]>('GET', `/api/proposals?status=handled&limit=${HANDLED_PAGE}${after}`)
+  if (e !== epoch) return
   proposals.handled = more ? [...proposals.handled, ...page] : page
   proposals.moreHandled = page.length === HANDLED_PAGE
 }
 
 export async function loadProposals() {
+  const at = epoch
   try {
     await Promise.all([loadWaiting(), loadHandled()])
-    proposals.loaded = true
+    if (at === epoch) proposals.loaded = true
   } catch (e) {
-    proposals.error = e instanceof ApiError ? e.message : t('pending.loadFailed')
+    if (at === epoch) proposals.error = e instanceof ApiError ? e.message : t('pending.loadFailed')
   }
 }
 
@@ -84,12 +107,14 @@ export async function moreProposals() {
 export const proposalTitle = (p: Proposal) => p.note?.trim() || summary(p)
 
 export async function decide(p: Proposal, what: 'apply' | 'reject') {
+  const at = epoch
   proposals.busy = p.id
   proposals.error = ''
   const name = proposalTitle(p)
   try {
     // The apply answer carries the change set the proposal made; undo needs it before any list is reloaded.
     const done = await api<{ changeSet: string | null } | undefined>('POST', `/api/proposals/${p.id}/${what}`)
+    if (at !== epoch) return // another account is on this screen now
     const changeSetId = what === 'apply' ? done?.changeSet ?? null : null
     proposals.decided[p.id] = what === 'apply' ? 'applied' : 'rejected'
     proposals.kept[p.id] = { ...p, status: what === 'apply' ? 'applied' : 'rejected', changeSetId, decidedAt: new Date().toISOString(), decidedBy: 'user' }
@@ -98,12 +123,12 @@ export async function decide(p: Proposal, what: 'apply' | 'reject') {
       showToast(t('pending.appliedToast', { title: name }), changeSetId ? { actionLabel: t('pending.undo'), onAction: () => { void undo(p.id) } } : {})
     } else showToast(t('pending.rejectedToast', { title: name }))
   } catch (e) {
-    proposals.error = e instanceof ApiError ? e.message : t('pending.failed')
+    if (at === epoch) proposals.error = e instanceof ApiError ? e.message : t('pending.failed')
   } finally {
-    proposals.busy = ''
-    await loadProposals()
+    if (at === epoch) proposals.busy = ''
+    if (at === epoch) await loadProposals()
     // The server's own record replaces ours once the list has it (the decision time, the key's state).
-    for (const id of Object.keys(proposals.kept)) {
+    if (at === epoch) for (const id of Object.keys(proposals.kept)) {
       const own = proposals.handled.find((x) => x.id === id)
       if (own) proposals.kept[id] = { ...own, changeSetId: own.changeSetId ?? proposals.kept[id]!.changeSetId }
     }
@@ -114,17 +139,19 @@ export async function decide(p: Proposal, what: 'apply' | 'reject') {
 export async function undo(id: string) {
   const p = proposals.kept[id] ?? [...proposals.waiting, ...proposals.handled].find((x) => x.id === id)
   if (!p?.changeSetId) return
+  const at = epoch
   proposals.busy = id
   proposals.error = ''
   try {
     await api('POST', `/api/changes/${p.changeSetId}/revert`)
+    if (at !== epoch) return
     proposals.decided[id] = 'reverted'
     await loadState()
     showToast(t('pending.revertedToast', { title: proposalTitle(p) }))
   } catch (e) {
-    proposals.error = e instanceof ApiError ? e.message : t('history.revertFailed')
+    if (at === epoch) proposals.error = e instanceof ApiError ? e.message : t('history.revertFailed')
   } finally {
-    proposals.busy = ''
+    if (at === epoch) proposals.busy = ''
   }
 }
 
