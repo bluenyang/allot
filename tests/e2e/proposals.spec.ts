@@ -68,8 +68,10 @@ test('pending: the list, the badge and the preview; confirming applies it and th
   await expect(page.getByRole('heading', { name: '대기 중인 변경', exact: true })).toBeVisible()
   const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
   await expect(card).toBeVisible()
-  await expect(card).toContainText(`${KEY_NAME} 키의 제안`)
-  await expect(card).toContainText(`${MARK} note`)
+  await expect(card).toContainText(`${KEY_NAME} 키`)
+  // the title is the AI's own note; the status pill says it waits
+  await expect(card.locator('.tt b')).toHaveText(`${MARK} note`)
+  await expect(card.locator('.pill', { hasText: '확인 대기' })).toBeVisible()
   // the preview: rows before and after, and the month's transfer and distribution before and after
   await expect(card).toContainText(`구독 추가 · ${SUB}`)
   await expect(card).toContainText(`체크리스트 추가 · ${CHECK}`)
@@ -77,7 +79,11 @@ test('pending: the list, the badge and the preview; confirming applies it and th
   // the fields have names, not property names
   await expect(card).toContainText('다음 결제일')
   await expect(card).not.toContainText('nextDate')
-  await expect(card.getByText('이체·분배').first()).toBeVisible()
+  await expect(card.getByText('그래서 달라지는 이체·분배')).toBeVisible()
+  // values are worded: the cycle, the VAT, the receipt state
+  await expect(card).toContainText('월간')
+  await expect(card).toContainText('0%')
+  await expect(card).toContainText('미확인')
   await expect(card.getByText('→').first()).toBeVisible()
   // the sidebar badge counts the waiting proposals
   await expect(page.getByRole('navigation', { name: '메뉴' }).getByRole('link', { name: /대기 중인 변경/ }).locator('.badge')).toHaveText(/^[1-9]/)
@@ -85,21 +91,27 @@ test('pending: the list, the badge and the preview; confirming applies it and th
   expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(false)
 
   await card.getByRole('button', { name: '확인하고 적용' }).click()
-  await expect(page.getByRole('status').filter({ hasText: '적용했어요' })).toBeVisible()
-  await expect(card).toHaveCount(0)
+  await expect(page.getByRole('status').filter({ hasText: '제안을 적용했어요' })).toBeVisible()
+  // the card stays, as applied, with its undo (spec 010 S-6)
+  await expect(card).toBeVisible()
+  await expect(card.locator('.pill', { hasText: '적용됨' })).toBeVisible()
   expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(true)
-  await expect(page.getByRole('list', { name: '처리한 제안' }).getByRole('listitem').first()).toContainText('적용됨')
+  // undo = revert of the change set: the data goes back and the pill says 되돌림
+  await card.getByRole('button', { name: '되돌리기' }).click()
+  await expect(card.locator('.pill', { hasText: '되돌림' })).toBeVisible()
+  await expect(card.getByRole('button', { name: '되돌리기' })).toHaveCount(0)
+  expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(false)
+  // after a reload it is in the handled filter, with the way to the history
+  await page.reload()
+  await page.getByRole('button', { name: '처리함', exact: true }).click()
+  await expect(page.locator(`[data-proposal="${made.proposalId as string}"]`)).toContainText('변경 내역에서')
 
   // the history names the key; reverting it from there works on an AI change
   await page.goto('/#history')
   const list = page.getByRole('list', { name: '변경 목록' })
-  const first = list.getByRole('listitem').first()
+  const first = list.getByRole('listitem').filter({ hasText: `AI · ${KEY_NAME}` }).first()
   await expect(first).toContainText(`AI · ${KEY_NAME}`)
   await expect(first).toContainText(`구독 추가 · ${SUB}`)
-  page.once('dialog', (d) => d.accept())
-  await first.getByRole('button', { name: '되돌리기' }).click()
-  await expect(page.getByRole('status')).toHaveText('되돌렸어요.')
-  expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(false)
 })
 
 test('pending: rejecting changes nothing and moves it to the handled list', async ({ page, request, baseURL }) => {
@@ -109,9 +121,10 @@ test('pending: rejecting changes nothing and moves it to the handled list', asyn
   const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
   await expect(card).toContainText('대화에서도 확인할 수 있어요')
   await card.getByRole('button', { name: '거절', exact: true }).click()
-  await expect(page.getByRole('status').filter({ hasText: '거절했어요' })).toBeVisible()
-  await expect(card).toHaveCount(0)
-  await expect(page.getByRole('list', { name: '처리한 제안' }).getByRole('listitem').first()).toContainText('거절함')
+  await expect(page.getByRole('status').filter({ hasText: '제안을 거절했어요' })).toBeVisible()
+  // the card stays as rejected; a rejected proposal has no undo
+  await expect(card.locator('.pill', { hasText: '거절됨' })).toBeVisible()
+  await expect(card.getByRole('button', { name: '되돌리기' })).toHaveCount(0)
   const s = await state(request)
   expect(s.subscriptions.some((x) => x.name === SUB) || s.checks.some((x) => x.text === CHECK)).toBe(false)
   // it cannot be applied any more
@@ -128,7 +141,7 @@ test('pending: a proposal whose key was revoked cannot be confirmed, only reject
   await expect(card).toContainText('더 쓸 수 없어서')
   await expect(card.getByRole('button', { name: '확인하고 적용' })).toBeDisabled()
   await card.getByRole('button', { name: '거절', exact: true }).click()
-  await expect(card).toHaveCount(0)
+  await expect(card.locator('.pill', { hasText: '거절됨' })).toBeVisible()
 })
 
 async function pickLanguage(page: Page, value: 'browser' | 'en') {
@@ -159,14 +172,15 @@ test('pending in English: make a write key, the same flow, the history', async (
   await page.goto('/#pending')
   await expect(page.getByRole('heading', { name: 'Pending changes', exact: true })).toBeVisible()
   const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
-  await expect(card).toContainText(`Proposed by key ${KEY_NAME}`)
+  await expect(card).toContainText(`Key ${KEY_NAME}`)
   await expect(card).toContainText(`${SUB}`)
   await expect(card).toContainText('Subscription transfer')
   await expect(card).toContainText('Next payment')
   await expect(card).not.toContainText('nextDate')
   await card.getByRole('button', { name: 'Confirm and apply' }).click()
-  await expect(page.getByRole('status').filter({ hasText: 'Applied.' })).toBeVisible()
-  await expect(page.getByRole('list', { name: 'Handled proposals' }).getByRole('listitem').first()).toContainText('Applied')
+  await expect(page.getByRole('status').filter({ hasText: /Applied “/ })).toBeVisible()
+  await expect(card.locator('.pill', { hasText: 'Applied' })).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Undo' })).toBeVisible()
   await page.goto('/#history')
   await expect(page.getByRole('list', { name: 'Changes' }).getByRole('listitem').first()).toContainText(`AI · ${KEY_NAME}`)
 })

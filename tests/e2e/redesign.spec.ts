@@ -219,11 +219,13 @@ test.describe('(V-9 a) phone width', () => {
     })
     try {
       await page.goto('/#home')
-      const labels = page.locator('.bars .bv-short')
+      // the trend card is not drawn on a phone (spec 010 HM-21): look at it on a narrow desktop width
+      await page.setViewportSize({ width: 800, height: 900 })
+      const labels = page.locator('.bars .bv')
       await expect(labels.first()).toBeVisible()
-      await expect(page.locator('.bars .bv-full').first()).toBeHidden()
       const boxes = (await labels.evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => [r.left, r.right])))
       for (let i = 1; i < boxes.length; i++) expect(boxes[i]![0], `label ${i} starts after label ${i - 1} ends`).toBeGreaterThanOrEqual(boxes[i - 1]![1])
+      await page.setViewportSize({ width: 390, height: 844 })
       await page.goto('/#subs')
       const row = page.getByRole('row', { name: new RegExp(MARK) })
       const [name, monthly] = await Promise.all([row.locator('td').nth(0).boundingBox(), row.locator('td').nth(4).boundingBox()])
@@ -311,10 +313,14 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
   }
   const notice = page.getByRole('status').filter({ hasText: '준비 중' })
   await page.goto('/#home')
-  for (const [name, what] of [['내보내기', '내보내기'], ['기록 추가', '기록 추가']] as const) {
-    await page.getByRole('button', { name, exact: true }).click()
-    await expect(notice).toContainText(what)
-  }
+  // 내보내기 is 준비 중 (inert, spec 010 S-3); 기록 추가 opens the record modal
+  const exp = page.getByRole('button', { name: '내보내기 (준비 중)' })
+  await expect(exp).toHaveAttribute('aria-disabled', 'true')
+  await exp.click({ force: true })
+  await expect(notice).toHaveCount(0)
+  await page.getByRole('button', { name: '기록 추가', exact: true }).click()
+  await expect(page.getByRole('form', { name: '기록 추가' })).toBeVisible()
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: '마지막 동기화 —' }).click()
   await expect(notice).toContainText('마지막 동기화')
   // the header's search box and bell are `Soon`: inert, with no notice of their own
@@ -374,7 +380,7 @@ test.describe('(V-8, V-9) shell', () => {
   test('(b) the header has no theme button; the content column is in the middle at 1600', async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 })
     await page.goto('/#home')
-    await page.locator('.strip').waitFor()
+    await page.locator('.kpis').waitFor()
     await expect(page.locator('header.topbar').getByRole('button', { name: /모드/ })).toHaveCount(0)
     const m = await page.evaluate(() => {
       const r = (e: Element) => e.getBoundingClientRect()
@@ -446,7 +452,7 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
         const target = cell.getAttribute('role') === 'columnheader' ? cell : num
         if (target) out.push([kind, getComputedStyle(target).color, !!num && num.className.includes('taq')])
       }
-      for (const box of document.querySelectorAll(`.dbox.${kind} b`)) out.push([kind, getComputedStyle(box).color, false])
+      for (const box of document.querySelectorAll(`.dbox b.${kind}`)) out.push([kind, getComputedStyle(box).color, false])
     }
     return out
   }, root)
@@ -489,11 +495,11 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
   }
 })
 
-test('(V-16) 이번 달 shows every card as the design does; 예정 and 확인할 것 show only theirs', async ({ page }) => {
+test('(V-16) 이번 달 shows the split, the trend and the payments; 예약된 플랜 전환, 다가오는 일정 and 확인할 것 are on their own tabs (spec 010 D-1)', async ({ page }) => {
   await page.goto('/#home')
   const h2 = (name: string | RegExp) => page.getByRole('heading', { level: 2, name, exact: typeof name === 'string' })
-  const all = [/자동이체 분배$/, '고정 지출 추이', '결제 예정', '예약된 플랜 전환', '다가오는 일정', '확인할 것']
-  for (const n of all) await expect(h2(n)).toBeVisible()
+  for (const n of [/자동이체 분배$/, '고정 지출 추이', '결제 예정']) await expect(h2(n)).toBeVisible()
+  for (const n of ['예약된 플랜 전환', '다가오는 일정', '확인할 것']) await expect(h2(n)).toHaveCount(0)
   await page.getByRole('tab', { name: /예정/ }).click()
   await expect(h2('예약된 플랜 전환')).toBeVisible()
   await expect(h2('다가오는 일정')).toBeVisible()
@@ -501,6 +507,9 @@ test('(V-16) 이번 달 shows every card as the design does; 예정 and 확인�
   await page.getByRole('tab', { name: /확인할 것/ }).click()
   await expect(h2('확인할 것')).toBeVisible()
   for (const n of ['결제 예정', '예약된 플랜 전환']) await expect(h2(n)).toHaveCount(0)
+  await page.getByRole('tab', { name: /AI 제안/ }).click()
+  await expect(page.getByText('AI가 올린 변경 제안이에요')).toBeVisible()
+  for (const n of ['결제 예정', '예약된 플랜 전환', '확인할 것']) await expect(h2(n)).toHaveCount(0)
 })
 
 test.describe('(V-17) sidebar and content on a wide screen', () => {
@@ -614,10 +623,10 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
     for (const width of [1920, 1440]) {
       await page.setViewportSize({ width, height: 1000 })
       await page.goto('/#home')
-      await page.locator('.strip').waitFor()
+      await page.locator('.kpis').waitFor()
       const m = await page.evaluate(() => {
         const r = (e: Element) => e.getBoundingClientRect()
-        const col = r(document.querySelector('.col')!), strip = r(document.querySelector('.strip')!)
+        const col = r(document.querySelector('.col')!), strip = r(document.querySelector('.kpis')!)
         const nav = r(document.querySelector('header.topbar .monthnav')!), last = r([...document.querySelectorAll('header.topbar .tb')].at(-1)!)
         return { left: strip.left - col.left, right: col.right - strip.right, headL: nav.left - strip.left, headR: last.right - strip.right }
       })

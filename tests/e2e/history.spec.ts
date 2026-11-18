@@ -6,8 +6,8 @@ test('history: a save shows up, revert undoes it, the revert is listed', async (
   const text = `${MARK}-hist`
   await go(page, 'home', '확인할 것')
   await page.getByRole('button', { name: '확인할 것 추가' }).click()
-  await sheet(page, '확인할 것 추가').getByLabel('내용').fill(text)
-  await saveSheet(page, '확인할 것 추가')
+  await sheet(page, '기록 추가').getByLabel('내용').fill(text)
+  await saveSheet(page, '기록 추가')
   await expect(page.getByRole('checkbox', { name: text })).toBeVisible()
 
   await page.goto('/#history')
