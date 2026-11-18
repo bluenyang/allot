@@ -4,7 +4,7 @@
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
   addYm, changesIn, chargeKrw, distributionAt, monthDates, monthlyKrw, nextPayment, parseDate, planAt, splitRemainder,
-  transferAt, upcomingPayments, ymd, ymOf, type MonthDate,
+  transferAt, unallocated, upcomingPayments, ymd, ymOf, type MonthDate,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 import type {
@@ -92,6 +92,8 @@ export function overview(d: Data, ym: string) {
       phase: dist.phase ? { id: dist.phase.id, label: dist.phase.label, name: dist.phase.name, from: dist.phase.from, to: dist.phase.to } : null,
       rows: dist.rows.map((r) => ({ targetId: r.key, name: r.name, kind: r.kind, amountKrw: krw(r.amount) })),
       remainderKrw: krw(dist.remainder),
+      /** What stays in the pay account when no target takes the remainder (0 when one does); negative = short. */
+      unallocatedKrw: krw(unallocated(dist)),
       livingKrw: dist.living,
       subscriptionsKrw: dist.subscriptions,
     },

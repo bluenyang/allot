@@ -136,7 +136,7 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
 
   server.registerTool('get_overview', {
     title: 'Overview of a month',
-    description: 'The month at a glance (default: this month): pay, transfer and card-billing dates (shifted off weekends and holidays when the user set that), the subscription transfer calculation, how the salary is distributed over the allocation targets, the remainder split, the charges and scheduled plan changes of that month, and the settings (net pay, pay days, exchange rate).',
+    description: 'The month at a glance (default: this month): pay, transfer and card-billing dates (shifted off weekends and holidays when the user set that), the subscription transfer calculation, how the salary is distributed over the allocation targets (without a remainder target, what is left stays in the pay account as unallocatedKrw), the remainder split, the charges and scheduled plan changes of that month, and the settings (net pay, pay days, exchange rate).',
     inputSchema: z.object({ month: month.optional().describe('YYYY-MM; default this month') }),
     annotations: READ_ONLY,
   }, guarded('get_overview', async ({ month: ym }) => json(overview(await data(), ym ?? ymOf(today())))))

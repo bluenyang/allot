@@ -104,11 +104,7 @@ if (phase === 'create') {
     const dup = await api('POST', '/api/targets', { name: `${MARK}-dup`, kind: k })
     ok(dup.status === 400, `second '${k}' target → ${dup.status} (want 400) ${dup.json?.error ?? ''}`)
   }
-  const delRem = await api('DELETE', `/api/targets/${rem?.id}`)
-  ok(delRem.status === 400, `delete the remainder target → ${delRem.status} (want 400)`)
-  const { id: _rid, ...remBody } = rem ?? {}
-  const kindChange = await api('PUT', `/api/targets/${rem?.id}`, { ...remBody, kind: 'fixed' })
-  ok(kindChange.status === 400, `change the remainder target's kind → ${kindChange.status} (want 400)`)
+  // The remainder target may be deleted and may change kind since spec 010 W-6: tests/api/remainder.mjs checks that.
   const amtOnLiving = await api('PUT', `/api/phases/${ids.phase}`, { label: 'V', name: `${MARK}-2`, from: '2090-01', to: '2090-12', amounts: { [living?.id]: 1 } })
   ok(amtOnLiving.status === 400, `phase amount on a non-fixed target → ${amtOnLiving.status} (want 400)`)
 
