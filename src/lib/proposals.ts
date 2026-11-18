@@ -1,0 +1,197 @@
+// AI proposals (spec 009 S-9, redrawn by spec 010 S-6): the types, the loading and the deciding that
+// 현황 (the "AI 제안" tab) and 대기 중인 변경 share, and how a changed row reads. Each proposal shows what
+// it changes — the rows before and after, and this month's and next month's transfer and distribution
+// before and after, which the server computes by really applying it and rolling back.
+import { reactive } from 'vue'
+import { lang, t, te, type MessageKey } from '../i18n'
+import { ApiError, api } from './api'
+import { fmtDate, fmtMoney } from './display'
+import { catLabel, cycleLabel, pathLabel, statusLabel } from './labels'
+import { loadState, store, subName } from './store'
+import { showToast } from './toast'
+import { usd } from './calc'
+
+export interface RowChange { table: string; op: 'insert' | 'update' | 'delete'; key: Record<string, string>; before: Record<string, unknown> | null; after: Record<string, unknown> | null }
+export interface Delta { before: number; after: number }
+export interface MonthPreview {
+  month: string
+  transferKrw: Delta
+  neededKrw: Delta
+  distribution: { targetId: string; name: string; kind: string; amountKrw: { before: number | null; after: number | null } }[]
+  remainderKrw: Delta
+}
+export type Status = 'pending' | 'applied' | 'rejected' | 'expired' | 'stale'
+export interface Proposal {
+  id: string
+  keyName: string
+  keyUsable: boolean
+  confirm: 'ui' | 'chat'
+  note: string | null
+  status: Status
+  createdAt: string
+  expiresAt: string
+  decidedAt: string | null
+  decidedBy: 'user' | 'key' | null
+  changeSetId: string | null
+  revertOf: string | null
+  preview: { rows: RowChange[]; months: MonthPreview[] }
+}
+
+export const HANDLED_PAGE = 20
+
+/** What the screens share. `decided` holds the proposals the user decided on this screen session: their cards stay, with an undo for an applied one. */
+export const proposals = reactive({
+  waiting: [] as Proposal[],
+  handled: [] as Proposal[],
+  moreHandled: false,
+  loaded: false,
+  busy: '',
+  error: '',
+  decided: {} as Record<string, 'applied' | 'rejected' | 'reverted'>,
+})
+
+/** Every waiting proposal (at most 20 can wait), and so the number for the badge: this list is never cut short. */
+export async function loadWaiting() {
+  proposals.waiting = await api<Proposal[]>('GET', '/api/proposals?status=pending')
+  store.pendingProposals = proposals.waiting.length
+}
+
+/** The handled ones, a page at a time, newest first. */
+export async function loadHandled(more = false) {
+  const last = more ? proposals.handled.at(-1) : undefined
+  const after = last ? `&before=${encodeURIComponent(last.createdAt)}&beforeId=${encodeURIComponent(last.id)}` : ''
+  const page = await api<Proposal[]>('GET', `/api/proposals?status=handled&limit=${HANDLED_PAGE}${after}`)
+  proposals.handled = more ? [...proposals.handled, ...page] : page
+  proposals.moreHandled = page.length === HANDLED_PAGE
+}
+
+export async function loadProposals() {
+  try {
+    await Promise.all([loadWaiting(), loadHandled()])
+    proposals.loaded = true
+  } catch (e) {
+    proposals.error = e instanceof ApiError ? e.message : t('pending.loadFailed')
+  }
+}
+
+export async function moreProposals() {
+  try { await loadHandled(true) } catch (e) { proposals.error = e instanceof ApiError ? e.message : t('pending.loadFailed') }
+}
+
+/** The proposal's title: the AI's own note, or else what it changes. */
+export const proposalTitle = (p: Proposal) => p.note?.trim() || summary(p)
+
+export async function decide(p: Proposal, what: 'apply' | 'reject') {
+  proposals.busy = p.id
+  proposals.error = ''
+  const name = proposalTitle(p)
+  try {
+    await api('POST', `/api/proposals/${p.id}/${what}`)
+    proposals.decided[p.id] = what === 'apply' ? 'applied' : 'rejected'
+    if (what === 'apply') {
+      await loadState() // the screens show what the server holds now
+      showToast(t('pending.appliedToast', { title: name }), { actionLabel: t('pending.undo'), onAction: () => { void undo(p.id) } })
+    } else showToast(t('pending.rejectedToast', { title: name }))
+  } catch (e) {
+    proposals.error = e instanceof ApiError ? e.message : t('pending.failed')
+  } finally {
+    proposals.busy = ''
+    await loadProposals()
+  }
+}
+
+/** Undo an applied proposal: revert its change set (the same revert as 변경 내역). The server may refuse (409); its reason is shown. */
+export async function undo(id: string) {
+  const p = [...proposals.waiting, ...proposals.handled].find((x) => x.id === id)
+  if (!p?.changeSetId) return
+  proposals.busy = id
+  proposals.error = ''
+  try {
+    await api('POST', `/api/changes/${p.changeSetId}/revert`)
+    proposals.decided[id] = 'reverted'
+    await loadState()
+    showToast(t('pending.revertedToast', { title: proposalTitle(p) }))
+  } catch (e) {
+    proposals.error = e instanceof ApiError ? e.message : t('history.revertFailed')
+  } finally {
+    proposals.busy = ''
+  }
+}
+
+// ── What a row is ──
+export const tableName = (name: string) => { const k = `history.table.${name}`; return te(k) ? t(k as MessageKey) : name }
+const HIDDEN = new Set(['userId', 'seq', 'id'])
+const targetName = (id: string) => store.targets.find((x) => x.id === id)?.name ?? id
+const phaseName = (id: string) => { const p = store.phases.find((x) => x.id === id); return p ? `${p.label} ${p.name}` : id }
+export const rowLabel = (c: RowChange) => {
+  const r = c.after ?? c.before ?? {}
+  if (c.table === 'plan_change' && typeof r.subId === 'string') return subName(r.subId)
+  if (c.table === 'phase_amount') return `${phaseName(String(r.phaseId))} · ${targetName(String(r.targetId))}`
+  const name = r.name ?? r.text ?? r.title ?? r.label
+  return typeof name === 'string' && name ? name : ''
+}
+/** "Subscription · Name" without the operation; the operation is a pill beside it. */
+export const rowTarget = (c: RowChange) => `${tableName(c.table)}${rowLabel(c) ? ` · ${rowLabel(c)}` : ''}`
+export const rowTitle = (c: RowChange) => `${tableName(c.table)} ${t(`history.op.${c.op}`)}${rowLabel(c) ? ` · ${rowLabel(c)}` : ''}`
+// The order a subscription's fields read in (the canvas); the others keep the order they came in.
+const ORDER = ['category', 'plan', 'status', 'currency', 'amount', 'vat', 'cycle', 'nextDate', 'path', 'verified', 'note']
+const rank = (k: string) => { const i = ORDER.indexOf(k); return i < 0 ? -1 : i }
+export const rowFields = (c: RowChange) => {
+  const r = c.after ?? c.before ?? {}
+  // an added or removed row already has its name in the heading
+  const skipName = c.op !== 'update' && typeof r.name === 'string' && rowLabel(c) === r.name
+  const keys = new Set([...Object.keys(c.before ?? {}), ...Object.keys(c.after ?? {})].filter((k) => !HIDDEN.has(k) && !(skipName && k === 'name')))
+  const all = [...keys]
+  return [...all.filter((k) => rank(k) >= 0).sort((a, b) => rank(a) - rank(b)), ...all.filter((k) => rank(k) < 0)]
+    .map((k) => ({ k, b: c.before?.[k], a: c.after?.[k] }))
+    .filter((f) => c.op !== 'update' || JSON.stringify(f.b) !== JSON.stringify(f.a))
+}
+export const fieldName = (k: string) => { const key = `pending.fields.${k}`; return te(key) ? t(key as MessageKey) : k }
+
+/** A stored value as words: "월간", "₩9,900", "0%", "미확인", a date in the user's format; a code or text as it is. */
+export function worded(field: string, v: unknown, row?: Record<string, unknown> | null): string {
+  if (v === null || v === undefined || v === '') return '—'
+  const word = (f: () => string) => { try { return f() } catch { return String(v) } }
+  switch (field) {
+    case 'category': return word(() => catLabel(String(v)))
+    case 'status': return te(`label.status.${String(v)}`) ? statusLabel(String(v)) : String(v)
+    case 'cycle': return word(() => cycleLabel(String(v)))
+    case 'path': return word(() => pathLabel(String(v)))
+    case 'amount': return typeof v === 'number' ? (row?.currency === 'USD' ? usd(v) : fmtMoney(v)) : String(v)
+    case 'vat': return `${String(v)}%`
+    case 'verified': return v ? t('pending.verifiedYes') : t('pending.verifiedNo')
+    case 'done': return v ? t('pending.doneYes') : t('pending.doneNo')
+    case 'nextDate': case 'effective': return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? fmtDate(v) : String(v)
+    default: return typeof v === 'object' ? JSON.stringify(v) : String(v)
+  }
+}
+export const summary = (p: Proposal) => {
+  const first = p.preview.rows[0]
+  if (!first) return t('history.noChange')
+  const head = rowTitle(first)
+  return p.preview.rows.length > 1 ? t('history.andMore', { head, n: p.preview.rows.length - 1 }) : head
+}
+export const money = (n: number | null) => (n === null ? '—' : fmtMoney(n))
+export const changed = (d: { before: number | null; after: number | null }) => d.before !== d.after
+export const monthLabel = (ym: string) => ym.replace('-', '. ')
+const loc = () => (lang.value === 'en' ? 'en-US' : 'ko-KR')
+export const when = (at: string) => { const d = new Date(at); return `${fmtDate(d)} ${d.toLocaleTimeString(loc(), { timeStyle: 'short' })}` }
+export const STATUS: Record<Status, MessageKey> = { pending: 'pending.status.pending', applied: 'pending.status.applied', rejected: 'pending.status.rejected', expired: 'pending.status.expired', stale: 'pending.status.stale' }
+export const STATUS_CLASS: Record<Status, string> = { pending: 'acc', applied: 'ok', rejected: 'mute', expired: 'mute', stale: 'mute' }
+
+/** The state a card shows: what the server holds, or "reverted" once the user undid it on this screen. */
+export function shown(p: Proposal): { label: string; cls: string } {
+  if (proposals.decided[p.id] === 'reverted') return { label: t('pending.status.reverted'), cls: 'mute' }
+  return { label: t(STATUS[p.status]), cls: STATUS_CLASS[p.status] }
+}
+/** An applied proposal that was decided on this screen and not yet undone keeps its undo button. */
+export const canUndo = (p: Proposal) => p.status === 'applied' && !!p.changeSetId && proposals.decided[p.id] === 'applied'
+
+/** The cards a filter shows. "Waiting" also keeps the ones decided on this screen, so the card stays after the decision. */
+export function listFor(filter: 'waiting' | 'handled' | 'all'): Proposal[] {
+  const stay = proposals.handled.filter((p) => proposals.decided[p.id])
+  const rest = proposals.handled.filter((p) => !proposals.decided[p.id])
+  if (filter === 'waiting') return [...proposals.waiting, ...stay]
+  if (filter === 'handled') return proposals.handled
+  return [...proposals.waiting, ...stay, ...rest]
+}

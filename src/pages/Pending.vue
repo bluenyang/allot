@@ -1,219 +1,198 @@
 <script setup lang="ts">
-import { onActivated, onMounted, ref } from 'vue'
+import { computed, onActivated, onMounted, reactive, ref } from 'vue'
 import PageHeader from '../components/PageHeader.vue'
-import { lang, t, te, type MessageKey } from '../i18n'
-import { ApiError, api } from '../lib/api'
-import { fmtDate, fmtMoney } from '../lib/display'
-import { loadState, store, subName } from '../lib/store'
+import Seg from '../components/Seg.vue'
+import Icon from '../components/Icon.vue'
+import { t } from '../i18n'
+import { fmtMoney } from '../lib/display'
+import {
+  canUndo, changed, decide, fieldName, listFor, loadProposals, money, monthLabel, moreProposals, proposalTitle, proposals, rowFields, rowTarget, shown,
+  summary, undo, when, worded, type MonthPreview, type Proposal, type RowChange,
+} from '../lib/proposals'
 
-// 대기 중인 변경 (spec 009 S-9): what an AI key proposed. Each proposal shows what it changes — the
-// rows before and after, and this month's and next month's transfer and distribution before and after,
-// computed by the server by really applying it and rolling back — and waits for the user's
-// confirm or reject. Confirming applies it as one change set (it shows in 변경 내역 as "AI · key name").
-interface RowChange { table: string; op: 'insert' | 'update' | 'delete'; key: Record<string, string>; before: Record<string, unknown> | null; after: Record<string, unknown> | null }
-interface Delta { before: number; after: number }
-interface MonthPreview {
-  month: string
-  transferKrw: Delta
-  neededKrw: Delta
-  distribution: { targetId: string; name: string; kind: string; amountKrw: { before: number | null; after: number | null } }[]
-  remainderKrw: Delta
-}
-type Status = 'pending' | 'applied' | 'rejected' | 'expired' | 'stale'
-interface Proposal {
-  id: string
-  keyName: string
-  keyUsable: boolean
-  confirm: 'ui' | 'chat'
-  note: string | null
-  status: Status
-  createdAt: string
-  expiresAt: string
-  decidedAt: string | null
-  decidedBy: 'user' | 'key' | null
-  changeSetId: string | null
-  revertOf: string | null
-  preview: { rows: RowChange[]; months: MonthPreview[] }
-}
+// 대기 중인 변경 (spec 009 S-9, redrawn by spec 010 S-6): what an AI key proposed, one card each. The
+// card shows what it changes — rows before and after, and the transfer and distribution of this and
+// next month before and after — and waits for the user's confirm or reject. Confirming applies it as
+// one change set (it shows in 변경 내역 as "AI · key name"). A decided card stays on the screen.
+const filter = ref<'waiting' | 'handled' | 'all'>('waiting')
+const opened = reactive<Record<string, boolean>>({})
+// Waiting cards are open, handled ones closed, until the user toggles one.
+const isOpen = (p: Proposal) => opened[p.id] ?? p.status === 'pending'
+const toggle = (p: Proposal) => { opened[p.id] = !isOpen(p) }
 
-const waiting = ref<Proposal[]>([])
-const handled = ref<Proposal[]>([])
-const moreHandled = ref(false)
-const loaded = ref(false)
-const busy = ref('')
-const error = ref('')
-const notice = ref('')
-const open = ref<string | null>(null)
-const HANDLED_PAGE = 20
+onMounted(loadProposals)
+onActivated(loadProposals)
 
-/** Every waiting proposal (at most 20 can wait), and so the number for the badge: this list is never cut short. */
-async function loadWaiting() {
-  waiting.value = await api<Proposal[]>('GET', '/api/proposals?status=pending')
-  store.pendingProposals = waiting.value.length
-  // The first one is open: the numbers are what the user came to see.
-  if (open.value === null) open.value = waiting.value[0]?.id ?? null
-}
+const list = computed(() => listFor(filter.value))
+const seg = computed(() => [
+  { id: 'waiting', label: t('pending.filterWaiting'), count: proposals.waiting.length },
+  { id: 'handled', label: t('pending.filterHandled') },
+  { id: 'all', label: t('pending.filterAll') },
+])
 
-/** The handled ones, a page at a time, newest first. */
-async function loadHandled(more = false) {
-  const last = more ? handled.value.at(-1) : undefined
-  const after = last ? `&before=${encodeURIComponent(last.createdAt)}&beforeId=${encodeURIComponent(last.id)}` : ''
-  const page = await api<Proposal[]>('GET', `/api/proposals?status=handled&limit=${HANDLED_PAGE}${after}`)
-  handled.value = more ? [...handled.value, ...page] : page
-  moreHandled.value = page.length === HANDLED_PAGE
+/** The remainder row's name of a month and how much it moves: "투자 −₩60,000". */
+function net(mo: MonthPreview) {
+  const r = mo.distribution.find((x) => x.kind === 'remainder')
+  if (!r) return null
+  const d = (r.amountKrw.after ?? 0) - (r.amountKrw.before ?? 0)
+  if (d === 0) return null
+  return { name: r.name, text: `${d > 0 ? '+' : '−'}${fmtMoney(Math.abs(d))}`, cls: d < 0 ? 'up' : 'down' }
 }
-
-async function load() {
-  try {
-    await Promise.all([loadWaiting(), loadHandled()])
-    loaded.value = true
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : t('pending.loadFailed')
-  }
+const isUpdate = (c: RowChange) => c.op === 'update'
+/** A note for a handled card, by how it ended. */
+function handledNote(p: Proposal): string {
+  if (p.status === 'applied') return t('pending.noteApplied', { at: when(p.decidedAt ?? p.createdAt) })
+  if (p.status === 'rejected') return t('pending.noteRejected', { at: when(p.decidedAt ?? p.createdAt) })
+  if (p.status === 'expired') return t('pending.noteExpired', { at: when(p.expiresAt) })
+  return t('pending.status.stale')
 }
-onMounted(load)
-onActivated(load)
-
-async function more() {
-  try { await loadHandled(true) } catch (e) { error.value = e instanceof ApiError ? e.message : t('pending.loadFailed') }
-}
-
-async function decide(p: Proposal, what: 'apply' | 'reject') {
-  busy.value = p.id
-  error.value = ''
-  notice.value = ''
-  try {
-    await api('POST', `/api/proposals/${p.id}/${what}`)
-    notice.value = t(what === 'apply' ? 'pending.applied' : 'pending.rejected')
-    if (what === 'apply') await loadState() // the screens show what the server holds now
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : t('pending.failed')
-  } finally {
-    busy.value = ''
-    await load()
-  }
-}
-
-// ── What a row is ──
-const tableName = (name: string) => { const k = `history.table.${name}`; return te(k) ? t(k as MessageKey) : name }
-const HIDDEN = new Set(['userId', 'seq', 'id'])
-const targetName = (id: string) => store.targets.find((x) => x.id === id)?.name ?? id
-const phaseName = (id: string) => { const p = store.phases.find((x) => x.id === id); return p ? `${p.label} ${p.name}` : id }
-const label = (c: RowChange) => {
-  const r = c.after ?? c.before ?? {}
-  if (c.table === 'plan_change' && typeof r.subId === 'string') return subName(r.subId)
-  if (c.table === 'phase_amount') return `${phaseName(String(r.phaseId))} · ${targetName(String(r.targetId))}`
-  const name = r.name ?? r.text ?? r.title ?? r.label
-  return typeof name === 'string' && name ? name : ''
-}
-const title = (c: RowChange) => `${tableName(c.table)} ${t(`history.op.${c.op}`)}${label(c) ? ` · ${label(c)}` : ''}`
-const fields = (c: RowChange) => {
-  const keys = new Set([...Object.keys(c.before ?? {}), ...Object.keys(c.after ?? {})].filter((k) => !HIDDEN.has(k)))
-  return [...keys]
-    .map((k) => ({ k, b: c.before?.[k], a: c.after?.[k] }))
-    .filter((f) => c.op !== 'update' || JSON.stringify(f.b) !== JSON.stringify(f.a))
-}
-const fieldName = (k: string) => { const key = `pending.fields.${k}`; return te(key) ? t(key as MessageKey) : k }
-const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
-const summary = (p: Proposal) => {
-  const first = p.preview.rows[0]
-  if (!first) return t('history.noChange')
-  const head = title(first)
-  return p.preview.rows.length > 1 ? t('history.andMore', { head, n: p.preview.rows.length - 1 }) : head
-}
-const money = (n: number | null) => (n === null ? '—' : fmtMoney(n))
-const changed = (d: { before: number | null; after: number | null }) => d.before !== d.after
-const monthLabel = (ym: string) => ym.replace('-', '. ')
-const loc = () => (lang.value === 'en' ? 'en-US' : 'ko-KR')
-const when = (at: string) => { const d = new Date(at); return `${fmtDate(d)} ${d.toLocaleTimeString(loc(), { timeStyle: 'short' })}` }
-const STATUS: Record<Status, MessageKey> = { pending: 'pending.status.pending', applied: 'pending.status.applied', rejected: 'pending.status.rejected', expired: 'pending.status.expired', stale: 'pending.status.stale' }
 </script>
 
 <template>
-  <section>
-    <PageHeader :title="t('pending.title')" :desc="t('pending.desc')" />
-    <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">{{ t('common.close') }}</button></p>
-    <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
+  <section class="page-gap">
+    <PageHeader :title="t('pending.title')" :desc="t('pending.desc')" class="pend-ph">
+      <a class="btn" href="#settings/ai">{{ t('pending.manageKeys') }}</a>
+    </PageHeader>
+    <p v-if="proposals.error" class="save-err" role="alert">{{ proposals.error }} <button type="button" @click="proposals.error = ''">{{ t('common.close') }}</button></p>
 
-    <p v-if="loaded && !waiting.length" class="panel muted">{{ t('pending.none') }}</p>
-    <article v-for="p in waiting" :key="p.id" class="panel prop" :data-proposal="p.id" :aria-label="summary(p)">
-      <header class="phead">
-        <div class="pt">
-          <span class="pill mute">AI</span>
-          <b>{{ t('pending.from', { key: p.keyName }) }}</b>
-          <span v-if="p.revertOf" class="pill mute">{{ t('history.revertOf') }}</span>
+    <div class="fbar">
+      <Seg v-model="filter" :options="seg" :label="t('pending.filterLabel')" bordered />
+      <span class="hint">{{ t('pending.expiryHint') }}</span>
+    </div>
+
+    <div v-if="proposals.loaded && !list.length" class="card empty-card">
+      <b>{{ filter === 'waiting' ? t('pending.none') : t('pending.noneHandled') }}</b>
+      <span class="hint">{{ t('pending.noneHint') }}</span>
+    </div>
+
+    <article v-for="p in list" :key="p.id" class="card prop" :class="{ wait: p.status === 'pending' }" :data-proposal="p.id" :aria-label="summary(p)">
+      <header class="ph2">
+        <span class="ico"><Icon name="sparkle" /></span>
+        <div class="tt">
+          <b>{{ proposalTitle(p) }}</b>
+          <small class="hint">{{ t('pending.meta', { key: p.keyName, at: when(p.createdAt), summary: summary(p) }) }}</small>
         </div>
-        <div class="small muted">{{ summary(p) }} · {{ when(p.createdAt) }}</div>
-        <div v-if="p.note" class="note">{{ p.note }}</div>
+        <span v-if="p.revertOf" class="pill mute">{{ t('history.revertOf') }}</span>
+        <span class="pill" :class="shown(p).cls">{{ shown(p).label }}</span>
+        <button type="button" class="btn sm ghost" :aria-expanded="isOpen(p)" @click="toggle(p)">{{ isOpen(p) ? t('pending.hideDetail') : t('pending.showDetail') }}</button>
       </header>
 
-      <button type="button" class="btn toggle" :aria-expanded="open === p.id" @click="open = open === p.id ? null : p.id">{{ open === p.id ? t('pending.hideDetail') : t('pending.showDetail') }}</button>
-
-      <div v-if="open === p.id" class="detail">
-        <section v-for="(c, i) in p.preview.rows" :key="i" class="chg-row">
-          <b class="small">{{ title(c) }}</b>
-          <table class="small">
-            <tbody>
-              <tr v-for="f in fields(c)" :key="f.k">
-                <th scope="row">{{ fieldName(f.k) }}</th>
-                <td v-if="c.op !== 'insert'" class="muted">{{ show(f.b) }}</td>
-                <td v-if="c.op === 'update'">→</td>
-                <td v-if="c.op !== 'delete'">{{ show(f.a) }}</td>
-              </tr>
-            </tbody>
-          </table>
+      <div v-if="isOpen(p)" class="detail">
+        <section v-for="(c, i) in p.preview.rows" :key="i" class="chg">
+          <div class="chg-h"><span class="pill" :class="c.op === 'insert' ? 'ok' : c.op === 'delete' ? 'bad' : 'mute'">{{ t(`history.op.${c.op}`) }}</span><b>{{ rowTarget(c) }}</b></div>
+          <div v-if="isUpdate(c)" class="tw">
+            <table>
+              <tbody>
+                <tr v-for="f in rowFields(c)" :key="f.k">
+                  <td class="k">{{ fieldName(f.k) }}</td>
+                  <td class="from num">{{ worded(f.k, f.b, c.before) }}</td>
+                  <td class="arr">→</td>
+                  <td class="to num">{{ worded(f.k, f.a, c.after) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <dl v-else class="dl" :class="{ gone: c.op === 'delete' }">
+            <div v-for="f in rowFields(c)" :key="f.k">
+              <dt>{{ fieldName(f.k) }}</dt>
+              <dd :class="{ sig: f.k === 'verified' && !(c.after ?? c.before)?.verified, subtle: worded(f.k, c.op === 'delete' ? f.b : f.a, c.op === 'delete' ? c.before : c.after) === '—' }">{{ worded(f.k, c.op === 'delete' ? f.b : f.a, c.op === 'delete' ? c.before : c.after) }}</dd>
+            </div>
+          </dl>
         </section>
 
-        <section v-for="mo in p.preview.months" :key="mo.month" class="month">
-          <b class="small">{{ t('pending.monthTitle', { month: monthLabel(mo.month) }) }}</b>
-          <table class="small">
-            <tbody>
-              <tr><th scope="row">{{ t('pending.transfer') }}</th><td class="n muted">{{ money(mo.transferKrw.before) }}</td><td>→</td><td class="n" :class="{ chg: changed(mo.transferKrw) }">{{ money(mo.transferKrw.after) }}</td></tr>
-              <tr v-for="r in mo.distribution" :key="r.targetId" :class="{ same: !changed(r.amountKrw) }">
-                <th scope="row">{{ r.name }}</th><td class="n muted">{{ money(r.amountKrw.before) }}</td><td>→</td><td class="n" :class="{ chg: changed(r.amountKrw) }">{{ money(r.amountKrw.after) }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <section v-if="p.preview.months.length" class="months">
+          <b class="mt">{{ t('pending.monthsTitle') }}</b>
+          <div class="mgrid">
+            <div v-for="mo in p.preview.months" :key="mo.month" class="mbox">
+              <div class="mh"><span class="num">{{ monthLabel(mo.month) }}</span><b v-if="net(mo)" class="num" :class="net(mo)!.cls">{{ net(mo)!.name }} {{ net(mo)!.text }}</b></div>
+              <div class="mr" :class="{ same: !changed(mo.transferKrw) }">
+                <span>{{ t('pending.transfer') }}</span>
+                <span class="num old" :class="{ strike: changed(mo.transferKrw) }">{{ money(mo.transferKrw.before) }}</span><span class="ar">→</span>
+                <span class="num new" :class="{ chg: changed(mo.transferKrw) }">{{ money(mo.transferKrw.after) }}</span>
+              </div>
+              <div v-for="r in mo.distribution" :key="r.targetId" class="mr" :class="{ same: !changed(r.amountKrw) }">
+                <span>{{ r.name }}</span>
+                <span class="num old" :class="{ strike: changed(r.amountKrw) }">{{ money(r.amountKrw.before) }}</span><span class="ar">→</span>
+                <span class="num new" :class="{ chg: changed(r.amountKrw) }">{{ money(r.amountKrw.after) }}</span>
+              </div>
+            </div>
+          </div>
         </section>
       </div>
 
       <footer class="pfoot">
-        <span class="small muted">{{ t('pending.expires', { at: when(p.expiresAt) }) }}<template v-if="p.confirm === 'chat'"> · {{ t('pending.inChat') }}</template></span>
-        <p v-if="!p.keyUsable" class="small warn" role="note">{{ t('pending.keyGone') }}</p>
-        <div class="btns">
-          <button class="btn pri" type="button" :disabled="!!busy || !p.keyUsable" @click="decide(p, 'apply')">{{ t('pending.confirmBtn') }}</button>
-          <button class="btn" type="button" :disabled="!!busy" @click="decide(p, 'reject')">{{ t('pending.rejectBtn') }}</button>
-        </div>
+        <template v-if="p.status === 'pending'">
+          <span class="note small">
+            {{ t('pending.expires', { at: when(p.expiresAt) }) }}<template v-if="p.confirm === 'chat'"> · {{ t('pending.inChat') }}</template>
+          </span>
+          <p v-if="!p.keyUsable" class="small warn" role="note">{{ t('pending.keyGone') }}</p>
+          <button class="btn sm bad" type="button" :disabled="!!proposals.busy" @click="decide(p, 'reject')">{{ t('pending.rejectBtn') }}</button>
+          <button class="btn sm pri" type="button" :disabled="!!proposals.busy || !p.keyUsable" @click="decide(p, 'apply')">{{ t('pending.confirmBtn') }}</button>
+        </template>
+        <template v-else>
+          <span class="note small">{{ proposals.decided[p.id] === 'reverted' ? t('pending.noteReverted') : handledNote(p) }}</span>
+          <button v-if="canUndo(p)" class="btn sm" type="button" :disabled="!!proposals.busy" @click="undo(p.id)"><Icon name="undo" />{{ t('pending.undo') }}</button>
+          <a v-if="p.status === 'applied'" class="btn sm ghost" href="#history">{{ t('pending.viewHistory') }}</a>
+        </template>
       </footer>
     </article>
 
-    <div v-if="handled.length" class="panel">
-      <h3>{{ t('pending.decided') }}</h3>
-      <ul class="list" :aria-label="t('pending.decided')">
-        <li v-for="p in handled" :key="p.id" class="done">
-          <span class="small">{{ t('pending.from', { key: p.keyName }) }} · {{ summary(p) }}<br><span class="muted mono">{{ when(p.decidedAt ?? p.createdAt) }}</span></span>
-          <span class="pill" :class="p.status === 'applied' ? 'ok' : 'mute'">{{ t(STATUS[p.status]) }}</span>
-        </li>
-      </ul>
-      <div v-if="moreHandled" class="btns" style="margin-top:12px"><button class="btn" type="button" @click="more()">{{ t('history.more') }}</button></div>
-    </div>
+    <div v-if="proposals.moreHandled && filter !== 'waiting'" class="btns more"><button class="btn" type="button" @click="moreProposals()">{{ t('history.more') }}</button></div>
   </section>
 </template>
 
 <style scoped>
-.prop{margin-bottom:14px;display:grid;gap:10px}
-.phead{display:grid;gap:4px}
-.pt{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.note{font-size:13px;color:var(--text-2);overflow-wrap:anywhere}
-.toggle{justify-self:start}
-.detail{display:grid;gap:12px}
-.chg-row table,.month table{border-collapse:collapse;margin-top:4px}
-.chg-row th,.month th{text-align:left;font-weight:500;padding:2px 12px 2px 0;color:var(--muted)}
-.chg-row td,.month td{padding:2px 8px 2px 0;word-break:break-all}
-.month td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.month .chg{font-weight:600;color:var(--accent-text)}
-.month .same{opacity:.55}
-.pfoot{display:grid;gap:8px}
-.warn{color:var(--neg-text);margin:0}
-.done{grid-template-columns:minmax(0,1fr) auto !important}
+.pend-ph :deep(.sub){max-width:680px}
+.fbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.fbar :deep(.seg){flex:none}
+.empty-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:36px 18px;text-align:center}
+.prop{display:flex;flex-direction:column}
+.prop.wait{border-color:var(--accent-line)}
+.ph2{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--divider)}
+.ico{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:var(--r-ctl);background:var(--accent-soft);color:var(--accent-text)}
+.ico svg{width:15px;height:15px}
+.tt{flex:1 1 200px;min-width:0;display:flex;flex-direction:column}
+.tt b{overflow-wrap:anywhere}
+.detail{display:flex;flex-direction:column}
+.chg{padding:12px 18px 4px}
+.chg + .chg{padding-top:8px}
+.chg-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.tw{overflow-x:auto}
+.tw table{width:100%;border-collapse:collapse;font-size:13px}
+.tw td{padding:8px 12px;border-bottom:1px solid var(--divider)}
+.tw td.k{width:34%;color:var(--muted);padding-left:0}
+.tw td.from{color:var(--subtle);text-decoration:line-through}
+.tw td.arr{color:var(--subtle);padding:8px 0}
+.tw td.to{font-weight:600;padding-right:0}
+.dl{margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));column-gap:24px;font-size:13px}
+.dl > div{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed var(--border)}
+.dl dt{color:var(--muted)}
+.dl dd{margin:0;font-weight:600;text-align:right;overflow-wrap:anywhere}
+.dl dd.sig{color:var(--accent-text)}
+.dl dd.subtle{color:var(--subtle);font-weight:400}
+.dl.gone dd{text-decoration:line-through;color:var(--subtle)}
+.months{padding:12px 18px 16px;background:var(--surface-2);margin-top:8px;border-top:1px solid var(--divider)}
+.mt{display:block;font-size:13px;margin-bottom:8px}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.mbox{border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);overflow:hidden}
+.mh{display:flex;justify-content:space-between;gap:8px;padding:8px 12px;border-bottom:1px solid var(--divider);font-size:13px}
+.mh b{font-size:12px}
+.mh b.down{color:var(--primary-text)}
+.mr{display:grid;grid-template-columns:minmax(0,1fr) 104px 16px 104px;gap:6px;align-items:center;padding:6px 12px;font-size:13px}
+.mr .old{color:var(--muted)}
+.mr .old.strike{text-decoration:line-through;color:var(--subtle)}
+.mr .ar{color:var(--subtle);text-align:center}
+.mr .new,.mr .old{text-align:right}
+.mr .new.chg{font-weight:700}
+.mr.same{color:var(--subtle)}
+.pfoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 18px;background:var(--surface-2);border-top:1px solid var(--divider);border-radius:0 0 var(--r-card) var(--r-card)}
+.pfoot .note{flex:1 1 200px;color:var(--muted)}
+.pfoot .warn{flex-basis:100%;color:var(--neg-text);margin:0}
+.more{justify-content:center;margin:0}
+.save-err{margin:0}
+@media (max-width:760px){
+  .ph2{padding:12px 14px}
+  .tw table{white-space:nowrap}
+  .mr{grid-template-columns:minmax(0,1fr) auto 16px auto}
+}
 </style>

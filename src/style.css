@@ -285,6 +285,10 @@ input.in[type=number],input.in.num{font-variant-numeric:tabular-nums}
 .btn.danger,.btn.bad{border-color:var(--neg-line);color:var(--neg-text);font-weight:600}
 .btn.bad:hover,.btn.danger:hover{background:var(--neg-soft)}
 .btn.sm{height:30px;padding:0 10px;font-size:12px;color:var(--muted);border-color:var(--border)}
+.btn.sm.pri{color:var(--primary-ink);border-color:var(--primary)}
+.btn.sm.pri:hover{border-color:var(--primary-hover)}
+.btn.sm.bad{color:var(--neg-text);border-color:var(--neg-line)}
+.btn.sm.ghost{border-color:transparent}
 .btn.icon{width:32px;height:32px;padding:0}
 .btn svg{width:16px;height:16px}
 

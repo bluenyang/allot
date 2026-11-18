@@ -18,6 +18,8 @@ const props = defineProps<{
   steps?: string[]
   /** Current step (0-based), v-model:step. */
   step?: number
+  /** Text of the last step's button; 저장 by default. */
+  saveLabel?: string
   /** Called before 다음 moves on; return false to stay (the page shows why). */
   canAdvance?: (step: number) => boolean
 }>()
@@ -107,7 +109,7 @@ function submit() {
         <button class="btn" type="button" @click="emit('cancel')">{{ t('common.cancel') }}</button>
         <button v-if="stepped && cur > 0" class="btn" type="button" @click="emit('update:step', cur - 1)">{{ t('common.back') }}</button>
         <button v-if="!last" class="btn pri" type="submit">{{ t('common.next') }}</button>
-        <button v-else class="btn pri" type="submit" :disabled="props.busy">{{ t('common.save') }}</button>
+        <button v-else class="btn pri" type="submit" :disabled="props.busy">{{ props.saveLabel ?? t('common.save') }}</button>
       </footer>
     </form>
   </dialog>

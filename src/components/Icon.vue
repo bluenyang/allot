@@ -40,5 +40,7 @@ defineProps<{ name: string; stroke?: number }>()
     <template v-else-if="name === 'more'"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></template>
     <template v-else-if="name === 'x'"><path d="M18 6 6 18M6 6l12 12" /></template>
     <template v-else-if="name === 'plus'"><path d="M12 5v14M5 12h14" /></template>
+    <template v-else-if="name === 'sparkle'"><path d="M12 3l1.9 5.6 5.6 1.9-5.6 1.9L12 18l-1.9-5.6-5.6-1.9 5.6-1.9z" /></template>
+    <template v-else-if="name === 'undo'"><path d="M3 7v6h6M21 17a9 9 0 0 0-15-6.7L3 13" /></template>
   </svg>
 </template>
