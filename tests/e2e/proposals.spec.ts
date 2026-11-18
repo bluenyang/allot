@@ -150,6 +150,7 @@ test('pending: the toast Undo works before the proposal list has refreshed (the 
 })
 
 test('pending: a decided proposal of one account is not shown to the next account signed in on the same tab (A-10)', async ({ browser, request, baseURL }) => {
+  test.setTimeout(120_000)
   const key = await makeKey(request, 'ui')
   const made = await propose(baseURL!, key)
   const email = `e2e-prop-${Date.now().toString(36)}@example.com`
@@ -186,6 +187,8 @@ test('pending: a decided proposal of one account is not shown to the next accoun
     await expect(page.getByText(`${MARK} note`)).toHaveCount(0)
   } finally {
     await ctx.close()
+    // two sign-ins of its own: let the login rate window (5/min) pass before the next spec signs in
+    await new Promise((r) => setTimeout(r, 45_000))
     const users = (await (await request.fetch('/api/auth/admin/list-users?limit=500', { headers: { origin: baseURL! } })).json()).users as { id: string; email: string }[]
     const u = users.find((x) => x.email === email)
     if (u) await request.fetch(`/api/admin/users/${u.id}`, { method: 'DELETE', data: { confirmEmail: email }, headers: { origin: baseURL! } })
