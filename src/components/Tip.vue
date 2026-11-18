@@ -7,18 +7,24 @@ import { nextTick, onBeforeUnmount, ref } from 'vue'
 import { t } from '../i18n'
 
 // One Escape rule for every tip, however it was opened (focus, hover, both, several at once): while any
-// is open, Escape closes them all, is consumed (the editor's own Escape never starts) and focus stays.
-const openTips = new Set<() => void>()
+// is open, Escape closes them all. It is consumed (the editor's own Escape never starts) only when an open
+// tip sits in the dialog the key goes to; a tip left open behind another dialog (a confirmation on top)
+// is closed but the key still reaches that dialog.
+const openTips = new Map<() => void, HTMLElement | null>()
 function onEscape(e: KeyboardEvent) {
   if (e.key !== 'Escape' || !openTips.size) return
-  e.preventDefault()
-  e.stopPropagation()
-  for (const close of [...openTips]) close()
+  const topDialog = (e.target instanceof Element ? e.target : document.activeElement)?.closest('dialog') ?? null
+  const here = [...openTips.values()].some((el) => (el?.closest('dialog') ?? null) === topDialog)
+  if (here) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  for (const close of [...openTips.keys()]) close()
 }
-function track(close: () => void, on: boolean) {
+function track(close: () => void, el: HTMLElement | null, on: boolean) {
   if (on) {
     if (!openTips.size) document.addEventListener('keydown', onEscape, true)
-    openTips.add(close)
+    openTips.set(close, el)
   } else if (openTips.delete(close) && !openTips.size) document.removeEventListener('keydown', onEscape, true)
 }
 
@@ -30,7 +36,7 @@ const pos = ref({ left: 0, top: 0, width: 240 })
 
 async function show() {
   open.value = true
-  track(hide, true)
+  track(hide, el.value, true)
   await nextTick()
   const r = el.value?.getBoundingClientRect()
   if (!r || !bub.value) return
@@ -40,7 +46,7 @@ async function show() {
   const top = r.bottom + 8 + h > window.innerHeight - 8 ? Math.max(8, r.top - 8 - h) : r.bottom + 8
   pos.value = { left, top, width }
 }
-const hide = () => { open.value = false; track(hide, false) }
+const hide = () => { open.value = false; track(hide, null, false) }
 onBeforeUnmount(hide)
 </script>
 
