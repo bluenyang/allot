@@ -22,6 +22,12 @@ const props = defineProps<{
   saveLabel?: string
   /** Called before 다음 moves on; return false to stay (the page shows why). */
   canAdvance?: (step: number) => boolean
+  /** A dialog with nothing to save (a detail view): no save button; the cancel button reads `cancelLabel` (닫기). */
+  hideSave?: boolean
+  /** Text of the cancel button; 취소 by default. */
+  cancelLabel?: string
+  /** The save button is a destructive action (red). */
+  danger?: boolean
 }>()
 const emit = defineEmits<{ save: []; cancel: []; delete: []; 'update:step': [n: number] }>()
 
@@ -84,6 +90,7 @@ function submit() {
             <h2>{{ props.title }}</h2>
             <p v-if="props.desc" class="small muted">{{ props.desc }}</p>
           </div>
+          <slot name="head" />
           <button class="btn icon sm ghost x" type="button" :aria-label="t('common.close')" @click="emit('cancel')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
@@ -106,10 +113,10 @@ function submit() {
         <button v-if="props.canDelete" class="btn danger" type="button" @click="del">{{ armed ? t('common.deleteConfirm') : t('common.delete') }}</button>
         <span v-if="props.hint || stepped" class="ft-hint small muted">{{ stepped ? `${t('common.stepOf', { n: cur + 1, total: props.steps!.length })}${props.hint && last ? ` · ${props.hint}` : ''}` : props.hint }}</span>
         <span class="sp"></span>
-        <button class="btn" type="button" @click="emit('cancel')">{{ t('common.cancel') }}</button>
+        <button class="btn" type="button" @click="emit('cancel')">{{ props.cancelLabel ?? t('common.cancel') }}</button>
         <button v-if="stepped && cur > 0" class="btn" type="button" @click="emit('update:step', cur - 1)">{{ t('common.back') }}</button>
         <button v-if="!last" class="btn pri" type="submit">{{ t('common.next') }}</button>
-        <button v-else class="btn pri" type="submit" :disabled="props.busy">{{ props.saveLabel ?? t('common.save') }}</button>
+        <button v-else-if="!props.hideSave" class="btn" :class="props.danger ? 'bad' : 'pri'" type="submit" :disabled="props.busy">{{ props.saveLabel ?? t('common.save') }}</button>
       </footer>
     </form>
   </dialog>

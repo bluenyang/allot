@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
+import Soon from '../components/Soon.vue'
 import { ApiError } from '../lib/api'
 import { lang, t } from '../i18n'
-import { createKey, listKeys, revokeKey, type KeyItem } from '../lib/keys'
+import { countProposalsByKey, createKey, listKeys, revokeKey, type KeyItem } from '../lib/keys'
+import { copyText } from '../lib/clipboard'
+import { sessionScope } from '../lib/store'
 
-// 설정 › AI·연동 (spec 008 S-4): API keys for the read-only MCP endpoint, and how to connect.
-// A key's text is shown once, in the box after it is made; the server keeps only its hash.
+// 설정 › AI·연동 (spec 008 S-4, redrawn by spec 010 S-11): API keys for the MCP endpoint and how to connect.
+// A key's text is shown once, in the box after it is made; the server keeps only its hash. A key's name,
+// scope and expiry cannot be changed after it is made (no such route yet): those entries are 준비 중.
 const keys = ref<KeyItem[]>([])
 const noExpiry = ref(false)
 const max = ref(10)
@@ -14,22 +18,39 @@ const loaded = ref(false)
 const error = ref('')
 const notice = ref('')
 const busy = ref(false)
+/** Proposals each key made, all time; null until counted. */
+const made = ref<Record<string, number> | null>(null)
+const madeCapped = ref(false)
 
 async function load() {
+  const scope = sessionScope()
   try {
     const r = await listKeys()
-    keys.value = r.keys
-    noExpiry.value = r.policy.noExpiry
-    max.value = r.max
-    loaded.value = true
+    scope.ifCurrent(() => {
+      keys.value = r.keys
+      noExpiry.value = r.policy.noExpiry
+      max.value = r.max
+      loaded.value = true
+    })
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : t('settingsAi.loadFailed')
+    scope.ifCurrent(() => { error.value = e instanceof ApiError ? e.message : t('settingsAi.loadFailed') })
+    return
+  }
+  try {
+    const c = await countProposalsByKey()
+    scope.ifCurrent(() => { made.value = c.counts; madeCapped.value = c.capped })
+  } catch {
+    // the count is a nicety: without it the line is left out
   }
 }
 onMounted(load)
 onActivated(load)
 // The page is kept alive when left: a key shown once must not stay in memory for the next visit.
 onDeactivated(() => { fresh.value = null })
+
+const activeCount = computed(() => keys.value.length)
+const proposalTotal = computed(() => (made.value ? keys.value.reduce((a, k) => a + (made.value![k.id] ?? 0), 0) : null))
+const countText = (n: number) => t('settingsAi.proposalsN', { n: `${n}${madeCapped.value ? '+' : ''}` })
 
 // ── make a key ──
 const DAYS = [30, 90, 180, 365]
@@ -40,6 +61,15 @@ const open = () => { draft.value = { name: '', expires: '90', write: false, conf
 const full = computed(() => keys.value.length >= max.value)
 /** Shown once after a key is made; leaving the page or closing the box forgets it. */
 const fresh = ref<{ key: string; name: string } | null>(null)
+const expOptions = computed(() => [...DAYS.map((d) => ({ id: String(d), label: t('settingsAi.days', { n: d }) })), ...(noExpiry.value ? [{ id: 'none', label: t('settingsAi.noExpiry') }] : [])])
+const loc = () => (lang.value === 'en' ? 'en-US' : 'ko-KR')
+const dateOf = (at: string | null) => (at ? new Date(at).toLocaleDateString(loc(), { dateStyle: 'medium' }) : '')
+const expFoot = computed(() => {
+  const d = draft.value
+  if (!d) return ''
+  if (d.expires === 'none') return t('settingsAi.expiresNone')
+  return t('settingsAi.expiresOn', { date: new Date(Date.now() + Number(d.expires) * 86_400_000).toLocaleDateString(loc(), { dateStyle: 'medium' }) })
+})
 
 async function make() {
   const d = draft.value
@@ -65,39 +95,36 @@ async function make() {
   }
 }
 
-async function revoke(k: KeyItem) {
-  if (!confirm(t('settingsAi.confirmRevoke', { name: k.name }))) return
-  error.value = ''
+// ── manage a key: look at it, revoke it (the other changes are 준비 중) ──
+const managing = ref<KeyItem | null>(null)
+const confirming = ref(false)
+const manageError = ref('')
+const manage = (k: KeyItem) => { managing.value = k; confirming.value = false; manageError.value = '' }
+const closeManage = () => { managing.value = null; confirming.value = false }
+async function revoke() {
+  const k = managing.value
+  if (!k) return
+  manageError.value = ''
   busy.value = true
   try {
     await revokeKey(k.id)
     notice.value = t('settingsAi.revoked', { name: k.name })
+    closeManage()
     await load()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : t('settingsAi.revokeFailed')
+    manageError.value = e instanceof ApiError ? e.message : t('settingsAi.revokeFailed')
   } finally {
     busy.value = false
   }
 }
+/** In the manage dialog: 돌아가기 leaves the confirm step, 닫기 closes. */
+const manageCancel = () => { if (confirming.value) confirming.value = false; else closeManage() }
+const manageSave = () => { if (confirming.value) void revoke() }
 
 // ── copy ──
-/** The clipboard API needs a secure page; a LAN address over http is not one, so fall back to selecting. */
 async function copy(text: string, what: string) {
   error.value = ''
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch {
-    const box = document.createElement('textarea')
-    box.value = text
-    box.setAttribute('readonly', '')
-    box.style.position = 'fixed'
-    box.style.opacity = '0'
-    document.body.appendChild(box)
-    box.select()
-    const ok = document.execCommand('copy')
-    box.remove()
-    if (!ok) return (error.value = t('settingsAi.copyFailed'))
-  }
+  if (!(await copyText(text))) return (error.value = t('settingsAi.copyFailed'))
   notice.value = t('settingsAi.copied', { what })
 }
 
@@ -105,112 +132,208 @@ async function copy(text: string, what: string) {
 const url = `${window.location.origin}/api/mcp`
 const command = computed(() => `claude mcp add --transport http allot ${url} --header "Authorization: Bearer ${t('settingsAi.keyPh')}"`)
 
-const loc = () => (lang.value === 'en' ? 'en-US' : 'ko-KR')
-const when = (at: string | null) => (at ? new Date(at).toLocaleDateString(loc(), { dateStyle: 'medium' }) : '')
 const used = (at: string | null) => (at ? new Date(at).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }) : t('settingsAi.neverUsed'))
+const writes = (k: KeyItem) => (k.permissions.mcp ?? []).includes('write')
 const scope = (k: KeyItem) => {
-  if (!(k.permissions.mcp ?? []).includes('write')) return t('settingsAi.read')
+  if (!writes(k)) return t('settingsAi.read')
   return `${t('settingsAi.readWrite')} · ${k.confirm === 'chat' ? t('settingsAi.confirmChatShort') : t('settingsAi.confirmUiShort')}`
 }
+const PROVIDERS = [['Anthropic Claude', 'AC'], ['OpenAI', 'OA'], ['Google Gemini', 'GG'], ['OpenAI 호환', 'OC']] as const
 </script>
 
 <template>
-  <section>
-    <p class="lede">{{ t('settingsAi.lede') }}</p>
+  <section class="ai">
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">{{ t('common.close') }}</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
 
-    <div v-if="fresh" class="panel fresh" role="status" :aria-label="t('settingsAi.newKeyTitle')">
-      <h3>{{ t('settingsAi.made', { name: fresh.name }) }}</h3>
-      <p class="small">{{ t('settingsAi.shownOnce') }}</p>
-      <div class="keybox">
-        <input class="in mono" readonly :value="fresh.key" :aria-label="t('settingsAi.apiKey')" @focus="($event.target as HTMLInputElement).select()">
-        <button class="btn pri" type="button" @click="copy(fresh.key, t('settingsAi.whatKey'))">{{ t('settingsAi.copy') }}</button>
+    <section class="card">
+      <div class="ch"><h2>{{ t('settingsAi.modelTitle') }} <span class="hint plain">{{ t('settingsAi.modelSub') }}</span></h2><Soon class="btn sm">{{ t('settingsAi.addModel') }}</Soon></div>
+      <p class="mtext">{{ t('settingsAi.modelText') }}</p>
+      <ul class="provs" :aria-label="t('settingsAi.modelTitle')">
+        <li v-for="[name, mono] in PROVIDERS" :key="name">
+          <Soon tag="div" class="prov"><span class="tile" aria-hidden="true">{{ mono }}</span><span class="pn"><b>{{ name }}</b><small class="hint">{{ t('settingsAi.notConnected') }}</small></span></Soon>
+        </li>
+      </ul>
+    </section>
+
+    <i18n-t keypath="settingsAi.lede" tag="p" class="intro"><template #only><b>{{ t('settingsAi.ledeOnly') }}</b></template></i18n-t>
+
+    <div v-if="fresh" class="card fresh" role="status" :aria-label="t('settingsAi.newKeyTitle')">
+      <div class="ch"><h2>{{ t('settingsAi.made', { name: fresh.name }) }}</h2></div>
+      <div class="fs">
+        <p class="small" style="margin:0">{{ t('settingsAi.shownOnce') }}</p>
+        <div class="keybox">
+          <input class="in mono" readonly :value="fresh.key" :aria-label="t('settingsAi.apiKey')" @focus="($event.target as HTMLInputElement).select()">
+          <button class="btn pri" type="button" @click="copy(fresh.key, t('settingsAi.whatKey'))">{{ t('settingsAi.copy') }}</button>
+        </div>
+        <div><button class="btn" type="button" @click="fresh = null">{{ t('common.close') }}</button></div>
       </div>
-      <div class="btns"><button class="btn" type="button" @click="fresh = null">{{ t('common.close') }}</button></div>
     </div>
 
-    <div class="panel">
-      <h3>{{ t('settingsAi.apiKey') }}</h3>
-      <div class="btns head">
-        <button class="btn pri" type="button" :disabled="full" @click="open()">{{ t('settingsAi.makeKey') }}</button>
-        <span class="small muted">{{ keys.length }} / {{ max }}</span>
-      </div>
+    <section class="card">
+      <div class="ch"><h2>{{ t('settingsAi.apiKey') }}</h2><span class="hint num grow">{{ keys.length }} / {{ max }}</span><button class="btn sm pri" type="button" :disabled="full" @click="open()">{{ t('settingsAi.makeKey') }}</button></div>
+      <div class="sum"><span>{{ t('settingsAi.activeN', { n: activeCount }) }}<template v-if="proposalTotal !== null"> · {{ t('settingsAi.writeProposals') }} <b class="num">{{ proposalTotal }}{{ madeCapped ? '+' : '' }}</b></template></span></div>
 
-      <EditSheet v-if="draft" :title="t('settingsAi.newKeyTitle')" :error="draftError" :busy="busy" @save="make" @cancel="draft = null">
-        <div class="field"><label for="k-name">{{ t('settingsAi.nameLabel') }}</label><input id="k-name" v-model="draft.name" class="in" maxlength="32" autocomplete="off" :placeholder="t('settingsAi.namePh')"></div>
-        <div class="field"><label for="k-exp">{{ t('settingsAi.expiry') }}</label>
-          <select id="k-exp" v-model="draft.expires" class="in">
-            <option v-for="d in DAYS" :key="d" :value="String(d)">{{ t('settingsAi.daysLater', { n: d }) }}</option>
-            <option v-if="noExpiry" value="none">{{ t('settingsAi.noExpiry') }}</option>
-          </select>
-        </div>
-        <div class="field"><label>{{ t('settingsAi.scopeLabel') }}</label>
-          <p v-if="!draft.write" class="small" style="margin:0">{{ t('settingsAi.readOnly') }}</p>
-          <p v-else class="small" style="margin:0">{{ t('settingsAi.readWriteNote') }}</p>
-          <label class="chk" style="border:0"><input id="k-write" v-model="draft.write" type="checkbox"><span>{{ t('settingsAi.allowWrite') }}</span></label>
-        </div>
-        <fieldset v-if="draft.write" class="field confirm">
-          <legend>{{ t('settingsAi.confirmLabel') }}</legend>
-          <label class="chk" style="border:0"><input v-model="draft.confirm" type="radio" name="k-confirm" value="ui"><span>{{ t('settingsAi.confirmUi') }}</span></label>
-          <label class="chk" style="border:0"><input v-model="draft.confirm" type="radio" name="k-confirm" value="chat"><span>{{ t('settingsAi.confirmChat') }}</span></label>
-          <p class="small muted" style="margin:4px 0 0">{{ draft.confirm === 'ui' ? t('settingsAi.confirmUiNote') : t('settingsAi.confirmChatNote') }}</p>
-          <p class="small warn" role="note">{{ t('settingsAi.writeWarn') }}</p>
-        </fieldset>
-        <template #after>
-          <p v-if="!noExpiry" class="small muted">{{ t('settingsAi.noExpiryOff') }}</p>
-          <p class="small muted">{{ t('settingsAi.shownOnceNote') }}</p>
-        </template>
-      </EditSheet>
-
-      <p v-if="loaded && !keys.length" class="muted empty">{{ t('settingsAi.none') }}</p>
-      <div v-else-if="keys.length" class="scroll-x">
-        <table class="tbl">
-          <thead><tr><th>{{ t('settingsAi.colName') }}</th><th>{{ t('settingsAi.colKey') }}</th><th>{{ t('settingsAi.scopeLabel') }}</th><th>{{ t('settingsAi.colCreated') }}</th><th>{{ t('settingsAi.expiry') }}</th><th>{{ t('settingsAi.colLastUsed') }}</th><th><span class="sr">{{ t('settingsAi.revoke') }}</span></th></tr></thead>
+      <div v-if="keys.length" class="dtable">
+        <table>
+          <thead><tr><th scope="col">{{ t('settingsAi.colName') }}</th><th scope="col">{{ t('settingsAi.colKey') }}</th><th scope="col" class="c">{{ t('settingsAi.scopeLabel') }}</th><th scope="col">{{ t('settingsAi.colCreated') }}</th><th scope="col">{{ t('settingsAi.expiry') }}</th><th scope="col">{{ t('settingsAi.colLastUsed') }}</th><th scope="col" class="r"><span class="sr">{{ t('settingsAi.manage') }}</span></th></tr></thead>
           <tbody>
             <tr v-for="k in keys" :key="k.id">
-              <td>{{ k.name }}</td>
-              <td class="mono">{{ k.start }}…</td>
-              <td>{{ scope(k) }}</td>
-              <td class="n">{{ when(k.createdAt) }}</td>
-              <td class="n">{{ k.expiresAt ? when(k.expiresAt) : t('common.none') }}</td>
-              <td class="n">{{ used(k.lastUsedAt) }}</td>
-              <td><button class="btn" type="button" :disabled="busy" :aria-label="t('settingsAi.revokeLabel', { name: k.name })" @click="revoke(k)">{{ t('settingsAi.revoke') }}</button></td>
+              <td><b>{{ k.name }}</b></td>
+              <td class="mono key">{{ k.start }}…</td>
+              <td class="c"><span class="pill" :class="writes(k) ? 'ok' : 'mute'">{{ scope(k) }}</span></td>
+              <td class="num">{{ dateOf(k.createdAt) }}</td>
+              <td class="num">{{ k.expiresAt ? dateOf(k.expiresAt) : t('common.none') }}</td>
+              <td class="used">{{ used(k.lastUsedAt) }}</td>
+              <td class="r"><button class="btn sm" type="button" :disabled="busy" :aria-label="t('settingsAi.manageLabel', { name: k.name })" @click="manage(k)">{{ t('settingsAi.manage') }}</button></td>
             </tr>
           </tbody>
         </table>
       </div>
-    </div>
+      <ul v-if="keys.length" class="mlist">
+        <li v-for="k in keys" :key="k.id"><button type="button" :aria-label="t('settingsAi.manageLabel', { name: k.name })" @click="manage(k)">
+          <span class="l1"><b>{{ k.name }}</b><span class="pill" :class="writes(k) ? 'ok' : 'mute'">{{ scope(k) }}</span></span>
+          <span class="mono key">{{ k.start }}…</span>
+          <span class="l3"><span>{{ t('settingsAi.expiresShort', { date: k.expiresAt ? dateOf(k.expiresAt) : t('common.none') }) }} · {{ used(k.lastUsedAt) }}</span><span class="go">{{ t('settingsAi.manageGo') }}</span></span>
+        </button></li>
+      </ul>
+      <p v-if="loaded && !keys.length" class="hint none">{{ t('settingsAi.none') }}</p>
+    </section>
 
-    <div class="panel">
-      <h3>{{ t('settingsAi.connect') }}</h3>
-      <p class="small">{{ t('settingsAi.mcpUrl') }} <span class="mono url">{{ url }}</span> <button class="btn" type="button" @click="copy(url, t('settingsAi.whatUrl'))">{{ t('settingsAi.copy') }}</button></p>
-      <i18n-t keypath="settingsAi.addHow" tag="p" class="small"><template #ph><span class="mono">{{ t('settingsAi.keyPh') }}</span></template></i18n-t>
-      <div class="cmd"><code class="mono">{{ command }}</code><button class="btn" type="button" @click="copy(command, t('settingsAi.whatCommand'))">{{ t('settingsAi.copy') }}</button></div>
-      <p class="small muted">{{ t('settingsAi.keyScope') }}</p>
-      <p class="small muted">{{ t('settingsAi.later') }}</p>
-    </div>
+    <section class="card">
+      <div class="ch"><h2>{{ t('settingsAi.connect') }}</h2></div>
+      <div class="fs">
+        <div class="field"><span class="lbl">{{ t('settingsAi.mcpUrl') }}</span>
+          <div class="cbrow"><code class="codebox url">{{ url }}</code><button class="btn" type="button" @click="copy(url, t('settingsAi.whatUrl'))">{{ t('settingsAi.copy') }}</button></div></div>
+        <div class="field"><span class="lbl">{{ t('settingsAi.addTitle') }}</span>
+          <div class="cbrow"><code class="codebox cmd">{{ command }}</code><button class="btn" type="button" @click="copy(command, t('settingsAi.whatCommand'))">{{ t('settingsAi.copy') }}</button></div>
+          <i18n-t keypath="settingsAi.addHow" tag="span" class="hint"><template #ph><span class="mono">{{ t('settingsAi.keyPh') }}</span></template></i18n-t></div>
+        <p class="hint" style="margin:0">{{ t('settingsAi.keyScope') }}</p>
+        <div class="oauth">
+          <span class="lbl">{{ t('settingsAi.oauthTitle') }}</span>
+          <p>{{ t('settingsAi.later') }}</p>
+          <Soon class="btn sm">{{ t('settingsAi.connectedApps') }}</Soon>
+        </div>
+      </div>
+    </section>
+
+    <EditSheet v-if="draft" :title="t('settingsAi.newKeyTitle')" :desc="t('settingsAi.shownOnceNote')" :error="draftError" :busy="busy" :save-label="t('settingsAi.makeBtn')" :hint="expFoot" @save="make" @cancel="draft = null">
+      <div class="field"><label for="k-name">{{ t('settingsAi.nameLabel') }} <span class="req">*</span></label><input id="k-name" v-model="draft.name" class="in" maxlength="32" autocomplete="off" :placeholder="t('settingsAi.namePh')"><span class="hint">{{ t('settingsAi.nameHint') }}</span></div>
+      <div class="field"><span id="k-exp" class="lbl">{{ t('settingsAi.expiry') }}</span>
+        <div class="seg full" role="group" aria-labelledby="k-exp">
+          <button v-for="o in expOptions" :key="o.id" type="button" :aria-pressed="draft.expires === o.id ? 'true' : 'false'" @click="draft.expires = o.id">{{ o.label }}</button>
+        </div>
+        <span v-if="!noExpiry" class="hint">{{ t('settingsAi.noExpiryOff') }}</span></div>
+      <div class="field"><span id="k-scope" class="lbl">{{ t('settingsAi.scopeLabel') }}</span>
+        <div class="choices" role="radiogroup" aria-labelledby="k-scope">
+          <button type="button" role="radio" class="choice" :class="{ on: !draft.write }" :aria-checked="!draft.write" @click="draft.write = false"><b>{{ t('settingsAi.scopeRead') }}</b><small class="hint">{{ t('settingsAi.scopeReadDesc') }}</small></button>
+          <button type="button" role="radio" class="choice" :class="{ on: draft.write }" :aria-checked="draft.write" @click="draft.write = true"><b>{{ t('settingsAi.scopeWrite') }}</b><small class="hint">{{ t('settingsAi.scopeWriteDesc') }}</small></button>
+        </div>
+      </div>
+      <fieldset v-if="draft.write" class="field confirm">
+        <legend>{{ t('settingsAi.confirmLabel') }}</legend>
+        <label class="chk" style="border:0"><input v-model="draft.confirm" type="radio" name="k-confirm" value="ui"><span>{{ t('settingsAi.confirmUi') }}</span></label>
+        <label class="chk" style="border:0"><input v-model="draft.confirm" type="radio" name="k-confirm" value="chat"><span>{{ t('settingsAi.confirmChat') }}</span></label>
+        <p class="small muted" style="margin:4px 0 0">{{ draft.confirm === 'ui' ? t('settingsAi.confirmUiNote') : t('settingsAi.confirmChatNote') }}</p>
+        <p class="small warn" role="note">{{ t('settingsAi.writeWarn') }}</p>
+      </fieldset>
+    </EditSheet>
+
+    <EditSheet v-if="managing" :title="confirming ? t('settingsAi.revokeAsk', { name: managing.name }) : t('settingsAi.manageTitle', { name: managing.name })"
+      :desc="confirming ? t('settingsAi.revokeAskDesc') : t('settingsAi.manageSub', { made: dateOf(managing.createdAt), used: used(managing.lastUsedAt) })"
+      :error="manageError" :busy="busy" :hide-save="!confirming" danger :save-label="t('settingsAi.revokeBtn')"
+      :cancel-label="confirming ? t('settingsAi.revokeBack') : t('common.close')" :hint="confirming ? t('settingsAi.revokeFoot') : ''" @save="manageSave" @cancel="manageCancel">
+      <template v-if="!confirming">
+        <div class="field"><span class="lbl">{{ t('settingsAi.nameShort') }}</span>
+          <div class="cbrow"><span class="ro">{{ managing.name }}</span><Soon class="btn sm">{{ t('settingsAi.rename') }}</Soon></div></div>
+        <div class="field"><span class="lbl">{{ t('settingsAi.colKey') }}</span>
+          <div class="cbrow"><code class="codebox key">{{ managing.start }}…</code></div>
+          <span class="hint">{{ t('settingsAi.keyOnce') }}</span></div>
+        <div class="field"><span class="lbl">{{ t('settingsAi.scopeLabel') }}</span>
+          <div class="cbrow"><span class="ro"><span class="pill" :class="writes(managing) ? 'ok' : 'mute'">{{ scope(managing) }}</span></span><Soon class="btn sm">{{ t('settingsAi.changeScope') }}</Soon></div>
+          <span class="hint">{{ t('settingsAi.writeWarn') }}</span></div>
+        <div class="field"><span class="lbl">{{ t('settingsAi.expiry') }}</span>
+          <div class="cbrow"><span class="ro">{{ t('settingsAi.expiresNow', { date: managing.expiresAt ? dateOf(managing.expiresAt) : t('common.none') }) }}</span><Soon class="btn sm">{{ t('settingsAi.extend') }}</Soon></div></div>
+        <div v-if="writes(managing) && made" class="field"><span class="lbl">{{ t('settingsAi.writeProposals') }}</span>
+          <span class="ro">{{ countText(made[managing.id] ?? 0) }}</span></div>
+        <div class="field"><span class="lbl">{{ t('settingsAi.recent') }}</span>
+          <div class="cbrow"><Soon class="btn sm">{{ t('settingsAi.usage') }}</Soon></div></div>
+        <div class="danger-box">
+          <span><b>{{ t('settingsAi.revokeTitle') }}</b>{{ t('settingsAi.revokeDesc') }}</span>
+          <button class="btn sm bad" type="button" :aria-label="t('settingsAi.revokeLabel', { name: managing.name })" @click="confirming = true">{{ t('settingsAi.revoke') }}</button>
+        </div>
+      </template>
+      <template v-else>
+        <p class="small muted" style="margin:0">{{ t('settingsAi.revokeAskText') }}</p>
+      </template>
+    </EditSheet>
   </section>
 </template>
 
 <style scoped>
-.panel{margin-bottom:14px}
-.head{margin:0 0 12px;margin-top:0}
-.empty{margin:8px 0 0}
-.confirm{border:0;padding:0;margin:0 0 12px;min-width:0}
+.ai{display:flex;flex-direction:column;gap:16px}
+.ch{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.ch h2{margin:0;font-size:15px;font-weight:600}
+.hint.plain{font-weight:400}
+.grow{flex-grow:1}
+.mtext{margin:0;padding:12px 18px 0;font-size:13px;color:var(--text-2)}
+.provs{list-style:none;margin:0;padding:12px 18px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.provs li{padding:14px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface)}
+.prov{display:flex;width:100%}
+.prov :deep(.soon-in){display:flex;align-items:center;gap:10px;min-width:0}
+.tile{width:32px;height:32px;border-radius:var(--r-card);background:var(--fill);color:var(--text-2);display:grid;place-items:center;font:600 12px var(--f-mono);flex:none}
+.pn{display:flex;flex-direction:column;min-width:0}
+.pn b{font-size:14px}
+.intro{margin:0;font-size:13px;color:var(--text-2)}
+.sum{padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text-2)}
+.dtable{overflow-x:auto;position:relative}
+.dtable table{min-width:880px}
+td.c,th.c{text-align:center}
+td.r,th.r{text-align:right}
+td.num{font-variant-numeric:tabular-nums;font-weight:400}
+td.key,.key{font-size:12px;color:var(--muted)}
+td.used{color:var(--muted);font-weight:400}
+td b{font-weight:600}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.mlist{display:none;list-style:none;margin:0;padding:0}
+.mlist li{border-bottom:1px solid var(--divider)}
+.mlist button{display:flex;flex-direction:column;gap:6px;width:100%;padding:12px 16px;border:0;background:transparent;text-align:left;font:inherit;color:var(--text);cursor:pointer}
+.l1,.l3{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%}
+.l3{font-size:12px;color:var(--subtle)}
+.go{color:var(--primary-text);font-weight:600}
+.none{margin:0;padding:20px 18px;text-align:center}
+.fs .field{display:block}
+.fs .lbl,.field .lbl{display:block;font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+.fs .hint,.field .hint{display:block;margin-top:4px}
+.cbrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.codebox{display:block;flex:1;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-ctl);background:var(--surface-2);font:12px var(--f-mono);color:var(--text);overflow-x:auto}
+.codebox.cmd{white-space:pre-wrap;overflow-wrap:anywhere}
+.url{overflow-wrap:anywhere}
+.ro{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+.oauth{border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.oauth .lbl{margin:0}
+.oauth p{margin:0;font-size:13px;color:var(--text-2)}
+.fresh{border-color:var(--accent-line);background:var(--accent-soft)}
+.fresh .ch{border-color:var(--accent-line)}
+.fresh h2{color:var(--accent-text)}
+.keybox{display:flex;gap:8px;align-items:center}
+.keybox .in{flex:1;min-width:0;height:40px}
+.seg.full{display:flex}
+.seg.full button{flex:1;justify-content:center}
+.choices{display:flex;flex-direction:column;gap:8px}
+.choice{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);color:var(--text);text-align:left;cursor:pointer;font:inherit}
+.choice:hover{border-color:var(--border-strong)}
+.choice.on{border:2px solid var(--primary-text);padding:11px;background:var(--primary-tint)}
+.choice b{font-size:14px}
+.confirm{border:0;padding:0;margin:0;min-width:0}
 .confirm legend{padding:0;margin-bottom:4px;font-size:13px}
 .warn{color:var(--neg-text);margin:6px 0 0}
-.fresh{border-color:var(--accent-line);background:var(--accent-soft)}
-.fresh h3{color:var(--accent-text)}
-.keybox{display:flex;gap:8px;align-items:center;margin:10px 0}
-.keybox .in{flex:1;min-width:0}
-.cmd{display:flex;gap:8px;align-items:center;margin:8px 0 12px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-ctl)}
-.cmd code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:12px}
-.url{overflow-wrap:anywhere}
-.scroll-x{overflow-x:auto}
-.tbl{width:100%;border-collapse:collapse;font-size:13px}
-.tbl th,.tbl td{text-align:left;padding:var(--row-pad) 12px;border-bottom:1px solid var(--divider);white-space:nowrap}
-.tbl th{font-weight:500;color:var(--subtle);font-size:12px;background:var(--surface-2);border-bottom-color:var(--border)}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-@media (max-width:640px){.tbl th:nth-child(3),.tbl td:nth-child(3),.tbl th:nth-child(4),.tbl td:nth-child(4){display:none}}
+.danger-box{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--neg-line);border-radius:var(--r-card);background:var(--neg-soft)}
+.danger-box span{flex:1;font-size:13px;color:var(--text-2)}
+.danger-box b{display:block;color:var(--neg-text)}
+@media (max-width:760px){
+  .dtable{display:none}
+  .mlist{display:block}
+  .sum{padding:12px 16px}
+}
 </style>
