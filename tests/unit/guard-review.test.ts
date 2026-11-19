@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 // @ts-expect-error plain .mjs without types
 import { check, isCandidate, tokenize, decide, recordFile } from '../../scripts/guard-review.mjs'
+import { gitFreeEnv } from './git-env'
 
 const script = resolve('scripts/guard-review.mjs')
 
@@ -66,7 +67,7 @@ function setup() {
   const root = mkdtempSync(join(tmpdir(), 'guard-review-'))
   const dir = join(root, 'work')
   const origin = join(root, 'owner1', 'repo.git')
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, GUARD_REVIEW_GH: join(root, 'fakegh') }
+  const env = { ...gitFreeEnv(), CLAUDE_PROJECT_DIR: dir, GUARD_REVIEW_GH: join(root, 'fakegh') }
   const sh = (cwd: string, cmd: string, args: string[], input?: string, e = env) =>
     spawnSync(cmd, args, { cwd, input, encoding: 'utf8', env: e })
   const git = (...a: string[]) => {
