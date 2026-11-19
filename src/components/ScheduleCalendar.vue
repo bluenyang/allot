@@ -82,7 +82,7 @@ const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
 </template>
 
 <style scoped>
-.calwrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+.calwrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:stretch}
 .calcard{overflow:hidden;display:flex;flex-direction:column}
 .nav{display:flex;gap:6px}
 .nav .btn.sm:not(:nth-child(2)){width:30px;padding:0}

@@ -147,6 +147,7 @@ function handledNote(p: Proposal): string {
 .fbar :deep(.seg){flex:none}
 .empty-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:36px 18px;text-align:center}
 .prop{display:flex;flex-direction:column}
+.prop.wait{border-color:var(--accent-line)}
 .ph2{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--divider)}
 .ico{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:var(--r-ctl);background:var(--accent-soft);color:var(--accent-text)}
 .ico svg{width:15px;height:15px}
@@ -172,7 +173,7 @@ function handledNote(p: Proposal): string {
 .dl.gone dd{text-decoration:line-through;color:var(--subtle)}
 .months{padding:12px 18px 16px;background:var(--surface-2);margin-top:8px;border-top:1px solid var(--divider)}
 .mt{display:block;font-size:13px;margin-bottom:8px}
-.mgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
 .mbox{border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);overflow:hidden}
 .mh{display:flex;justify-content:space-between;gap:8px;padding:8px 12px;border-bottom:1px solid var(--divider);font-size:13px}
 .mh b{font-size:12px}

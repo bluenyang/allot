@@ -99,7 +99,8 @@ h1{margin:0;font-size:18px;font-weight:700}
 .note{margin:0;font-size:13px;color:var(--muted)}
 .foot-bar{padding:16px 32px;flex-direction:row;align-items:center}
 @media (max-width:760px){
-  .login{padding:24px 16px}
+  .login{padding:24px 16px;align-items:flex-start}
+  .lcard{margin-top:48px}
   .foot-bar{flex-direction:column;align-items:flex-start;padding:14px 16px}
 }
 </style>

@@ -506,12 +506,12 @@ td.amt{font-weight:600;font-variant-numeric:tabular-nums}
 tr.total td{border-top:1px solid var(--border);font-weight:600}
 tr.click{cursor:pointer}
 .phase-card{padding:14px 18px;display:flex;flex-direction:column;gap:10px}
-.ph-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.ph-n{flex-grow:1;min-width:0;overflow-wrap:anywhere}
+.ph-h{display:flex;align-items:center;gap:10px}
+.ph-h > :not(.ph-n){flex:none;white-space:nowrap}
+.ph-n{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .abar{display:flex;gap:2px;height:22px;border-radius:3px;overflow:hidden;background:var(--fill)}
 .abar span{min-width:2px}
 .phase-card .legend{margin-top:0}
-@media (max-width:760px){.ph-h{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 10px}.ph-h > .pill.ok{grid-row:2;grid-column:1}.ph-h > .hint{grid-row:2;grid-column:2 / 4}}
 .mnav{display:flex;align-items:center;gap:6px}
 .mnav h2{margin:0;font-size:15px;font-weight:600;min-width:92px;text-align:center}
 .sq{width:36px;height:36px;padding:0}

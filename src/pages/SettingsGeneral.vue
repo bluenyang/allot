@@ -424,8 +424,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 .fxseg :deep(.segsoon){display:inline-flex}
 @media (max-width:760px){
   .set{grid-template-columns:1fr;gap:12px;padding:18px 0}
-  .cf .grow{flex-basis:100%}
-  .cf{justify-content:flex-end}
+  .cf{flex-wrap:nowrap}
   .fmtgrid{grid-template-columns:1fr}
   .fmtgrid .pv{border-left:0;border-top:1px solid var(--border)}
 }
