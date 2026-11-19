@@ -19,36 +19,46 @@ test.describe('login', () => {
 
 test('settings: edit, reload, restore', async ({ page }) => {
   await go(page, 'pay', '통장·생활비·설정')
-  const form = page.getByRole('form', { name: '설정' })
-  const round = form.getByLabel('구독 이체 올림 단위')
-  const before = await round.inputValue()
-  await round.fill('5000')
-  await form.getByRole('button', { name: '설정 저장' }).click()
-  await expect(form.getByRole('status')).toHaveText('저장했어요.')
+  const form = () => page.getByRole('form', { name: '분배 설정' })
+  const round = () => form().getByLabel('구독 이체 올림 단위')
+  const before = await round().inputValue()
+  await round().selectOption({ label: '₩50,000' })
+  await form().getByRole('button', { name: '저장', exact: true }).click()
+  await expect(form().getByRole('status')).toHaveText('저장했어요.')
   await reload(page, 'pay', '통장·생활비·설정')
-  await expect(page.getByRole('form', { name: '설정' }).getByLabel('구독 이체 올림 단위')).toHaveValue('5000')
-  await page.getByRole('form', { name: '설정' }).getByLabel('구독 이체 올림 단위').fill(before)
-  await page.getByRole('form', { name: '설정' }).getByRole('button', { name: '설정 저장' }).click()
-  await expect(page.getByRole('form', { name: '설정' }).getByRole('status')).toHaveText('저장했어요.')
+  await expect(round()).toHaveValue('50000')
+  await round().selectOption(before)
+  await form().getByRole('button', { name: '저장', exact: true }).click()
+  await expect(form().getByRole('status')).toHaveText('저장했어요.')
   await noSaveError(page)
 })
 
-test('living costs: edit, reload, restore', async ({ page }) => {
+test('living costs: all three fields save, reload, restore', async ({ page }) => {
   await go(page, 'pay', '통장·생활비·설정')
-  const food = page.getByLabel('식비')
-  const before = await food.inputValue()
-  await food.fill('333000')
-  await Promise.all([
-    page.waitForResponse((r) => r.url().endsWith('/api/living') && r.request().method() === 'PUT' && r.ok()),
-    food.blur(),
-  ])
+  const names = ['식비', '교통비', '용돈']
+  const before: string[] = []
+  for (const n of names) before.push(await page.getByLabel(n, { exact: true }).inputValue())
+  const next = ['333000', '44000', '5500']
+  for (const [i, n] of names.entries()) {
+    const f = page.getByLabel(n, { exact: true })
+    await f.fill(next[i]!)
+    await Promise.all([
+      page.waitForResponse((r) => r.url().endsWith('/api/living') && r.request().method() === 'PUT' && r.ok()),
+      f.blur(),
+    ])
+  }
   await reload(page, 'pay', '통장·생활비·설정')
-  await expect(page.getByLabel('식비')).toHaveValue('333000')
-  await page.getByLabel('식비').fill(before)
-  await Promise.all([
-    page.waitForResponse((r) => r.url().endsWith('/api/living') && r.request().method() === 'PUT'),
-    page.getByLabel('식비').blur(),
-  ])
+  for (const [i, n] of names.entries()) await expect(page.getByLabel(n, { exact: true })).toHaveValue(Number(next[i]).toLocaleString('en-US'))
+  for (const [i, n] of names.entries()) {
+    const f = page.getByLabel(n, { exact: true })
+    await f.fill(before[i]!)
+    await Promise.all([
+      page.waitForResponse((r) => r.url().endsWith('/api/living') && r.request().method() === 'PUT'),
+      f.blur(),
+    ])
+  }
+  await reload(page, 'pay', '통장·생활비·설정')
+  for (const [i, n] of names.entries()) await expect(page.getByLabel(n, { exact: true })).toHaveValue(before[i]!)
 })
 
 test('accounts: add, edit, delete', async ({ page }) => {
@@ -56,6 +66,7 @@ test('accounts: add, edit, delete', async ({ page }) => {
   await page.getByRole('button', { name: '+ 통장 추가' }).click()
   await sheet(page, '통장 추가').getByLabel('통장').fill(MARK)
   await sheet(page, '통장 추가').getByLabel('역할').fill('테스트')
+  await sheet(page, '통장 추가').getByLabel('들어오는 돈').fill('월급 · 25일')
   await saveSheet(page, '통장 추가')
   await reload(page, 'pay', '통장·생활비·설정')
   await page.getByRole('row', { name: new RegExp(MARK) }).click()
@@ -63,6 +74,7 @@ test('accounts: add, edit, delete', async ({ page }) => {
   await saveSheet(page, '통장 수정')
   await reload(page, 'pay', '통장·생활비·설정')
   await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('테스트-수정')
+  await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('월급 · 25일')
   await page.getByRole('row', { name: new RegExp(MARK) }).click()
   await deleteInSheet(page, '통장 수정')
   await reload(page, 'pay', '통장·생활비·설정')
@@ -102,7 +114,7 @@ test('allocation targets: add a fixed target, give it a phase amount, see it in 
   await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('구간별 고정')
 
   // Give the current phase an amount for it; the month's distribution shows it.
-  const current = page.locator('.panel', { has: page.locator('.pill', { hasText: '지금' }) })
+  const current = page.locator('.phase-card', { has: page.locator('.pill', { hasText: '지금' }) })
   await current.getByRole('button', { name: /구간 수정$/ }).click()
   await sheet(page, '구간 수정').getByLabel(MARK).fill('12340')
   await saveSheet(page, '구간 수정')
@@ -113,7 +125,7 @@ test('allocation targets: add a fixed target, give it a phase amount, see it in 
   await go(page, 'pay', '구간')
   await page.getByRole('button', { name: '+ 분배 대상 추가' }).click()
   await sheet(page, '분배 대상 추가').getByLabel('이름').fill(`${MARK}-rem`)
-  await sheet(page, '분배 대상 추가').getByLabel('종류').selectOption({ label: '나머지 전부' })
+  await sheet(page, '분배 대상 추가').getByLabel('종류').selectOption('remainder')
   await sheet(page, '분배 대상 추가').getByRole('button', { name: '저장' }).click()
   await expect(sheet(page, '분배 대상 추가').getByRole('alert')).toContainText('하나만')
   await sheet(page, '분배 대상 추가').getByRole('button', { name: '취소' }).click()
@@ -154,7 +166,7 @@ test('phases: overlap is refused, then add, edit, delete', async ({ page }) => {
   await sheet(page, '구간 수정').getByLabel('메모').fill('수정됨')
   await saveSheet(page, '구간 수정')
   await reload(page, 'pay', '구간')
-  await expect(page.locator('.panel', { hasText: MARK })).toContainText('수정됨')
+  await expect(page.locator('.phase-card', { hasText: MARK })).toContainText('수정됨')
   await page.getByRole('button', { name: `${MARK} 구간 수정` }).click()
   await deleteInSheet(page, '구간 수정')
 
@@ -162,7 +174,7 @@ test('phases: overlap is refused, then add, edit, delete', async ({ page }) => {
   await sheet(page, '구간 수정').getByLabel('끝 월 (비우면 계속)').fill('')
   await saveSheet(page, '구간 수정')
   await reload(page, 'pay', '구간')
-  await expect(page.locator('.panel', { hasText: MARK })).toHaveCount(0)
+  await expect(page.locator('.phase-card', { hasText: MARK })).toHaveCount(0)
   await page.getByRole('button', { name: `${lastName} 구간 수정` }).click()
   await expect(sheet(page, '구간 수정').getByLabel('끝 월 (비우면 계속)')).toHaveValue('')
 })
