@@ -60,7 +60,7 @@ test('approval: a new OIDC user waits, the admin approves, then the app opens', 
   await dexLogin(g, DEX_USER)
   await g.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
   await g.goto('/#account')
-  await expect(g.getByText(DEX_USER)).toBeVisible()
+  await expect(g.getByText(DEX_USER, { exact: true })).toBeVisible()
   await expect(g.locator('.list li', { hasText: 'Dex' })).toBeVisible()
   await guest.close()
 })
