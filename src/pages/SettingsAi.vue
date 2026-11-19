@@ -138,7 +138,7 @@ const scope = (k: KeyItem) => {
   if (!writes(k)) return t('settingsAi.read')
   return `${t('settingsAi.readWrite')} · ${k.confirm === 'chat' ? t('settingsAi.confirmChatShort') : t('settingsAi.confirmUiShort')}`
 }
-const PROVIDERS = [['Anthropic Claude', 'AC'], ['OpenAI', 'OA'], ['Google Gemini', 'GG'], ['OpenAI 호환', 'OC']] as const
+const PROVIDERS = [['Anthropic Claude', 'AC'], ['OpenAI', 'OA'], ['Google Gemini', 'GG'], ['OpenAI compatible', 'OC']] as const
 </script>
 
 <template>
