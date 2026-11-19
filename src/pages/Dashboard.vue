@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onActivated, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, ref, watch } from 'vue'
 import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -15,7 +15,7 @@ import { manText, monthLong, monthShort, weekdayShort } from '../lib/format'
 import { t, lang } from '../i18n'
 import { offDays } from '../lib/holidays-lazy'
 import {
-  addYm, distributionAt, leftoverAfterTransfer, monthDates, parseDate, paysAfter31, splitRemainder, today, transferAt, unallocated, upcomingPayments, ymOf, ymRange,
+  addYm, clusterDots, distributionAt, leftoverAfterTransfer, monthDates, parseDate, paysAfter31, splitRemainder, today, transferAt, unallocated, upcomingPayments, ymOf, ymRange,
 } from '../lib/calc'
 import {
   canUndo, changed, decide, fieldName, listFor, loadProposals, money, proposals, proposalTitle, rowFields, rowLabel, rowTitle, shown, summary, tableName, undo, when, worded,
@@ -141,19 +141,24 @@ function diffRows(p: Proposal) {
 }
 const cardMeta = (p: Proposal) => t('pending.meta', { key: p.keyName, at: when(p.createdAt), summary: summary(p) })
 const wcls = (d: Date) => (d.getDay() === 6 ? 'sat' : d.getDay() === 0 ? 'sun' : '')
-const dotPct = (dday: number) => Math.min(97, Math.max(2, (dday / 31) * 100))
-/** The dots of the 31-day strip: a payment closer than 5% to the one before shares its dot, so dots never overlap (spec 010 U-16). */
-const dots = computed(() => {
-  const out: { id: string; left: string; first: boolean }[] = []
-  let last = -100
-  for (const p of pays.value) {
-    const x = dotPct(p.dday)
-    if (out.length && x - last < 5) continue
-    last = x
-    out.push({ id: p.sub.id + p.date.getTime(), left: `${x}%`, first: out.length === 0 })
-  }
-  return out
-})
+/** The 31-day strip: payments whose dots would touch (by the strip's rendered width) share one dot with a count (spec 010 A-27). */
+const DOT_PX = 18
+const stripEl = ref<HTMLElement | null>(null)
+const stripW = ref(240)
+let ro: ResizeObserver | undefined
+watch(stripEl, (el) => {
+  ro?.disconnect()
+  if (!el) return
+  stripW.value = el.clientWidth || stripW.value
+  if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => { stripW.value = el.clientWidth || stripW.value }); ro.observe(el) }
+}, { flush: 'post' })
+onBeforeUnmount(() => ro?.disconnect())
+const payText = (p: (typeof pays.value)[number]) => `${mdd(p.date)} ${p.sub.name} ${fmtMoney(p.krw)}`
+const dots = computed(() => clusterDots(pays.value.map((p) => p.dday), stripW.value, DOT_PX).map((c, i) => {
+  const ms = c.members.map((k) => pays.value[k]!)
+  const text = ms.length === 1 ? payText(ms[0]!) : `${t('dashboard.paymentCount', { n: ms.length })}: ${ms.map(payText).join(' · ')}`
+  return { id: ms.map((m) => m.sub.id + m.date.getTime()).join('+'), left: `${c.pct}%`, first: i === 0, n: ms.length, text }
+}))
 const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
 </script>
 
@@ -192,7 +197,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
       <div class="card kpi">
         <div class="k-h"><span class="k-l">{{ t('dashboard.dueIn31') }}</span><span v-if="pays.length" class="pill acc">D-{{ pays[0]!.dday }}</span></div>
         <div class="k-v"><span class="num v">{{ fmtMoney(paysSum) }}</span><span class="hint k-side">{{ t('dashboard.paymentCount', { n: pays.length }) }}</span></div>
-        <div class="k-bar dots" role="img" :aria-label="t('dashboard.dotsLabel')"><i v-for="d in dots" :key="d.id" :class="{ first: d.first }" :style="{ left: d.left }"></i></div>
+        <div ref="stripEl" class="k-bar dots" role="group" :aria-label="t('dashboard.dotsLabel')"><i v-for="d in dots" :key="d.id" role="img" :class="{ first: d.first, multi: d.n > 1 }" :style="{ left: d.left }" :title="d.text" :aria-label="d.text">{{ d.n > 1 ? d.n : '' }}</i></div>
         <div class="k-f"><span v-if="pays.length">{{ t('dashboard.nextPay', { name: pays[0]!.sub.name, amount: fmtMoney(pays[0]!.krw) }) }}</span><span v-else></span><span v-if="pays.length">{{ mdd(pays[0]!.date) }}</span></div>
       </div>
       <div class="card kpi">
@@ -411,7 +416,9 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
 .dots{position:relative;height:24px}
 .dots::before{content:"";position:absolute;left:0;right:0;top:11px;height:2px;background:var(--border)}
 .dots i{position:absolute;top:7px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--primary);border:2px solid var(--surface);box-sizing:content-box}
+.dots i.multi{top:3px;width:12px;height:12px;margin-left:-8px;display:grid;place-items:center;font:700 9px/1 var(--f-ui);font-style:normal;color:var(--primary-ink)}
 .dots i.first{top:6px;width:12px;height:12px;margin-left:-6px;background:var(--accent)}
+.dots i.first.multi{top:3px;width:12px;height:12px;margin-left:-8px;color:var(--accent-ink)}
 .k-go{height:22px;padding:0 6px;font-size:12px;color:var(--primary-text)}
 .k-lines{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-2)}
 .k-lines > div{display:flex;align-items:center;gap:6px}

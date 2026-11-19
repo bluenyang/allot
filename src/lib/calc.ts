@@ -236,6 +236,27 @@ export function upcomingPayments(subs: Subscription[], changes: PlanChange[], s:
   return out.sort((a, b) => a.date.getTime() - b.date.getTime())
 }
 
+/** Where a payment sits on the 31-day strip, in percent of its width (kept 2..97 so a dot stays inside). */
+export const dotPercent = (dday: number, days = 31) => Math.min(97, Math.max(2, (dday / days) * 100))
+
+/**
+ * The dots of the 31-day strip: payments (sorted by date) whose dots would sit closer than `dotPx` on a strip
+ * `widthPx` wide share one dot. A cluster keeps all its members (indexes into `ddays`); its dot sits where its
+ * first member does (spec 010 A-27).
+ */
+export function clusterDots(ddays: number[], widthPx: number, dotPx: number, days = 31): { pct: number; members: number[] }[] {
+  const out: { pct: number; members: number[] }[] = []
+  let anchor = -Infinity
+  ddays.forEach((d, i) => {
+    const pct = dotPercent(d, days)
+    const x = (pct / 100) * widthPx
+    const last = out[out.length - 1]
+    if (last && x - anchor < dotPx) last.members.push(i)
+    else { out.push({ pct, members: [i] }); anchor = x }
+  })
+  return out
+}
+
 /** The first calendar day after `from` + `days` (local dates; no millisecond math, so a clock change cannot move it). */
 const dayPlus = (from: Date, days: number) => new Date(from.getFullYear(), from.getMonth(), from.getDate() + days)
 

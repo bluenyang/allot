@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { PlanChange, Settings, Subscription } from '../../src/data/types'
-import { leftoverAfterTransfer, nextPayment, paymentDates, paysAfter31, phaseNumbers, unallocated, upcomingPayments, ymd } from '../../src/lib/calc'
+import { clusterDots, leftoverAfterTransfer, nextPayment, paymentDates, paysAfter31, phaseNumbers, unallocated, upcomingPayments, ymd } from '../../src/lib/calc'
 
 const settings: Settings = { ...DEFAULT_SETTINGS, netPay: 3_000_000, transferDay: 26, subRound: 10_000, fxBuffer: 0 }
 let n = 0
@@ -212,4 +212,19 @@ test('phaseNumbers: 1, 2, 3 by start month, list order breaks a tie, the stored 
   assert.deepEqual(phaseNumbers([ph('x', '2026-05'), ph('y', '2026-05'), ph('z', '2026-04')]), { z: 1, x: 2, y: 3 })
   // one phase is 1
   assert.deepEqual(phaseNumbers([ph('only', '2026-01')]), { only: 1 })
+})
+
+test('clusterDots: dots closer than the dot size share one, keeping every member (A-27)', () => {
+  // 320px phone, two-column strip ~114px: D+10 and D+12 are ~7px apart, so they cluster; D+25 stands alone
+  const c = clusterDots([0, 10, 12, 25], 114, 18)
+  assert.deepEqual(c.map((x) => x.members), [[0], [1, 2], [3]])
+  // on a wide strip the same dates stay separate
+  assert.deepEqual(clusterDots([0, 10, 12, 25], 600, 18).map((x) => x.members), [[0], [1], [2], [3]])
+  // every payment is in exactly one dot, and no two dots are closer than the dot size
+  const days = [0, 0, 1, 2, 3, 8, 9, 20, 30, 31]
+  for (const w of [114, 240, 400]) {
+    const cl = clusterDots(days, w, 18)
+    assert.equal(cl.flatMap((x) => x.members).length, days.length)
+    cl.slice(1).forEach((x, i) => assert.ok(((x.pct - cl[i]!.pct) / 100) * w >= 18 - 1e-9))
+  }
 })
