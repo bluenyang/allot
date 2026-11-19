@@ -64,13 +64,13 @@ function openUser(u?: User) {
   edit.value = u ? { user: u, email: u.email, name: u.name, role: u.role, status: statusOf(u), password: '', typePw: false, confirm: '', asking: false }
     : { user: null, email: '', name: '', role: 'user', status: 'active', password: '', typePw: false, confirm: '', asking: false }
 }
-async function act(fn: () => Promise<unknown>, done: string, keepOpen = false) {
+async function act(fn: () => Promise<unknown>, done: string | (() => string), keepOpen = false) {
   busy.value = true
   editError.value = ''
   try {
     await fn()
     await loadUsers()
-    say(done)
+    say(typeof done === 'string' ? done : done())
     if (!keepOpen) edit.value = null
     else if (edit.value?.user) edit.value.user = users.value.find((x) => x.id === edit.value!.user!.id) ?? null
   } catch (e) {
@@ -104,7 +104,7 @@ async function saveUser() {
       else if (e.status === 'active' && from === 'pending') { await api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { status: 'active' } }); done = t('admin.approved', { email: u.email }) }
     }
     if (e.typePw && e.password) { await api('POST', '/api/auth/admin/set-user-password', { userId: u.id, newPassword: e.password }); done = t('admin.pwReset') }
-  }, done)
+  }, () => done)
 }
 const endSessions = (u: User) => act(() => api('POST', '/api/auth/admin/revoke-user-sessions', { userId: u.id }), t('admin.sessionsEnded'), true)
 function remove(u: User) {
