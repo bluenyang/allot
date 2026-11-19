@@ -174,3 +174,69 @@ test('settings: a language pick of the first account does not reach the next acc
     if (u) await request.fetch(`/api/admin/users/${u.id}`, { method: 'DELETE', data: { confirmEmail: email }, headers: { origin: baseURL! } })
   }
 })
+
+// spec 010 A-21: an admin save is several requests (name, role, status, password). The first admin starts it, the
+// answer to its first request is held, another admin signs in on the tab; nothing more is sent under the new
+// session and nothing of the first save is shown.
+test('admin: a save of the first admin sends no later request under the next admin (A-21)', async ({ browser, request, baseURL }) => {
+  test.setTimeout(240_000)
+  await new Promise((r) => setTimeout(r, 60_000))
+  const stamp = Date.now().toString(36)
+  const second = { email: `e2e-adm-${stamp}@example.com`, pass: 'e2e-adm-pass-1' }
+  const target = { email: `e2e-tgt-${stamp}@example.com` }
+  const hdr = { origin: baseURL! }
+  expect((await request.fetch('/api/auth/admin/create-user', { method: 'POST', data: { email: second.email, name: 'E2E adm', role: 'admin', password: second.pass }, headers: hdr })).status()).toBe(200)
+  expect((await request.fetch('/api/auth/admin/create-user', { method: 'POST', data: { email: target.email, name: 'E2E tgt', password: 'e2e-tgt-pass-1' }, headers: hdr })).status()).toBe(200)
+  const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, locale: 'ko-KR' })
+  try {
+    const page = await ctx.newPage()
+    await page.goto('/')
+    await page.getByLabel('이메일').fill(process.env.ADMIN_EMAIL!)
+    await page.getByLabel('비밀번호').fill(process.env.ADMIN_PASSWORD!)
+    await page.getByRole('button', { name: '로그인', exact: true }).click()
+    await page.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
+    await page.goto('/#admin')
+    await page.getByRole('button', { name: `${target.email} 관리` }).click()
+    const dlg = page.getByRole('form', { name: target.email })
+    await dlg.getByLabel('이름').fill('E2E renamed')
+    await dlg.getByRole('group', { name: '역할' }).getByRole('button', { name: '관리자' }).click()
+    // hold the answer to the first request (the name); it has reached the server
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    let sent!: () => void
+    const wasSent = new Promise<void>((r) => { sent = r })
+    let armed = true
+    await ctx.route('**/api/auth/admin/update-user', async (route) => {
+      if (!armed) return route.continue()
+      armed = false
+      const res = await route.fetch()
+      sent()
+      await gate
+      await route.fulfill({ response: res })
+    })
+    await dlg.getByRole('button', { name: '저장' }).click()
+    await wasSent
+    await page.getByRole('button', { name: '로그아웃' }).first().click()
+    await page.getByLabel('이메일').waitFor()
+    await page.getByLabel('이메일').fill(second.email)
+    await page.getByLabel('비밀번호').fill(second.pass)
+    await page.getByRole('button', { name: '로그인', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '관리', exact: true })).toBeVisible({ timeout: 15_000 })
+    const later: string[] = []
+    page.on('request', (r) => { if (r.method() !== 'GET') later.push(`${r.method()} ${new URL(r.url()).pathname}`) })
+    release()
+    await page.waitForTimeout(2000)
+    expect(later.filter((x) => /\/admin\/users\/|set-user-password|ban-user|update-user/.test(x)), 'nothing more of the first save is sent').toEqual([])
+    await expect(page.getByRole('status').filter({ hasText: '저장했어요' })).toHaveCount(0)
+    // the target's role was never changed
+    const users = (await (await request.fetch('/api/auth/admin/list-users?limit=500', { headers: hdr })).json()).users as { email: string; role: string }[]
+    expect(users.find((u) => u.email === target.email)?.role).toBe('user')
+  } finally {
+    await ctx.close()
+    const users = (await (await request.fetch('/api/auth/admin/list-users?limit=500', { headers: hdr })).json()).users as { id: string; email: string }[]
+    for (const e of [second.email, target.email]) {
+      const u = users.find((x) => x.email === e)
+      if (u) await request.fetch(`/api/admin/users/${u.id}`, { method: 'DELETE', data: { confirmEmail: e }, headers: hdr })
+    }
+  }
+})

@@ -43,6 +43,31 @@ test('(V-6 a) general settings: date format and amount unit apply, survive a rel
   }
 })
 
+test('(W-8, A-21) two display formats picked while the first save is still on its way: both are kept', async ({ page, request }) => {
+  const s0 = await state(request)
+  try {
+    await page.goto('/#settings/general')
+    await page.getByRole('group', { name: '날짜 형식' }).waitFor()
+    let delayed = false
+    await page.route('**/api/preferences', async (route) => {
+      if (route.request().method() === 'PUT' && !delayed) { delayed = true; await new Promise((r) => setTimeout(r, 2000)) }
+      await route.continue()
+    })
+    const puts: string[] = []
+    page.on('request', (r) => { if (r.method() === 'PUT' && r.url().endsWith('/api/preferences')) puts.push(r.postData() ?? '') })
+    await page.getByRole('group', { name: '날짜 형식' }).getByRole('button', { name: '2026. 11. 14.' }).click()
+    await page.getByRole('group', { name: '금액 단위' }).getByRole('button', { name: '만원' }).click() // while the first is on its way
+    await expect.poll(() => puts.length, { timeout: 15_000 }).toBe(2)
+    await expect(page.getByRole('status').filter({ hasText: '바로 저장했어요.' })).toBeVisible()
+    const saved = (await state(request)).preferences
+    expect(saved.dateFormat, 'the first pick survives').toBe('dot')
+    expect(saved.amountUnit).toBe('man')
+    expect(JSON.parse(puts[1]!).dateFormat, 'the second save carries the first pick').toBe('dot')
+  } finally {
+    await api(request, 'PUT', '/api/preferences', s0.preferences)
+  }
+})
+
 test('(V-6 b, c) theme: only the preview changes before saving; saved colour stays after reload, other users keep theirs', async ({ page, request, browser }) => {
   const s0 = await state(request)
   const email = `e2e-theme-${Date.now().toString(36)}@example.com`

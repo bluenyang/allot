@@ -205,3 +205,31 @@ test('keys: the list says how many write proposals each key made; what cannot ch
   const rejects = (await (await request.get('/api/proposals?status=pending')).json()) as { id: string; keyName: string }[]
   for (const x of rejects.filter((y) => y.keyName === `${NAME}-n`)) await request.post(`/api/proposals/${x.id}/reject`)
 })
+
+test('keys: an answer that comes after the screen was left does not bring the key text back (A-21)', async ({ page }) => {
+  await openAi(page)
+  await page.getByRole('button', { name: '+ 키 만들기' }).click()
+  const s = sheet(page, '새 API 키')
+  await s.getByLabel('이름').first().fill(`${NAME}-late`)
+  let release!: () => void
+  const gate = new Promise<void>((r) => { release = r })
+  let sent!: () => void
+  const wasSent = new Promise<void>((r) => { sent = r })
+  await page.route('**/api/keys', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue()
+    const res = await route.fetch()
+    sent()
+    await gate
+    await route.fulfill({ response: res })
+  })
+  await s.getByRole('button', { name: '키 만들기', exact: true }).click()
+  await wasSent
+  await page.goto('/#home') // leave the screen (it is kept alive)
+  await page.locator('header.ph h1').waitFor()
+  release()
+  await page.waitForTimeout(1500)
+  await page.goto('/#settings/ai')
+  await expect(page.getByRole('heading', { name: 'API 키', exact: true })).toBeVisible()
+  await expect(page.getByLabel('API 키', { exact: true })).toHaveCount(0)
+  expect(await page.content()).not.toMatch(/allot_[A-Za-z]{64}/)
+})
