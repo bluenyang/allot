@@ -3,7 +3,7 @@
 // file covers 월급 분배, 일정, 변경 내역, 설정, 관리, 현황 and the shell. The shared account is put on
 // English for the run through the API and back to what it was in afterAll; everything the tests make
 // is deleted again (also when a test fails).
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test'
 import { MARK, sheet } from './helpers'
 
 const M = `${MARK}-en`
@@ -98,13 +98,16 @@ test('pay split: delete the remainder target, the leftover stays in the pay acco
   const pass = 'e2e-en-rem-pass-1'
   const created = await api(request, 'POST', '/api/auth/admin/create-user', { email, name: 'E2E en', password: pass })
   expect(created.status).toBe(200)
-  const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, locale: 'ko-KR' })
+  const userId = (created.json as { user: { id: string } }).user.id
+  let ctx: BrowserContext | undefined
+  try {
+  ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, locale: 'ko-KR' })
+  const c = ctx
   const mine = async (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, data?: unknown) => {
-    const r = await ctx.request.fetch(path, { method, data, headers: { origin: baseURL! } })
+    const r = await c.request.fetch(path, { method, data, headers: { origin: baseURL! } })
     return { status: r.status(), json: await r.json().catch(() => null) }
   }
-  try {
-    const page = await ctx.newPage()
+    const page = await c.newPage()
     await page.goto('/')
     await page.getByLabel('이메일').fill(email)
     await page.getByLabel('비밀번호').fill(pass)
@@ -158,13 +161,14 @@ test('pay split: delete the remainder target, the leftover stays in the pay acco
     await page.getByRole('tab', { name: 'Phases' }).click()
     await expect(page.getByRole('row', { name: new RegExp(remName) }).first()).toBeVisible()
   } finally {
-    await ctx.close()
-    const users = (await api(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users as { id: string; email: string }[]
-    const u = users.find((x) => x.email === email)
-    if (u) await api(request, 'DELETE', `/api/admin/users/${u.id}`, { confirmEmail: email })
+    try {
+      await ctx?.close()
+    } catch { /* the account is deleted below whatever the context did */ }
+    const del = await api(request, 'DELETE', `/api/admin/users/${userId}`, { confirmEmail: email })
+    expect(del.status, 'the temporary account is deleted').toBeLessThan(300)
+    const left = (await api(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users as { email: string }[]
+    expect(left.some((x) => x.email === email), 'the temporary account is gone').toBe(false)
   }
-  const after = (await api(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users as { email: string }[]
-  expect(after.some((x) => x.email === email), 'the temporary account is gone').toBe(false)
 })
 
 // ---------------------------------------------------------------- 일정
@@ -317,10 +321,12 @@ test('settings: the display format saves at once; a holiday set is added, switch
     await expect(sw).toHaveAttribute('aria-checked', 'false')
     await expect.poll(async () => (await state(request)).holidaySets.find((h) => h.id === setId)?.enabled).toBe(false)
   } finally {
-    for (const h of (await state(request)).holidaySets.filter((x) => x.name.startsWith(M))) await api(request, 'DELETE', `/api/holiday-sets/${h.id}`)
+    for (const h of (await state(request)).holidaySets.filter((x) => x.name.startsWith(M))) {
+      expect((await api(request, 'DELETE', `/api/holiday-sets/${h.id}`)).status, `delete set ${h.name}`).toBeLessThan(300)
+    }
     await api(request, 'PUT', '/api/preferences', { ...s0.preferences, language: 'en' })
+    expect((await state(request)).holidaySets.some((h) => h.name.startsWith(M)), 'no marked holiday set remains').toBe(false)
   }
-  expect((await state(request)).holidaySets.some((h) => h.name.startsWith(M))).toBe(false)
 })
 
 test('settings: an AI key is made, shown once, and revoked', async ({ page, request }) => {
