@@ -43,6 +43,7 @@ summary_for_user: |
   화면에서 입력 범위가 좁아지는 곳은 정해 주신 두 군데뿐입니다: 올림 단위(1만/5만/10만/끄기, 다른 값이 저장돼 있으면 그 값도 선택지로 보임), 구간 기호(자동 N단계, 저장값은 유지). 나머지 나누기 편집, 생활비 세 칸, 플랜 전환의 VAT·상태·"그대로", 해지된 구독의 플랜 전환, 월 범위 입력, 대화 확인 키, 저장된 OIDC secret 지우기는 모두 그대로 둡니다.
   제가 정한 것: 현황의 "이번 달 투자" 카드는 나머지 대상의 이름(데이터)과 나머지 나누기로 그립니다("투자"를 코드에 박지 않음). 적용한 제안의 "되돌리기"는 변경 내역 되돌리기로 동작하고, 거절한 제안은 되돌릴 수 없습니다. "31일 이후"는 1년 안에서 최대 3줄입니다.
   작업 단위 9개(W-1~W-9), 검사 12개(V-1~V-12). 화면 대조는 캡처를 캔버스와 나란히 놓고 하며, 첫 화면 JS 증가 한도는 30kB입니다.
+  [2026-11-20 추가] 사용자 요청으로 rc.2에 UI 컴포넌트 체계를 넣습니다(W-10, W-11, V-13): Reka UI(headless, MIT) 위에 우리 토큰으로 Select(새로, 앱의 select 8곳 교체)·Switch·Seg·Tabs·Tip, 그다음 EditSheet·ConfirmDialog·Sheet를 Reka Dialog로. Tailwind·shadcn-vue는 들이지 않습니다. 선택지·저장값·받는 입력은 그대로, 첫 화면 JS 한도도 그대로(+30kB, 지금 여유 약 34kB). 의존성 reka-ui@2.11.0 하나(정확한 버전).
 ---
 ## 요구 해석
 대조 보고서는 `.loctx/reports/0.1.4/rc2/delta-*.md`(항목 번호 SH·HM·PD·SB·PY·BG·EV·HS·ST·AD)이고, 각 보고서 끝의 "canvas5 갱신" 절이 앞의 판정보다 우선한다. 보고서는 이 기기에만 있으므로(공개 저장소), 이 spec에는 항목 번호와 결정만 적는다.
@@ -71,6 +72,7 @@ summary_for_user: |
   - 화면 입력이 좁아지는 곳은 사용자가 정한 두 곳뿐: 올림 단위 선택(D-5d), 단계 기호 없음(D-5c). 둘 다 서버는 그대로 받는다.
 - S-11 설정 + 관리 (보고서 ST-1~60, AD-1~23): 설정 일반 다섯 구역(표시 형식은 고르면 바로 저장), 테마(라이트/다크는 여기서만), AI·연동(키 목록·만들기 2단계 + 쓰기 범위·확인 방식·"쓰기 제안 n건"(전체 기간; 모든 키의 제안을 합쳐 최대 3,000건(100건 × 30쪽)까지 읽고, 거기서 멈추면 키마다 센 수 뒤에 "+"를 붙여 "적어도 n건"으로 보임 — 마지막 쪽이 꽉 차면 다음 쪽이 없어도 "+"가 붙을 수 있음. 첫 감사 F-4, 사용자 결정), AI 모델·키 이름 변경·범위 변경·연장·사용 기록·연결된 앱은 준비 중), 보안(비밀번호 변경 한 줄 한 칸; 비밀번호 정책·자동 생성 준비 중). 관리: 계정 목록·만들기·관리 모달, 외부 로그인(OIDC 콜백은 앱 값 `/api/auth/callback/oidc`).
 - S-12 문구·문서 (intent 영향 범위): 새 문구는 ko·en 둘 다(i18n 검사). CHANGELOG 0.1.4-rc.2, README 화면 설명, `docs/ROADMAP.md`는 바꾸지 않음(rc.2는 0.1.4 안).
+- S-13 UI 컴포넌트 체계 (사용자 2026-11-20 "나는 shadcn 처럼 통일된 디자인을 원하는건데. 아예 ui libraries를 쓰는건?" → "rc.2에 B 방식으로. 진행"; B = headless 라이브러리 + 우리 토큰): 상호작용 컴포넌트를 Reka UI(headless, MIT, shadcn-vue의 바탕)의 기본 요소 위에 다시 만들고 모양은 DESIGN.md 토큰으로 입힌다. Tailwind·shadcn-vue는 들이지 않는다. 브라우저 기본 select는 앱에서 없앤다(펼친 목록까지 디자인, 휴대폰에서도 같은 컴포넌트). 동작·입력은 그대로: 선택지와 저장값이 같고, 지금 받는 값을 다 받으며(S-10), 키보드·스크린리더 동작은 Reka의 WAI-ARIA 구현을 따른다.
 
 ## 설계
 ### 토큰과 테마 (W-1)
@@ -99,6 +101,13 @@ summary_for_user: |
 ### 대조 방법
 - `.loctx/canvas/capture2.mjs`·`shot.mjs`로 dev 스택 화면을 캡처해 캔버스 아트보드와 나란히(데스크톱 1440, 휴대폰 390, 라이트·다크). 캡처용 데이터는 dev 스택의 지어낸 데이터(테스트 서버 데모 계정은 지웠음). 캡처는 `.loctx/reports/0.1.4/rc2/shots/`.
 
+### UI 컴포넌트 체계 (W-10, W-11)
+- 의존성: `reka-ui@2.11.0`(정확한 버전, `pnpm add -E`, lockfile 같은 커밋, minimumReleaseAge 통과 — 2026-10-05 배포). 빌드 스크립트 없음. 의존 패키지(@floating-ui/vue, @vueuse/core 등)도 lockfile로 고정.
+- W-10 입력·선택: `Select`(새 공용 컴포넌트, Reka Select; 앱의 `<select>` 8곳 — AddRecordModal, SubEditor, PlanChangeEditor, History, Timeline, Payroll, Subscriptions, SettingsGeneral — 을 모두 바꿈, 저장값이 선택지 밖이면 지금처럼 그 값도 선택지로), `Switch`(Reka Switch), `Seg`(Reka ToggleGroup, 단일 선택), `SubTabs`(Reka Tabs), `Tip`(Reka Tooltip/Popover). 공개 API(props·이벤트)는 되도록 지금 그대로 두어 화면 코드는 최소로 바꾼다.
+- W-11 덮개: `EditSheet`·`ConfirmDialog`·`Sheet`를 Reka Dialog/AlertDialog 위로(포커스 가두기·되돌리기, Esc, 바깥 클릭 규칙은 지금 동작 유지 — EditSheet는 바깥 클릭으로 닫히지 않음, 시트는 닫힘). 2단계 머리·휴대폰 카드 모양은 그대로.
+- 크기: 첫 화면 JS 한도는 그대로(master 대비 +30kB). 지금 −3.9kB라 여유 약 34kB. 넘으면 묻는다.
+- DESIGN.md의 컴포넌트 절을 바꾸고, 새 컴포넌트를 쓸 때의 규칙(네이티브 select 쓰지 않음)을 적는다.
+
 ## 작업 단위
 각 단위는 따로 되돌릴 수 있고, 커밋마다 게이트를 통과한다. 문구(ko·en)는 그 화면의 단위 안에서.
 - [x] W-1 토큰·다크 팔레트·테마 계산·대비 검사 + `DESIGN.md` + `docs/design/`. (S-2) — 커밋 229553a
@@ -110,6 +119,8 @@ summary_for_user: |
 - [x] W-7 일정 + 변경 내역. (S-9) — 커밋 de542e9, 86356e0
 - [x] W-8 설정 + 관리. (S-11)
 - [x] W-9 E2E 갱신(전 화면, 새 선택자), i18n 검사, CHANGELOG·README. (S-12) — E2E·i18n은 W-1~W-8 각 단위에서 갱신(e2e-w8fix2.log 93 passed), 문서 커밋 50e1e38 + 리뷰 수정(A-23)
+- [ ] W-10 Reka UI 의존성 + 입력·선택 컴포넌트(Select 새로, Switch, Seg, SubTabs, Tip)와 앱의 select 8곳 교체, DESIGN.md. (S-13, S-10)
+- [ ] W-11 덮개 컴포넌트(EditSheet, ConfirmDialog, Sheet)를 Reka Dialog로. (S-13)
 
 ## 검증 기준
 모든 검사는 `scripts/check-run.sh`로 돌리고, 로그는 `pnpm check:logs`를 통과해야 증거다(AGENTS.md). 로그는 `.loctx/reports/0.1.4/rc2/test/`. 위임한 검사도 같다.
@@ -125,6 +136,7 @@ summary_for_user: |
 - V-10 화면 흐름 E2E: 기존 E2E(`edit`, `history`, `proposals`, `api-keys`, `auth`, `i18n`, `redesign`) 새 선택자로 전부 통과 + 새 흐름(구독 2단계 추가·수정·삭제·해지, 플랜 전환 2단계, 단계 자동 번호, 나머지 대상 지우기 → "급여 통장에", 기록 추가, 제안 적용 → 되돌리기 → 알약 "되돌림", 달력 휴대폰 달 이동). 영어 화면에서 같은 흐름 한 번.
 - V-11 캔버스 대조: 화면 9개 × (데스크톱·휴대폰) × (라이트·다크) 캡처를 캔버스 아트보드와 나란히 놓은 표(`.loctx/reports/0.1.4/rc2/shots/index.md`). 화면마다 "같음 / 다름(이유: D-n, S-10, 준비 중)"을 적는다. 이유 없는 다름 = 실패. 사용자에게 보여 주고 확인받는다.
 - V-12 테스트 서버: rc.2 이미지를 `allot-rc`(:15174)로, 비밀값은 `.loctx/rc/allot-rc.secrets`(AGENTS.md 예외)로 띄워 DB를 유지한 채 → 로그인, 화면 9개 열기(콘솔 오류 없음), 휴대폰 폭 한 번, 다크 한 번, 쓰기 키 제안 → 대기 중인 변경에서 적용 → 되돌리기 한 번.
+- V-13 컴포넌트 체계(W-10, W-11): `pnpm install --frozen-lockfile`, 게이트, V-1 크기 다시. E2E — 전체 통과 + 새 검사: Select를 키보드로 열고(Enter/Space/↓) 고르고 Esc로 닫기, 선택지 밖 저장값이 보이고 다시 저장해도 그대로, 휴대폰 폭에서 Select·Tip 동작, Switch·Seg·Tabs의 role/aria 상태, Dialog 포커스 가두기·Esc·포커스 되돌리기(기존 V-6 f 유지). 앱에 `<select>`가 남지 않음(grep 0). 리뷰에 의존성 검토(라이선스, 전이 의존성, 보안 공지) 포함.
 
 ## 조정 기록
 <!-- - A-n (YYYY-MM-DD, W-n) 무엇을 · 왜 · 커밋 -->
