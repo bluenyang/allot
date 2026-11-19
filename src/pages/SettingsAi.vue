@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onMounted, ref } from 'vue'
+import { computed, onActivated, onDeactivated, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import Soon from '../components/Soon.vue'
 import { ApiError } from '../lib/api'
@@ -22,31 +22,39 @@ const busy = ref(false)
 const made = ref<Record<string, number> | null>(null)
 const madeCapped = ref(false)
 
-async function load() {
+/** Counts the times the screen was left or shown again: an answer that began in an earlier one is dropped. */
+let generation = 0
+let inflight: Promise<void> | null = null
+/** One load at a time: showing the screen for the first time fires mount and activation together. */
+function load() {
+  return (inflight ??= run().finally(() => { inflight = null }))
+}
+async function run() {
   const scope = sessionScope()
+  const gen = generation
+  const current = () => scope.alive() && gen === generation
   try {
     const r = await listKeys()
-    scope.ifCurrent(() => {
+    if (current()) {
       keys.value = r.keys
       noExpiry.value = r.policy.noExpiry
       max.value = r.max
       loaded.value = true
-    })
+    }
   } catch (e) {
-    scope.ifCurrent(() => { error.value = e instanceof ApiError ? e.message : t('settingsAi.loadFailed') })
+    if (current()) error.value = e instanceof ApiError ? e.message : t('settingsAi.loadFailed')
     return
   }
   try {
-    const c = await countProposalsByKey()
-    scope.ifCurrent(() => { made.value = c.counts; madeCapped.value = c.capped })
+    const c = await countProposalsByKey(current)
+    if (current()) { made.value = c.counts; madeCapped.value = c.capped }
   } catch {
     // the count is a nicety: without it the line is left out
   }
 }
-onMounted(load)
-onActivated(load)
-// The page is kept alive when left: a key shown once must not stay in memory for the next visit.
-onDeactivated(() => { fresh.value = null })
+onActivated(() => { generation++; void load() })
+// The page is kept alive when left: a key shown once must not stay in memory for the next visit, and an answer still on its way is dropped.
+onDeactivated(() => { generation++; fresh.value = null })
 
 const activeCount = computed(() => keys.value.length)
 const proposalTotal = computed(() => (made.value ? keys.value.reduce((a, k) => a + (made.value![k.id] ?? 0), 0) : null))
@@ -79,11 +87,14 @@ async function make() {
   if (name.length > 32) return (draftError.value = t('settingsAi.nameMax'))
   busy.value = true
   draftError.value = ''
+  const scope = sessionScope()
+  const gen = generation
   try {
     const r = await createKey({
       name, expiresInDays: d.expires === 'none' ? null : Number(d.expires),
       ...(d.write ? { write: true, confirm: d.confirm } : {}),
     })
+    if (!scope.alive() || gen !== generation) return // the screen was left (or the account changed): the key text is not kept
     fresh.value = { key: r.key, name: r.item.name }
     notice.value = ''
     draft.value = null

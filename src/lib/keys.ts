@@ -30,10 +30,11 @@ export const setKeyPolicy = (noExpiry: boolean) => api<KeyPolicy>('PUT', '/api/a
  * so this reads the proposals the account can already see, a page at a time, and counts them by key.
  * `capped` is true when it stopped at the page limit before the end.
  */
-export async function countProposalsByKey(pageSize = 100, maxPages = 30): Promise<{ counts: Record<string, number>; capped: boolean }> {
+export async function countProposalsByKey(alive: () => boolean = () => true, pageSize = 100, maxPages = 30): Promise<{ counts: Record<string, number>; capped: boolean }> {
   const counts: Record<string, number> = {}
   let before = ''
   for (let i = 0; i < maxPages; i++) {
+    if (!alive()) return { counts, capped: false } // the session or the screen has moved on: stop asking
     const page = await api<{ id: string; keyId: string; createdAt: string }[]>('GET', `/api/proposals?limit=${pageSize}${before}`)
     for (const p of page) counts[p.keyId] = (counts[p.keyId] ?? 0) + 1
     if (page.length < pageSize) return { counts, capped: false }
