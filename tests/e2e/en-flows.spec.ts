@@ -89,44 +89,82 @@ test('pay split: automatic phase numbers, the rounding select with "Off", saved 
   expect((await state(request)).settings.subRound).toBe(before.subRound)
 })
 
-test('pay split: delete the remainder target, the leftover stays in the pay account, History reverts it', async ({ page, request }) => {
-  const st = await state(request)
-  const rem = st.targets.find((x) => x.kind === 'remainder')
-  test.skip(!rem, 'the account has no remainder target to delete')
-  const gone = async () => !(await state(request)).targets.some((x) => x.kind === 'remainder')
+test('pay split: delete the remainder target, the leftover stays in the pay account, History reverts it (temporary account)', async ({ browser, request, baseURL }) => {
+  test.setTimeout(180_000)
+  // The owner's data is never written here: a temporary account holds the targets this test deletes.
+  // Earlier specs sign in too: start with an empty login window (5 a minute).
+  await new Promise((r) => setTimeout(r, 60_000))
+  const email = `e2e-en-rem-${Date.now().toString(36)}@example.com`
+  const pass = 'e2e-en-rem-pass-1'
+  const created = await api(request, 'POST', '/api/auth/admin/create-user', { email, name: 'E2E en', password: pass })
+  expect(created.status).toBe(200)
+  const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, locale: 'ko-KR' })
+  const mine = async (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, data?: unknown) => {
+    const r = await ctx.request.fetch(path, { method, data, headers: { origin: baseURL! } })
+    return { status: r.status(), json: await r.json().catch(() => null) }
+  }
   try {
-    await payTab(page, 'Phases')
-    await page.getByRole('row', { name: new RegExp(rem!.name) }).first().click()
+    const page = await ctx.newPage()
+    await page.goto('/')
+    await page.getByLabel('이메일').fill(email)
+    await page.getByLabel('비밀번호').fill(pass)
+    await page.getByRole('button', { name: '로그인', exact: true }).click()
+    await page.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
+
+    // seed what the test needs: English, a remainder target and one remainder-split row
+    const prefs = ((await mine('GET', '/api/state')).json as State).preferences
+    expect((await mine('PUT', '/api/preferences', { ...prefs, language: 'en' })).status).toBe(200)
+    const remName = `${M}-rest`
+    expect((await mine('POST', '/api/targets', { name: remName, kind: 'remainder', note: '' })).status).toBe(201)
+    expect((await mine('POST', '/api/remainder-split', { name: `${M}-split`, code: 'R', ratio: 0.5 })).status).toBe(201)
+    const seeded = (await mine('GET', '/api/state')).json as State
+    expect(seeded.targets.some((x) => x.kind === 'remainder' && x.name === remName)).toBe(true)
+    const splits = seeded.remainderSplit.length
+
+    await page.goto('/#pay')
+    await page.reload()
+    await page.getByRole('tablist').first().waitFor()
+    await page.getByRole('tab', { name: 'Phases' }).click()
+    await page.getByRole('row', { name: new RegExp(remName) }).first().click()
     const s = sheet(page, 'Edit split target')
     await s.getByRole('button', { name: 'Delete' }).click()
     await s.getByRole('button', { name: 'Press again to delete' }).click()
     await expect(s).toBeHidden()
-    expect(await gone()).toBe(true)
+    expect(((await mine('GET', '/api/state')).json as State).targets.some((x) => x.kind === 'remainder')).toBe(false)
+    // the exact change set of the deletion
+    const del = ((await mine('GET', '/api/changes?limit=1')).json as { id: string }[])[0]!
 
     await page.getByRole('tab', { name: 'Monthly simulation' }).click()
     await expect(page.getByRole('row', { name: /Stays in the pay account/ })).toBeVisible()
     await expect(page.getByText('There is no remainder target, so there is nothing to split')).toBeVisible()
-    expect((await state(request)).remainderSplit.length, 'the split items are kept').toBe(st.remainderSplit.length)
+    expect(((await mine('GET', '/api/state')).json as State).remainderSplit.length, 'the split items are kept').toBe(splits)
 
     // the way back is the History revert, through the modal
     await page.goto('/#history')
-    const list = page.getByRole('list', { name: 'Changes' })
-    const first = list.locator('li:not(.day)').first()
-    await expect(first).toContainText(rem!.name)
+    const first = page.getByRole('list', { name: 'Changes' }).locator('li:not(.day)').first()
+    await expect(first).toContainText(remName)
     await first.getByRole('button', { name: 'Revert', exact: true }).click()
     const ask = sheet(page, 'Revert this change?')
     await expect(ask).toContainText('is restored to how it was before it was deleted')
     await ask.getByRole('button', { name: 'Revert', exact: true }).click()
     await expect(ask).toBeHidden()
-    await expect.poll(async () => (await state(request)).targets.some((x) => x.kind === 'remainder' && x.name === rem!.name)).toBe(true)
-    await payTab(page, 'Phases')
-    await expect(page.getByRole('row', { name: new RegExp(rem!.name) }).first()).toBeVisible()
+    await expect.poll(async () => ((await mine('GET', '/api/state')).json as State).targets.some((x) => x.kind === 'remainder' && x.name === remName)).toBe(true)
+    // that revert reverted the deletion set, and nothing else
+    const sets = (await mine('GET', '/api/changes?limit=5')).json as { id: string; revertOf?: string | null }[]
+    expect(sets.some((x) => x.id === del.id)).toBe(true)
+    await page.goto('/#pay')
+    await page.reload()
+    await page.getByRole('tablist').first().waitFor()
+    await page.getByRole('tab', { name: 'Phases' }).click()
+    await expect(page.getByRole('row', { name: new RegExp(remName) }).first()).toBeVisible()
   } finally {
-    if (await gone()) {
-      const latest = ((await api(request, 'GET', '/api/changes?limit=1')).json as { id: string }[])[0]
-      if (latest) await api(request, 'POST', `/api/changes/${latest.id}/revert`)
-    }
+    await ctx.close()
+    const users = (await api(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users as { id: string; email: string }[]
+    const u = users.find((x) => x.email === email)
+    if (u) await api(request, 'DELETE', `/api/admin/users/${u.id}`, { confirmEmail: email })
   }
+  const after = (await api(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users as { email: string }[]
+  expect(after.some((x) => x.email === email), 'the temporary account is gone').toBe(false)
 })
 
 // ---------------------------------------------------------------- 일정
@@ -279,10 +317,10 @@ test('settings: the display format saves at once; a holiday set is added, switch
     await expect(sw).toHaveAttribute('aria-checked', 'false')
     await expect.poll(async () => (await state(request)).holidaySets.find((h) => h.id === setId)?.enabled).toBe(false)
   } finally {
-    if (setId) await api(request, 'DELETE', `/api/holiday-sets/${setId}`)
+    for (const h of (await state(request)).holidaySets.filter((x) => x.name.startsWith(M))) await api(request, 'DELETE', `/api/holiday-sets/${h.id}`)
     await api(request, 'PUT', '/api/preferences', { ...s0.preferences, language: 'en' })
   }
-  expect((await state(request)).holidaySets.some((h) => h.name === `${M}-set`)).toBe(false)
+  expect((await state(request)).holidaySets.some((h) => h.name.startsWith(M))).toBe(false)
 })
 
 test('settings: an AI key is made, shown once, and revoked', async ({ page, request }) => {
