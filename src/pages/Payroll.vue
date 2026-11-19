@@ -149,12 +149,14 @@ const splitEd = useEditor('remainderSplit', () => ({ id: '', name: '', code: '',
   (x) => (!x.name.trim() ? t('payroll.needItemName') : x.ratio < 0 || x.ratio > 1 ? t('payroll.ratioRange') : null))
 /** The ratio field in percent; kept apart so a half-typed value is not rewritten while typing. */
 const splitPct = ref<number | ''>(0)
+/** The percent the field showed when it opened: the stored ratio stays as it is unless this text is edited. */
+let splitPctShown: number | '' = 0
 function openSplit(x?: (typeof store.remainderSplit)[number]) {
   splitEd.open(x)
-  splitPct.value = Math.round((splitEd.item.value?.ratio ?? 0) * 10_000) / 100
+  splitPct.value = splitPctShown = Math.round((splitEd.item.value?.ratio ?? 0) * 10_000) / 100
 }
 async function saveSplit() {
-  if (splitEd.item.value) splitEd.item.value.ratio = (Number(splitPct.value) || 0) / 100
+  if (splitEd.item.value && splitPct.value !== splitPctShown) splitEd.item.value.ratio = (Number(splitPct.value) || 0) / 100
   await splitEd.save()
 }
 

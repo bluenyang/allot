@@ -166,3 +166,25 @@ test('(V-6) an account role is any text, the chips fill it, and 들어오는 돈
     for (const a of accs.filter((x) => x.name === `${MARK}-acc`)) await api(request, 'DELETE', `/api/accounts/${a.id}`)
   }
 })
+
+test('(A-17) renaming a remainder split keeps its stored ratio (0.3333, the column keeps four decimals)', async ({ page, request }) => {
+  const made = await api(request, 'POST', '/api/remainder-split', { name: `${MARK}-ratio`, code: 'R', ratio: 0.3333 })
+  expect(made.status).toBe(201)
+  const id = (made.json as { id: string }).id
+  try {
+    await go(page, 'pay', '월별 시뮬레이션')
+    await page.getByRole('row', { name: new RegExp(`${MARK}-ratio`) }).click()
+    await sheet(page, '나머지 분배 수정').getByLabel('항목').fill(`${MARK}-renamed`)
+    await saveSheet(page, '나머지 분배 수정')
+    const row = ((await state(request)) as unknown as { remainderSplit: { id: string; name: string; ratio: number }[] }).remainderSplit.find((x) => x.id === id)!
+    expect(row.name).toBe(`${MARK}-renamed`)
+    expect(row.ratio).toBe(0.3333)
+    // editing the percent still changes it
+    await page.getByRole('row', { name: new RegExp(`${MARK}-renamed`) }).click()
+    await sheet(page, '나머지 분배 수정').getByLabel('비율 %').fill('25')
+    await saveSheet(page, '나머지 분배 수정')
+    expect(((await state(request)) as unknown as { remainderSplit: { id: string; ratio: number }[] }).remainderSplit.find((x) => x.id === id)!.ratio).toBe(0.25)
+  } finally {
+    await api(request, 'DELETE', `/api/remainder-split/${id}`)
+  }
+})
