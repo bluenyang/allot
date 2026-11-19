@@ -17,6 +17,8 @@ export const ko = {
     editLabel: '{name} 수정',
     add: '+ 추가',
     soon: '준비 중',
+    pageLoadFailed: '이 화면을 불러오지 못했어요. 연결을 확인하거나 새 버전이 나왔다면 새로고침해 주세요.',
+    reload: '새로고침',
     back: '이전',
     next: '다음',
     steps: '단계',

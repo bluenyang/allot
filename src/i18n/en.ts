@@ -17,6 +17,8 @@ export const en = {
     editLabel: 'Edit {name}',
     add: '+ Add',
     soon: 'Coming soon',
+    pageLoadFailed: 'This screen could not be loaded. Check the connection, or reload if a new version is out.',
+    reload: 'Reload',
     back: 'Back',
     next: 'Next',
     steps: 'Steps',

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, type AsyncComponentLoader, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
 import MoreSheet from './components/MoreSheet.vue'
 import Soon from './components/Soon.vue'
 import Toast from './components/Toast.vue'
+import PageLoadError from './components/PageLoadError.vue'
 import Dashboard from './pages/Dashboard.vue'
 import { api } from './lib/api'
 import { status, store } from './lib/store'
@@ -17,18 +18,21 @@ import { t, type MessageKey } from './i18n'
 // Shell (spec 010 S-4): a grouped sidebar with the user at the bottom, a header bar and a footer on
 // every page; on a phone a top bar, a bottom bar and a "더보기" sheet. Menu entries for features that
 // do not exist yet are `Soon` (S-3): shown, inert, with no route behind them.
+// A page loaded on first open; if its code cannot be downloaded, say so and offer a reload.
+const lazyPage = (loader: AsyncComponentLoader) =>
+  defineAsyncComponent({ loader, errorComponent: PageLoadError, delay: 200 })
 interface Page { id: string; comp: unknown }
 const PAGES: Record<string, Page> = {
   // Only the dashboard is in the first chunk; every other page loads when it is first opened (spec 010 V-1, A-24).
   home: { id: 'home', comp: Dashboard },
-  subs: { id: 'subs', comp: defineAsyncComponent(() => import('./pages/Subscriptions.vue')) },
-  pay: { id: 'pay', comp: defineAsyncComponent(() => import('./pages/Payroll.vue')) },
-  events: { id: 'events', comp: defineAsyncComponent(() => import('./pages/Timeline.vue')) },
-  pending: { id: 'pending', comp: defineAsyncComponent(() => import('./pages/Pending.vue')) },
-  history: { id: 'history', comp: defineAsyncComponent(() => import('./pages/History.vue')) },
-  settings: { id: 'settings', comp: defineAsyncComponent(() => import('./pages/Settings.vue')) },
-  admin: { id: 'admin', comp: defineAsyncComponent(() => import('./pages/Admin.vue')) },
-  dev: { id: 'dev', comp: defineAsyncComponent(() => import('./pages/Dev.vue')) }, // no menu entry: reached by the address #dev only
+  subs: { id: 'subs', comp: lazyPage(() => import('./pages/Subscriptions.vue')) },
+  pay: { id: 'pay', comp: lazyPage(() => import('./pages/Payroll.vue')) },
+  events: { id: 'events', comp: lazyPage(() => import('./pages/Timeline.vue')) },
+  pending: { id: 'pending', comp: lazyPage(() => import('./pages/Pending.vue')) },
+  history: { id: 'history', comp: lazyPage(() => import('./pages/History.vue')) },
+  settings: { id: 'settings', comp: lazyPage(() => import('./pages/Settings.vue')) },
+  admin: { id: 'admin', comp: lazyPage(() => import('./pages/Admin.vue')) },
+  dev: { id: 'dev', comp: lazyPage(() => import('./pages/Dev.vue')) }, // no menu entry: reached by the address #dev only
 }
 const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 interface Entry { id: string; soon?: boolean }
