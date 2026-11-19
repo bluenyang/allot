@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.1.4-rc.2 — 2026-11-19
+
+Redesign of every screen and a design system. Intent 010 (`.agents/intent/010_canvas-redesign/`). The one server change is that the remainder target is no longer fixed (below); the database schema is unchanged.
+
+### Added
+- Design system: `DESIGN.md` (tokens, dark palette rules, components, wording and "coming soon" rules) and `docs/design/foundations.html` / `foundations-dark.html` (static, no scripts). The dark palette is derived from the same tokens, including from a user-chosen colour, with a contrast check.
+- "Coming soon" entries: items for features that do not exist yet are shown but disabled (`aria-disabled`, a "준비 중" / "Coming soon" pill) and do nothing when pressed. They are the sidebar items Living, Savings and Investing, Statement analysis and AI assistant; search and notifications in the header; the API docs link in the footer; export on the dashboard and CSV export of subscriptions; the AI model, key rename, scope change, extension, usage log and connected apps in Settings › AI & integrations; password policy and password generation in Settings › Security; automatic exchange rate, base currency, adding a foreign currency, time zone and adding a schedule in Settings; the history period filter. Those screens have no routes yet.
+- Rounding unit for the subscription transfer: choose 10,000 / 50,000 / 100,000 or "off" (saved as 1 won). A different value that is already saved (for example 20,000) stays in the list, selected.
+- Phase numbers are automatic ("Phase N", in order of start month). The phase code is no longer typed on screen; a saved code is kept as it is, and the server still accepts one.
+- "Money left after the transfer" box on the dashboard (this transfer day to the day before the next, payments subtracted from the subscription transfer; negative when it falls short), and "after the 31st" (payments within a year, up to three lines).
+- Subscriptions: search by name, a 12-month transfer chart and per-subscription share table (select a bar to switch month), two-step add/edit dialog, delete and cancel confirmations, two-step plan change.
+
+### Changed
+- Every screen follows the new design, in light and dark, on desktop and phone: dashboard (with a Pending tab for AI proposals), Pending changes, Subscriptions, Salary allocation, Schedule, Change history, Settings and Admin, and the sign-in screen.
+- Sidebar in groups: Overview / Budget (Salary allocation, Subscriptions) / Schedule, Pending changes, Change history / Settings and Admin. The sidebar can be folded to icons. The header has the breadcrumb and month navigation.
+- Theme (light/dark) is chosen in Settings only; the header buttons are gone.
+- The Developer menu entry is gone; the page is still reachable at `#dev`.
+- Phone: a top bar, a bottom bar with four items (plus AI proposals when one is waiting) and a "More" sheet (account, Pending changes, Change history, Settings, Admin, sign out; Statement analysis and AI assistant as coming soon). The calendar moves between months with the header arrows.
+- Forms have one field per line; dialogs are 520px (a card on a phone), confirmations 440px. Amount fields show a ₩ prefix and accept what the number fields accepted (decimals, with or without thousands commas, 0).
+- Settings › General has five sections; display formats are saved as soon as you choose them.
+- The change-history item filter lists every table of the app, and the remainder split is named "remainder target" there.
+- Reverting an applied proposal on the Pending changes screen reverts its change set; a rejected proposal cannot be reverted.
+
+### Removed
+- The rule that the remainder target must exist and keep its kind. It can now be deleted, or changed to another kind (still at most one per kind). Without it, what is left of the net pay after the targets is shown as staying in the salary account ("short" when negative), and the MCP overview carries `unallocatedKrw`. The remainder split rows stay when the target is deleted. A change set that removed the target can be reverted even though the remainder target is missing.
+
+### Fixed
+- Recurring payment dates are anchored to the billing day: after a short month the next date returns to the 31st (28/29 February included).
+- Switching between monthly and yearly plans no longer skips a payment, and the payment schedule no longer depends on how far ahead it is asked for.
+- The subscription list, the calendar and the MCP `list_subscriptions` next payment now come from the same schedule.
+- Switching accounts (sign out, another account) no longer lets a response started under the previous account reach the next one: state loads, proposals, toasts and saves are dropped when the session changed.
+- The change history counts only the changes loaded so far ("of the loaded changes"), and when a filter shows nothing but older changes exist it says so instead of "none".
+- Event timing accepts typed values again ("direct entry"), checked only by the server's pattern (`YYYY-MM` or `YYYY-MM~MM`); a stored value the month picker cannot hold opens in the text field unchanged.
+- Editing the remainder split without touching a ratio saves the stored ratio unchanged.
+
 ## 0.1.4-rc.1 — 2026-11-18
 
 MCP write through proposals. Intent 009 (`.agents/intent/009_mcp-write/`).
