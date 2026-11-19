@@ -8,6 +8,8 @@ import Soon from '../components/Soon.vue'
 import SubTabs from '../components/SubTabs.vue'
 import { ApiError, api } from '../lib/api'
 import { copyText } from '../lib/clipboard'
+import { sessionScope } from '../lib/store'
+import type { Scope } from '../lib/session-guard'
 import { lang, t, type MessageKey } from '../i18n'
 import { getKeyPolicy, setKeyPolicy, type KeyPolicy } from '../lib/keys'
 
@@ -40,9 +42,9 @@ const say = (m: string) => { notice.value = m; error.value = '' }
 // ── users ──
 const users = ref<User[]>([])
 const meId = ref('')
-async function loadUsers() {
+async function loadUsers(scope?: Scope) {
   const r = await api<{ users: User[] }>('GET', '/api/auth/admin/list-users?limit=500&sortBy=createdAt&sortDirection=asc')
-  users.value = r.users
+  if (!scope || scope.alive()) users.value = r.users
 }
 const STATUS = (u: User) => (u.banned ? t('admin.statusBanned') : u.status === 'pending' ? t('admin.statusPending') : t('admin.statusActive'))
 const ADMISSION = (a: string) => (['seed', 'admin', 'approval', 'rule', 'bootstrap'].includes(a) ? t(`admin.admission.${a}` as MessageKey) : a)
@@ -64,19 +66,34 @@ function openUser(u?: User) {
   edit.value = u ? { user: u, email: u.email, name: u.name, role: u.role, status: statusOf(u), password: '', typePw: false, confirm: '', asking: false }
     : { user: null, email: '', name: '', role: 'user', status: 'active', password: '', typePw: false, confirm: '', asking: false }
 }
-async function act(fn: () => Promise<unknown>, done: string | (() => string), keepOpen = false) {
+/** Raised instead of sending a request when the session changed since the action started (spec 010 A-21). */
+class SessionChanged extends Error {}
+type Step = (request: () => Promise<unknown>) => Promise<unknown>
+/**
+ * Run one admin action: the session is noted when it starts and checked before every request (`step`) and
+ * before its answer is applied, so a change of account in between sends nothing more and shows nothing.
+ */
+async function act(fn: (step: Step) => Promise<unknown>, done: string | (() => string), keepOpen = false) {
+  const scope = sessionScope()
+  const step: Step = async (request) => {
+    if (!scope.alive()) throw new SessionChanged()
+    return request()
+  }
   busy.value = true
   editError.value = ''
   try {
-    await fn()
-    await loadUsers()
+    await fn(step)
+    if (!scope.alive()) return
+    await loadUsers(scope)
+    if (!scope.alive()) return
     say(typeof done === 'string' ? done : done())
     if (!keepOpen) edit.value = null
     else if (edit.value?.user) edit.value.user = users.value.find((x) => x.id === edit.value!.user!.id) ?? null
   } catch (e) {
+    if (e instanceof SessionChanged || !scope.alive()) return
     editError.value = e instanceof ApiError ? e.message : t('admin.failed')
   } finally {
-    busy.value = false
+    if (scope.alive()) busy.value = false
   }
 }
 async function saveUser() {
@@ -86,30 +103,30 @@ async function saveUser() {
     if (!/^\S+@\S+\.\S+$/.test(e.email.trim())) return (editError.value = t('admin.checkEmail'))
     if (!e.name.trim()) return (editError.value = t('admin.needName'))
     if (e.password && e.password.length < 8) return (editError.value = t('admin.tempPwShort'))
-    return act(() => api('POST', '/api/auth/admin/create-user', {
+    return act((step) => step(() => api('POST', '/api/auth/admin/create-user', {
       email: e.email.trim(), name: e.name.trim(), role: e.role, ...(e.password ? { password: e.password } : {}),
-    }), e.password ? t('admin.created') : t('admin.createdLink'))
+    })), e.password ? t('admin.created') : t('admin.createdLink'))
   }
   const u = e.user
   if (e.typePw && e.password && e.password.length < 8) return (editError.value = t('account.pwShort'))
   const from = statusOf(u)
   if (e.status === 'banned' && from !== 'banned' && !confirm(t('admin.confirmBan', { email: u.email }))) return
   let done = t('settings.general.saved')
-  await act(async () => {
-    if (e.name.trim() && e.name.trim() !== u.name) await api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { name: e.name.trim() } })
-    if (e.role !== u.role) await api('POST', `/api/admin/users/${u.id}/role`, { role: e.role })
+  await act(async (step) => {
+    if (e.name.trim() && e.name.trim() !== u.name) await step(() => api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { name: e.name.trim() } }))
+    if (e.role !== u.role) await step(() => api('POST', `/api/admin/users/${u.id}/role`, { role: e.role }))
     if (e.status !== from) {
-      if (e.status === 'banned') { await api('POST', `/api/admin/users/${u.id}/ban`, {}); done = t('admin.banned') }
-      else if (from === 'banned') { await api('POST', '/api/auth/admin/unban-user', { userId: u.id }); done = t('admin.unbanned') }
-      else if (e.status === 'active' && from === 'pending') { await api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { status: 'active' } }); done = t('admin.approved', { email: u.email }) }
+      if (e.status === 'banned') { await step(() => api('POST', `/api/admin/users/${u.id}/ban`, {})); done = t('admin.banned') }
+      else if (from === 'banned') { await step(() => api('POST', '/api/auth/admin/unban-user', { userId: u.id })); done = t('admin.unbanned') }
+      else if (e.status === 'active' && from === 'pending') { await step(() => api('POST', '/api/auth/admin/update-user', { userId: u.id, data: { status: 'active' } })); done = t('admin.approved', { email: u.email }) }
     }
-    if (e.typePw && e.password) { await api('POST', '/api/auth/admin/set-user-password', { userId: u.id, newPassword: e.password }); done = t('admin.pwReset') }
+    if (e.typePw && e.password) { await step(() => api('POST', '/api/auth/admin/set-user-password', { userId: u.id, newPassword: e.password })); done = t('admin.pwReset') }
   }, () => done)
 }
-const endSessions = (u: User) => act(() => api('POST', '/api/auth/admin/revoke-user-sessions', { userId: u.id }), t('admin.sessionsEnded'), true)
+const endSessions = (u: User) => act((step) => step(() => api('POST', '/api/auth/admin/revoke-user-sessions', { userId: u.id })), t('admin.sessionsEnded'), true)
 function remove(u: User) {
   if ((edit.value?.confirm ?? '').trim().toLowerCase() !== u.email.toLowerCase()) return (editError.value = t('admin.confirmEmailText'))
-  return act(() => api('DELETE', `/api/admin/users/${u.id}`, { confirmEmail: edit.value!.confirm.trim() }), t('admin.deleted', { email: u.email }))
+  return act((step) => step(() => api('DELETE', `/api/admin/users/${u.id}`, { confirmEmail: edit.value!.confirm.trim() })), t('admin.deleted', { email: u.email }))
 }
 const lastAdmin = computed(() => users.value.filter((x) => x.role === 'admin' && !x.banned).length <= 1)
 const ROLES = computed(() => [{ id: 'user', label: t('shell.roleUser') }, { id: 'admin', label: t('shell.roleAdmin') }])
