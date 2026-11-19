@@ -201,13 +201,12 @@ test('events: add, edit, state toggle, delete', async ({ page }) => {
   await expect(page.getByText(MARK)).toHaveCount(0)
 })
 
-test('events (spec 010 V-6, V-10): a range 2027-01~02 and a range ending before it starts save and read back; 직접 입력 and a range over a year are 준비 중', async ({ page, request }) => {
+test('events (spec 010 V-6, V-10): a range 2027-01~02 and a range ending before it starts save and read back; a range over a year is 준비 중', async ({ page, request }) => {
   await go(page, 'events', '타임라인')
   const open = () => page.getByRole('button', { name: '이벤트 추가', exact: true }).click()
   await open()
   let s = sheet(page, '이벤트 추가')
-  await expect(s.getByText('준비 중').first()).toBeVisible()
-  await expect(s.getByRole('button', { name: /^직접 입력/ })).toHaveAttribute('aria-disabled', 'true')
+  await expect(s.getByRole('button', { name: '직접 입력', exact: true })).toBeEnabled()
   await s.getByLabel('내용').fill(`${MARK}-rng`)
   await s.getByRole('button', { name: '기간', exact: true }).click()
   await s.getByLabel('시작 월').fill('2031-01')
@@ -243,6 +242,45 @@ test('events (spec 010 V-6, V-10): a range 2027-01~02 and a range ending before 
     await page.keyboard.press('Escape')
   } finally {
     for (const e of events.filter((x) => x.title.startsWith(`${MARK}-`))) await request.delete(`/api/events/${e.id}`)
+  }
+})
+
+test('events (A-18): 직접 입력 takes every value the server pattern takes (2027-13, 2027-11~99); a stored 2027-00 opens as text and re-saves unchanged', async ({ page, request }) => {
+  const stored = (await (await request.post('/api/events', { data: { when: '2027-00', kind: '저축', title: `${MARK}-zero`, state: 'todo' } })).json()) as { id: string }
+  await go(page, 'events', '타임라인')
+  try {
+    for (const [name, when] of [['a', '2027-13'], ['b', '2027-11~99']] as const) {
+      await page.getByRole('button', { name: '이벤트 추가', exact: true }).click()
+      const s = sheet(page, '이벤트 추가')
+      await s.getByLabel('내용').fill(`${MARK}-raw${name}`)
+      await s.getByRole('button', { name: '직접 입력', exact: true }).click()
+      await s.getByLabel('시기 직접 입력').fill(when)
+      await saveSheet(page, '이벤트 추가')
+    }
+    // a value that is not the pattern is still refused, with the reason
+    await page.getByRole('button', { name: '이벤트 추가', exact: true }).click()
+    const bad = sheet(page, '이벤트 추가')
+    await bad.getByLabel('내용').fill(`${MARK}-rawbad`)
+    await bad.getByRole('button', { name: '직접 입력', exact: true }).click()
+    await bad.getByLabel('시기 직접 입력').fill('soon')
+    await bad.getByRole('button', { name: '저장' }).click()
+    await expect(bad.getByRole('alert')).toBeVisible()
+    await page.keyboard.press('Escape')
+    const get = async () => ((await (await request.get('/api/state')).json()) as { events: { id: string; when: string; title: string }[] }).events
+    const ev = await get()
+    expect(ev.find((e) => e.title === `${MARK}-rawa`)?.when).toBe('2027-13')
+    expect(ev.find((e) => e.title === `${MARK}-rawb`)?.when).toBe('2027-11~99')
+    // the stored 2027-00 opens verbatim in text mode and survives a save
+    await reload(page, 'events', '타임라인')
+    await page.getByRole('button', { name: `${MARK}-zero 수정` }).click()
+    const s = sheet(page, '이벤트 수정')
+    await expect(s.getByLabel('시기 직접 입력')).toHaveValue('2027-00')
+    await s.getByLabel('내용').fill(`${MARK}-zero2`)
+    await saveSheet(page, '이벤트 수정')
+    expect((await get()).find((e) => e.id === stored.id)?.when).toBe('2027-00')
+  } finally {
+    const ev = ((await (await request.get('/api/state')).json()) as { events: { id: string; title: string }[] }).events
+    for (const e of ev.filter((x) => x.title.startsWith(`${MARK}-`))) await request.delete(`/api/events/${e.id}`)
   }
 })
 

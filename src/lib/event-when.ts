@@ -8,9 +8,11 @@ export const WHEN_RE = /^\d{4}-\d{2}(~\d{2})?$/
 
 /** Split a stored value into the form's fields; a value that fits neither shape stays as text (`raw`). */
 export function whenParts(when: string): WhenParts {
-  const one = /^(\d{4}-\d{2})$/.exec(when)
+  // What a month picker can hold exactly: a year from 0001 and a month 01..12. `2027-13`, `2027-00`, `0000-01`,
+  // `2027-11~99` fit the server's pattern but not a picker: they stay as text, verbatim.
+  const one = /^((?!0000)\d{4}-(?:0[1-9]|1[0-2]))$/.exec(when)
   if (one) return { mode: 'one', one: one[1]!, from: one[1]!, to: one[1]!, raw: when }
-  const range = /^(\d{4})-(\d{2})~(\d{2})$/.exec(when)
+  const range = /^((?!0000)\d{4})-(0[1-9]|1[0-2])~(0[1-9]|1[0-2])$/.exec(when)
   if (range) return { mode: 'range', one: `${range[1]}-${range[2]}`, from: `${range[1]}-${range[2]}`, to: `${range[1]}-${range[3]}`, raw: when }
   return { mode: 'raw', one: '', from: '', to: '', raw: when }
 }

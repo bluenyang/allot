@@ -34,10 +34,15 @@ open(props.initial ?? undefined)
 watch(edit, (v) => { if (!v) emit('close') })
 const title = props.initial ? t('timeline.editEvent') : t('timeline.addEvent')
 
-const modeOpts = computed(() => [{ id: 'one', label: t('timeline.whenOne') }, { id: 'range', label: t('timeline.whenRange') }])
+const modeOpts = computed(() => [{ id: 'one', label: t('timeline.whenOne') }, { id: 'range', label: t('timeline.whenRange') }, { id: 'raw', label: t('timeline.whenFree') }])
 function setMode(m: WhenMode) {
   const p = parts.value
-  if (m === 'range' && p.mode !== 'range') parts.value = { ...p, mode: 'range', from: p.one || now, to: p.one || now }
+  if (m === 'raw' && p.mode !== 'raw') parts.value = { ...p, mode: 'raw', raw: composeWhen(p).when }
+  else if (p.mode === 'raw' && m !== 'raw') {
+    const q = whenParts(p.raw) // text that a picker can hold carries over; anything else starts from this month
+    const keep = q.mode === m ? q : { ...q, one: now, from: now, to: now }
+    parts.value = { ...keep, mode: m, raw: p.raw }
+  } else if (m === 'range' && p.mode !== 'range') parts.value = { ...p, mode: 'range', from: p.one || now, to: p.one || now }
   else if (m === 'one' && p.mode !== 'one') parts.value = { ...p, mode: 'one', one: /^\d{4}-\d{2}$/.test(p.from) ? p.from : now }
   else parts.value = { ...p, mode: m }
 }
@@ -62,7 +67,6 @@ const endLimits = computed(() => (/^\d{4}-/.test(parts.value.from) ? { min: `${p
       <span id="ev-when-l" class="flabel">{{ t('timeline.when') }}</span>
       <div class="seg" role="group" aria-labelledby="ev-when-l">
         <button v-for="o in modeOpts" :key="o.id" type="button" :aria-pressed="parts.mode === o.id ? 'true' : 'false'" @click="setMode(o.id as WhenMode)">{{ o.label }}</button>
-        <Soon class="segsoon">{{ t('timeline.whenFree') }}</Soon>
       </div>
       <input v-if="parts.mode === 'one'" v-model="parts.one" class="in" type="month" :placeholder="now" :aria-label="t('timeline.month')">
       <template v-else-if="parts.mode === 'range'">
@@ -74,8 +78,8 @@ const endLimits = computed(() => (/^\d{4}-/.test(parts.value.from) ? { min: `${p
         <Soon tag="span" class="hint">{{ crossYear ? t('timeline.crossYearSoon') : t('timeline.crossYear') }}</Soon>
       </template>
       <template v-else>
-        <input v-model="parts.raw" class="in" :placeholder="'2027-03'" :aria-label="t('timeline.whenRaw')">
-        <span class="hint">{{ t('timeline.needWhen') }}</span>
+        <input v-model="parts.raw" class="in" placeholder="2027-03~05" :aria-label="t('timeline.whenRaw')">
+        <span class="hint">{{ t('timeline.whenRawHint') }}</span>
       </template>
     </div>
 

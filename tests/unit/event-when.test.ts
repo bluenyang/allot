@@ -22,3 +22,13 @@ test('composeWhen: a range into another year is not stored (준비 중)', () => 
   assert.deepEqual(composeWhen(p), { when: '', crossYear: true })
   assert.deepEqual(composeWhen({ ...p, mode: 'one', one: '2026-12' }), { when: '2026-12', crossYear: false })
 })
+
+test('whenParts: what the server pattern takes but a picker cannot hold stays as text, verbatim', () => {
+  for (const w of ['2027-00', '2027-13', '2027-11~99', '2027-00~01', '0000-01']) {
+    assert.ok(WHEN_RE.test(w))
+    const p = whenParts(w)
+    assert.equal(p.mode, 'raw')
+    assert.deepEqual(composeWhen(p), { when: w, crossYear: false })
+  }
+  assert.equal(whenParts('2027-11~02').mode, 'range')
+})

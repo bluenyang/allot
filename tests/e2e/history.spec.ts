@@ -85,3 +85,21 @@ test('history (spec 010 S-9): day groups, the actor and the item filters, a refu
     await request.delete(`/api/checks/${made.id}`)
   }
 })
+
+test('history (A-18): a filter that matches nothing in the loaded page does not claim there is nothing while older changes exist', async ({ page }) => {
+  await page.goto('/#history')
+  const list = page.getByRole('list', { name: '변경 목록' })
+  await expect(list.getByRole('listitem').first()).toBeVisible()
+  const more = page.getByRole('button', { name: '더 보기', exact: true })
+  test.skip(!(await more.isVisible()), 'fewer changes than one page on this stack')
+  await expect(page.getByText(/^불러온 변경 중 \d+개/)).toBeVisible()
+  for (const label of ['공휴일 세트', '부채', '분배 대상', '구간 금액']) {
+    await page.getByLabel('항목 종류').selectOption({ label })
+    if ((await list.getByRole('listitem').count()) === 0) {
+      await expect(page.locator('[data-more]')).toContainText('불러온 변경에는')
+      await expect(more).toBeVisible()
+      return
+    }
+  }
+  test.skip(true, 'every candidate kind has a change in the first page')
+})

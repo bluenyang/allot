@@ -223,6 +223,7 @@ async function revert() {
         </template>
       </ul>
       <div v-if="!sets.length && !busy" class="none"><b>{{ t('history.empty') }}</b></div>
+      <div v-else-if="sets.length && !shown.length && more" class="none" data-more><b>{{ t('history.emptyLoaded') }}</b><span class="hint">{{ t('history.emptyLoadedHint') }}</span></div>
       <div v-else-if="sets.length && !shown.length" class="none"><b>{{ t('history.emptyFiltered') }}</b><span class="hint">{{ t('history.emptyFilteredHint') }}</span></div>
       <div v-if="more && sets.length" class="mr"><button class="btn sm" type="button" :disabled="busy" @click="load(false)">{{ t('history.more') }}</button></div>
     </section>
