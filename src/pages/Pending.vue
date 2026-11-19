@@ -193,6 +193,7 @@ function handledNote(p: Proposal): string {
   .ph2{padding:12px 14px}
   .tw table{white-space:nowrap}
   .mr{grid-template-columns:minmax(0,1fr) auto 16px auto}
-  .pfoot .note{flex-basis:100%;text-align:right}
+  .pfoot .note{flex-basis:100%}
+  .fbar .hint{flex-basis:100%;text-align:right}
 }
 </style>
