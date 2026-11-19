@@ -23,6 +23,7 @@ function holdState(ctx: BrowserContext) {
   let seen!: () => void
   let release!: () => void
   let finished!: () => void
+  const captured: { status: number; body: string } = { status: 0, body: '' }
   const intercepted = new Promise<void>((r) => { seen = r })
   const gate = new Promise<void>((r) => { release = r })
   const done = new Promise<void>((r) => { finished = r })
@@ -31,12 +32,14 @@ function holdState(ctx: BrowserContext) {
     if (!armed) return route.continue()
     armed = false
     const res = await route.fetch()
+    captured.status = res.status()
+    captured.body = await res.text()
     seen()
     await gate
     await route.fulfill({ response: res })
     finished()
   })
-  return { intercepted, release: () => release(), done }
+  return { intercepted, captured, release: () => release(), done }
 }
 
 test('pending: nothing of the first account reaches the next one signed in on the same tab (A-10, A-14)', async ({ browser, request, baseURL }) => {
@@ -47,8 +50,10 @@ test('pending: nothing of the first account reaches the next one signed in on th
   const pass = 'e2e-prop-pass-1'
   const created = await request.fetch('/api/auth/admin/create-user', { method: 'POST', data: { email, name: 'E2E prop', password: pass }, headers: { origin: baseURL! } })
   expect(created.status()).toBe(200)
-  const aState = (await (await request.get('/api/state')).json()) as { subscriptions: { name: string }[] }
-  const aOwn = aState.subscriptions[0]?.name
+  // a sentinel only the first account has: the held answer must carry it, the next account must never show it
+  const sentinel = `${MARK}-A-only`
+  const made0 = await request.fetch('/api/subscriptions', { method: 'POST', headers: { origin: baseURL! }, data: { name: sentinel, category: 'tool', plan: 'p', amount: 1000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false } })
+  expect(made0.status()).toBe(201)
 
   const login = async (page: Page, e: string, p: string, ready: () => Promise<void>) => {
     await page.getByLabel('이메일').fill(e)
@@ -82,6 +87,8 @@ test('pending: nothing of the first account reaches the next one signed in on th
         await expect(card.locator('.pill', { hasText: '되돌림' })).toBeVisible()
       }
       await hold.intercepted // the first account's state answer is in hand and held back
+      expect(hold.captured.status, 'the held answer is a real 200').toBe(200)
+      expect(hold.captured.body, "the held answer is the first account's state").toContain(sentinel)
       // sign out and sign in as another account, with no page reload in between
       await page.getByRole('button', { name: '로그아웃' }).first().click()
       await page.getByLabel('이메일').waitFor()
@@ -98,7 +105,7 @@ test('pending: nothing of the first account reaches the next one signed in on th
       await page.goto('/#subs')
       await expect(page.getByRole('heading', { name: '구독', exact: true })).toBeVisible()
       await expect(page.getByText(SUB)).toHaveCount(0)
-      if (aOwn) await expect(page.getByText(aOwn, { exact: true })).toHaveCount(0)
+      await expect(page.getByText(sentinel)).toHaveCount(0)
       await page.goto('/#pending')
       await page.getByRole('button', { name: '처리함', exact: true }).click()
       await expect(page.locator('[data-proposal]')).toHaveCount(0)
