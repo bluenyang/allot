@@ -1221,7 +1221,7 @@ export const en = {
     ruleKind: { emails: 'Allowed e-mail addresses', domains: 'Allowed e-mail domains', groups: 'Allowed groups (groups claim)', orgs: 'Allowed organizations' },
     eg: 'e.g.',
     rulePh: { domains: 'e.g. example.com', groups: 'e.g. family', orgs: 'e.g. my-org' },
-    ruleHint: { emails: 'Separate with commas; empty means no limit. The address must match exactly.', domains: 'Separate with commas; empty means no limit.', groups: 'Separate with commas; empty means no limit.', orgs: 'Separate with commas; empty means no limit.' },
+    ruleHint: { emails: 'Separate with commas. Empty adds no way in. The address must match exactly. A sign-up needs at least one rule to match (all empty: nobody signs up).', domains: 'Separate with commas. Empty adds no way in. A sign-up needs at least one rule to match.', groups: 'Separate with commas. Empty adds no way in. A sign-up needs at least one rule to match.', orgs: 'Separate with commas. Empty adds no way in. A sign-up needs at least one rule to match.' },
     signupDesc: { closed: 'Only accounts created beforehand can sign in.', approval: 'A sign-up request waits until an admin approves it.', rules: 'People who match the rules below sign up at once.' },
     createdLink: 'Account created. It is linked when that email first signs in with an external login.',
     created: 'Account created.',
