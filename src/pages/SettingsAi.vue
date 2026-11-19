@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import Soon from '../components/Soon.vue'
 import { ApiError } from '../lib/api'
@@ -24,10 +24,13 @@ const madeCapped = ref(false)
 
 /** Counts the times the screen was left or shown again: an answer that began in an earlier one is dropped. */
 let generation = 0
-let inflight: Promise<void> | null = null
-/** One load at a time: showing the screen for the first time fires mount and activation together. */
+let inflight: { gen: number; p: Promise<void> } | null = null
+/** One load at a time per screen showing: a load already on its way for this showing is reused (mount and activation can both ask). */
 function load() {
-  return (inflight ??= run().finally(() => { inflight = null }))
+  if (inflight && inflight.gen === generation) return inflight.p
+  const mine = { gen: generation, p: run().finally(() => { if (inflight === mine) inflight = null }) }
+  inflight = mine
+  return mine.p
 }
 async function run() {
   const scope = sessionScope()
@@ -52,6 +55,7 @@ async function run() {
     // the count is a nicety: without it the line is left out
   }
 }
+onMounted(() => { void load() })
 onActivated(() => { generation++; void load() })
 // The page is kept alive when left: a key shown once must not stay in memory for the next visit, and an answer still on its way is dropped.
 onDeactivated(() => { generation++; fresh.value = null })

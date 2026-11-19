@@ -216,6 +216,7 @@ test('admin: a save of the first admin sends no later request under the next adm
     })
     await dlg.getByRole('button', { name: '저장' }).click()
     await wasSent
+    await page.keyboard.press('Escape') // the open dialog makes the rest of the page inert
     await page.getByRole('button', { name: '로그아웃' }).first().click()
     await page.getByLabel('이메일').waitFor()
     await page.getByLabel('이메일').fill(second.email)
