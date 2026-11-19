@@ -233,3 +233,27 @@ test('keys: an answer that comes after the screen was left does not bring the ke
   await expect(page.getByLabel('API 키', { exact: true })).toHaveCount(0)
   expect(await page.content()).not.toMatch(/allot_[A-Za-z]{64}/)
 })
+
+test('keys: made and revoked while the proposal count is still loading, the list is read again; the first visit reads it once (A-22)', async ({ page }) => {
+  let release!: () => void
+  const gate = new Promise<void>((r) => { release = r })
+  await page.route(/\/api\/proposals/, async (route) => { await gate; await route.continue() }) // the count never finishes until released
+  const listCalls: string[] = []
+  page.on('request', (r) => { if (r.method() === 'GET' && new URL(r.url()).pathname === '/api/keys') listCalls.push(r.url()) })
+  await openAi(page)
+  await expect(page.getByText(/활성 \d+/).first()).toBeVisible()
+  await page.waitForTimeout(500)
+  expect(listCalls.length, 'one list request on the first visit').toBe(1)
+  await page.getByRole('button', { name: '+ 키 만들기' }).click()
+  const s = sheet(page, '새 API 키')
+  await s.getByLabel('이름').first().fill(`${NAME}-hold`)
+  await saveSheet(page, '새 API 키', '키 만들기')
+  await expect(page.getByRole('row', { name: new RegExp(`${NAME}-hold`) })).toBeVisible() // fresh list while counting
+  await page.getByRole('button', { name: '닫기', exact: true }).click()
+  await page.getByRole('button', { name: `${NAME}-hold 키 관리` }).click()
+  const manage = page.locator('dialog[open]')
+  await manage.getByRole('button', { name: `${NAME}-hold 키 폐기` }).click()
+  await manage.getByRole('button', { name: '폐기', exact: true }).click()
+  await expect(page.getByRole('row', { name: new RegExp(`${NAME}-hold`) })).toHaveCount(0)
+  release()
+})
