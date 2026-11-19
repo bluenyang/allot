@@ -1,7 +1,7 @@
 // spec 010 A-14: the session guard behind every store write after an await, no database.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createSessionGuard } from '../../src/lib/session-guard'
+import { createSessionGuard, runSteps } from '../../src/lib/session-guard'
 
 test('work in the current session writes; work that started before a session change is dropped', () => {
   const g = createSessionGuard()
@@ -41,4 +41,29 @@ test('a simulated save: the answer of the old session never lands, the new sessi
   release()
   await save
   assert.equal(store.settings, 'B-loaded')
+})
+
+test('runSteps: a save of several requests stops when the session changes between them (A-20)', async () => {
+  const g = createSessionGuard()
+  const sent: string[] = []
+  // the screen's save: preferences, then money settings; the account switches while the first is on its way
+  const scope = g.begin()
+  const done = await runSteps(scope, [
+    async () => { sent.push('preferences'); g.next() },
+    async () => { sent.push('settings: the first account\'s draft') },
+  ])
+  assert.equal(done, false)
+  assert.deepEqual(sent, ['preferences'])
+  // in the same session every step runs, in order
+  const ok = g.begin()
+  assert.equal(await runSteps(ok, [async () => { sent.push('a') }, async () => { sent.push('b') }]), true)
+  assert.deepEqual(sent, ['preferences', 'a', 'b'])
+  // a session that is already over sends nothing
+  const old = g.begin()
+  g.next()
+  assert.equal(await runSteps(old, [async () => { sent.push('late') }]), false)
+  assert.ok(!sent.includes('late'))
+  // an error passes through and ends the save
+  await assert.rejects(runSteps(g.begin(), [async () => { throw new Error('boom') }, async () => { sent.push('after the error') }]), /boom/)
+  assert.ok(!sent.includes('after the error'))
 })

@@ -42,6 +42,8 @@ export const status = reactive({ loaded: false, loading: false, error: '' })
 // reload never reaches the next account's store. Every write after an await goes through a scope.
 const guard = createSessionGuard()
 export const newSession = () => guard.next()
+/** The current session, noted when a screen's save starts: a save that runs several requests checks it before each one (spec 010 A-20). */
+export const sessionScope = (): Scope => guard.begin()
 
 export async function loadState() {
   const s = guard.begin()
