@@ -725,6 +725,8 @@ test('(V-8, W-8) 설정 and 관리: what does not exist yet is a visible, inert 
   for (const [route, names] of cases) {
     await page.goto(`/#${route}`)
     await page.locator('header.ph h1').waitFor()
+    // the entries are there once the page's own loading (keys, proposal count, sign-in methods) is done
+    await page.locator('[aria-disabled="true"]').filter({ hasText: names[0]!.startsWith('+') ? names[0]!.slice(2) : names[0]! }).first().waitFor()
     await page.waitForLoadState('networkidle')
     if (route === 'settings/ai') await page.getByText('쓰기 제안', { exact: false }).first().waitFor({ timeout: 60_000 }) // the proposal count has finished paging
     const calls: string[] = []
