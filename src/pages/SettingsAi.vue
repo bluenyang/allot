@@ -56,12 +56,15 @@ async function run() {
     if (current()) error.value = e instanceof ApiError ? e.message : t('settingsAi.loadFailed')
     return
   }
-  try {
-    const c = await countProposalsByKey(current)
-    if (current()) { made.value = c.counts; madeCapped.value = c.capped }
-  } catch {
-    // the count is a nicety: without it the line is left out
-  }
+  // The count goes on by itself: whoever waited for the list (a save that just made or revoked a key) is not held up by it.
+  void (async () => {
+    try {
+      const c = await countProposalsByKey(current)
+      if (current()) { made.value = c.counts; madeCapped.value = c.capped }
+    } catch {
+      // the count is a nicety: without it the line is left out
+    }
+  })()
 }
 onMounted(() => { void load() })
 onActivated(() => { void load() })
