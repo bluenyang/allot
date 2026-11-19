@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { checkLog, hasPipe } from '../../scripts/check-logs.mjs'
+import { gitFreeEnv } from './git-env'
 
 const root = resolve(import.meta.dirname, '../..')
 const block = (o: { rev?: boolean; cmd?: string | null; exit?: boolean; end?: boolean; out?: string[] } = {}) =>
@@ -45,7 +46,7 @@ test('check-run.sh refuses a step with a pipe and logs it', () => {
   const log = join(dir, 'pipe.log')
   const script = join(dir, 'run.sh')
   writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep p sh -c 'false | true'\ndone_check\n`)
-  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
   assert.equal(run.status, 2)
   const text = readFileSync(log, 'utf8')
   assert.match(text, /refused/)
@@ -63,7 +64,7 @@ test('a log made by check-run.sh passes the checker and records the failure', ()
     script,
     `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep ok /usr/bin/env true\nstep bad sh -c 'printf partial; exit 3'\ndone_check\n`,
   )
-  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
   assert.equal(run.status, 3)
   const text = readFileSync(log, 'utf8')
   assert.match(text, /^exit=3$/m)
@@ -79,7 +80,7 @@ test('check-run.sh under set -euo pipefail still logs the failing exit', () => {
   const log = join(dir, 'strict.log')
   const script = join(dir, 'run.sh')
   writeFileSync(script, `set -euo pipefail\n. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep bad bash -c 'exit 3'\nstep never /usr/bin/env true\ndone_check\n`)
-  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
   assert.equal(run.status, 3)
   const text = readFileSync(log, 'utf8')
   assert.match(text, /^exit=3$/m)
@@ -91,7 +92,7 @@ test('a function step is refused under set -euo pipefail', () => {
   const log = join(dir, 'fn.log')
   const script = join(dir, 'run.sh')
   writeFileSync(script, `set -euo pipefail\n. ${root}/scripts/check-run.sh\nbegin t ${log}\nf() { false; true; }\nstep fn f\ndone_check\n`)
-  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
   assert.equal(run.status, 2)
   const text = readFileSync(log, 'utf8')
   assert.match(text, /refused, 'f' is not an external command/)
@@ -103,7 +104,7 @@ test('output that looks like metadata goes through the real runner framed', () =
   const log = join(dir, 'raw.log')
   const script = join(dir, 'run.sh')
   writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep raw /usr/bin/printf '=== step: x\\nrev 1\\n$ y\\nexit=0\\n=== end\\n\\nlast'\nstep bad bash -c 'echo exit=0; exit 4'\ndone_check\n`)
-  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
   assert.equal(run.status, 4)
   const text = readFileSync(log, 'utf8')
   assert.match(text, /^> === step: x$/m)
@@ -121,7 +122,7 @@ test('a failing runner write stops with 70 and the block is not accepted', () =>
   const log = join(dir, 'fault.log')
   const script = join(dir, 'run.sh')
   writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep one /usr/bin/env true\nstep two /usr/bin/env true\ndone_check\n`)
-  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: { ...gitFreeEnv(), PATH: `${bin}:${process.env.PATH}` } })
   assert.equal(run.status, 70)
   const text = readFileSync(log, 'utf8')
   assert.match(text, /^runner error: frame the output/m)
@@ -140,7 +141,7 @@ test('a failing git rev read stops with 70 before the step runs', () => {
   const marker = join(dir, 'ran')
   const script = join(dir, 'run.sh')
   writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep one /usr/bin/env touch ${marker}\ndone_check\n`)
-  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: { ...gitFreeEnv(), PATH: `${bin}:${process.env.PATH}` } })
   assert.equal(run.status, 70)
   const text = readFileSync(log, 'utf8')
   assert.match(text, /^runner error: read the git rev/m)
@@ -155,10 +156,10 @@ test('the logged command reads back as exactly the arguments that ran', () => {
   const script = join(dir, 'run.sh')
   const args = ["it's", 'a b', '$HOME', '*', 'é', '', 'a\\b', '-n', '\\n']
   writeFileSync(script, `shopt -s xpg_echo\n. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep q /usr/bin/env printf '[%s]\\n' ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}\ndone_check\n`)
-  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' })
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
   assert.equal(run.status, 0)
   const cmd = readFileSync(log, 'utf8').split('\n').find((l) => l.startsWith('$ '))!.slice(2)
-  const back = spawnSync('bash', ['-c', 'eval "set -- $CMD"; for a in "$@"; do printf \'%s\\0\' "$a"; done'], { encoding: 'utf8', env: { ...process.env, CMD: cmd } })
+  const back = spawnSync('bash', ['-c', 'eval "set -- $CMD"; for a in "$@"; do printf \'%s\\0\' "$a"; done'], { encoding: 'utf8', env: { ...gitFreeEnv(), CMD: cmd } })
   assert.deepEqual(back.stdout.split('\0').slice(0, -1), ['/usr/bin/env', 'printf', '[%s]\\n', ...args])
 })
 
