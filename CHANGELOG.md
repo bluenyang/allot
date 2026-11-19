@@ -2,7 +2,7 @@
 
 ## 0.1.4-rc.2 — 2026-11-19
 
-Redesign of every screen and a design system. Intent 010 (`.agents/intent/010_canvas-redesign/`). The one server change is that the remainder target is no longer fixed (below); the database schema is unchanged.
+Redesign of every screen and a design system. Intent 010 (`.agents/intent/010_canvas-redesign/`). Server changes: the remainder target is no longer fixed, and the MCP views use the same payment schedule as the screens (both below); the database schema is unchanged.
 
 ### Added
 - Design system: `DESIGN.md` (tokens, dark palette rules, components, wording and "coming soon" rules) and `docs/design/foundations.html` / `foundations-dark.html` (static, no scripts). The dark palette is derived from the same tokens, including from a user-chosen colour, with a contrast check.
@@ -24,7 +24,7 @@ Redesign of every screen and a design system. Intent 010 (`.agents/intent/010_ca
 - Reverting an applied proposal on the Pending changes screen reverts its change set; a rejected proposal cannot be reverted.
 
 ### Removed
-- The rule that the remainder target must exist and keep its kind. It can now be deleted, or changed to another kind (still at most one per kind). Without it, what is left of the net pay after the targets is shown as staying in the salary account ("short" when negative), and the MCP overview carries `unallocatedKrw`. The remainder split rows stay when the target is deleted. A change set that removed the target can be reverted even though the remainder target is missing.
+- The rule that the remainder target must exist and keep its kind. It can now be deleted, or changed to another kind (living, subscription-transfer and remainder targets are still at most one each; fixed targets may be many). Without it, what is left of the net pay after the targets is shown as staying in the salary account ("short" when negative), and the MCP overview carries `unallocatedKrw`. The remainder split rows stay when the target is deleted. A change set that removed the target can be reverted even though the remainder target is missing.
 
 ### Fixed
 - Recurring payment dates are anchored to the billing day: after a short month the next date returns to the 31st (28/29 February included).
