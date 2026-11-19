@@ -160,6 +160,7 @@ summary_for_user: |
 - A-30 (2026-11-19, V-10, 첫 감사 F-5·Q-2) 영어 화면 흐름 E2E `tests/e2e/en-flows.spec.ts`(월급 분배·일정·변경 내역·설정·관리·현황 기록 추가·셸 데스크톱/휴대폰, 10개)를 더함, 전체 106 통과·1 건너뜀(test/f5-en.log). 건너뛰던 env 정책 잠금 테스트는 `ALLOT_API_KEY_NO_EXPIRY=true`로 띄운 dev api(compose.dev.yaml `run --use-aliases`)에서 따로 통과(test/f5-policy.log), api는 원래대로 되돌림 · 6f6c38c
 - A-31 (2026-11-19, 범위 밖 — 사용자 지시 "그 훅을 고쳐서 커밋하고, 이 브랜치에 로컬 merge한 다음, 문제가 없으면 push pr해보자") 사용자의 `.claude/settings.json` 변경(guard-review 훅 켜기)을 `chore/review-hook`에 커밋하다가, linked worktree의 pre-commit 게이트에서 `tests/unit/guard-review.test.ts`가 훅의 GIT_DIR을 물려받아 공용 저장소에 `core.bare=true`를 씀(되돌림). git을 부르는 단위 테스트가 `git rev-parse --local-env-vars` 변수를 지운 env로 돌게 고침(`tests/unit/git-env.ts`; 고치기 전·후 재현 기록 .loctx/reports/0.1.4/rc2/hookfix/), 리뷰 지적 없음, 이 브랜치에 merge · 38beb80, acaf8d8, 64d95fc
 - A-32 (2026-11-19, A-30 리뷰) 영어 흐름 E2E가 dev 계정의 실제 나머지 대상을 지웠다 되돌리던 것을 임시 계정에서만 하게 고치고, 공휴일 세트 정리를 실행 표시로 찾아 지우게 함; F-4 문구를 실제 동작(모든 키 합쳐 3,000건까지 읽음, 한도면 키마다 "+")에 맞춰 다시 고침 · 641c61f, c466306, e7ad184
+- A-34 (2026-11-19, 사용자 지적 "계정 정보랑 설정은 하단에 붙는거 아니야?") A-26의 U-20(아래 묶음을 AI 묶음 바로 밑으로)은 대조 잘못: 정적 렌더의 캔버스 사이드바가 창 높이가 아니라 내용 높이에서 끝나서 생긴 착시였다. 아래 묶음을 다시 사이드바 맨 아래에 붙이고(`margin-top:auto`), 900·1300px 높이에서 계정 줄 아래 여백 ≤ 24px을 확인하는 E2E를 더함(고치기 전 실패 test/a33-before.log, 고친 뒤 redesign 31 통과 test/a33.log) · 이 커밋
 
 ## 우려
 - 크기: 화면 전부를 바꾸는 일이라 W-4~W-8 각각이 크다. 단위마다 리뷰를 받고 넘어간다(한 번에 몰아서 리뷰하지 않음).

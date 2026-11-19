@@ -107,7 +107,7 @@ button,input,select,textarea{font:inherit}
 .is-soon:hover{background:none;color:var(--subtle)}
 .side .ncount{font-size:11px;font-weight:600;padding:0 6px;border-radius:var(--r-badge);background:var(--fill);color:var(--muted);font-variant-numeric:tabular-nums}
 .side .ncount.badge{background:var(--accent-soft);color:var(--accent-text)}
-.side .lower{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--border);padding-top:12px}
+.side .lower{margin-top:auto;display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--border);padding-top:12px}
 .side .lower nav{display:grid;gap:2px}
 .side .who{display:flex;align-items:center;gap:10px;padding:10px 10px 0}
 .side .ava{width:32px;height:32px;border-radius:var(--r-ctl);background:var(--ava);color:var(--text-2);display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}

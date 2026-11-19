@@ -421,6 +421,16 @@ test.describe('(V-8, V-9) shell', () => {
       return { left: main.left - col.left, right: col.right - main.right }
     })
     expect(Math.abs(m.left - m.right), `left ${m.left} / right ${m.right}`).toBeLessThanOrEqual(2)
+    // the settings and account group sits at the bottom of a tall sidebar, not right under the AI group (A-33)
+    for (const h of [900, 1300]) {
+      await page.setViewportSize({ width: 1600, height: h })
+      const gap = await page.evaluate(() => {
+        const s = document.querySelector('aside.side')!.getBoundingClientRect()
+        const l = document.querySelector('aside.side .lower')!.getBoundingClientRect()
+        return Math.round(s.bottom - l.bottom)
+      })
+      expect(gap, `space under the account row at height ${h}`).toBeLessThanOrEqual(24)
+    }
   })
 
   test('(d) on a phone with no proposal waiting, 대기 중인 변경 is still reachable from the "더보기" sheet', async ({ page }) => {
