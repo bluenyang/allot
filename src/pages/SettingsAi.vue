@@ -22,20 +22,28 @@ const busy = ref(false)
 const made = ref<Record<string, number> | null>(null)
 const madeCapped = ref(false)
 
-/** Counts the times the screen was left or shown again: an answer that began in an earlier one is dropped. */
+/** Counts the times the screen was left: an answer that began in an earlier showing is dropped. */
 let generation = 0
+/** Counts the loads started: only the newest load's answers are applied (a refresh after a change supersedes one still counting). */
+let seq = 0
 let inflight: { gen: number; p: Promise<void> } | null = null
-/** One load at a time per screen showing: a load already on its way for this showing is reused (mount and activation can both ask). */
+/** Lifecycle load: one per showing (mount and the first activation both ask and share it). */
 function load() {
   if (inflight && inflight.gen === generation) return inflight.p
-  const mine = { gen: generation, p: run().finally(() => { if (inflight === mine) inflight = null }) }
+  return start()
+}
+/** After a key was made or revoked: always read the list again and count again; whatever was still loading is dropped. */
+const refresh = () => start()
+function start() {
+  const mine: { gen: number; p: Promise<void> } = { gen: generation, p: run().finally(() => { if (inflight === mine) inflight = null }) }
   inflight = mine
   return mine.p
 }
 async function run() {
   const scope = sessionScope()
   const gen = generation
-  const current = () => scope.alive() && gen === generation
+  const mySeq = ++seq
+  const current = () => scope.alive() && gen === generation && mySeq === seq
   try {
     const r = await listKeys()
     if (current()) {
@@ -56,9 +64,9 @@ async function run() {
   }
 }
 onMounted(() => { void load() })
-onActivated(() => { generation++; void load() })
+onActivated(() => { void load() })
 // The page is kept alive when left: a key shown once must not stay in memory for the next visit, and an answer still on its way is dropped.
-onDeactivated(() => { generation++; fresh.value = null })
+onDeactivated(() => { generation++; inflight = null; fresh.value = null })
 
 const activeCount = computed(() => keys.value.length)
 const proposalTotal = computed(() => (made.value ? keys.value.reduce((a, k) => a + (made.value![k.id] ?? 0), 0) : null))
@@ -102,7 +110,7 @@ async function make() {
     fresh.value = { key: r.key, name: r.item.name }
     notice.value = ''
     draft.value = null
-    await load()
+    await refresh()
   } catch (e) {
     draftError.value = e instanceof ApiError ? e.message : t('settingsAi.createFailed')
   } finally {
@@ -125,7 +133,7 @@ async function revoke() {
     await revokeKey(k.id)
     notice.value = t('settingsAi.revoked', { name: k.name })
     closeManage()
-    await load()
+    await refresh()
   } catch (e) {
     manageError.value = e instanceof ApiError ? e.message : t('settingsAi.revokeFailed')
   } finally {
