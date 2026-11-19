@@ -6,7 +6,7 @@ import Icon from './Icon.vue'
 // Page tabs (spec 007 S-1): icon + label, the selected one gets the soft face and a 2px underline.
 // Only for switching views inside a page. When the tabs do not fit, a round arrow at each edge that
 // still has tabs behind it scrolls them (spec 010 S-5, SH-28).
-const props = defineProps<{ tabs: { id: string; label: string; icon?: string; count?: number; signal?: boolean }[]; modelValue: string }>()
+const props = defineProps<{ tabs: { id: string; label: string; icon?: string; count?: number; signal?: boolean }[]; modelValue: string; label?: string }>()
 defineEmits<{ 'update:modelValue': [id: string] }>()
 
 const list = ref<HTMLElement | null>(null)
@@ -42,7 +42,7 @@ watch(() => props.modelValue, async () => { await nextTick(); list.value?.queryS
 <template>
   <div class="subtabs-w">
     <button v-if="more.prev" class="tabarrow prev" type="button" tabindex="-1" :aria-label="t('common.tabsPrev')" @click="go(-1)"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg></i></button>
-    <div ref="list" class="subtabs" role="tablist" @scroll.passive="measure">
+    <div ref="list" class="subtabs" role="tablist" :aria-label="label" @scroll.passive="measure">
       <button
         v-for="tab in tabs" :key="tab.id" type="button" role="tab"
         :aria-selected="tab.id === modelValue ? 'true' : 'false'"
