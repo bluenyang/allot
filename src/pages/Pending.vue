@@ -108,12 +108,12 @@ function handledNote(p: Proposal): string {
               <div class="mr" :class="{ same: !changed(mo.transferKrw) }">
                 <span>{{ t('pending.transfer') }}</span>
                 <span class="num old" :class="{ strike: changed(mo.transferKrw) }">{{ money(mo.transferKrw.before) }}</span><span class="ar">→</span>
-                <span class="num new" :class="{ chg: changed(mo.transferKrw) }">{{ money(mo.transferKrw.after) }}</span>
+                <span class="num new" :class="{ chd: changed(mo.transferKrw) }">{{ money(mo.transferKrw.after) }}</span>
               </div>
               <div v-for="r in mo.distribution" :key="r.targetId" class="mr" :class="{ same: !changed(r.amountKrw) }">
                 <span>{{ r.name }}</span>
                 <span class="num old" :class="{ strike: changed(r.amountKrw) }">{{ money(r.amountKrw.before) }}</span><span class="ar">→</span>
-                <span class="num new" :class="{ chg: changed(r.amountKrw) }">{{ money(r.amountKrw.after) }}</span>
+                <span class="num new" :class="{ chd: changed(r.amountKrw) }">{{ money(r.amountKrw.after) }}</span>
               </div>
             </div>
           </div>
@@ -182,7 +182,7 @@ function handledNote(p: Proposal): string {
 .mr .old.strike{text-decoration:line-through;color:var(--subtle)}
 .mr .ar{color:var(--subtle);text-align:center}
 .mr .new,.mr .old{text-align:right}
-.mr .new.chg{font-weight:700}
+.mr .new.chd{font-weight:700}
 .mr.same{color:var(--subtle)}
 .pfoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 18px;background:var(--surface-2);border-top:1px solid var(--divider);border-radius:0 0 var(--r-card) var(--r-card)}
 .pfoot .note{flex:1 1 200px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
@@ -193,5 +193,6 @@ function handledNote(p: Proposal): string {
   .ph2{padding:12px 14px}
   .tw table{white-space:nowrap}
   .mr{grid-template-columns:minmax(0,1fr) auto 16px auto}
+  .pfoot .note{flex-basis:100%;text-align:right}
 }
 </style>

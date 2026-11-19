@@ -409,6 +409,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 .cf{flex-wrap:wrap}
 .err{color:var(--neg-text)}
 .hol{gap:12px}
+.hol .btns{margin-top:0}
 .setrow{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r-card)}
 .sn{flex:1;min-width:0;display:flex;flex-direction:column}
 .sn b{display:block}
