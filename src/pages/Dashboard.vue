@@ -9,7 +9,7 @@ import { saveItem, store, subName } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { notReady, view } from '../lib/view'
 import { allocColor } from '../lib/colors'
-import { kindDetail } from '../lib/labels'
+import { kindDetail, phaseTag } from '../lib/labels'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
 import { manText, monthLong, monthShort, weekdayShort } from '../lib/format'
 import { t, lang } from '../i18n'
@@ -141,7 +141,19 @@ function diffRows(p: Proposal) {
 }
 const cardMeta = (p: Proposal) => t('pending.meta', { key: p.keyName, at: when(p.createdAt), summary: summary(p) })
 const wcls = (d: Date) => (d.getDay() === 6 ? 'sat' : d.getDay() === 0 ? 'sun' : '')
-const dotLeft = (dday: number) => `${Math.min(97, Math.max(2, (dday / 31) * 100))}%`
+const dotPct = (dday: number) => Math.min(97, Math.max(2, (dday / 31) * 100))
+/** The dots of the 31-day strip: a payment closer than 5% to the one before shares its dot, so dots never overlap (spec 010 U-16). */
+const dots = computed(() => {
+  const out: { id: string; left: string; first: boolean }[] = []
+  let last = -100
+  for (const p of pays.value) {
+    const x = dotPct(p.dday)
+    if (out.length && x - last < 5) continue
+    last = x
+    out.push({ id: p.sub.id + p.date.getTime(), left: `${x}%`, first: out.length === 0 })
+  }
+  return out
+})
 const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
 </script>
 
@@ -150,7 +162,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
     <!-- On a phone the header bar is hidden: the month switch and the phase sit here (review 11). -->
     <div class="mnav" role="group" :aria-label="t('dashboard.monthNav')">
       <button class="btn icon ghost" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
-      <div class="mn-c"><b class="num">{{ monthTitle }}</b><small class="hint">{{ dist.phase ? `${dist.phase.label} · ${dist.phase.name}` : t('shell.outOfPhase') }}</small></div>
+      <div class="mn-c"><b class="num">{{ monthTitle }}</b><small class="hint">{{ dist.phase ? phaseTag(store.phases, dist.phase) : t('shell.outOfPhase') }}</small></div>
       <button class="btn icon ghost" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
     </div>
     <PageHeader :title="t('dashboard.title', { year, month: monthName })" class="dash-ph">
@@ -180,7 +192,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
       <div class="card kpi">
         <div class="k-h"><span class="k-l">{{ t('dashboard.dueIn31') }}</span><span v-if="pays.length" class="pill acc">D-{{ pays[0]!.dday }}</span></div>
         <div class="k-v"><span class="num v">{{ fmtMoney(paysSum) }}</span><span class="hint k-side">{{ t('dashboard.paymentCount', { n: pays.length }) }}</span></div>
-        <div class="k-bar dots" role="img" :aria-label="t('dashboard.dotsLabel')"><i v-for="(p, i) in pays" :key="p.sub.id + p.date.getTime()" :class="{ first: i === 0 }" :style="{ left: dotLeft(p.dday) }"></i></div>
+        <div class="k-bar dots" role="img" :aria-label="t('dashboard.dotsLabel')"><i v-for="d in dots" :key="d.id" :class="{ first: d.first }" :style="{ left: d.left }"></i></div>
         <div class="k-f"><span v-if="pays.length">{{ t('dashboard.nextPay', { name: pays[0]!.sub.name, amount: fmtMoney(pays[0]!.krw) }) }}</span><span v-else></span><span v-if="pays.length">{{ mdd(pays[0]!.date) }}</span></div>
       </div>
       <div class="card kpi">
@@ -224,7 +236,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
             <div v-if="dist.remainderTarget" class="splitbar">
               <span class="sl">{{ t('dashboard.splitName', { name: dist.remainderTarget.name }) }}</span>
               <span v-for="x in split" :key="x.name" class="pill num whitepill">{{ x.name }} {{ fmtMoney(x.amount) }}</span>
-              <Soon class="manage" :pill="false" tag="span" :aria-label="`${t('dashboard.manageIn', { name: dist.remainderTarget.name })} (${t('common.soon')})`">{{ t('dashboard.manageIn', { name: dist.remainderTarget.name }) }}</Soon>
+              <Soon class="manage" tag="span" :aria-label="`${t('dashboard.manageIn', { name: dist.remainderTarget.name })} (${t('common.soon')})`">{{ t('dashboard.manageIn', { name: dist.remainderTarget.name }) }}</Soon>
             </div>
             <div v-else class="splitbar">
               <span class="sl">{{ spare < 0 ? t('dashboard.short') : t('dashboard.spare') }}</span>

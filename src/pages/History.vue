@@ -246,7 +246,7 @@ async function revert() {
 .fbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
 .fbar .in{width:auto;height:34px;font-size:13px}
 .vr{width:1px;height:24px;background:var(--border)}
-.cn{margin-left:auto}
+.fbar .cn{margin-left:auto}
 .chgs{list-style:none;margin:0;padding:0}
 .day{display:flex;align-items:center;gap:8px;padding:8px 18px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--subtle)}
 .chg{border-bottom:1px solid var(--divider)}
@@ -277,5 +277,5 @@ async function revert() {
 .askbox{padding:12px 14px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface-2);display:grid;gap:2px}
 .eff{margin:0;font-size:13px;color:var(--text-2)}
 .hint{margin:0}
-@media (max-width:760px){.vr{display:none}.det{padding-left:16px}.crow{padding-right:12px}}
+@media (max-width:760px){.vr{display:none}.det{padding-left:16px}.crow{padding-right:12px}.tx{flex-basis:100%}.done{min-width:0;text-align:left}}
 </style>

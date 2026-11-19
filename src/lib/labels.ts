@@ -1,7 +1,8 @@
 // Display names of the stored enum values (spec 008 S-9): the data keeps its codes (and the
 // Korean event kinds), the screens show them in the current language.
 import { t, type MessageKey } from '../i18n'
-import type { AllocationKind, Category, Cycle, EventKind, PayPath, SubStatus } from '../data/types'
+import { phaseNumbers } from './calc'
+import type { Phase, AllocationKind, Category, Cycle, EventKind, PayPath, SubStatus } from '../data/types'
 
 export const CATEGORY_IDS: Category[] = ['ai', 'telecom', 'content', 'tool', 'insurance', 'life']
 export const catLabel = (id: string) => t(`label.category.${id}` as MessageKey)
@@ -31,3 +32,6 @@ export const debtMethodLabel = (v: string) => (isDebtMethod(v) ? t(`label.debtMe
 
 /** A debt's rate as shown: a plain number is a percentage, any other text stays as typed (spec 010 EV-35). */
 export const rateText = (rate: string) => (/^\s*\d+(\.\d+)?\s*$/.test(rate) ? `${rate.trim()}%` : rate)
+
+/** "1단계 · name": the phase's automatic number and its name, never the stored symbol (spec 010 U-4). */
+export const phaseTag = (phases: Pick<Phase, 'id' | 'from'>[], p: Pick<Phase, 'id' | 'name'>) => `${t('payroll.phaseNo', { n: phaseNumbers(phases)[p.id] ?? 0 })} · ${p.name}`

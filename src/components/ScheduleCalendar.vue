@@ -82,7 +82,7 @@ const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
 </template>
 
 <style scoped>
-.calwrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:stretch}
+.calwrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
 .calcard{overflow:hidden;display:flex;flex-direction:column}
 .nav{display:flex;gap:6px}
 .nav .btn.sm:not(:nth-child(2)){width:30px;padding:0}
@@ -109,6 +109,7 @@ const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
 .agf span{color:var(--muted)}
 .mbar2{display:flex;align-items:center;gap:8px;padding:6px;margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-pop)}
 .mbar2 .btn{width:44px;height:44px;padding:0;flex:none}
+.mbar2 .btn{color:var(--muted)}
 .mbar2 .btn svg{width:20px;height:20px}
 .mbar2 .mid{flex:1;text-align:center;line-height:1.3}
 .mbar2 .mid b{display:block;font-size:17px}

@@ -122,10 +122,10 @@ function handledNote(p: Proposal): string {
 
       <footer class="pfoot">
         <template v-if="p.status === 'pending'">
-          <span class="note small">
-            {{ t('pending.expires', { at: when(p.expiresAt) }) }}<template v-if="p.confirm === 'chat'"> · {{ t('pending.inChat') }}</template>
-          </span>
-          <p v-if="!p.keyUsable" class="small warn" role="note">{{ t('pending.keyGone') }}</p>
+          <div class="note small">
+            <span>{{ t('pending.expires', { at: when(p.expiresAt) }) }}<template v-if="p.confirm === 'chat'"> · {{ t('pending.inChat') }}</template></span>
+            <p v-if="!p.keyUsable" class="warn" role="note">{{ t('pending.keyGone') }}</p>
+          </div>
           <button class="btn sm bad" type="button" :disabled="!!proposals.busy" @click="decide(p, 'reject')">{{ t('pending.rejectBtn') }}</button>
           <button class="btn sm pri" type="button" :disabled="!!proposals.busy || !p.keyUsable" @click="decide(p, 'apply')">{{ t('pending.confirmBtn') }}</button>
         </template>
@@ -147,11 +147,10 @@ function handledNote(p: Proposal): string {
 .fbar :deep(.seg){flex:none}
 .empty-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:36px 18px;text-align:center}
 .prop{display:flex;flex-direction:column}
-.prop.wait{border-color:var(--accent-line)}
 .ph2{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--divider)}
 .ico{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:var(--r-ctl);background:var(--accent-soft);color:var(--accent-text)}
 .ico svg{width:15px;height:15px}
-.tt{flex:1 1 200px;min-width:0;display:flex;flex-direction:column}
+.tt{flex:1 1 240px;min-width:0;display:flex;flex-direction:column}
 .tt b{overflow-wrap:anywhere}
 .detail{display:flex;flex-direction:column}
 .chg{padding:12px 18px 4px}
@@ -173,12 +172,12 @@ function handledNote(p: Proposal): string {
 .dl.gone dd{text-decoration:line-through;color:var(--subtle)}
 .months{padding:12px 18px 16px;background:var(--surface-2);margin-top:8px;border-top:1px solid var(--divider)}
 .mt{display:block;font-size:13px;margin-bottom:8px}
-.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.mgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
 .mbox{border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);overflow:hidden}
 .mh{display:flex;justify-content:space-between;gap:8px;padding:8px 12px;border-bottom:1px solid var(--divider);font-size:13px}
 .mh b{font-size:12px}
 .mh b.down{color:var(--primary-text)}
-.mr{display:grid;grid-template-columns:minmax(0,1fr) 104px 16px 104px;gap:6px;align-items:center;padding:6px 12px;font-size:13px}
+.mr{display:grid;grid-template-columns:minmax(0,1fr) 104px 16px 104px;gap:8px;align-items:baseline;padding:6px 12px;font-size:13px}
 .mr .old{color:var(--muted)}
 .mr .old.strike{text-decoration:line-through;color:var(--subtle)}
 .mr .ar{color:var(--subtle);text-align:center}
@@ -186,8 +185,8 @@ function handledNote(p: Proposal): string {
 .mr .new.chg{font-weight:700}
 .mr.same{color:var(--subtle)}
 .pfoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 18px;background:var(--surface-2);border-top:1px solid var(--divider);border-radius:0 0 var(--r-card) var(--r-card)}
-.pfoot .note{flex:1 1 200px;color:var(--muted)}
-.pfoot .warn{flex-basis:100%;color:var(--neg-text);margin:0}
+.pfoot .note{flex:1 1 200px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.pfoot .warn{color:var(--neg-text);margin:0}
 .more{justify-content:center;margin:0}
 .save-err{margin:0}
 @media (max-width:760px){

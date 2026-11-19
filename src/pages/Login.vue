@@ -83,7 +83,7 @@ async function social(id: string) {
 .login{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 16px}
 .lcard{width:400px;max-width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-pop);overflow:hidden;box-shadow:var(--shadow-login)}
 .brand{display:flex;align-items:center;gap:10px;padding:20px 24px 16px;border-bottom:1px solid var(--border)}
-.bn{display:flex;flex-direction:column;line-height:1.25}
+.bn{display:flex;flex-direction:column}
 .bn b{font-weight:700;font-size:17px}
 .bn small{font-size:11px;color:var(--subtle)}
 .pbody{padding:20px 24px 24px;display:flex;flex-direction:column;gap:16px}
@@ -99,8 +99,7 @@ h1{margin:0;font-size:18px;font-weight:700}
 .note{margin:0;font-size:13px;color:var(--muted)}
 .foot-bar{padding:16px 32px;flex-direction:row;align-items:center}
 @media (max-width:760px){
-  .login{padding:24px 16px;align-items:flex-start}
-  .lcard{margin-top:48px}
+  .login{padding:24px 16px}
   .foot-bar{flex-direction:column;align-items:flex-start;padding:14px 16px}
 }
 </style>

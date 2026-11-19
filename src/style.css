@@ -107,7 +107,7 @@ button,input,select,textarea{font:inherit}
 .is-soon:hover{background:none;color:var(--subtle)}
 .side .ncount{font-size:11px;font-weight:600;padding:0 6px;border-radius:var(--r-badge);background:var(--fill);color:var(--muted);font-variant-numeric:tabular-nums}
 .side .ncount.badge{background:var(--accent-soft);color:var(--accent-text)}
-.side .lower{margin-top:auto;display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--border);padding-top:12px}
+.side .lower{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--border);padding-top:12px}
 .side .lower nav{display:grid;gap:2px}
 .side .who{display:flex;align-items:center;gap:10px;padding:10px 10px 0}
 .side .ava{width:32px;height:32px;border-radius:var(--r-ctl);background:var(--ava);color:var(--text-2);display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
@@ -144,7 +144,7 @@ button,input,select,textarea{font:inherit}
 
 /* footer: the shell's and the sign-in screen's */
 .foot-bar{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;flex-direction:column;gap:12px 24px;padding:14px max(16px,env(safe-area-inset-right,0px)) calc(96px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border-top:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--subtle)}
-.foot-bar .fl{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.foot-bar .fl{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
 .foot-bar .fl b{font-weight:700;color:var(--text)}
 .foot-bar .fl .mono{font-size:12px}
 .foot-bar nav{display:flex;gap:16px;flex-wrap:wrap}

@@ -14,6 +14,7 @@ import { view } from './lib/view'
 import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
 import { t, type MessageKey } from './i18n'
+import { phaseTag } from './lib/labels'
 
 // Shell (spec 010 S-4): a grouped sidebar with the user at the bottom, a header bar and a footer on
 // every page; on a phone a top bar, a bottom bar and a "더보기" sheet. Menu entries for features that
@@ -189,7 +190,7 @@ const onGripKey = (e: KeyboardEvent) => {
           <button class="btn icon" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" :stroke="2" /></button>
           <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}</span>
           <button class="btn icon" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" :stroke="2" /></button>
-          <span class="phasebadge">{{ phase ? `${phase.label} · ${phase.name}` : t('shell.outOfPhase') }}</span>
+          <span class="phasebadge">{{ phase ? phaseTag(store.phases, phase) : t('shell.outOfPhase') }}</span>
         </div>
         <nav v-else class="crumbs" :aria-label="t('shell.here')">
           <template v-if="route.page === 'settings'"><b>{{ label('settings') }}</b><span aria-hidden="true">/</span><span>{{ crumbPage }}</span></template>
