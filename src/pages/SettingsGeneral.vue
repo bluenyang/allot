@@ -25,19 +25,26 @@ const g = (k: string) => t(`settings.general.${k}` as MessageKey)
 // ── 화면: language and theme apply and save at once ──
 const msg = ref('')
 const langChoice = computed(() => store.preferences.language ?? 'browser')
+/** The saves of this screen go one after the other: a pick made while one is on its way waits, then is merged onto what the server last answered (spec 010 A-21). */
+let queue: Promise<unknown> = Promise.resolve()
 /** Save a preference, then (in the same session only) show what it did. */
-async function saveNow(patch: Partial<Preferences>, after?: () => void, done = g('themeApplied')) {
+function saveNow(patch: Partial<Preferences>, after?: () => void, done = g('themeApplied')) {
   const scope = sessionScope()
-  msg.value = ''
-  try {
-    const ran = await runSteps(scope, [
-      () => savePreferences({ ...store.preferences, ...patch }),
-      async () => { after?.() },
-    ])
-    if (ran) msg.value = done
-  } catch (e) {
-    if (scope.alive()) msg.value = (e as Error).message
+  const run = async () => {
+    msg.value = ''
+    try {
+      const ran = await runSteps(scope, [
+        () => savePreferences({ ...store.preferences, ...patch }), // read now, after the earlier save has finished
+        async () => { after?.() },
+      ])
+      if (ran) msg.value = done
+    } catch (e) {
+      if (scope.alive()) msg.value = (e as Error).message
+    }
   }
+  const next = queue.then(run)
+  queue = next
+  return next
 }
 const pickTheme = (mode: Preferences['themeMode']) => saveNow({ themeMode: mode })
 function pickLang(v: string) {
