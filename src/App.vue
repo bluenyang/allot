@@ -6,13 +6,6 @@ import MoreSheet from './components/MoreSheet.vue'
 import Soon from './components/Soon.vue'
 import Toast from './components/Toast.vue'
 import Dashboard from './pages/Dashboard.vue'
-import Subscriptions from './pages/Subscriptions.vue'
-import Payroll from './pages/Payroll.vue'
-import Timeline from './pages/Timeline.vue'
-import History from './pages/History.vue'
-import Dev from './pages/Dev.vue'
-import Settings from './pages/Settings.vue'
-import Admin from './pages/Admin.vue'
 import { api } from './lib/api'
 import { status, store } from './lib/store'
 import { toast, hideToast } from './lib/toast'
@@ -26,15 +19,16 @@ import { t, type MessageKey } from './i18n'
 // do not exist yet are `Soon` (S-3): shown, inert, with no route behind them.
 interface Page { id: string; comp: unknown }
 const PAGES: Record<string, Page> = {
+  // Only the dashboard is in the first chunk; every other page loads when it is first opened (spec 010 V-1, A-24).
   home: { id: 'home', comp: Dashboard },
-  subs: { id: 'subs', comp: Subscriptions },
-  pay: { id: 'pay', comp: Payroll },
-  events: { id: 'events', comp: Timeline },
-  pending: { id: 'pending', comp: defineAsyncComponent(() => import('./pages/Pending.vue')) }, // loaded when opened: the first screen stays small
-  history: { id: 'history', comp: History },
-  settings: { id: 'settings', comp: Settings },
-  admin: { id: 'admin', comp: Admin },
-  dev: { id: 'dev', comp: Dev }, // no menu entry: reached by the address #dev only
+  subs: { id: 'subs', comp: defineAsyncComponent(() => import('./pages/Subscriptions.vue')) },
+  pay: { id: 'pay', comp: defineAsyncComponent(() => import('./pages/Payroll.vue')) },
+  events: { id: 'events', comp: defineAsyncComponent(() => import('./pages/Timeline.vue')) },
+  pending: { id: 'pending', comp: defineAsyncComponent(() => import('./pages/Pending.vue')) },
+  history: { id: 'history', comp: defineAsyncComponent(() => import('./pages/History.vue')) },
+  settings: { id: 'settings', comp: defineAsyncComponent(() => import('./pages/Settings.vue')) },
+  admin: { id: 'admin', comp: defineAsyncComponent(() => import('./pages/Admin.vue')) },
+  dev: { id: 'dev', comp: defineAsyncComponent(() => import('./pages/Dev.vue')) }, // no menu entry: reached by the address #dev only
 }
 const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 interface Entry { id: string; soon?: boolean }
