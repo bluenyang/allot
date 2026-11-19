@@ -37,6 +37,13 @@ approvals:
     words: "확인함, 통과"
     rev: 85fce55
     note: "V-11 캔버스 대조(.loctx/reports/0.1.4/rc2/shots/index.md, 36쌍 이유 없는 차이 0) 사용자 확인."
+  - role: user
+    kind: summary
+    by: BlueNyang
+    at: "2026-11-20"
+    words: "진행"
+    rev: 80ee679
+    note: "작업 단위 추가 W-10·W-11·V-13(S-13, Reka UI 위 컴포넌트 체계). 요청 원문: \"rc.2에 B 방식으로. 진행\"."
 summary_for_user: |
   캔버스(1795018444-7b61)대로 토큰·다크 팔레트 → 공용 컴포넌트 → 셸 → 화면 9개 순서로 다시 만들고, DESIGN.md와 docs/design/(Foundations 라이트·다크 HTML)을 남깁니다. 기능 없는 항목은 비활성 + "준비 중"입니다.
   서버 변경은 "나머지" 대상 규칙 풀기 하나뿐입니다(지울 수 있고 종류도 바꿀 수 있음, 없으면 남는 돈은 "급여 통장에"로 표시). 스키마는 그대로 둡니다. API는 지금 받는 값을 계속 다 받습니다.
