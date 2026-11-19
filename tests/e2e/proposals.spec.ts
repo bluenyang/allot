@@ -62,9 +62,9 @@ test('pending: the list, the badge and the preview; confirming applies it and th
   await expect(card.locator('.pill', { hasText: '적용됨' })).toBeVisible()
   expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(true)
   // undo = revert of the change set: the data goes back and the pill says 되돌림
-  await card.getByRole('button', { name: '되돌리기' }).click()
+  await card.getByRole('button', { name: '되돌리기', exact: true }).click()
   await expect(card.locator('.pill', { hasText: '되돌림' })).toBeVisible()
-  await expect(card.getByRole('button', { name: '되돌리기' })).toHaveCount(0)
+  await expect(card.getByRole('button', { name: '되돌리기', exact: true })).toHaveCount(0)
   expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(false)
   // after a reload it is in the handled filter, with the way to the history
   await page.reload()
@@ -88,9 +88,9 @@ test('pending: an applied AI change set is reverted from 변경 내역 (the hist
   const list = page.getByRole('list', { name: '변경 목록' })
   const first = list.getByRole('listitem').filter({ hasText: `AI · ${KEY_NAME}` }).first()
   await expect(first).toContainText(`구독 추가 · ${SUB}`)
-  page.once('dialog', (d) => d.accept())
-  await first.getByRole('button', { name: '되돌리기' }).click()
-  await expect(page.getByRole('status').filter({ hasText: '되돌렸어요.' })).toBeVisible()
+  await first.getByRole('button', { name: '되돌리기', exact: true }).click()
+  await page.getByRole('form', { name: '이 변경을 되돌릴까요?' }).getByRole('button', { name: '되돌리기', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: /되돌렸어요/ })).toBeVisible()
   expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(false)
 })
 
@@ -108,7 +108,7 @@ test('pending: the toast Undo works before the proposal list has refreshed (the 
   await card.getByRole('button', { name: '확인하고 적용' }).click()
   const toast = page.getByRole('status').filter({ hasText: '제안을 적용했어요' })
   await expect(toast).toBeVisible()
-  await toast.getByRole('button', { name: '되돌리기' }).click()
+  await toast.getByRole('button', { name: '되돌리기', exact: true }).click()
   await expect.poll(async () => (await state(request)).subscriptions.some((s) => s.name === SUB), { timeout: 8000 }).toBe(false)
   await expect(card.locator('.pill', { hasText: '되돌림' })).toBeVisible({ timeout: 8000 })
   await page.unroute('**/api/proposals?status=*')
@@ -124,7 +124,7 @@ test('pending: rejecting changes nothing and moves it to the handled list', asyn
   await expect(page.getByRole('status').filter({ hasText: '제안을 거절했어요' })).toBeVisible()
   // the card stays as rejected; a rejected proposal has no undo
   await expect(card.locator('.pill', { hasText: '거절됨' })).toBeVisible()
-  await expect(card.getByRole('button', { name: '되돌리기' })).toHaveCount(0)
+  await expect(card.getByRole('button', { name: '되돌리기', exact: true })).toHaveCount(0)
   const s = await state(request)
   expect(s.subscriptions.some((x) => x.name === SUB) || s.checks.some((x) => x.text === CHECK)).toBe(false)
   // it cannot be applied any more

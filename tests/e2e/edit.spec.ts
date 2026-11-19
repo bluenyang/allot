@@ -181,9 +181,9 @@ test('phases: overlap is refused, then add, edit, delete', async ({ page }) => {
 
 test('events: add, edit, state toggle, delete', async ({ page }) => {
   await go(page, 'events', '타임라인')
-  await page.getByRole('button', { name: '+ 이벤트 추가' }).click()
+  await page.getByRole('button', { name: '이벤트 추가', exact: true }).click()
   const add = sheet(page, '이벤트 추가')
-  await add.getByLabel('시기 (YYYY-MM 또는 YYYY-MM~MM)').fill('2090-03')
+  await add.getByLabel('월', { exact: true }).fill('2090-03')
   await add.getByLabel('내용').fill(MARK)
   await saveSheet(page, '이벤트 추가')
   await reload(page, 'events', '타임라인')
@@ -191,32 +191,119 @@ test('events: add, edit, state toggle, delete', async ({ page }) => {
   await sheet(page, '이벤트 수정').getByLabel('내용').fill(`${MARK}-수정`)
   await saveSheet(page, '이벤트 수정')
   const item = page.getByRole('listitem').filter({ hasText: `${MARK}-수정` })
-  await item.getByRole('button', { name: '예정' }).click()
-  await expect(item.getByRole('button', { name: '진행' })).toBeVisible()
+  await item.getByRole('button', { name: /^상태 예정/ }).click()
+  await expect(item.getByRole('button', { name: /^상태 진행/ })).toBeVisible()
   await reload(page, 'events', '타임라인')
-  await expect(page.getByRole('listitem').filter({ hasText: `${MARK}-수정` }).getByRole('button', { name: '진행' })).toBeVisible()
+  await expect(page.getByRole('listitem').filter({ hasText: `${MARK}-수정` }).getByRole('button', { name: /^상태 진행/ })).toBeVisible()
   await page.getByRole('button', { name: `${MARK}-수정 수정` }).click()
   await deleteInSheet(page, '이벤트 수정')
   await reload(page, 'events', '타임라인')
   await expect(page.getByText(MARK)).toHaveCount(0)
 })
 
+test('events (spec 010 V-6, V-10): a range 2027-01~02 and a range ending before it starts save and read back; 직접 입력 and a range over a year are 준비 중', async ({ page, request }) => {
+  await go(page, 'events', '타임라인')
+  const open = () => page.getByRole('button', { name: '이벤트 추가', exact: true }).click()
+  await open()
+  let s = sheet(page, '이벤트 추가')
+  await expect(s.getByText('준비 중').first()).toBeVisible()
+  await expect(s.getByRole('button', { name: /^직접 입력/ })).toHaveAttribute('aria-disabled', 'true')
+  await s.getByLabel('내용').fill(`${MARK}-rng`)
+  await s.getByRole('button', { name: '기간', exact: true }).click()
+  await s.getByLabel('시작 월').fill('2031-01')
+  await s.getByLabel('끝 월').fill('2031-02')
+  await saveSheet(page, '이벤트 추가')
+  await open()
+  s = sheet(page, '이벤트 추가')
+  await s.getByLabel('내용').fill(`${MARK}-rev`)
+  await s.getByRole('button', { name: '기간', exact: true }).click()
+  await s.getByLabel('시작 월').fill('2031-05')
+  await s.getByLabel('끝 월').fill('2031-03') // accepted before, still accepted
+  await saveSheet(page, '이벤트 추가')
+  // a range into another year is not stored: it says so
+  await open()
+  s = sheet(page, '이벤트 추가')
+  await s.getByLabel('내용').fill(`${MARK}-x`)
+  await s.getByRole('button', { name: '기간', exact: true }).click()
+  await s.getByLabel('시작 월').fill('2031-12')
+  await s.getByLabel('끝 월').fill('2032-02')
+  await s.getByRole('button', { name: '저장' }).click()
+  await expect(s.getByRole('alert')).toContainText('준비 중')
+  await page.keyboard.press('Escape')
+  const events = ((await (await request.get('/api/state')).json()) as { events: { id: string; when: string; title: string }[] }).events
+  try {
+    expect(events.find((e) => e.title === `${MARK}-rng`)?.when).toBe('2031-01~02')
+    expect(events.find((e) => e.title === `${MARK}-rev`)?.when).toBe('2031-05~03')
+    expect(events.some((e) => e.title === `${MARK}-x`)).toBe(false)
+    // opening a saved range shows its two months
+    await page.getByRole('button', { name: `${MARK}-rng 수정` }).click()
+    s = sheet(page, '이벤트 수정')
+    await expect(s.getByLabel('시작 월')).toHaveValue('2031-01')
+    await expect(s.getByLabel('끝 월')).toHaveValue('2031-02')
+    await page.keyboard.press('Escape')
+  } finally {
+    for (const e of events.filter((x) => x.title.startsWith(`${MARK}-`))) await request.delete(`/api/events/${e.id}`)
+  }
+})
+
 test('debts: add, edit, delete', async ({ page }) => {
   await go(page, 'events', '부채')
-  await page.getByRole('button', { name: '+ 부채 추가' }).click()
-  await sheet(page, '부채 추가').getByLabel('항목').fill(MARK)
-  await sheet(page, '부채 추가').getByLabel('원금').fill('1234567') // not a multiple of step=10000: must still save
+  await page.getByRole('button', { name: '부채 추가', exact: true }).click()
+  const add = sheet(page, '부채 추가')
+  await add.getByLabel('항목').fill(MARK)
+  await add.getByLabel('원금').fill('1234567') // not a multiple of 10,000: must still save
+  await add.getByRole('button', { name: '다음' }).click()
   await saveSheet(page, '부채 추가')
   await reload(page, 'events', '부채')
   await page.getByRole('row', { name: new RegExp(MARK) }).click()
   await sheet(page, '부채 수정').getByLabel('원금').fill('2000000')
+  await sheet(page, '부채 수정').getByRole('button', { name: '다음' }).click()
   await saveSheet(page, '부채 수정')
   await reload(page, 'events', '부채')
   await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('2,000,000')
   await page.getByRole('row', { name: new RegExp(MARK) }).click()
+  await sheet(page, '부채 수정').getByRole('button', { name: '다음' }).click()
   await deleteInSheet(page, '부채 수정')
   await reload(page, 'events', '부채')
   await expect(page.getByRole('row', { name: new RegExp(MARK) })).toHaveCount(0)
+})
+
+test('debts (spec 010 V-6, S-9): the rate is any text or empty, a number shows as a percentage; the principal takes 0 and pasted digits; 기타 keeps the typed method', async ({ page, request }) => {
+  await go(page, 'events', '부채')
+  const make = async (name: string, principal: string, rate: string, other?: string) => {
+    await page.getByRole('button', { name: '부채 추가', exact: true }).click()
+    const s = sheet(page, '부채 추가')
+    await s.getByLabel('항목').fill(name)
+    await s.getByLabel('원금').fill(principal)
+    await s.getByRole('button', { name: '다음' }).click()
+    if (rate) await s.getByLabel('금리').fill(rate)
+    if (other) { await s.getByRole('button', { name: '기타' }).click(); await s.getByLabel('상환 방식 직접 입력').fill(other) }
+    await saveSheet(page, '부채 추가')
+  }
+  await make(`${MARK}-a`, '0', '변동 (CD+1.5)', '체증식')
+  await make(`${MARK}-b`, '4000000', '4.2')
+  await make(`${MARK}-c`, '1000', '')
+  const debts = () => request.get('/api/state').then((r) => r.json() as Promise<{ debts: { id: string; name: string; principal: number; rate: string; method: string }[] }>).then((j) => j.debts.filter((d) => d.name.startsWith(`${MARK}-`)))
+  try {
+    const got = await debts()
+    const by = (n: string) => got.find((d) => d.name === `${MARK}-${n}`)!
+    expect([by('a').principal, by('a').rate, by('a').method]).toEqual([0, '변동 (CD+1.5)', '체증식'])
+    expect([by('b').principal, by('b').rate, by('b').method]).toEqual([4000000, '4.2', ''])
+    expect([by('c').principal, by('c').rate]).toEqual([1000, ''])
+    await reload(page, 'events', '부채')
+    await expect(page.getByRole('row', { name: new RegExp(`${MARK}-b`) })).toContainText('4.2%')
+    await expect(page.getByRole('row', { name: new RegExp(`${MARK}-a`) })).toContainText('변동 (CD+1.5)')
+    await expect(page.getByRole('row', { name: new RegExp(`${MARK}-a`) })).toContainText('체증식')
+    // reopened, the text is back in its fields
+    await page.getByRole('row', { name: new RegExp(`${MARK}-a`) }).click()
+    const s = sheet(page, '부채 수정')
+    await s.getByRole('button', { name: '다음' }).click()
+    await expect(s.getByLabel('금리')).toHaveValue('변동 (CD+1.5)')
+    await expect(s.getByLabel('상환 방식 직접 입력')).toHaveValue('체증식')
+    await page.keyboard.press('Escape')
+  } finally {
+    for (const d of await debts()) await request.delete(`/api/debts/${d.id}`)
+  }
 })
 
 test('checklist: add, toggle, edit, delete', async ({ page }) => {

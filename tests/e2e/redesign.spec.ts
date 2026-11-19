@@ -437,7 +437,7 @@ test.describe('(V-8, V-9) shell', () => {
   })
 })
 
-test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (also of the months around), phone list, payment dates, light and dark', async ({ page, request }) => {
+test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (also of the months around, faded), phone agenda, payment dates, light and dark', async ({ page, request }) => {
   // A weekend payment on a Saturday and the Sunday after it, both in one month and inside the next 31 days.
   const sat = new Date(); sat.setHours(12)
   do sat.setDate(sat.getDate() + 1); while (sat.getDay() !== 6 || new Date(sat.getTime() + 864e5).getMonth() !== sat.getMonth())
@@ -447,21 +447,21 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
   const made = await Promise.all([sat, sun].map((d) => api(request, 'POST', '/api/subscriptions', {
     name: `${MARK}-dow${d.getDay()}`, category: 'tool', plan: 'p', amount: 1000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: iso(d), path: 'direct', verified: false,
   })))
-  // Every weekend date number and header in the calendar, and the weekend payment boxes: [kind, colour, out of month].
+  // Every weekend date number and header in the calendar, and the weekend payment boxes: [kind, colour, out of month, opacity].
   const read = (root: string) => page.evaluate((sel) => {
-    const out: [string, string, boolean][] = []
+    const out: [string, string, boolean, number][] = []
     for (const kind of ['sat', 'sun']) {
       for (const cell of document.querySelectorAll(`${sel} .is-${kind}`)) {
-        const num = [...cell.querySelectorAll('*')].find((e) => /^\d+일$/.test(e.textContent!.trim()) && !e.children.length)
+        const num = cell.querySelector('.cal-num')
         const target = cell.getAttribute('role') === 'columnheader' ? cell : num
-        if (target) out.push([kind, getComputedStyle(target).color, !!num && num.className.includes('taq')])
+        if (target) out.push([kind, getComputedStyle(target).color, !!num && num.classList.contains('cal-other'), Number(getComputedStyle(target).opacity)])
       }
-      for (const box of document.querySelectorAll(`.dbox b.${kind}`)) out.push([kind, getComputedStyle(box).color, false])
+      for (const box of document.querySelectorAll(`.dbox b.${kind}`)) out.push([kind, getComputedStyle(box).color, false, 1])
     }
     return out
   }, root)
   const want = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`
-  const vars = () => page.evaluate(() => { const c = getComputedStyle(document.documentElement); return { sat: c.getPropertyValue('--info-text').trim(), sun: c.getPropertyValue('--neg-text').trim(), boxSat: c.getPropertyValue('--sat').trim(), boxSun: c.getPropertyValue('--sun').trim() } })
+  const vars = () => page.evaluate(() => { const c = getComputedStyle(document.documentElement); return { sat: c.getPropertyValue('--sat').trim(), sun: c.getPropertyValue('--sun').trim(), boxSat: c.getPropertyValue('--sat').trim(), boxSun: c.getPropertyValue('--sun').trim() } })
   try {
     for (const theme of ['light', 'dark']) {
       await page.goto('/#events')
@@ -471,7 +471,11 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
       const cal = await read('.cal')
       expect(cal.filter(([, , other]) => other).length, `${theme}: weekend dates of the next month are checked`).toBeGreaterThan(0)
       expect(cal.length, `${theme}: weekend headers and dates found`).toBeGreaterThanOrEqual(10)
-      for (const [kind, colour] of cal) expect(colour, `${theme} calendar ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
+      // (D-2) the weekend colour stays on a neighbouring month's Saturday and Sunday, a little faded; in the month it is full
+      for (const [kind, colour, other, opacity] of cal) {
+        expect(colour, `${theme} calendar ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
+        if (other) { expect(opacity, `${theme} ${kind} out of month is faded`).toBeLessThan(1); expect(opacity).toBeGreaterThan(0.4) } else expect(opacity).toBe(1)
+      }
       await page.goto('/#home')
       await page.getByRole('heading', { level: 2, name: '결제 예정' }).waitFor()
       await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
@@ -479,20 +483,19 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
       expect(new Set(boxes.map(([k]) => k)), `${theme}: a Saturday and a Sunday payment box`).toEqual(new Set(['sat', 'sun']))
       for (const [kind, colour] of boxes) expect(colour, `${theme} payment box ${kind} (the --sat / --sun tokens, as the canvas draws them)`).toBe(want(kind === 'sat' ? v.boxSat : v.boxSun))
     }
-    // Phone: the calendar is a list; each weekend day heading (date and weekday) takes the colour.
+    // Phone: no grid, the month's agenda; each weekend day takes the colour (D-3: month buttons, see the next test).
     await page.setViewportSize({ width: 390, height: 844 })
     for (const theme of ['light', 'dark']) {
       await page.goto('/#events')
-      const cal = page.getByRole('region', { name: '이번 달 일정 달력' })
-      await cal.waitFor()
-      if (nextMonth) await cal.getByRole('button', { name: '다음' }).click()
-      await expect(cal.locator(`[data-date="${iso(sun)}"].is-sun`)).toBeVisible()
+        const bar = page.getByRole('group', { name: '달 선택' })
+      await bar.waitFor()
+      if (nextMonth) await bar.getByRole('button', { name: '다음 달' }).click()
+      await expect(page.locator('.agenda .dt.sun').first()).toBeVisible()
       await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
       const v = await vars()
-      const heads = await cal.evaluate((el) => [...el.querySelectorAll('[data-date].is-sat > *, [data-date].is-sun > *')]
-        .map((e) => [e.parentElement!.classList.contains('is-sat') ? 'sat' : 'sun', getComputedStyle(e).color] as [string, string]))
-      expect(new Set(heads.map(([k]) => k)), `${theme}: Saturday and Sunday list headings`).toEqual(new Set(['sat', 'sun']))
-      for (const [kind, colour] of heads) expect(colour, `${theme} list ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
+      const heads = await page.evaluate(() => [...document.querySelectorAll('.agenda .dt.sat, .agenda .dt.sun')].map((e) => [e.classList.contains('sat') ? 'sat' : 'sun', getComputedStyle(e).color] as [string, string]))
+      expect(new Set(heads.map(([k]) => k)), `${theme}: Saturday and Sunday agenda dates`).toEqual(new Set(['sat', 'sun']))
+      for (const [kind, colour] of heads) expect(colour, `${theme} agenda ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
     }
   } finally {
     for (const m of made) await api(request, 'DELETE', `/api/subscriptions/${m.json.id}`)
@@ -667,5 +670,43 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
         expect(h.searchOverflow, `${at}: the search box holds its contents`).toBeLessThanOrEqual(0)
       }
     }
+  })
+})
+
+test('(spec 010 D-3) phone: month buttons move the agenda, there is no 오늘 button, the grid is not drawn', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#events')
+  const bar = page.getByRole('group', { name: '달 선택' })
+  await bar.waitFor()
+  await expect(page.getByRole('region', { name: '이번 달 일정 달력' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '오늘', exact: true })).toHaveCount(0)
+  const title = bar.locator('b')
+  const t0 = await title.innerText()
+  await bar.getByRole('button', { name: '다음 달' }).click()
+  const t1 = await title.innerText()
+  expect(t1).not.toBe(t0)
+  await expect(page.locator('.agenda h2')).toContainText(`${Number(t1.match(/(\d+)월/)![1])}월 일정`)
+  await bar.getByRole('button', { name: '이전 달' }).click()
+  await expect(title).toHaveText(t0)
+  await expect(bar).toContainText(/오늘 \d+\/\d+\(.\)/)
+})
+
+test.describe('(spec 010 EV-5..8) desktop', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+  test('the month strip moves the grid and the agenda together; 오늘 is disabled on this month', async ({ page }) => {
+    await page.goto('/#events')
+    const cal = page.getByRole('region', { name: '이번 달 일정 달력' })
+    await cal.waitFor()
+    const title = page.locator('[data-cal-title]')
+    const t0 = await title.innerText()
+    await expect(page.getByRole('button', { name: '오늘', exact: true })).toBeDisabled()
+    await page.getByRole('button', { name: '다음 달' }).click()
+    const t1 = await title.innerText()
+    expect(t1).not.toBe(t0)
+    await expect(page.getByRole('button', { name: '오늘', exact: true })).toBeEnabled()
+    await expect(page.locator('.agenda h2')).toContainText(`${Number(t1.match(/(\d+)월/)![1])}월 일정`)
+    expect(await cal.locator('[data-date]').count()).toBeGreaterThanOrEqual(28)
+    await page.getByRole('button', { name: '오늘', exact: true }).click()
+    await expect(title).toHaveText(t0)
   })
 })
