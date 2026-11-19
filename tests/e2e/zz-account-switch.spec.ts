@@ -117,3 +117,60 @@ test('pending: nothing of the first account reaches the next one signed in on th
   const u = users.find((x) => x.email === email)
   if (u) await request.fetch(`/api/admin/users/${u.id}`, { method: 'DELETE', data: { confirmEmail: email }, headers: { origin: baseURL! } })
 })
+
+// spec 010 A-20: a save that has more than one step (the language is saved, then applied) belongs to the session it
+// started in. The first account picks English; its answer is held until another account has signed in on the
+// same tab; the held answer must not switch the next account's screen to English.
+test('settings: a language pick of the first account does not reach the next account (A-20)', async ({ browser, request, baseURL }) => {
+  test.setTimeout(240_000)
+  await new Promise((r) => setTimeout(r, 60_000)) // an empty login window
+  const email = `e2e-lang-${Date.now().toString(36)}@example.com`
+  const pass = 'e2e-lang-pass-1'
+  expect((await request.fetch('/api/auth/admin/create-user', { method: 'POST', data: { email, name: 'E2E lang', password: pass }, headers: { origin: baseURL! } })).status()).toBe(200)
+  const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, locale: 'ko-KR' })
+  try {
+    const page = await ctx.newPage()
+    await page.goto('/')
+    await page.getByLabel('이메일').fill(process.env.ADMIN_EMAIL!)
+    await page.getByLabel('비밀번호').fill(process.env.ADMIN_PASSWORD!)
+    await page.getByRole('button', { name: '로그인', exact: true }).click()
+    await page.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
+    await page.goto('/#settings/general')
+    await page.locator('#g-lang').waitFor()
+    // hold the answer of the preferences save: it is sent (the server has it), not yet delivered
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    let sent!: () => void
+    const wasSent = new Promise<void>((r) => { sent = r })
+    let armed = true
+    await ctx.route('**/api/preferences', async (route) => {
+      if (!armed || route.request().method() !== 'PUT') return route.continue()
+      armed = false
+      const res = await route.fetch()
+      sent()
+      await gate
+      await route.fulfill({ response: res })
+    })
+    await page.locator('#g-lang').selectOption('en')
+    await wasSent
+    await page.getByRole('button', { name: '로그아웃' }).first().click()
+    await page.getByLabel('이메일').waitFor()
+    await page.getByLabel('이메일').fill(email)
+    await page.getByLabel('비밀번호').fill(pass)
+    await page.getByRole('button', { name: '로그인', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible({ timeout: 15_000 })
+    release()
+    await page.waitForTimeout(1500)
+    // the next account still follows its own choice (the browser: Korean)
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
+    await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible()
+    await expect(page.locator('#g-lang')).toHaveValue('browser')
+  } finally {
+    await ctx.close()
+    const st = (await (await request.get('/api/state')).json()) as { preferences: Record<string, unknown> }
+    await request.put('/api/preferences', { data: { ...st.preferences, language: null }, headers: { origin: baseURL! } })
+    const users = (await (await request.fetch('/api/auth/admin/list-users?limit=500', { headers: { origin: baseURL! } })).json()).users as { id: string; email: string }[]
+    const u = users.find((x) => x.email === email)
+    if (u) await request.fetch(`/api/admin/users/${u.id}`, { method: 'DELETE', data: { confirmEmail: email }, headers: { origin: baseURL! } })
+  }
+})

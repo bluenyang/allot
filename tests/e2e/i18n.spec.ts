@@ -58,6 +58,7 @@ test('the server answers an invalid save in English', async ({ page }) => {
   await page.getByRole('button', { name: '+ Add set' }).click()
   const s = page.getByRole('form', { name: 'Add holiday set' })
   await s.getByLabel('Set name').fill(`${MARK} set`)
+  await s.getByRole('button', { name: 'Next' }).click()
   await s.getByLabel('Name', { exact: true }).fill('Founding day')
   await s.getByLabel('Type').selectOption('rrule')
   await s.getByLabel('RRULE').fill('FREQ=MONTHLY')
@@ -77,5 +78,6 @@ test('amount units in English: ₩1,234 · ₩1,234K · ₩123.4×10K', async ({
   await expect(total).toHaveText(/^[−(]?₩[\d,]+K\)?$/)
   await unit('×10,000').click()
   await expect(total).toHaveText(/^[−(]?₩[\d,]+(\.\d)?×10K\)?$/)
-  await page.getByRole('button', { name: 'Cancel' }).click() // drop the unsaved draft
+  await unit('Won').click() // the unit is saved at once: put the shared account back
+  await expect(page.getByRole('status').filter({ hasText: 'Saved right away.' })).toBeVisible()
 })

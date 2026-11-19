@@ -3,6 +3,7 @@
 // puts the policy back. When ALLOT_API_KEY_NO_EXPIRY locks the policy the switch tests are skipped.
 import { expect, request as playwrightRequest, test, type APIRequestContext, type Page } from '@playwright/test'
 import { MARK, saveSheet, sheet } from './helpers'
+import { makeKey, propose } from './proposal-helpers'
 
 const NAME = `${MARK}-key`
 
@@ -46,8 +47,8 @@ test('keys: make one, see it once, use it, see when it was used, revoke it', asy
   await page.getByRole('button', { name: '+ 키 만들기' }).click()
   const s = sheet(page, '새 API 키')
   await s.getByLabel('이름').fill(NAME)
-  await s.getByLabel('만료').selectOption('30')
-  await saveSheet(page, '새 API 키')
+  await s.getByRole('group', { name: '만료' }).getByRole('button', { name: '30일' }).click()
+  await saveSheet(page, '새 API 키', '키 만들기')
 
   // the key is on screen once, in the box
   const box = page.getByLabel('API 키', { exact: true })
@@ -81,9 +82,13 @@ test('keys: make one, see it once, use it, see when it was used, revoke it', asy
   await expect(page.getByText('claude mcp add --transport http allot')).toBeVisible()
   await expect(page.getByText('0.1.10')).toBeVisible()
 
-  // revoke
-  page.once('dialog', (d) => d.accept())
-  await page.getByRole('button', { name: `${NAME} 키 폐기` }).click()
+  // manage: the key's facts, then revoke in the dialog's own confirm step (no browser dialog)
+  await page.getByRole('button', { name: `${NAME} 키 관리` }).click()
+  const manage = page.locator('dialog[open]') // its title changes in the confirm step
+  await expect(manage.getByText(`${key.slice(0, 12)}…`)).toBeVisible()
+  await manage.getByRole('button', { name: `${NAME} 키 폐기` }).click()
+  await expect(manage.getByText('되돌릴 수 없어요').first()).toBeVisible()
+  await manage.getByRole('button', { name: '폐기', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: '폐기했어요' })).toBeVisible()
   await expect(page.getByRole('row', { name: new RegExp(NAME) })).toHaveCount(0)
   expect((await mcp(baseURL!, key)).status).toBe(401)
@@ -94,7 +99,7 @@ test('keys: a name is required and at most 32 characters', async ({ page }) => {
   await openAi(page)
   await page.getByRole('button', { name: '+ 키 만들기' }).click()
   const s = sheet(page, '새 API 키')
-  await s.getByRole('button', { name: '저장' }).click()
+  await s.getByRole('button', { name: '키 만들기' }).click()
   await expect(s.getByRole('alert')).toContainText('이름')
   await s.getByLabel('이름').fill('x'.repeat(40))
   expect(await s.getByLabel('이름').inputValue()).toHaveLength(32) // maxlength
@@ -110,7 +115,8 @@ test('policy: "만료 없음" is offered only while the server allows it; switch
     expect((await request.put('/api/admin/api-keys', { data: { noExpiry: false } })).status()).toBe(200)
     await openAi(page)
     await page.getByRole('button', { name: '+ 키 만들기' }).click()
-    await expect(sheet(page, '새 API 키').getByLabel('만료').locator('option')).toHaveText(['30일 뒤', '90일 뒤', '180일 뒤', '365일 뒤'])
+    await expect(sheet(page, '새 API 키').getByRole('group', { name: '만료' }).getByRole('button')).toHaveText(['30일', '90일', '180일', '365일'])
+    await expect(sheet(page, '새 API 키').getByText('이 서버는 만료 없는 키를 허용하지 않아요')).toBeVisible()
     await sheet(page, '새 API 키').getByRole('button', { name: '취소' }).click()
 
     // on: the option is there; make a key without an expiry
@@ -124,8 +130,9 @@ test('policy: "만료 없음" is offered only while the server allows it; switch
     await page.getByRole('button', { name: '+ 키 만들기' }).click()
     const s = sheet(page, '새 API 키')
     await s.getByLabel('이름').fill(`${NAME}-forever`)
-    await s.getByLabel('만료').selectOption('none')
-    await saveSheet(page, '새 API 키')
+    await s.getByRole('group', { name: '만료' }).getByRole('button', { name: '만료 없음' }).click()
+    await expect(s.getByText('이 서버는 만료 없는 키를 허용하지 않아요')).toHaveCount(0)
+    await saveSheet(page, '새 API 키', '키 만들기')
     const row = page.getByRole('row', { name: new RegExp(`${NAME}-forever`) })
     await expect(row).toContainText('없음')
 
@@ -162,15 +169,39 @@ test('keys: a write key chooses its confirmation method when it is made (spec 00
   await page.getByRole('button', { name: '+ 키 만들기' }).click()
   const s = sheet(page, '새 API 키')
   await s.getByLabel('이름', { exact: false }).first().fill(`${NAME}-w`)
-  await expect(s.getByText('읽기 전용')).toBeVisible()
+  await expect(s.getByRole('radio', { name: /읽기 전용/ })).toBeChecked()
   // no confirmation method for a read key
-  await expect(s.getByRole('radio')).toHaveCount(0)
-  await s.getByLabel('쓰기 허용').check()
+  await expect(s.getByRole('radio', { name: '대화 안에서 확인' })).toHaveCount(0)
+  await s.getByRole('radio', { name: /쓰기 제안 허용/ }).click()
   await expect(s.getByRole('radio', { name: 'Allot 화면에서 확인' })).toBeChecked()
   await expect(s.getByText('가장 안전해요')).toBeVisible()
   await s.getByRole('radio', { name: '대화 안에서 확인' }).check()
-  await saveSheet(page, '새 API 키')
+  await saveSheet(page, '새 API 키', '키 만들기')
   await expect(page.getByRole('row', { name: new RegExp(`${NAME}-w`) })).toContainText('읽기·쓰기 · 대화에서 확인')
   const made = ((await (await request.get('/api/keys')).json()) as { keys: { name: string; confirm: string | null }[] }).keys.find((k) => k.name === `${NAME}-w`)
   expect(made?.confirm).toBe('chat')
+})
+
+test('keys: the list says how many write proposals each key made; what cannot change yet is 준비 중 (S-3, S-11)', async ({ page, request, baseURL }) => {
+  const key = await makeKey(request, 'ui', `${NAME}-n`)
+  await propose(baseURL!, key) // one proposal; it changes nothing until it is decided, and the count is all time
+  await openAi(page)
+  await page.getByRole('button', { name: `${NAME}-n 키 관리` }).click()
+  const manage = sheet(page, `${NAME}-n 키`)
+  await expect(manage.getByText('1건')).toBeVisible()
+  await expect(page.getByText('쓰기 제안 1')).toBeVisible()
+  // 이름 바꾸기, 범위 바꾸기, 만료 연장, 사용 기록: shown, inert, no request
+  await page.waitForLoadState('networkidle') // the proposal count may still be paging
+  const calls: string[] = []
+  page.on('request', (r) => { if (r.url().includes('/api/')) calls.push(r.url()) })
+  for (const n of ['이름 바꾸기', '범위 바꾸기', '만료 연장', '사용 기록 보기']) {
+    const el = manage.getByRole('button', { name: `${n} (준비 중)` })
+    await expect(el).toHaveAttribute('aria-disabled', 'true')
+    await el.click({ force: true })
+  }
+  expect(calls).toEqual([])
+  await manage.getByRole('button', { name: '닫기', exact: true }).last().click()
+  await expect(manage).toBeHidden()
+  const rejects = (await (await request.get('/api/proposals?status=pending')).json()) as { id: string; keyName: string }[]
+  for (const x of rejects.filter((y) => y.keyName === `${NAME}-n`)) await request.post(`/api/proposals/${x.id}/reject`)
 })

@@ -22,11 +22,15 @@ test('(V-6 a) general settings: date format and amount unit apply, survive a rel
   })
   try {
     await page.goto('/#settings/general')
-    const form = page.getByRole('form', { name: '일반 설정' })
-    await form.getByRole('group', { name: '날짜 형식' }).getByRole('button', { name: '2026. 11. 14.' }).click()
-    await form.getByRole('group', { name: '금액 단위' }).getByRole('button', { name: '만원' }).click()
-    await form.getByRole('button', { name: '저장' }).click()
-    await expect(form.getByRole('status').last()).toHaveText('저장했어요.')
+    // 표시 형식 saves the moment a choice is made: no save button
+    const saved = () => page.waitForResponse((r) => r.url().endsWith('/api/preferences') && r.request().method() === 'PUT' && r.ok())
+    let done = saved()
+    await page.getByRole('group', { name: '날짜 형식' }).getByRole('button', { name: '2026. 11. 14.' }).click()
+    await done
+    done = saved()
+    await page.getByRole('group', { name: '금액 단위' }).getByRole('button', { name: '만원' }).click()
+    await done
+    await expect(page.getByRole('status').filter({ hasText: '바로 저장했어요.' })).toBeVisible()
     await page.reload()
     await page.goto('/#subs')
     await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText(/\d{4}\. \d{2}\. 15\./)
@@ -47,7 +51,7 @@ test('(V-6 b, c) theme: only the preview changes before saving; saved colour sta
   try {
     await page.goto('/#settings/theme')
     const before = await cssVar(page, '--primary')
-    await page.getByRole('button', { name: '파랑', exact: true }).click()
+    await page.getByRole('radio', { name: '파랑', exact: true }).click()
     // (c) the preview box takes the colour, the page does not
     await expect.poll(() => page.locator('.box').evaluate((e) => getComputedStyle(e).getPropertyValue('--primary').trim().toUpperCase())).toBe('#1F5F8B')
     expect(await cssVar(page, '--primary')).toBe(before)
@@ -115,8 +119,8 @@ test('(V-6 d) the calendar shows the monthly dates and the holidays of the sets 
     await expect(cal).toContainText(`${MARK}-day`)
     // Turn the set off in settings: the holiday leaves the calendar.
     await page.goto('/#settings/general')
-    await page.getByRole('button', { name: `${MARK}-set 끄기` }).click()
-    await expect(page.getByRole('button', { name: `${MARK}-set 켜기` })).toBeVisible()
+    await page.getByRole('switch', { name: `${MARK}-set 켜기` }).click()
+    await expect(page.getByRole('switch', { name: `${MARK}-set 켜기` })).toHaveAttribute('aria-checked', 'false')
     await page.goto('/#events')
     await expect(page.getByRole('region', { name: '이번 달 일정 달력' })).toContainText('월급')
     await expect(page.getByRole('region', { name: '이번 달 일정 달력' })).not.toContainText(`${MARK}-day`)
@@ -277,7 +281,7 @@ test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 ap
     await expect(g.getByRole('button', { name: /(라이트|다크) 모드로/ })).toHaveCount(0)
     // dark at once, a neutral grey (R, G, B within 4 of each other), kept after a reload
     await g.goto('/#settings/general')
-    await g.getByRole('group', { name: '선호 테마' }).getByRole('button', { name: '다크' }).click()
+    await g.getByRole('radiogroup', { name: '선호 테마' }).getByRole('radio', { name: '다크' }).click()
     await expect.poll(bg).toBe('rgb(15, 16, 17)')
     const [r, gg, b] = (await bg()).match(/\d+/g)!.map(Number)
     expect(Math.max(r!, gg!, b!) - Math.min(r!, gg!, b!)).toBeLessThanOrEqual(4)
@@ -285,13 +289,13 @@ test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 ap
     await expect.poll(bg).toBe('rgb(15, 16, 17)')
     // 선호 테마 in settings applies without a save button
     await g.goto('/#settings/general')
-    await g.getByRole('group', { name: '선호 테마' }).getByRole('button', { name: '라이트' }).click()
+    await g.getByRole('radiogroup', { name: '선호 테마' }).getByRole('radio', { name: '라이트' }).click()
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
     await g.reload()
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
     // 시스템: follows the OS, also when the OS changes while the page is open (review 11)
     await g.goto('/#settings/general')
-    await g.getByRole('group', { name: '선호 테마' }).getByRole('button', { name: '시스템' }).click()
+    await g.getByRole('radiogroup', { name: '선호 테마' }).getByRole('radio', { name: '시스템' }).click()
     await expect.poll(bg).toBe('rgb(15, 16, 17)') // this context's OS is dark
     await g.emulateMedia({ colorScheme: 'light' })
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
@@ -709,4 +713,54 @@ test.describe('(spec 010 EV-5..8) desktop', () => {
     await page.getByRole('button', { name: '오늘', exact: true }).click()
     await expect(title).toHaveText(t0)
   })
+})
+
+test('(V-8, W-8) 설정 and 관리: what does not exist yet is a visible, inert 준비 중 entry that makes no request', async ({ page }) => {
+  const notice = page.getByRole('status').filter({ hasText: '준비 중' })
+  const cases: [string, string[]][] = [
+    ['settings/general', ['Asia/Seoul', 'KRW', '+ 외화 추가', '+ 일정 추가']],
+    ['settings/ai', ['+ 모델 연결', '연결된 앱 관리']],
+    ['settings/security', ['비밀번호 정책', '자동 생성']],
+  ]
+  for (const [route, names] of cases) {
+    await page.goto(`/#${route}`)
+    await page.locator('header.ph h1').waitFor()
+    await page.waitForLoadState('networkidle')
+    if (route === 'settings/ai') await page.getByText('쓰기 제안', { exact: false }).first().waitFor({ timeout: 60_000 }) // the proposal count has finished paging
+    const calls: string[] = []
+    const on = (r: { url(): string }) => { if (r.url().includes('/api/')) calls.push(r.url()) }
+    page.on('request', on)
+    const url = page.url()
+    for (const n of names) {
+      const el = page.locator('[aria-disabled="true"]').filter({ hasText: n.startsWith('+') ? n.slice(2) : n }).first()
+      await expect(el, `${route} ${n}`).toBeVisible()
+      await expect(el).toContainText('준비 중')
+      await el.click({ force: true })
+      await el.focus()
+      await page.keyboard.press('Enter')
+    }
+    page.off('request', on)
+    expect(page.url(), `${route} no navigation`).toBe(url)
+    expect(calls, `${route} no request`).toEqual([])
+    await expect(notice).toHaveCount(0)
+  }
+})
+
+test.describe('(W-8) phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+  test('설정 opens with the account card and its sign-out; the key list is whole-row buttons', async ({ page }) => {
+    await page.goto('/#settings/general')
+    const card = page.getByRole('region', { name: '내 계정' })
+    await expect(card).toBeVisible()
+    await expect(card.getByRole('button', { name: '로그아웃' })).toBeVisible()
+    await expect(card).toContainText('·')
+    const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
+    expect(sw).toBeLessThanOrEqual(iw)
+  })
+})
+
+test('(W-8) desktop has no account card on the settings page', async ({ page }) => {
+  await page.goto('/#settings/general')
+  await page.locator('header.ph h1').waitFor()
+  await expect(page.getByRole('region', { name: '내 계정' })).toHaveCount(0)
 })

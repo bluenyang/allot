@@ -18,9 +18,9 @@ export async function reload(page: Page, hash: Parameters<typeof go>[1], tab?: s
 export const sheet = (page: Page, title: string | RegExp) => page.getByRole('form', { name: title })
 
 /** Save the open sheet and wait until it has closed (the API answered). */
-export async function saveSheet(page: Page, title: string | RegExp) {
+export async function saveSheet(page: Page, title: string | RegExp, button = '저장') {
   const s = sheet(page, title)
-  await s.getByRole('button', { name: '저장' }).click()
+  await s.getByRole('button', { name: button, exact: true }).click()
   await expect(s).toBeHidden()
 }
 
