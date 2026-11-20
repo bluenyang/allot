@@ -88,7 +88,7 @@ const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
 .nav .btn.sm:not(:nth-child(2)){width:30px;padding:0}
 .nav .btn svg{width:15px;height:15px}
 .nav .btn:disabled{color:var(--subtle)}
-.calnote{margin:auto 0 0;padding:12px 18px;font-size:12px;color:var(--muted);background:var(--surface-2);border-top:1px solid var(--divider)}
+.calnote{margin:0;padding:12px 18px;font-size:12px;color:var(--muted);background:var(--surface-2);border-top:1px solid var(--divider)}
 .agenda{display:flex;flex-direction:column}
 .ag{list-style:none;margin:0;padding:0;flex:1}
 .ag li{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--divider)}

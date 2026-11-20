@@ -145,6 +145,7 @@ function handledNote(p: Proposal): string {
 .pend-ph :deep(.sub){max-width:680px}
 .fbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
 .fbar :deep(.seg){flex:none}
+.fbar .hint{margin-left:auto}
 .empty-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:36px 18px;text-align:center}
 .prop{display:flex;flex-direction:column}
 .prop.wait{border-color:var(--accent-line)}
