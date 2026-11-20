@@ -6,9 +6,10 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFile
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
+import { gitFreeEnv } from './git-env'
 
 const root = resolve(import.meta.dirname, '../..')
-const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' })
+const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8', env: gitFreeEnv() })
 
 function clone() {
   const dir = mkdtempSync(join(tmpdir(), 'check-mig-'))
@@ -17,7 +18,7 @@ function clone() {
   copyFileSync(join(root, 'scripts/check-migrations.sh'), join(dir, 'scripts/check-migrations.sh'))
   return dir
 }
-const run = (dir: string) => spawnSync('sh', ['scripts/check-migrations.sh'], { cwd: dir, encoding: 'utf8' })
+const run = (dir: string) => spawnSync('sh', ['scripts/check-migrations.sh'], { cwd: dir, encoding: 'utf8', env: gitFreeEnv() })
 
 test('no drift passes', () => {
   const dir = clone()
