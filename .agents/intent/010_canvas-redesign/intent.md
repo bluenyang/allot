@@ -10,6 +10,13 @@ approvals:
     at: "2026-11-19"
     words: "승인"
     rev: 6078cb8
+  - role: user
+    kind: release
+    by: BlueNyang
+    at: "2026-11-21"
+    words: "stable 이후 회고까지 진행"
+    rev: 9510d0d
+    note: "0.1.4 정식 릴리스 지시(rc.3 = 9510d0d, 시험 서버 :15174에서 V-12·V-14 통과). 서버 순서는 2026-11-20 사용자 정정대로: :15174 시험 → 배포 → :15174 내리고 :15173 최신화."
 waivers: []
 supersedes: null
 ---
