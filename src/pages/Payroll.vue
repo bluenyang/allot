@@ -428,7 +428,7 @@ const livingRows = computed(() => [
 
     <!-- editors -->
     <EditSheet v-if="targetEd.item.value" :key="targetEd.item.value.id || 'new'" :title="targetEd.item.value.id ? t('payroll.editTarget') : t('payroll.addTarget')" :desc="t('payroll.targetDesc')" :error="targetEd.error.value" :busy="targetEd.busy.value"
-      :can-delete="!!targetEd.item.value.id" @save="targetEd.save" @cancel="targetEd.close" @delete="targetEd.remove">
+      :can-delete="!!targetEd.item.value.id" :delete-name="targetEd.item.value.name" @save="targetEd.save" @cancel="targetEd.close" @delete="targetEd.remove">
       <div class="field"><label for="tg-name">{{ t('payroll.name') }} <span class="star" aria-hidden="true">*</span></label><input id="tg-name" v-model="targetEd.item.value.name" class="in" autocomplete="off"></div>
       <div class="field"><label for="tg-kind">{{ t('payroll.kindLabel') }}</label>
         <Select id="tg-kind" v-model="targetEd.item.value.kind" :options="KIND_IDS.map((k) => ({ value: k, label: kindOption(k) }))" />
@@ -437,7 +437,7 @@ const livingRows = computed(() => [
     </EditSheet>
 
     <EditSheet v-if="phaseEd.item.value" :key="phaseEd.item.value.id || 'new'" :title="phaseEd.item.value.id ? t('payroll.editPhase') : t('payroll.addPhase')" :error="phaseEd.error.value" :busy="phaseEd.busy.value" :width="560"
-      :can-delete="!!phaseEd.item.value.id" @save="phaseEd.save" @cancel="phaseEd.close" @delete="phaseEd.remove">
+      :can-delete="!!phaseEd.item.value.id" :delete-name="phaseEd.item.value.name" @save="phaseEd.save" @cancel="phaseEd.close" @delete="phaseEd.remove">
       <div class="field"><label for="ph-name">{{ t('payroll.name') }} <span class="star" aria-hidden="true">*</span></label><input id="ph-name" v-model="phaseEd.item.value.name" class="in" autocomplete="off" :placeholder="t('payroll.phaseNamePh')"></div>
       <div class="field"><label for="ph-from">{{ t('payroll.startMonth') }}</label><MonthInput id="ph-from" v-model="phaseEd.item.value.from" clearable /></div>
       <div class="field"><label for="ph-to">{{ t('payroll.endMonth') }}</label><MonthInput id="ph-to" v-model="phaseTo" clearable /><span class="hint">{{ t('payroll.endHint') }}</span></div>
@@ -454,14 +454,14 @@ const livingRows = computed(() => [
     </EditSheet>
 
     <EditSheet v-if="splitEd.item.value" :key="splitEd.item.value.id || 'new'" :title="splitEd.item.value.id ? t('payroll.editSplit') : t('payroll.addSplit')" :error="splitEd.error.value" :busy="splitEd.busy.value"
-      :can-delete="!!splitEd.item.value.id" @save="saveSplit" @cancel="splitEd.close" @delete="splitEd.remove">
+      :can-delete="!!splitEd.item.value.id" :delete-name="splitEd.item.value.name" @save="saveSplit" @cancel="splitEd.close" @delete="splitEd.remove">
       <div class="field"><label for="rs-name">{{ t('payroll.item') }}</label><input id="rs-name" v-model="splitEd.item.value.name" class="in" autocomplete="off"></div>
       <div class="field"><label for="rs-code">{{ t('payroll.code') }}</label><input id="rs-code" v-model="splitEd.item.value.code" class="in" autocomplete="off"></div>
       <div class="field"><label for="rs-ratio">{{ t('payroll.ratioPct') }}</label><MoneyInput id="rs-ratio" v-model="splitPct" decimal prefix="" suffix="%" /></div>
     </EditSheet>
 
     <EditSheet v-if="accEd.item.value" :key="accEd.item.value.id || 'new'" :title="accEd.item.value.id ? t('payroll.editAccount') : t('payroll.addAccount')" :error="accEd.error.value" :busy="accEd.busy.value"
-      :can-delete="!!accEd.item.value.id" @save="accEd.save" @cancel="accEd.close" @delete="accEd.remove">
+      :can-delete="!!accEd.item.value.id" :delete-name="accEd.item.value.name" @save="accEd.save" @cancel="accEd.close" @delete="accEd.remove">
       <div class="field"><label for="ac-name">{{ t('payroll.account') }} <span class="star" aria-hidden="true">*</span></label><input id="ac-name" v-model="accEd.item.value.name" class="in" autocomplete="off"></div>
       <div class="field">
         <label for="ac-role">{{ t('payroll.role') }} <span class="opt">{{ t('common.optional') }}</span></label>

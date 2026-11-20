@@ -24,11 +24,12 @@ export async function saveSheet(page: Page, title: string | RegExp, button = '�
   await expect(s).toBeHidden()
 }
 
-/** Press-twice delete in the open sheet. */
+/** Delete in the open sheet: the delete button asks in a confirmation dialog (spec 010 S-14); confirm it. */
 export async function deleteInSheet(page: Page, title: string | RegExp) {
   const s = sheet(page, title)
   await s.getByRole('button', { name: '삭제' }).click()
-  await s.getByRole('button', { name: '한 번 더 누르면 삭제' }).click()
+  const ask = page.getByRole('alertdialog')
+  await ask.getByRole('button', { name: '삭제', exact: true }).click()
   await expect(s).toBeHidden()
 }
 

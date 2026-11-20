@@ -62,7 +62,7 @@ watch(other, (v) => { if (otherOpen.value && edit.value) edit.value.method = v }
 <template>
   <EditSheet
     v-if="edit" v-model:step="step" :title="title" :steps="steps" :error="error" :busy="busy" :hint="t('timeline.saveHint')"
-    :can-advance="canAdvance" :can-delete="!!edit.id" @save="save" @cancel="close" @delete="remove"
+    :can-advance="canAdvance" :can-delete="!!edit.id" :delete-name="edit.name" @save="save" @cancel="close" @delete="remove"
   >
     <template #default="{ step: s }">
       <template v-if="s === 0">

@@ -2,13 +2,14 @@
 // Editor shared by every list (spec 007 S-6, restyled by spec 010 S-5): a modal (520px; a card on a
 // phone) holding a form named by its title. Optional stepped header (`steps`, `v-model:step`): a
 // centred step list in the header, 이전/다음 in the footer, one <form> whose sections the page shows
-// per step (slot prop `step`). Save / cancel / press-twice delete as before. On Reka's Dialog (S-13): the
+// per step (slot prop `step`). Save / cancel / delete asks first in a ConfirmDialog ("…을 삭제할까요?", cancel focused; `deleteName` names the item). On Reka's Dialog (S-13): the
 // page behind is inert, Tab wraps inside, Esc cancels (an open Select list or help bubble takes the key
 // first: Reka closes only the topmost layer); on close the focus goes back to the button that opened it.
 // A click outside does not close it (no lost input).
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import { computed, nextTick, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { t } from '../i18n'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 const props = defineProps<{
   title: string; error?: string; canDelete?: boolean; busy?: boolean; desc?: string
@@ -30,11 +31,13 @@ const props = defineProps<{
   cancelLabel?: string
   /** The save button is a destructive action (red). */
   danger?: boolean
+  /** The item's name for the delete question ("{name}을(를) 삭제할까요?"); without it the question has no name. */
+  deleteName?: string
 }>()
 const emit = defineEmits<{ save: []; cancel: []; delete: []; 'update:step': [n: number] }>()
 
 const dlg = ref<{ $el: HTMLElement } | null>(null)
-const armed = ref(false)
+const asking = ref(false)
 const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
 const stepped = computed(() => (props.steps?.length ?? 0) > 1)
 const cur = computed(() => (stepped.value ? Math.min(Math.max(props.step ?? 0, 0), props.steps!.length - 1) : 0))
@@ -60,9 +63,8 @@ watch(cur, () => void focusFirst())
 // The page was left (KeepAlive) while the editor was open: drop the edit, as Cancel would.
 onDeactivated(() => emit('cancel'))
 
-function del() {
-  if (!armed.value) return (armed.value = true)
-  armed.value = false
+function confirmDelete() {
+  asking.value = false
   emit('delete')
 }
 function submit() {
@@ -105,7 +107,7 @@ function submit() {
         <p v-if="props.error" class="err small" role="alert">{{ props.error }}</p>
       </div>
       <footer class="mf">
-        <button v-if="props.canDelete" class="btn danger" type="button" @click="del">{{ armed ? t('common.deleteConfirm') : t('common.delete') }}</button>
+        <button v-if="props.canDelete" class="btn danger" type="button" @click="asking = true">{{ t('common.delete') }}</button>
         <span v-if="props.hint || stepped" class="ft-hint small muted">{{ stepped ? `${t('common.stepOf', { n: cur + 1, total: props.steps!.length })}${props.hint && last ? ` · ${props.hint}` : ''}` : props.hint }}</span>
         <span class="sp"></span>
         <button class="btn" type="button" @click="emit('cancel')">{{ props.cancelLabel ?? t('common.cancel') }}</button>
@@ -118,6 +120,9 @@ function submit() {
      </div>
     </DialogPortal>
   </DialogRoot>
+  <ConfirmDialog v-if="asking" :title="props.deleteName?.trim() ? t('common.deleteAsk', { name: props.deleteName.trim() }) : t('common.deleteAskPlain')" :confirm-label="t('common.delete')" danger @confirm="confirmDelete" @cancel="asking = false">
+    <p>{{ t('common.deleteAskNote') }}</p>
+  </ConfirmDialog>
 </template>
 
 <style>

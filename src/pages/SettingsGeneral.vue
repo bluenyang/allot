@@ -329,7 +329,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
     </EditSheet>
 
     <EditSheet v-if="setEd.item.value" :key="setEd.item.value.id || 'new'" v-model:step="step" :title="setEd.item.value.id ? g('setEditTitle') : g('setAddTitle')" :error="setEd.error.value" :busy="setEd.busy.value"
-      :steps="[g('stepSet'), g('stepRules')]" :can-advance="canAdvance" :hint="setFoot" :can-delete="!!setEd.item.value.id" :desc="g('setDesc')" @save="saveSet" @cancel="setEd.close" @delete="setEd.remove">
+      :steps="[g('stepSet'), g('stepRules')]" :can-advance="canAdvance" :hint="setFoot" :can-delete="!!setEd.item.value.id" :delete-name="setEd.item.value.name" :desc="g('setDesc')" @save="saveSet" @cancel="setEd.close" @delete="setEd.remove">
       <template v-if="step === 0">
         <div class="field"><label for="hs-name">{{ g('setName') }} <span class="req">*</span></label><input id="hs-name" v-model="setEd.item.value.name" class="in" :placeholder="g('setNamePh')"><span class="hint">{{ g('setNameHint') }}</span></div>
       </template>

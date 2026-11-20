@@ -57,7 +57,7 @@ const endLimits = computed(() => (/^\d{4}-/.test(parts.value.from) ? { min: `${p
 <template>
   <EditSheet
     v-if="edit" :title="title" :desc="t('timeline.eventDesc')" :error="error" :busy="busy" :hint="t('timeline.saveHint')"
-    :can-delete="!!edit.id" @save="save" @cancel="close" @delete="remove"
+    :can-delete="!!edit.id" :delete-name="edit.title" @save="save" @cancel="close" @delete="remove"
   >
     <div class="field">
       <label for="ev-title" class="req">{{ t('timeline.details') }}</label>
