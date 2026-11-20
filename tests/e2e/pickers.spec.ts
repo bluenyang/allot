@@ -209,7 +209,10 @@ test('(V-14 e) an instant save is told in a toast, there is no line in the card,
     await expect(page.locator('.toast')).toBeHidden({ timeout: 8000 })
     expect(await heights(), 'after the toast has gone').toEqual(before)
   } finally {
-    await api(request, 'PUT', '/api/preferences', s0.preferences)
+    // put the account's display preferences back and check that they are back
+    const back = await api(request, 'PUT', '/api/preferences', s0.preferences)
+    expect(back.status, 'restoring the preferences').toBeLessThan(300)
+    expect((await state(request)).preferences).toEqual(s0.preferences)
   }
 })
 
