@@ -373,7 +373,9 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 .fmtgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);overflow:hidden}
 .fmtgrid .pv{border-left:1px solid var(--border);background:var(--surface-2);min-width:0}
 .pvh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:14px 18px 10px}
-.pvh b{font-size:13px}
+.pvh b{font-size:13px;white-space:nowrap}
+.pvh .hint{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv td:nth-child(2){max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* one line per row, so the card keeps its height whichever format is picked */
 .pv table{font-size:13px;width:100%}
 .pv th{background:var(--fill);border-top:0}
 .pv td.mono{font-size:12px;color:var(--muted);white-space:nowrap}
