@@ -27,6 +27,10 @@ export const en = {
     tabsPrev: 'Show earlier tabs',
     tabsNext: 'Show later tabs',
     help: 'Help',
+    clear: 'Clear',
+    openCalendar: 'Open calendar',
+    prevYear: 'Previous year',
+    nextYear: 'Next year',
     dismiss: 'Dismiss',
   },
   holiday: {

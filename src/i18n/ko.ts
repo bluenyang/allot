@@ -28,6 +28,10 @@ export const ko = {
     tabsNext: '뒤쪽 탭 보기',
     help: '도움말',
     dismiss: '알림 닫기',
+    clear: '지우기',
+    openCalendar: '달력 열기',
+    prevYear: '이전 해',
+    nextYear: '다음 해',
   },
   holiday: {
     substitute: '대체공휴일({name})',

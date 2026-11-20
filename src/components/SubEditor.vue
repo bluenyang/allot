@@ -17,6 +17,7 @@ import { chargeKrw, monthlyKrw, num, planAt, usd, ymLabel } from '../lib/calc'
 import { wonText } from '../lib/format'
 import type { PlanChange, Subscription } from '../data/types'
 import Select from './Select.vue'
+import DateInput from './DateInput.vue'
 
 const props = defineProps<{ initial: Subscription | null; /** The page's 기준 월, for the "전환 적용 중" note. */ ym: string }>()
 const emit = defineEmits<{ close: []; editChange: [c: PlanChange] }>()
@@ -154,7 +155,7 @@ async function confirmDelete() { await remove() }
           </div>
           <div class="field">
             <label for="e-next">{{ t('subscriptions.nextDate') }}</label>
-            <input id="e-next" v-model="edit.nextDate" class="in" type="date">
+            <DateInput id="e-next" v-model="edit.nextDate" :aria-label="t('subscriptions.nextDate')" />
           </div>
         </div>
         <div class="two">

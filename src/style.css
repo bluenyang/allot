@@ -289,6 +289,46 @@ button.in.sel-t.fsel,.fbar button.in.sel-t{width:auto;height:34px;font-size:13px
 .sel-sc{display:grid;place-items:center;height:22px;color:var(--muted)}
 .sel-sc svg{width:16px;height:16px}
 @media (max-width:760px){.sel-o{min-height:44px}}
+/* date and month fields (DateInput, MonthInput; spec 010 S-14): a field that looks like .in with the calendar button inside, and a calendar card like the Select list */
+.dpi{min-width:0}
+.dpf{display:flex;align-items:center;gap:2px;padding:0 4px 0 10px}
+.dpf:focus-within,.dpf:has([data-state="open"]){border-color:var(--primary-text)}
+.dpf[data-invalid]{border-color:var(--neg)}
+.dpf.off{background:var(--surface-2);color:var(--subtle)}
+.dp-seg{display:flex;align-items:center;flex:1;min-width:0;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dp-lit{color:var(--subtle);padding:0 1px}
+.dp-part{padding:2px 2px;border-radius:3px;outline:none;caret-color:transparent}
+.dp-part:focus{background:var(--sel);color:var(--primary-text)}
+.dp-part[data-placeholder]{color:var(--subtle)}
+.dp-txt{flex:1;min-width:0;height:100%;border:0;padding:0;background:transparent;color:inherit;font:inherit;outline:none}
+.dp-txt::placeholder{color:var(--subtle)}
+.dp-b{flex:none;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:var(--r-ctl);background:transparent;color:var(--muted);cursor:pointer}
+.dp-b:hover:not(:disabled){background:var(--fill);color:var(--text)}
+.dp-b:disabled{cursor:not-allowed}
+.dp-b svg{width:16px;height:16px}
+.dpf[data-disabled] .dp-b{cursor:not-allowed}
+.dp-pop{z-index:60;max-width:calc(100vw - 16px);padding:10px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);outline:none}
+.dp-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.dp-t{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.dp-n{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:var(--r-ctl);background:transparent;color:var(--muted);cursor:pointer}
+.dp-n:hover:not([data-disabled]){background:var(--fill);color:var(--text)}
+.dp-n[data-disabled]{opacity:.4;cursor:not-allowed}
+.dp-n svg{width:16px;height:16px}
+.dp-g{border-collapse:collapse;user-select:none}
+.dp-w{width:36px;height:28px;padding:0;font-size:12px;font-weight:600;color:var(--subtle);text-align:center}
+.dp-w.sat{color:var(--sat)} .dp-w.sun{color:var(--sun)}
+.dp-c{padding:1px;text-align:center}
+.dp-d{display:grid;place-items:center;width:34px;height:34px;margin:0 auto;border-radius:var(--r-ctl);font-size:13px;font-variant-numeric:tabular-nums;color:var(--text);cursor:pointer;outline:none}
+.dp-d.sat{color:var(--sat)} .dp-d.sun{color:var(--sun)}
+.dp-d:hover:not([data-selected]):not([data-disabled]){background:var(--fill)}
+.dp-d[data-today]{box-shadow:inset 0 0 0 1px var(--primary-text);font-weight:600}
+.dp-d[data-outside-view]{opacity:.4}
+.dp-d[data-disabled],.dp-d[data-unavailable]{opacity:.3;cursor:not-allowed}
+.dp-d[data-focused]:not([data-selected]){background:var(--fill)}
+.dp-d:focus-visible{box-shadow:0 0 0 2px var(--primary-text)}
+.dp-d[data-selected]{background:var(--primary);color:var(--primary-ink);font-weight:600}
+.dp-m{width:72px;height:38px;font-size:14px}
+@media (max-width:760px){.dp-d{width:40px;height:40px}.dp-w{width:42px}.dp-m{width:78px;height:44px}.dp-b,.dp-n{width:36px;height:36px}}
 .in:focus{border-color:var(--primary-text)}
 .in[aria-invalid="true"]{border-color:var(--neg)}
 input.in[type=number],input.in.num{font-variant-numeric:tabular-nums}

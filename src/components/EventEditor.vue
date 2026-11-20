@@ -12,6 +12,7 @@ import { DEFAULT_EVENT_KIND, EVENT_KINDS, eventKindLabel } from '../lib/labels'
 import { WHEN_RE, composeWhen, whenParts, type WhenMode } from '../lib/event-when'
 import { today, ymOf } from '../lib/calc'
 import type { EventState, PlanEvent } from '../data/types'
+import MonthInput from './MonthInput.vue'
 
 const props = defineProps<{ initial: PlanEvent | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -68,12 +69,12 @@ const endLimits = computed(() => (/^\d{4}-/.test(parts.value.from) ? { min: `${p
       <div class="seg" role="group" aria-labelledby="ev-when-l">
         <button v-for="o in modeOpts" :key="o.id" type="button" :aria-pressed="parts.mode === o.id ? 'true' : 'false'" @click="setMode(o.id as WhenMode)">{{ o.label }}</button>
       </div>
-      <input v-if="parts.mode === 'one'" v-model="parts.one" class="in" type="month" :placeholder="now" :aria-label="t('timeline.month')">
+      <MonthInput clearable v-if="parts.mode === 'one'" v-model="parts.one" :placeholder="now" :aria-label="t('timeline.month')" />
       <template v-else-if="parts.mode === 'range'">
         <div class="rng">
-          <input v-model="parts.from" class="in" type="month" :placeholder="now" :aria-label="t('timeline.fromMonth')">
+          <MonthInput v-model="parts.from" clearable :placeholder="now" :aria-label="t('timeline.fromMonth')" />
           <span aria-hidden="true" class="muted">~</span>
-          <input v-model="parts.to" class="in" type="month" :placeholder="now" v-bind="endLimits" :aria-label="t('timeline.toMonth')">
+          <MonthInput v-model="parts.to" clearable :placeholder="now" v-bind="endLimits" :aria-label="t('timeline.toMonth')" />
         </div>
         <Soon tag="span" class="hint">{{ crossYear ? t('timeline.crossYearSoon') : t('timeline.crossYear') }}</Soon>
       </template>

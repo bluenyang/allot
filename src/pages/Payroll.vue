@@ -21,6 +21,7 @@ import { kindDetail } from '../lib/labels'
 import { addYm, distributionAt, phaseNumbers, splitRemainder, today, transferAt, ymLabel, ymOf, type AllocRow } from '../lib/calc'
 import type { AllocationKind, Settings } from '../data/types'
 import Select from '../components/Select.vue'
+import MonthInput from '../components/MonthInput.vue'
 
 const tab = ref('phases')
 const tabs = computed(() => [
@@ -130,7 +131,7 @@ const phaseEd = useEditor(
       : null
   },
 )
-// <input type="month"> gives '' for "no end"; the API wants null.
+// the month field gives '' for "no end"; the API wants null.
 const phaseTo = computed({
   get: () => phaseEd.item.value?.to ?? '',
   set: (v: string) => { if (phaseEd.item.value) phaseEd.item.value.to = v || null },
@@ -438,8 +439,8 @@ const livingRows = computed(() => [
     <EditSheet v-if="phaseEd.item.value" :key="phaseEd.item.value.id || 'new'" :title="phaseEd.item.value.id ? t('payroll.editPhase') : t('payroll.addPhase')" :error="phaseEd.error.value" :busy="phaseEd.busy.value" :width="560"
       :can-delete="!!phaseEd.item.value.id" @save="phaseEd.save" @cancel="phaseEd.close" @delete="phaseEd.remove">
       <div class="field"><label for="ph-name">{{ t('payroll.name') }} <span class="star" aria-hidden="true">*</span></label><input id="ph-name" v-model="phaseEd.item.value.name" class="in" autocomplete="off" :placeholder="t('payroll.phaseNamePh')"></div>
-      <div class="field"><label for="ph-from">{{ t('payroll.startMonth') }}</label><input id="ph-from" v-model="phaseEd.item.value.from" class="in" type="month"></div>
-      <div class="field"><label for="ph-to">{{ t('payroll.endMonth') }}</label><input id="ph-to" v-model="phaseTo" class="in" type="month"><span class="hint">{{ t('payroll.endHint') }}</span></div>
+      <div class="field"><label for="ph-from">{{ t('payroll.startMonth') }}</label><MonthInput id="ph-from" v-model="phaseEd.item.value.from" clearable /></div>
+      <div class="field"><label for="ph-to">{{ t('payroll.endMonth') }}</label><MonthInput id="ph-to" v-model="phaseTo" clearable /><span class="hint">{{ t('payroll.endHint') }}</span></div>
       <template v-if="fixedTargets.length">
         <div v-for="tg in fixedTargets" :key="tg.id" class="field"><label :for="`ph-amt-${tg.id}`">{{ tg.name }}</label>
           <MoneyInput :id="`ph-amt-${tg.id}`" :model-value="phaseAmount(tg.id)" @update:model-value="setPhaseAmount(tg.id, $event)" /></div>
