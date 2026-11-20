@@ -9,7 +9,8 @@ async function api(request: APIRequestContext, method: 'GET' | 'POST' | 'PUT' | 
   const r = await request.fetch(path, { method, data, headers: { origin: base } })
   return { status: r.status(), json: await r.json().catch(() => null) }
 }
-type State = { subscriptions: { id: string; name: string; nextDate: string }[]; events: { id: string; title: string; when: string }[]; preferences: Record<string, unknown> }
+type Phase = { id: string; label: string; name: string; from: string; to: string | null; amounts: Record<string, number>; note?: string }
+type State = { phases: Phase[]; subscriptions: { id: string; name: string; nextDate: string }[]; events: { id: string; title: string; when: string }[]; preferences: Record<string, unknown> }
 const state = async (request: APIRequestContext) => (await api(request, 'GET', '/api/state')).json as State
 
 test.afterEach(async ({ request }) => {
@@ -236,4 +237,31 @@ test('(V-14 b, A-41) a half-erased month is "empty", as the native field gave: e
   await add.getByRole('button', { name: '저장' }).click()
   await expect(add.getByRole('alert')).toContainText('시작')
   await add.getByRole('button', { name: '취소' }).click()
+})
+
+test('(V-14 b, A-41) a Payroll phase end month erased to "2095-" saves no end (null), not the old end', async ({ page, request }) => {
+  // The last phase is open-ended, so it is closed for the test (before the temporary phase's years) and put back after.
+  const last = [...(await state(request)).phases].sort((a, b) => (a.from < b.from ? -1 : 1)).at(-1)!
+  const original = { ...last }
+  let made: string | undefined
+  try {
+    expect((await api(request, 'PUT', `/api/phases/${last.id}`, { ...last, to: '2089-12' })).status).toBeLessThan(300)
+    const r = await api(request, 'POST', '/api/phases', { label: '', name: `${MARK}-ph2`, from: '2095-01', to: '2095-06', amounts: {}, note: MARK })
+    expect(r.status).toBeLessThan(300)
+    made = (r.json as { id: string }).id
+    await go(page, 'pay', '구간')
+    await page.getByRole('button', { name: `${MARK}-ph2 구간 수정` }).click()
+    const s = sheet(page, '구간 수정')
+    const end = s.getByLabel('끝 월 (비우면 계속)')
+    await expect(end).toHaveValue('2095-06')
+    await end.fill('2095-') // the month part erased
+    await saveSheet(page, '구간 수정')
+    expect((await state(request)).phases.find((p) => p.id === made)?.to).toBeNull()
+  } finally {
+    if (made) await api(request, 'DELETE', `/api/phases/${made}`)
+    await api(request, 'PUT', `/api/phases/${original.id}`, original)
+    const after = await state(request)
+    expect(after.phases.some((p) => p.name === `${MARK}-ph2`), 'the temporary phase is gone').toBe(false)
+    expect(after.phases.find((p) => p.id === original.id)?.to ?? null, 'the last phase is put back').toBe(original.to ?? null)
+  }
 })
