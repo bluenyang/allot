@@ -1,6 +1,6 @@
 // spec 010 V-14 (S-14, W-12): the date and month fields, content-width segments in modals, the delete
 // confirmation and the instant-save toast. Every test puts back what it made, also when it fails.
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test'
 import { MARK as RUN, fillDate, go, readDate, saveSheet, sheet } from './helpers'
 
 const MARK = `${RUN}-pk`
@@ -239,29 +239,52 @@ test('(V-14 b, A-41) a half-erased month is "empty", as the native field gave: e
   await add.getByRole('button', { name: '취소' }).click()
 })
 
-test('(V-14 b, A-41) a Payroll phase end month erased to "2095-" saves no end (null), not the old end', async ({ page, request }) => {
-  // The last phase is open-ended, so it is closed for the test (before the temporary phase's years) and put back after.
-  const last = [...(await state(request)).phases].sort((a, b) => (a.from < b.from ? -1 : 1)).at(-1)!
-  const original = { ...last }
-  let made: string | undefined
+test('(V-14 b, A-41) a Payroll phase end month erased to "2095-" saves no end (null), not the old end (temporary account)', async ({ browser, request, baseURL }) => {
+  test.setTimeout(180_000)
+  // The owner's data is never written: a temporary account holds the phases. Earlier specs sign in too: start with an empty login window.
+  await new Promise((r) => setTimeout(r, 60_000))
+  const email = `e2e-pk-end-${Date.now().toString(36)}@example.com`
+  const pass = 'e2e-pk-end-pass-1'
+  const created = await api(request, 'POST', '/api/auth/admin/create-user', { email, name: 'E2E pk', password: pass })
+  expect(created.status).toBe(200)
+  const userId = (created.json as { user: { id: string } }).user.id
+  let ctx: BrowserContext | undefined
   try {
-    expect((await api(request, 'PUT', `/api/phases/${last.id}`, { ...last, to: '2089-12' })).status).toBeLessThan(300)
-    const r = await api(request, 'POST', '/api/phases', { label: '', name: `${MARK}-ph2`, from: '2095-01', to: '2095-06', amounts: {}, note: MARK })
-    expect(r.status).toBeLessThan(300)
-    made = (r.json as { id: string }).id
-    await go(page, 'pay', '구간')
+    ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, locale: 'ko-KR' })
+    const c = ctx
+    const mine = async (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, data?: unknown) => {
+      const r = await c.request.fetch(path, { method, data, headers: { origin: baseURL! } })
+      return { status: r.status(), json: await r.json().catch(() => null) }
+    }
+    const page = await c.newPage()
+    await page.goto('/')
+    await page.getByLabel('이메일').fill(email)
+    await page.getByLabel('비밀번호').fill(pass)
+    await page.getByRole('button', { name: '로그인', exact: true }).click()
+    await page.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
+    // an open-ended phase would overlap 2095: close any of this account's own
+    for (const ph of ((await mine('GET', '/api/state')).json as State).phases.filter((x) => x.to === null)) expect((await mine('PUT', `/api/phases/${ph.id}`, { ...ph, to: '2089-12' })).status).toBeLessThan(300)
+    const made = await mine('POST', '/api/phases', { label: '', name: `${MARK}-ph2`, from: '2095-01', to: '2095-06', amounts: {}, note: MARK })
+    expect(made.status).toBeLessThan(300)
+    const id = (made.json as { id: string }).id
+    await page.goto('/#pay')
+    await page.reload() // the phase was made after the sign-in loaded the state
+    await page.getByRole('tablist').first().waitFor()
+    await page.getByRole('tab', { name: '구간' }).click()
     await page.getByRole('button', { name: `${MARK}-ph2 구간 수정` }).click()
     const s = sheet(page, '구간 수정')
     const end = s.getByLabel('끝 월 (비우면 계속)')
     await expect(end).toHaveValue('2095-06')
     await end.fill('2095-') // the month part erased
     await saveSheet(page, '구간 수정')
-    expect((await state(request)).phases.find((p) => p.id === made)?.to).toBeNull()
+    expect(((await mine('GET', '/api/state')).json as State).phases.find((p) => p.id === id)?.to).toBeNull()
   } finally {
-    if (made) await api(request, 'DELETE', `/api/phases/${made}`)
-    await api(request, 'PUT', `/api/phases/${original.id}`, original)
-    const after = await state(request)
-    expect(after.phases.some((p) => p.name === `${MARK}-ph2`), 'the temporary phase is gone').toBe(false)
-    expect(after.phases.find((p) => p.id === original.id)?.to ?? null, 'the last phase is put back').toBe(original.to ?? null)
+    try {
+      await ctx?.close()
+    } catch { /* the account is deleted below whatever the context did */ }
+    const del = await api(request, 'DELETE', `/api/admin/users/${userId}`, { confirmEmail: email })
+    expect(del.status, 'the temporary account is deleted').toBeLessThan(300)
+    const left = (await api(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users as { email: string }[]
+    expect(left.some((x) => x.email === email), 'the temporary account is gone').toBe(false)
   }
 })
