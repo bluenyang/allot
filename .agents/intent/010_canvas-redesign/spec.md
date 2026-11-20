@@ -127,7 +127,7 @@ summary_for_user: |
 - [x] W-8 설정 + 관리. (S-11)
 - [x] W-9 E2E 갱신(전 화면, 새 선택자), i18n 검사, CHANGELOG·README. (S-12) — E2E·i18n은 W-1~W-8 각 단위에서 갱신(e2e-w8fix2.log 93 passed), 문서 커밋 50e1e38 + 리뷰 수정(A-23)
 - [x] W-10 Reka UI 의존성 + 입력·선택 컴포넌트(Select 새로, Switch, Seg, SubTabs, Tip)와 앱의 select 8곳 교체, DESIGN.md. (S-13, S-10) — 커밋 610448d, 0f8a8ea, b68231a
-- [ ] W-11 덮개 컴포넌트(EditSheet, ConfirmDialog, Sheet)를 Reka Dialog로. (S-13)
+- [x] W-11 덮개 컴포넌트(EditSheet, ConfirmDialog, Sheet)를 Reka Dialog로. (S-13) — 커밋 3f5a232, 9a320b9
 
 ## 검증 기준
 모든 검사는 `scripts/check-run.sh`로 돌리고, 로그는 `pnpm check:logs`를 통과해야 증거다(AGENTS.md). 로그는 `.loctx/reports/0.1.4/rc2/test/`. 위임한 검사도 같다.
@@ -183,6 +183,7 @@ summary_for_user: |
 - A-34 (2026-11-20, V-11 리뷰 a33-review.md) 정적 렌더를 잘못 읽은 A-26 항목을 캔버스 원본 CSS대로 되돌림: U-1 일정 카드 높이 맞춤(stretch), U-2 대기 중인 변경 달 상자 반응형 칸(auto-fit 300px), U-3 휴대폰 로그인 위쪽 정렬·카드 위 48px, U-7 확인 대기 카드 강조 테두리(--accent-line), U-13 월급 분배 구간 머리 한 줄(이름 말줄임), U-14 설정 저장 줄 한 줄. 처음 맡긴 실행은 게이트 도중 멈춰 보고 없이 끝났고 PM이 이어받아 커밋 · 이 커밋
 - A-35 (2026-11-20, W-10) E2E: api-keys 검사의 "쓰기 제안" 합계를 미리 읽어 +1로 비교(개발 DB에 남은 값과 무관), api-keys·proposals·zz-account-switch 정리에서 거절·폐기 결과를 단언, 휴대폰 Tip 탭 검사를 components.spec에 되돌림. 전체 E2E 112 통과·1 건너뜀 (w10-e2e.log) · 18ffa22
 - A-36 (2026-11-20, W-10 리뷰) Seg가 id가 빈 문자열인 "그대로" 선택을 무시하던 것을 고침(Reka는 해제 때 undefined, 빈 id는 '')—플랜 전환의 통화·결제 주기·상태에서 값을 고른 뒤 그대로로 되돌릴 수 있고, 저장된 값도 그대로로 되돌림. 세 칸 E2E 추가(선택→그대로→저장→다시 열기, API로 확인) · ace9e34
+- A-37 (2026-11-20, W-11) 덮개를 Reka Dialog 위로 옮기며 달라진 점: 열린 덮개 뒤의 화면은 접근성 트리에서 숨김(aria-hidden, 이전엔 네이티브 inert)이라 아래층 요소를 role로 찾는 E2E는 위층이 닫힌 뒤에 확인하도록 고침; 덮개는 이제 body 포털의 고정 레이어(top layer 아님), 목록(Select)은 덮개 안에 열림; 되돌릴 포커스는 닫힌 뒤 한 틱 늦게 복원. 동작(바깥 클릭·Esc·포커스 이동/복원·2단 확인)은 그대로 · 3f5a232, 9a320b9
 
 ## 우려
 - 크기: 화면 전부를 바꾸는 일이라 W-4~W-8 각각이 크다. 단위마다 리뷰를 받고 넘어간다(한 번에 몰아서 리뷰하지 않음).
