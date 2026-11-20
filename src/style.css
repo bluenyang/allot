@@ -269,7 +269,26 @@ td.n{font-weight:600}
 .in{height:36px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--input);color:var(--text);width:100%;min-width:0}
 textarea.in{height:auto;padding:8px 10px;min-height:72px;resize:vertical}
 .in:disabled{background:var(--surface-2);color:var(--subtle)}
-select.in{padding-right:28px}
+/* Select.vue (spec 010 S-13): a button looking like .in, and its list on Reka's Select */
+button.in.sel-t{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-right:8px;font:inherit;text-align:left;cursor:pointer}
+.sel-t .sel-v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-t .sel-v.ph{color:var(--subtle)}
+.sel-t .sel-i{flex:none;display:grid;color:var(--muted)}
+.sel-t .sel-i svg{width:16px;height:16px}
+.sel-t:disabled{cursor:not-allowed}
+button.in.sel-t.fsel,.fbar button.in.sel-t{width:auto;height:34px;font-size:13px}
+.sel-t[data-state="open"]{border-color:var(--primary-text)}
+.sel-pop{z-index:60;min-width:var(--reka-select-trigger-width);max-width:calc(100vw - 16px);max-height:min(320px,var(--reka-select-content-available-height));overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop)}
+.sel-vp{padding:4px;overflow-y:auto}
+.sel-o{position:relative;display:flex;align-items:center;min-height:36px;padding:0 32px 0 10px;border-radius:var(--r-ctl);font-size:14px;cursor:pointer;user-select:none;outline:none}
+.sel-o[data-highlighted]{background:var(--fill)}
+.sel-o[data-state="checked"]{color:var(--primary-text);font-weight:600}
+.sel-o[data-disabled]{color:var(--subtle);cursor:not-allowed}
+.sel-ck{position:absolute;right:10px;display:grid;color:var(--primary-text)}
+.sel-ck svg{width:16px;height:16px}
+.sel-sc{display:grid;place-items:center;height:22px;color:var(--muted)}
+.sel-sc svg{width:16px;height:16px}
+@media (max-width:760px){.sel-o{min-height:44px}}
 .in:focus{border-color:var(--primary-text)}
 .in[aria-invalid="true"]{border-color:var(--neg)}
 input.in[type=number],input.in.num{font-variant-numeric:tabular-nums}
@@ -393,6 +412,7 @@ pre code{background:none;padding:0;font-size:inherit}
 /* ---------- inside a modal (EditSheet, ConfirmDialog): larger controls (spec 010 SH-30) ---------- */
 dialog .field label,dialog .lbl{font-size:13px}
 dialog .in{height:44px;padding:0 12px;font-size:14px}
+dialog button.in.sel-t{padding-right:10px}
 dialog textarea.in{height:auto;padding:10px 12px}
 dialog .btn{height:40px}
 dialog .btn.sm,dialog .btn.icon{height:32px}

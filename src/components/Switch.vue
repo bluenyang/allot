@@ -1,10 +1,12 @@
 <script setup lang="ts">
-// On/off switch (spec 010 S-5): a button with role="switch". Name it with `label` (aria-label) or a
-// <label for> pointing at `id`.
+// On/off switch (spec 010 S-5, S-13): Reka's Switch (a button with role="switch"). Name it with `label`
+// (aria-label) or a <label for> pointing at `id`.
+import { SwitchRoot, SwitchThumb } from 'reka-ui'
+
 defineProps<{ modelValue: boolean; id?: string; label?: string; disabled?: boolean }>()
 defineEmits<{ 'update:modelValue': [on: boolean] }>()
 </script>
 
 <template>
-  <button :id="id" class="switch" type="button" role="switch" :aria-checked="modelValue ? 'true' : 'false'" :aria-label="label" :disabled="disabled" @click="$emit('update:modelValue', !modelValue)"><i></i></button>
+  <SwitchRoot :id="id" class="switch" :model-value="modelValue" :aria-label="label" :disabled="disabled" @update:model-value="$emit('update:modelValue', $event)"><SwitchThumb as="i" /></SwitchRoot>
 </template>

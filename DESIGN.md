@@ -110,6 +110,13 @@ Primary uses `lift(P, 0.46, 0.60)`; accent uses `lift(A, 0.54, 0.85)`. With `S` 
 
 The shared components are in `src/components/`; their styles are in `src/style.css` and in the component files. Anything marked "not built" has no component yet.
 
+**Basis: Reka UI.** The interactive components (Select, Switch, Seg, SubTabs, Tip) are built on Reka UI (`reka-ui`, MIT, headless: behaviour, keyboard and WAI-ARIA, no styles); their look is only these tokens. No Tailwind and no shadcn-vue. Keep each component's public props and events when its inside changes. A new interactive control starts from the matching Reka primitive and is styled here, not hand-rolled.
+
+**No native select.** The browser's `select` element is not used anywhere in the app: its opened list cannot follow the tokens and differs per platform, and on a phone it would be a different control. Use `Select` for every choice from a list (a short list of two to five modes is a `Seg`).
+
+### Select (`Select.vue`, `.in.sel-t` + `.sel-pop`)
+A button that looks like `.in` (same height, border, radius and focus colour; a chevron at the right) opening a list on Reka's Select. The list is a card (`--surface`, `--border`, `--r-card`, `--shadow-pop`), one option per row (36px, 44px on a phone), the highlighted row on `--fill`, the selected one in `--primary-text` with a check on the right; it is as wide as the trigger at least and stays 8px inside the screen. API close to the native one: `v-model`, `options` (`{ value, label, disabled? }`, values string or number and given back as they were), `id` (a `<label for>` names it), `aria-label` / `aria-labelledby`, `placeholder`, `disabled`. A stored value that is not among the options is shown and stays selected (an extra option). Inside a dialog the list opens inside it, and Escape closes the list only. Keyboard: Enter, Space or the arrows open it, arrows move, Enter picks, Escape closes and the focus returns to the trigger.
+
 ### Buttons
 Class `.btn` (`.pri`, `.bad`, `.sm`, `.icon`, `.ghost`). Height 36px, small 30px (inside a modal 40 and 32; login 44). Primary is `--primary` fill with `--primary-ink`; secondary is a bordered surface; the signal button is `--accent`; delete (`.bad`) is bordered in `--neg-text`. One primary button per view or modal.
 
@@ -132,19 +139,19 @@ On a phone a bottom sheet replaces a popover or the "more" menu: radius `--r-pop
 A short message at the bottom, radius `--r-pop`, `--shadow-pop`. It tells what happened ("Saved"), never asks a question, and goes away by itself; an error (`role="alert"`) stays until dismissed.
 
 ### Seg (`Seg.vue`, `.seg`)
-Two to five exclusive options on one track (`--fill` ground, 5px outer radius, 4px buttons); the selected button (`aria-pressed`) is raised on the surface. `bordered` gives the joined variant with a `--sel` selected face. Use it for a mode, not for navigation.
+Two to five exclusive options (Reka ToggleGroup, single) on one track (`--fill` ground, 5px outer radius, 4px buttons); the selected button (`aria-pressed`) is raised on the surface. `bordered` gives the joined variant with a `--sel` selected face. Use it for a mode, not for navigation.
 
 ### Switch (`Switch.vue`, `.switch`)
-A button with `role="switch"` and `aria-checked`; on is `--primary`. Name it with `label`.
+A button with `role="switch"` and `aria-checked` (Reka Switch); on is `--primary`. Name it with `label`.
 
 ### Tip (`Tip.vue`, `.tip`)
-A 16px round "?" beside a field label (beside it, not inside it, so the field's name stays short). Hover or focus opens a bubble below it (`--text` ground, 240px, 12px text); the name read aloud is "Help: …". For a sentence of help that does not fit under the control; it holds no action.
+A 16px round "?" beside a field label (beside it, not inside it, so the field's name stays short). Hover, focus or a tap opens a bubble (Reka Popover) below it, above when there is no room (`--text` ground, 240px, 12px text); the name read aloud is "Help: …". For a sentence of help that does not fit under the control; it holds no action.
 
 ### Pill (`Pill.vue`, renders `.chip`)
 A fully rounded choice or filter, `aria-pressed` when selected. Selected: `--sel` ground with a `--primary-text` border. The count (`.c`) uses `--fill`; a signal count uses the soft accent.
 
 ### SubTabs (`SubTabs.vue`, `.subtabs`)
-Icon and label, 42px tall; the selected tab has a `--sel` face and a 2px underline in `--primary-text`; overflow arrows when the row scrolls. For switching views of the same data on one page only.
+Reka Tabs (selecting is by click or Enter, arrows only move the focus). Icon and label, 42px tall; the selected tab has a `--sel` face and a 2px underline in `--primary-text`; overflow arrows when the row scrolls. For switching views of the same data on one page only.
 
 ### Table
 Header on `--surface-2` with `--subtle` text, row lines in `--divider`, amounts right-aligned with tabular figures, dates in the mono font. Plain markup (`.tbl`); not built as a component.
