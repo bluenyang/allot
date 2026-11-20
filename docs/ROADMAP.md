@@ -42,7 +42,7 @@ Added to the roadmap after the work started (audit 0.1.0-stable, A-1). User's wo
 
 ## v0.1.x — security, login, MCP, and money management (patch releases)
 
-Status: 0.1.3 released (2026-11-17); 0.1.4-rc.2 (2026-11-20) on the test server. Settled with the user on 2026-11-11. The former v0.2 (MCP server, OAuth and passkey login) moves down into patch releases of v0.1 — user's words: "v0.2 쪼개기: 응. 쪼개라. 각 patch 버전으로 쪼개고, 버전 v0.2에서 v0.1.x로 내려." Each patch ships on its own.
+Status: 0.1.3 released (2026-11-17); 0.1.4-rc.2 (2026-11-20). Settled with the user on 2026-11-11. The former v0.2 (MCP server, OAuth and passkey login) moves down into patch releases of v0.1 — user's words: "v0.2 쪼개기: 응. 쪼개라. 각 patch 버전으로 쪼개고, 버전 v0.2에서 v0.1.x로 내려." Each patch ships on its own.
 
 Direction (user's words, Korean, 2026-11-11):
 
