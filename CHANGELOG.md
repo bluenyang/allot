@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.4-rc.3 — 2026-11-20
+
+Fixes from checking 0.1.4-rc.2 on the test server (spec 010 W-12). No server or schema change.
+
+### Changed
+- Segmented controls take the width of their content; none fills the row (the subscription editor's status and billing cycle included).
+- Date and month fields use the app's own pickers (Reka DatePicker / MonthPicker, styled with the tokens) instead of the browser's: typing, picking from a calendar or a year card, and clearing. The stored values stay `YYYY-MM-DD` and `YYYY-MM`; a half-typed month in a field that may be empty gives an empty value, as the browser's field did.
+- Deleting in an editor asks in a confirmation dialog ("… 삭제할까요?", cancel first) instead of a second press.
+- Settings that save as soon as you choose them say so in a toast; the cards no longer change height.
+
 ## 0.1.4-rc.2 — 2026-11-20
 
 Redesign of every screen and a design system. Intent 010 (`.agents/intent/010_canvas-redesign/`). Server changes: the remainder target is no longer fixed, and the MCP views use the same payment schedule as the screens (both below); the database schema is unchanged.
