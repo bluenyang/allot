@@ -358,3 +358,40 @@ test('(A-13) a help bubble left open behind the delete confirmation does not tak
   await expect(s).toBeVisible()
   expect((await mine(request)).some((x) => x.id === sub.id)).toBe(true)
 })
+
+// W-10 review (A-36): the "그대로" option has the id '' and must stay selectable after an explicit value.
+for (const [group, explicit, key, value] of [['통화', 'USD', 'currency', 'USD'], ['결제 주기', '연간', 'cycle', 'yearly'], ['상태', '해지', 'status', 'cancelled']] as const) {
+  test(`(A-36) plan change ${group}: an explicit value, back to "그대로", saved: the field is not written; an existing explicit value goes back to "그대로" too`, async ({ page, request }) => {
+    const sub = (await api(request, 'POST', '/api/subscriptions', body(`${MARK}-keep-${key}`))).json as Sub
+    const find = async () => (await state(request)).planChanges.find((c) => c.subId === sub.id)
+    await go(page, 'subs', '변경 일정')
+    await page.getByRole('button', { name: '+ 전환 예약' }).click()
+    const s = sheet(page, '플랜 전환 예약')
+    await choose(s.getByLabel('대상 구독'), { label: sub.name })
+    await s.getByRole('button', { name: '다음' }).click()
+    const seg = s.getByRole('group', { name: group })
+    await seg.getByRole('button', { name: explicit, exact: true }).click()
+    await expect(seg.getByRole('button', { name: explicit, exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await seg.getByRole('button', { name: '그대로' }).click()
+    await expect(seg.getByRole('button', { name: '그대로' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(seg.getByRole('button', { name: explicit, exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await s.getByLabel('VAT (%)').fill('8')
+    await saveSheet(page, '플랜 전환 예약')
+    expect((await find())!.to).toEqual({ vat: 8 })
+    // an existing change with the explicit value: set it back to "그대로"
+    await page.getByRole('button', { name: `${sub.name} 전환 수정` }).click()
+    const e = sheet(page, '플랜 전환 수정')
+    await e.getByRole('button', { name: '다음' }).click()
+    const eseg = e.getByRole('group', { name: group })
+    await eseg.getByRole('button', { name: explicit, exact: true }).click()
+    await saveSheet(page, '플랜 전환 수정')
+    expect((await find())!.to).toEqual({ vat: 8, [key]: value })
+    await page.getByRole('button', { name: `${sub.name} 전환 수정` }).click()
+    const e2 = sheet(page, '플랜 전환 수정')
+    await e2.getByRole('button', { name: '다음' }).click()
+    await expect(e2.getByRole('group', { name: group }).getByRole('button', { name: explicit, exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await e2.getByRole('group', { name: group }).getByRole('button', { name: '그대로' }).click()
+    await saveSheet(page, '플랜 전환 수정')
+    expect((await find())!.to).toEqual({ vat: 8 })
+  })
+}

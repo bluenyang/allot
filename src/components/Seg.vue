@@ -9,7 +9,7 @@ const props = defineProps<{ options: { id: string | number; label: string; count
 const emit = defineEmits<{ 'update:modelValue': [id: any] }>()
 
 function pick(v: unknown) {
-  if (typeof v !== 'string' || v === '') return // a press on the selected option clears it in Reka: keep it
+  if (typeof v !== 'string') return // a press on the selected option clears it (undefined) in Reka: keep it; '' is a real id (the "그대로" option)
   const o = props.options.find((x) => String(x.id) === v)
   if (o && o.id !== props.modelValue) emit('update:modelValue', o.id)
 }
