@@ -3,7 +3,7 @@
 // subscription, the two steps, and the same flow once in English. Every subscription made here carries
 // the test mark and is deleted at the end (a subscription takes its plan changes with it).
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { MARK as RUN, choose, optionTexts, fillDate, go, saveSheet, sheet } from './helpers'
+import { MARK as RUN, choose, optionTexts, fillDate, go, readDate, saveSheet, sheet } from './helpers'
 
 const MARK = `${RUN}-sub`
 type Sub = { id: string; name: string; amount: number; currency: string; vat: number; status: string; cycle: string; plan: string }
@@ -277,7 +277,7 @@ test('(A-9) the editor: Enter on step 1 goes on, Back keeps both steps, a server
   await expect(s.getByLabel('플랜')).toHaveValue('플랜값')
   await s.getByRole('button', { name: '다음' }).click()
   await expect(s.getByLabel('금액', { exact: true })).toHaveValue('99,999,999,999')
-  await expect(s.getByLabel('다음 결제일')).toHaveValue('2031-01-15')
+  expect(await readDate(s.getByRole('group', { name: '다음 결제일' }))).toBe('2031-01-15')
   await s.getByRole('button', { name: '취소', exact: true }).click()
   await expect(s).toBeHidden()
 })

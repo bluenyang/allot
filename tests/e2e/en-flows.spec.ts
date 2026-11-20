@@ -131,7 +131,7 @@ test('pay split: delete the remainder target, the leftover stays in the pay acco
     await page.getByRole('row', { name: new RegExp(remName) }).first().click()
     const s = sheet(page, 'Edit split target')
     await s.getByRole('button', { name: 'Delete' }).click()
-    await s.getByRole('button', { name: 'Press again to delete' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(s).toBeHidden()
     expect(((await mine('GET', '/api/state')).json as State).targets.some((x) => x.kind === 'remainder')).toBe(false)
     // the exact change set of the deletion
