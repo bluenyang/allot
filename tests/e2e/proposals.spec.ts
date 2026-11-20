@@ -16,9 +16,9 @@ test.afterEach(async ({ page, request }) => {
   await page.locator('#g-lang').waitFor()
   if ((await page.locator('#g-lang').getAttribute('data-value')) !== 'browser') await pickLanguage(page, 'browser')
   const props = (await (await request.get('/api/proposals?status=pending')).json()) as Proposal[]
-  for (const p of props.filter((x) => x.keyName.startsWith(MARK))) await request.post(`/api/proposals/${p.id}/reject`)
+  for (const p of props.filter((x) => x.keyName.startsWith(MARK))) expect((await request.post(`/api/proposals/${p.id}/reject`)).ok()).toBe(true)
   const keys = (await (await request.get('/api/keys')).json()) as { keys: { id: string; name: string }[] }
-  for (const k of keys.keys.filter((x) => x.name.startsWith(MARK))) await request.delete(`/api/keys/${k.id}`)
+  for (const k of keys.keys.filter((x) => x.name.startsWith(MARK))) expect((await request.delete(`/api/keys/${k.id}`)).ok()).toBe(true)
   const s = await state(request)
   for (const x of s.subscriptions.filter((x) => x.name.startsWith(MARK))) await request.delete(`/api/subscriptions/${x.id}`)
   for (const x of s.checks.filter((x) => x.text.startsWith(MARK))) await request.delete(`/api/checks/${x.id}`)

@@ -10,9 +10,9 @@ import { KEY_NAME, SUB, makeKey, propose } from './proposal-helpers'
 
 test.afterEach(async ({ request }) => {
   const props = (await (await request.get('/api/proposals?status=pending')).json()) as { id: string; keyName: string }[]
-  for (const p of props.filter((x) => x.keyName.startsWith(MARK))) await request.post(`/api/proposals/${p.id}/reject`)
+  for (const p of props.filter((x) => x.keyName.startsWith(MARK))) expect((await request.post(`/api/proposals/${p.id}/reject`)).ok()).toBe(true)
   const keys = (await (await request.get('/api/keys')).json()) as { keys: { id: string; name: string }[] }
-  for (const k of keys.keys.filter((x) => x.name.startsWith(MARK))) await request.delete(`/api/keys/${k.id}`)
+  for (const k of keys.keys.filter((x) => x.name.startsWith(MARK))) expect((await request.delete(`/api/keys/${k.id}`)).ok()).toBe(true)
   const st = (await (await request.get('/api/state')).json()) as { subscriptions: { id: string; name: string }[]; checks: { id: string; text: string }[] }
   for (const x of st.subscriptions.filter((x) => x.name.startsWith(MARK))) await request.delete(`/api/subscriptions/${x.id}`)
   for (const x of st.checks.filter((x) => x.text.startsWith(MARK))) await request.delete(`/api/checks/${x.id}`)

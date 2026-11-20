@@ -12,10 +12,12 @@ async function policy(request: APIRequestContext) {
   return (await r.json()) as { noExpiry: boolean; source: string; locked: boolean }
 }
 
-/** Revoke every key this run made (whatever the test got to). */
+/** Reject every proposal and revoke every key this run made (whatever the test got to), and check each call. */
 async function cleanUp(request: APIRequestContext) {
+  const props = (await (await request.get('/api/proposals?status=pending')).json()) as { id: string; keyName: string }[]
+  for (const p of props.filter((x) => x.keyName.startsWith(MARK))) expect((await request.post(`/api/proposals/${p.id}/reject`)).ok()).toBe(true)
   const list = (await (await request.get('/api/keys')).json()) as { keys: { id: string; name: string }[] }
-  for (const k of list.keys.filter((x) => x.name.startsWith(MARK))) await request.delete(`/api/keys/${k.id}`)
+  for (const k of list.keys.filter((x) => x.name.startsWith(MARK))) expect((await request.delete(`/api/keys/${k.id}`)).ok()).toBe(true)
 }
 
 /** An MCP call with a key and no session. */
@@ -183,13 +185,18 @@ test('keys: a write key chooses its confirmation method when it is made (spec 00
 })
 
 test('keys: the list says how many write proposals each key made; what cannot change yet is 준비 중 (S-3, S-11)', async ({ page, request, baseURL }) => {
+  // the page-wide summary counts every proposal ever made on this account: read it first, expect one more
+  await openAi(page)
+  const summary = page.locator('.sum').filter({ hasText: '쓰기 제안' })
+  const before = Number((await summary.locator('b.num').innerText()).replace(/\D/g, ''))
   const key = await makeKey(request, 'ui', `${NAME}-n`)
   await propose(baseURL!, key) // one proposal; it changes nothing until it is decided, and the count is all time
-  await openAi(page)
+  await page.reload() // the same hash: only a reload reads the new key
+  await expect(page.getByRole('heading', { name: 'API 키', exact: true })).toBeVisible()
   await page.getByRole('button', { name: `${NAME}-n 키 관리` }).click()
   const manage = sheet(page, `${NAME}-n 키`)
   await expect(manage.getByText('1건')).toBeVisible()
-  await expect(page.getByText('쓰기 제안 1')).toBeVisible()
+  await expect(summary.locator('b.num')).toHaveText(String(before + 1))
   // 이름 바꾸기, 범위 바꾸기, 만료 연장, 사용 기록: shown, inert, no request
   await page.waitForLoadState('networkidle') // the proposal count may still be paging
   const calls: string[] = []

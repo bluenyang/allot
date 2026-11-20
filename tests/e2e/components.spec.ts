@@ -1,7 +1,7 @@
 // spec 010 V-13 (W-10): the Reka-based components. Select by keyboard, a stored value outside the list,
 // Select and Tip on a phone, and the role / aria state of Switch, Seg and Tabs.
 import { expect, test, type APIRequestContext } from '@playwright/test'
-import { go, sheet } from './helpers'
+import { MARK, go, sheet } from './helpers'
 
 type Settings = Record<string, unknown> & { subRound: number }
 async function api(request: APIRequestContext, method: 'GET' | 'PUT', path: string, data?: unknown) {
@@ -139,4 +139,36 @@ test('(V-13) Switch, Seg and Tabs carry their role and aria state', async ({ pag
   await expect(sw).not.toHaveAttribute('aria-checked', was!)
   await page.keyboard.press('Space')
   await expect(sw).toHaveAttribute('aria-checked', was!)
+})
+
+test('(V-13) on a phone a tap on the help "?" opens its bubble inside the screen; Escape and a tap outside close it, the editor stays', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await go(page, 'subs', '목록')
+  await page.getByRole('button', { name: '구독 추가' }).click()
+  const s = sheet(page, '구독 추가')
+  await s.getByLabel('서비스 이름').fill(`${MARK}-tap`)
+  await s.getByRole('button', { name: '다음' }).click()
+  await s.getByRole('button', { name: 'USD', exact: true }).click()
+  const tips = s.getByRole('img', { name: /^도움말/ })
+  const count = await tips.count()
+  expect(count).toBeGreaterThan(0)
+  for (let i = 0; i < count; i++) {
+    const bub = tips.nth(i).getByRole('tooltip', { includeHidden: true })
+    await tips.nth(i).click()
+    await expect(bub).toBeVisible()
+    const box = (await bub.boundingBox())!
+    expect(box.x, `tip ${i} left`).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width, `tip ${i} right`).toBeLessThanOrEqual(390)
+    expect(box.y, `tip ${i} top`).toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height, `tip ${i} bottom`).toBeLessThanOrEqual(844)
+    await page.keyboard.press('Escape')
+    await expect(bub).toBeHidden()
+    await expect(s).toBeVisible()
+    await tips.nth(i).click() // open again, then tap outside (the editor's title)
+    await expect(bub).toBeVisible()
+    await s.getByRole('heading').first().click()
+    await page.mouse.move(0, 0)
+    await expect(bub).toBeHidden()
+    await expect(s).toBeVisible()
+  }
 })
