@@ -100,5 +100,4 @@ watch(other, (v) => { if (otherOpen.value && edit.value) edit.value.method = v }
 <style scoped>
 .req::after{content:" *";color:var(--accent-text)}
 .flabel{font-size:12px;color:var(--text-2);font-weight:600}
-.seg{justify-self:start}
 </style>

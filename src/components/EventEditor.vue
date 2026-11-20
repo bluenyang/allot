@@ -102,6 +102,5 @@ const endLimits = computed(() => (/^\d{4}-/.test(parts.value.from) ? { min: `${p
 .flabel{font-size:12px;color:var(--text-2);font-weight:600}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .rng{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:center}
-.seg{justify-self:start}
 .segsoon{height:30px;padding:0 12px;font-size:13px;font-weight:600}
 </style>

@@ -141,6 +141,8 @@ A short message at the bottom, radius `--r-pop`, `--shadow-pop`. It tells what h
 ### Seg (`Seg.vue`, `.seg`)
 Two to five exclusive options (Reka ToggleGroup, single) on one track (`--fill` ground, 5px outer radius, 4px buttons); the selected button (`aria-pressed`) is raised on the surface. `bordered` gives the joined variant with a `--sel` selected face. Use it for a mode, not for navigation.
 
+**Width rule.** A `Seg` is a switch, not a field: its width is its content (`width: fit-content`), whatever holds it (a form grid, a flex column, a modal, a phone). It never stretches to the row. Every segment in a modal is content width, the same in all modals. `block` (fills the row and shares it evenly) is only for a one-line substitute for tabs whose number of options is fixed; no screen uses it now. Full-width uses: none. Content-width uses: the status, cycle and currency choices of the subscription editor and the plan change, the method of the debt editor, the state of the event editor, the role and state of the user editor, the key expiry, the settings and theme choices, and the filters of History, Pending and Subscriptions.
+
 ### Switch (`Switch.vue`, `.switch`)
 A button with `role="switch"` and `aria-checked` (Reka Switch); on is `--primary`. Name it with `label`.
 

@@ -289,9 +289,9 @@ onActivated(load)
         :hint="edit.user.id === meId ? t('admin.ownNoDelete') : ''" @save="saveUser" @cancel="edit = null">
         <div class="field"><label for="ue-name">{{ t('admin.name') }}</label><input id="ue-name" v-model="edit.name" class="in"></div>
         <div class="field"><span id="ue-role" class="lbl">{{ t('admin.role') }}</span>
-          <Seg class="full" :options="ROLES.map((r) => ({ ...r, disabled: edit!.user!.id === meId && edit!.user!.role === 'admin' && lastAdmin }))" :model-value="edit.role" labelledby="ue-role" @update:model-value="edit.role = $event" /></div>
+          <Seg :options="ROLES.map((r) => ({ ...r, disabled: edit!.user!.id === meId && edit!.user!.role === 'admin' && lastAdmin }))" :model-value="edit.role" labelledby="ue-role" @update:model-value="edit.role = $event" /></div>
         <div class="field"><span id="ue-st" class="lbl">{{ t('admin.status') }}</span>
-          <Seg class="full" :options="stateOptions(edit.user)" :model-value="edit.status" labelledby="ue-st" @update:model-value="edit.status = $event" />
+          <Seg :options="stateOptions(edit.user)" :model-value="edit.status" labelledby="ue-st" @update:model-value="edit.status = $event" />
           <span class="hint">{{ stateHint(edit.status) }}</span></div>
         <div class="field acts"><button class="btn" type="button" :disabled="busy" @click="endSessions(edit.user)">{{ t('admin.endSessions') }}</button></div>
         <div v-if="edit.typePw" class="field"><label for="ue-pw">{{ t('admin.newPw') }}</label><input id="ue-pw" v-model="edit.password" class="in" type="password" autocomplete="new-password"><span class="hint">{{ t('admin.newPwHint') }}</span></div>
@@ -389,8 +389,6 @@ onActivated(load)
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .acts{display:flex;gap:8px;flex-wrap:wrap}
 .field .lbl,.field > label{font-size:12px;font-weight:600;color:var(--text-2)}
-.full{display:flex}
-.full :deep(button){flex:1;justify-content:center}
 .pwbox{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 12px;border-radius:var(--r-card);background:var(--surface-2);border:1px solid var(--border);font-size:13px;color:var(--text-2)}
 .pwbox > span{flex-grow:1}
 .dbox{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--neg-line);border-radius:var(--r-card);background:var(--neg-soft)}
