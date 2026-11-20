@@ -14,6 +14,7 @@ import { cycleLabel, statusLabel } from '../lib/labels'
 import { fmtMoney } from '../lib/display'
 import { addYm, monthlyKrw, num, planAt, today, transferAt, ymOf } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
+import Select from './Select.vue'
 
 const props = defineProps<{ initial: PlanChange | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -120,7 +121,7 @@ function canAdvance(from: number) {
       <template v-if="s === 0">
         <div class="field">
           <label for="c-sub" class="req">{{ t('subscriptions.targetSub') }}</label>
-          <select id="c-sub" v-model="edit.subId" class="in"><option v-for="x in subs" :key="x.id" :value="x.id">{{ x.name }}</option></select>
+          <Select id="c-sub" v-model="edit.subId" :options="subs.map((x) => ({ value: x.id, label: x.name }))" />
           <span v-if="current" class="hint">{{ t('subscriptions.currentPlan', { plan: current }) }}</span>
         </div>
         <div class="field">

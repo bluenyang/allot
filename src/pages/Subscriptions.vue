@@ -13,6 +13,7 @@ import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
 import { addYm, changesIn, monthlyKrw, nextPayment, num, planAt, today, transferAt, usd, ymOf, ymRange } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
+import Select from '../components/Select.vue'
 
 // The editors load when one is opened: the first screen stays small.
 const SubEditor = defineAsyncComponent(() => import('../components/SubEditor.vue'))
@@ -224,8 +225,8 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
             <Seg v-model="status" :options="statusOpts" :label="t('subscriptions.byStatus')" />
             <span class="vr" aria-hidden="true"></span>
             <label class="fsearch"><Icon name="search" /><input v-model="q" type="search" :aria-label="t('subscriptions.searchLabel')" :placeholder="t('subscriptions.searchPh')"></label>
-            <select v-model="cat" class="in fsel" :aria-label="t('subscriptions.category')"><option value="">{{ t('subscriptions.allCategories') }}</option><option v-for="k in CATEGORY_IDS" :key="k" :value="k">{{ catLabel(k) }}</option></select>
-            <select v-model="path" class="in fsel" :aria-label="t('subscriptions.path')"><option value="">{{ t('subscriptions.allPaths') }}</option><option v-for="k in PATH_IDS" :key="k" :value="k">{{ pathLabel(k) }}</option></select>
+            <Select v-model="cat" class="fsel" :aria-label="t('subscriptions.category')" :options="[{ value: '', label: t('subscriptions.allCategories') }, ...CATEGORY_IDS.map((k) => ({ value: k, label: catLabel(k) }))]" />
+            <Select v-model="path" class="fsel" :aria-label="t('subscriptions.path')" :options="[{ value: '', label: t('subscriptions.allPaths') }, ...PATH_IDS.map((k) => ({ value: k, label: pathLabel(k) }))]" />
             <label class="fmonth">{{ t('subscriptions.baseMonth') }}<input class="in" type="month" :value="ym" @change="pickMonth('ym', $event)"></label>
             <span class="hint count">{{ t('subscriptions.count', { n: shown.length }) }}</span>
           </div>
@@ -363,7 +364,6 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
 .frow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
 .frow.end{justify-content:flex-end}
 .vr{width:1px;height:24px;background:var(--border)}
-.fsel{width:auto;height:34px;font-size:13px}
 .fmonth{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .fmonth input,.fm2{width:150px;height:34px;font-size:13px}
 .count{margin-left:auto}

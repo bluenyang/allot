@@ -15,6 +15,7 @@ import { holidayName, setName } from '../lib/holiday-names'
 import { addYm, monthDates, today, upcomingPayments, ymOf } from '../lib/calc'
 import type { HolidaySet, Preferences, Settings } from '../data/types'
 import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
+import Select from '../components/Select.vue'
 
 // 설정 › 일반 (spec 010 S-11, canvas "설정"): five titled sections. 화면 and 표시 형식 save the moment
 // a choice is made (the session is noted when the save starts and checked before each later step,
@@ -199,9 +200,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
       <div class="set-h"><h2>{{ g('sectionDisplay') }}</h2><p>{{ g('sectionDisplayDesc') }}</p></div>
       <section class="card"><div class="fs">
         <div class="field"><label for="g-lang">{{ g('language') }}</label>
-          <select id="g-lang" class="in" :value="langChoice" @change="pickLang(($event.target as HTMLSelectElement).value)">
-            <option value="browser">{{ g('languageBrowser') }}</option><option value="ko">{{ g('langKo') }}</option><option value="en">{{ g('langEn') }}</option>
-          </select>
+          <Select id="g-lang" :model-value="langChoice" :options="[{ value: 'browser', label: g('languageBrowser') }, { value: 'ko', label: g('langKo') }, { value: 'en', label: g('langEn') }]" @update:model-value="pickLang" />
           <span class="hint">{{ g('languageDesc') }}</span></div>
         <div class="field"><span id="g-theme" class="lbl">{{ g('theme') }}</span>
           <div class="tcards" role="radiogroup" aria-labelledby="g-theme">
@@ -211,7 +210,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
           </div>
           <span class="hint">{{ g('themeDesc') }}</span></div>
         <div class="field"><label for="g-tz">{{ g('timezone') }}</label>
-          <Soon tag="div" class="soon-fld"><select id="g-tz" class="in" disabled><option>Asia/Seoul (UTC+09:00)</option></select></Soon>
+          <Soon tag="div" class="soon-fld"><Select id="g-tz" disabled model-value="tz" :options="[{ value: 'tz', label: 'Asia/Seoul (UTC+09:00)' }]" /></Soon>
           <span class="hint">{{ g('timezoneDesc') }}</span></div>
         <p v-if="msg" class="small subtle" role="status">{{ msg }}</p>
       </div></section>
@@ -250,7 +249,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
       <div class="set-h"><h2>{{ g('sectionCurrency') }}</h2><p>{{ g('sectionCurrencyDesc') }}</p></div>
       <section class="card"><div class="fs">
         <div class="field"><label for="g-cur">{{ g('baseCurrency') }}</label>
-          <Soon tag="div" class="soon-fld"><select id="g-cur" class="in" disabled><option>{{ g('krw') }}</option></select></Soon>
+          <Soon tag="div" class="soon-fld"><Select id="g-cur" disabled model-value="krw" :options="[{ value: 'krw', label: g('krw') }]" /></Soon>
           <span class="hint">{{ g('baseCurrencyDesc') }}</span></div>
         <div class="field">
           <div class="lrow"><span class="lbl">{{ g('otherCurrencies') }}</span><Soon class="btn sm">{{ g('addFx') }}</Soon></div>
@@ -339,11 +338,11 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
           <legend>{{ t('settings.general.ruleNo', { n: i + 1 }) }}</legend>
           <div class="field"><label :for="`hr-n-${i}`">{{ g('ruleName') }}</label><input :id="`hr-n-${i}`" v-model="r.name" class="in" :placeholder="g('ruleNamePh')"></div>
           <div class="field"><label :for="`hr-k-${i}`">{{ g('ruleKind') }}</label>
-            <select :id="`hr-k-${i}`" v-model="r.kind" class="in"><option value="dates">{{ g('kindDates') }}</option><option value="rrule">{{ g('kindRrule') }}</option></select></div>
+            <Select :id="`hr-k-${i}`" v-model="r.kind" :options="[{ value: 'dates', label: g('kindDates') }, { value: 'rrule', label: g('kindRrule') }]" /></div>
           <div v-if="r.kind === 'dates'" class="field"><label :for="`hr-d-${i}`">{{ g('datesLabel') }}</label><input :id="`hr-d-${i}`" v-model="r.dates" class="in" placeholder="2027-06-03"></div>
           <div v-else class="field"><label :for="`hr-r-${i}`">RRULE</label><input :id="`hr-r-${i}`" v-model="r.rrule" class="in mono" placeholder="FREQ=YEARLY;BYMONTH=7;BYMONTHDAY=17"></div>
           <div class="field"><label :for="`hr-s-${i}`">{{ g('substitute') }}</label>
-            <select :id="`hr-s-${i}`" v-model="r.sub" class="in"><option value="">{{ t('common.none') }}</option><option value="SU">{{ g('subSU') }}</option><option value="SA">{{ g('subSA') }}</option><option value="SA,SU">{{ g('subBoth') }}</option></select></div>
+            <Select :id="`hr-s-${i}`" v-model="r.sub" :options="[{ value: '', label: t('common.none') }, { value: 'SU', label: g('subSU') }, { value: 'SA', label: g('subSA') }, { value: 'SA,SU', label: g('subBoth') }]" /></div>
           <button class="btn sm bad rm" type="button" :aria-label="t('settings.general.removeRule', { n: i + 1 })" @click="rows.splice(i, 1)">{{ t('settings.general.removeRule', { n: i + 1 }) }}</button>
         </fieldset>
         <button class="btn sm addrule" type="button" @click="addRow">{{ g('addRule') }}</button>

@@ -16,6 +16,7 @@ import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../l
 import { chargeKrw, monthlyKrw, num, planAt, usd, ymLabel } from '../lib/calc'
 import { wonText } from '../lib/format'
 import type { PlanChange, Subscription } from '../data/types'
+import Select from './Select.vue'
 
 const props = defineProps<{ initial: Subscription | null; /** The page's 기준 월, for the "전환 적용 중" note. */ ym: string }>()
 const emit = defineEmits<{ close: []; editChange: [c: PlanChange] }>()
@@ -159,7 +160,7 @@ async function confirmDelete() { await remove() }
         <div class="two">
           <div class="field">
             <div class="lrow"><label for="e-path">{{ t('subscriptions.path') }}</label><Tip :text="t('subscriptions.pathTip')" /></div>
-            <select id="e-path" v-model="edit.path" class="in"><option v-for="k in PATH_IDS" :key="k" :value="k">{{ pathLabel(k) }}</option></select>
+            <Select id="e-path" v-model="edit.path" :options="PATH_IDS.map((k) => ({ value: k, label: pathLabel(k) }))" />
           </div>
           <div class="field">
             <div class="lrow"><span class="flabel">{{ t('subscriptions.colReceipt') }}</span><Tip :text="t('subscriptions.receiptTip')" /></div>

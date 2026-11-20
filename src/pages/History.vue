@@ -11,6 +11,7 @@ import { showToast } from '../lib/toast'
 import { computed, onActivated, onMounted, ref } from 'vue'
 import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
+import Select from '../components/Select.vue'
 
 // Change history (spec 005 S-3, restyled by spec 010 S-9): one save = one change set, newest first, grouped by
 // day. A set can be reverted like a commit: the opposite change is saved as a new set (also a revert can be
@@ -178,10 +179,7 @@ async function revert() {
       <div class="fbar">
         <Seg v-model="actor" :options="actorOpts" :label="t('history.actorFilter')" />
         <span class="vr" aria-hidden="true"></span>
-        <select v-model="kind" class="in" :aria-label="t('history.kindFilter')">
-          <option value="">{{ t('history.kindAll') }}</option>
-          <option v-for="o in kindOpts" :key="o.id" :value="o.id">{{ o.label }}</option>
-        </select>
+        <Select v-model="kind" class="fsel" :aria-label="t('history.kindFilter')" :options="[{ value: '', label: t('history.kindAll') }, ...kindOpts.map((o) => ({ value: o.id, label: o.label }))]" />
         <Soon tag="span" class="period">{{ t('history.period') }}</Soon>
         <span class="hint cn">{{ t('history.count', { n: shown.length }) }}</span>
       </div>

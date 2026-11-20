@@ -12,6 +12,7 @@ import { DEFAULT_EVENT_KIND, EVENT_KINDS, eventKindLabel } from '../lib/labels'
 import { showToast } from '../lib/toast'
 import { today, ymOf } from '../lib/calc'
 import type { EventKind } from '../data/types'
+import Select from './Select.vue'
 
 type Kind = 'todo' | 'event' | 'sub'
 const props = defineProps<{ start: Kind }>()
@@ -76,7 +77,7 @@ async function save() {
       <div class="field"><label for="ar-title">{{ t('addRecord.eventTitle') }}</label><input id="ar-title" v-model="title" class="in" :placeholder="t('addRecord.eventTitlePh')"></div>
       <div class="field"><label for="ar-when">{{ t('addRecord.when') }}</label><input id="ar-when" v-model="when" class="in" placeholder="2027-03"><span class="hint">{{ t('addRecord.whenHint') }}</span></div>
       <div class="field"><label for="ar-kind">{{ t('addRecord.eventKind') }}</label>
-        <select id="ar-kind" v-model="evKind" class="in"><option v-for="k in EVENT_KINDS" :key="k" :value="k">{{ eventKindLabel(k) }}</option></select></div>
+        <Select id="ar-kind" v-model="evKind" :options="EVENT_KINDS.map((k) => ({ value: k, label: eventKindLabel(k) }))" /></div>
     </template>
     <template v-else>
       <p class="info">{{ t('addRecord.subNote') }}</p>

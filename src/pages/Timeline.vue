@@ -9,6 +9,7 @@ import { debtMethodLabel, eventKindLabel, rateText } from '../lib/labels'
 import { t, lang } from '../i18n'
 import { monthShort } from '../lib/format'
 import type { Debt, EventState, PlanEvent } from '../data/types'
+import Select from '../components/Select.vue'
 
 // 일정 (spec 010 S-9): three views in one page — the calendar with the month's agenda, the month plan
 // (timeline) and the debts. The calendar and the two editors load when they are needed (spec 007 S-11,
@@ -68,10 +69,7 @@ const firstLine = (s: string) => s.split('\n')[0] ?? ''
 
     <section v-else-if="tab === 'timeline'" class="card tl">
       <div class="fbar">
-        <select id="ev-kind" v-model="kind" class="in" :aria-label="t('timeline.category')">
-          <option value="">{{ t('timeline.allCategories') }}</option>
-          <option v-for="k in kinds" :key="k" :value="k">{{ eventKindLabel(k) }}</option>
-        </select>
+        <Select id="ev-kind" v-model="kind" class="fsel" :aria-label="t('timeline.category')" :options="[{ value: '', label: t('timeline.allCategories') }, ...kinds.map((k) => ({ value: k, label: eventKindLabel(k) }))]" />
         <label class="chkl"><input id="ev-hide" v-model="hideDone" type="checkbox"> {{ t('timeline.hideDone') }}</label>
         <span class="hint cn">{{ t('timeline.count', { n: filtered.length }) }}</span>
       </div>

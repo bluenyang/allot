@@ -20,6 +20,7 @@ import { allocColor } from '../lib/colors'
 import { kindDetail } from '../lib/labels'
 import { addYm, distributionAt, phaseNumbers, splitRemainder, today, transferAt, ymLabel, ymOf, type AllocRow } from '../lib/calc'
 import type { AllocationKind, Settings } from '../data/types'
+import Select from '../components/Select.vue'
 
 const tab = ref('phases')
 const tabs = computed(() => [
@@ -409,7 +410,7 @@ const livingRows = computed(() => [
             </div>
             <div class="field">
               <label for="st-round">{{ t('payroll.subRound') }}</label>
-              <select id="st-round" v-model.number="set.subRound" class="in"><option v-for="o in roundOpts" :key="o.v" :value="o.v">{{ o.label }}</option></select>
+              <Select id="st-round" v-model="set.subRound" :options="roundOpts.map((o) => ({ value: o.v, label: o.label }))" />
               <span class="hint">{{ t('payroll.subRoundHint') }}</span>
             </div>
             <i18n-t keypath="payroll.settingsNote" tag="p" class="hint note"><template #link><a href="#settings/general">{{ t('payroll.settingsLink') }}</a></template></i18n-t>
@@ -429,7 +430,7 @@ const livingRows = computed(() => [
       :can-delete="!!targetEd.item.value.id" @save="targetEd.save" @cancel="targetEd.close" @delete="targetEd.remove">
       <div class="field"><label for="tg-name">{{ t('payroll.name') }} <span class="star" aria-hidden="true">*</span></label><input id="tg-name" v-model="targetEd.item.value.name" class="in" autocomplete="off"></div>
       <div class="field"><label for="tg-kind">{{ t('payroll.kindLabel') }}</label>
-        <select id="tg-kind" v-model="targetEd.item.value.kind" class="in"><option v-for="k in KIND_IDS" :key="k" :value="k">{{ kindOption(k) }}</option></select>
+        <Select id="tg-kind" v-model="targetEd.item.value.kind" :options="KIND_IDS.map((k) => ({ value: k, label: kindOption(k) }))" />
         <span class="hint">{{ t(`payroll.kindHint.${targetEd.item.value.kind}`) }} {{ t('payroll.onePerKind') }}</span></div>
       <div class="field"><label for="tg-note">{{ t('payroll.note') }} <span class="opt">{{ t('common.optional') }}</span></label><input id="tg-note" v-model="targetEd.item.value.note" class="in" autocomplete="off"></div>
     </EditSheet>
