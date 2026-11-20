@@ -19,6 +19,7 @@ onUnmounted(() => {
 <template>
   <AlertDialogRoot :open="true" @update:open="(o: boolean) => !o && emit('cancel')">
     <AlertDialogPortal>
+     <div class="dlg-layer">
       <AlertDialogOverlay class="dlg-ov" @click="emit('cancel')" />
       <AlertDialogContent class="cdlg dlg" @open-auto-focus.prevent="cancelBtn?.focus()" @close-auto-focus.prevent>
         <div class="cd-b">
@@ -30,12 +31,13 @@ onUnmounted(() => {
           <button class="btn" :class="props.danger ? 'bad' : 'pri'" type="button" :disabled="props.busy" @click="emit('confirm')">{{ props.confirmLabel }}</button>
         </div>
       </AlertDialogContent>
+     </div>
     </AlertDialogPortal>
   </AlertDialogRoot>
 </template>
 
 <style>
-.cdlg{position:fixed;inset:0;z-index:51;margin:auto;height:fit-content;width:min(440px,calc(100vw - 32px));padding:0;border:1px solid var(--border-strong);border-radius:var(--r-pop);background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);overflow:hidden}
+.cdlg{position:fixed;inset:0;z-index:1;margin:auto;height:fit-content;width:min(440px,calc(100vw - 32px));padding:0;border:1px solid var(--border-strong);border-radius:var(--r-pop);background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);overflow:hidden}
 .cdlg .cd-b{padding:20px 20px 16px}
 .cdlg h2{margin:0 0 8px;font-size:16px;font-weight:600}
 .cdlg .cd-d{font-size:14px;color:var(--text-2)}

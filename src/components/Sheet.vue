@@ -39,18 +39,20 @@ function up() {
 <template>
   <DialogRoot :open="props.modelValue" @update:open="(o: boolean) => !o && close()">
     <DialogPortal>
+     <div v-if="props.modelValue" class="dlg-layer">
       <DialogOverlay class="dlg-ov" />
       <DialogContent ref="box" class="shd dlg" :aria-label="props.title" :aria-describedby="undefined" :style="dy ? { transform: `translateY(${dy}px)`, transition: 'none' } : undefined" @open-auto-focus.prevent="opened" @close-auto-focus.prevent="closed">
         <div class="sh-grab" aria-hidden="true" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up"><i></i></div>
         <div class="sh-h"><DialogTitle as="h2">{{ props.title }}</DialogTitle><button class="btn icon sm ghost sh-x" type="button" :aria-label="t('common.close')" @click="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <div class="sh-b"><slot /></div>
       </DialogContent>
+     </div>
     </DialogPortal>
   </DialogRoot>
 </template>
 
 <style>
-.shd{position:fixed;inset:auto 0 0 0;z-index:51;margin:0;width:100%;max-width:100%;max-height:85dvh;display:flex;flex-direction:column;padding:0 0 env(safe-area-inset-bottom,0px);border:0;border-top:1px solid var(--border-strong);border-radius:var(--r-pop) var(--r-pop) 0 0;background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);overflow:hidden}
+.shd{position:fixed;inset:auto 0 0 0;z-index:1;margin:0;width:100%;max-width:100%;max-height:85dvh;display:flex;flex-direction:column;padding:0 0 env(safe-area-inset-bottom,0px);border:0;border-top:1px solid var(--border-strong);border-radius:var(--r-pop) var(--r-pop) 0 0;background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);overflow:hidden}
 .shd .sh-grab{display:grid;place-items:center;height:24px;touch-action:none;cursor:grab;flex:none}
 .shd .sh-grab i{width:36px;height:4px;border-radius:2px;background:var(--border-strong)}
 .shd .sh-h{display:flex;align-items:center;gap:8px;padding:0 12px 6px 20px;flex:none}

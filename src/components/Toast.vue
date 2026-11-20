@@ -8,7 +8,7 @@ const emit = defineEmits<{ action: []; dismiss: [] }>()
 </script>
 
 <template>
-  <div class="toast" :class="{ err: props.error }" :role="props.error ? 'alert' : 'status'">
+  <div class="toast" :class="{ err: props.error }" :role="props.error ? 'alert' : 'status'" :aria-live="props.error ? 'assertive' : 'polite'">
     <span class="tm">{{ props.message }}</span>
     <button v-if="props.actionLabel" class="ta" type="button" @click="emit('action')">{{ props.actionLabel }}</button>
     <button v-if="props.dismissible || props.error" class="tx" type="button" :aria-label="t('common.dismiss')" @click="emit('dismiss')">

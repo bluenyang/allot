@@ -43,8 +43,15 @@ const last = computed(() => !stepped.value || cur.value === props.steps!.length 
 const focusFirst = async () => {
   await nextTick()
   // the first control that is shown (a step's other sections may be display:none)
-  const all = dlg.value?.$el.querySelectorAll<HTMLElement>('.body input, .body button[role="combobox"], .body textarea') ?? []
-  ;[...all].find((el) => !el.hasAttribute('disabled') && el.getClientRects().length > 0)?.focus()
+  const root = dlg.value?.$el
+  if (!root) return
+  const shown = (list: Iterable<HTMLElement>) => [...list].find((el) => !el.hasAttribute('disabled') && el.getClientRects().length > 0)
+  // a field first; an editor with none (a confirmation, a detail view) takes its first button or link in the
+  // body, then the footer's first button that is not the delete; the box itself when nothing can take it
+  const target = shown(root.querySelectorAll<HTMLElement>('.body input, .body button[role="combobox"], .body textarea'))
+    ?? shown(root.querySelectorAll<HTMLElement>('.body button, .body a[href], .body [tabindex]:not([tabindex="-1"])'))
+    ?? shown(root.querySelectorAll<HTMLElement>('.mf button:not(.danger)'))
+  ;(target ?? root).focus()
 }
 onUnmounted(() => {
   setTimeout(() => { if (opener?.isConnected) opener.focus() }, 0) // after Reka has released its focus trap
@@ -68,6 +75,7 @@ function submit() {
 <template>
   <DialogRoot :open="true" @update:open="(o: boolean) => !o && emit('cancel')">
     <DialogPortal>
+     <div class="dlg-layer">
       <DialogOverlay class="dlg-ov" />
       <DialogContent ref="dlg" class="modal dlg" :style="{ '--mw': `${props.width ?? 520}px` }" :aria-label="props.title" :aria-describedby="undefined" @pointer-down-outside.prevent @interact-outside.prevent @open-auto-focus.prevent="focusFirst" @close-auto-focus.prevent>
     <form class="sheet-f" novalidate :aria-label="props.title" @submit.prevent="submit">
@@ -107,12 +115,13 @@ function submit() {
       </footer>
     </form>
       </DialogContent>
+     </div>
     </DialogPortal>
   </DialogRoot>
 </template>
 
 <style>
-.modal{position:fixed;inset:0;z-index:51;margin:auto;height:fit-content;width:min(var(--mw,520px),calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:0;border:1px solid var(--border-strong);border-radius:var(--r-pop);background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);overflow:hidden}
+.modal{position:fixed;inset:0;z-index:1;margin:auto;height:fit-content;width:min(var(--mw,520px),calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:0;border:1px solid var(--border-strong);border-radius:var(--r-pop);background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);overflow:hidden}
 .modal .sheet-f{display:flex;flex-direction:column;max-height:calc(100dvh - 50px)}
 .modal .mh{display:flex;flex-direction:column;gap:10px;padding:10px 12px 10px 20px;border-bottom:1px solid var(--border)}
 .modal .mh-row{display:flex;align-items:flex-start;gap:12px;min-height:44px}
