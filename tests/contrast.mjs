@@ -33,11 +33,16 @@ const PAIRS = [
   ['muted', 'surface', 4.5], ['muted', 'surface-2', 4.5], ['muted', 'fill', 4.5], ['muted', 'bg', 4.5],
   ['subtle', 'surface', 4.5], ['subtle', 'surface-2', 4.5], ['subtle', 'bg', 4.5],
   ['primary-text', 'surface', 4.5], ['primary-text', 'surface-2', 4.5], ['primary-text', 'primary-soft', 4.5], ['primary-ink', 'primary', 4.5],
-  ['accent-text', 'surface', 4.5], ['accent-text', 'accent-soft', 4.5], ['accent-ink', 'accent', 4.5],
+  ['accent-text', 'surface', 4.5], ['accent-text', 'accent-soft', 4.5],
   ['neg-text', 'surface', 4.5], ['neg-text', 'neg-soft', 4.5],
   ['info-text', 'surface', 4.5], ['info-text', 'info-soft', 4.5],
   ['border-strong', 'surface', 1.3],
   ['primary', 'surface', 3], ['accent', 'surface', 3],
+  ['primary-hover', 'surface', 4.5], ['primary-hover', 'bg', 4.5], ['sat', 'surface', 4.5], ['sun', 'surface', 4.5], ['up', 'surface', 4.5], ['up', 'up-soft', 4.5],
+  // selected grounds (--sel is grey in dark) keep the selected text readable
+  ['primary-text', 'fill', 4.5],
+  // dark orange badge pair (D-10): a count badge on the accent colour takes the dark ink, never the light text
+  ['accent-ink', 'accent', 4.5], ['#16201b', '#ed7b26', 4.5], ['#16201b', '#ed7b26', 3],
   ...[1, 2, 3, 4, 5, 6].flatMap((i) => [[`c${i}`, 'surface', 3], ['av-ink', `c${i}`, 4.5]]),
 ]
 

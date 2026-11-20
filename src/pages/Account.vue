@@ -2,6 +2,8 @@
 import { t } from '../i18n'
 import { onActivated, onMounted, ref } from 'vue'
 import { ApiError, api } from '../lib/api'
+import Icon from '../components/Icon.vue'
+import Soon from '../components/Soon.vue'
 import { loadMethods, providerName, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
 
 // My account (spec 006 S-1, S-11): who I am, the logins linked to me, my password.
@@ -91,43 +93,62 @@ const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">{{ t('common.close') }}</button></p>
     <p v-if="notice" class="small muted" role="status">{{ notice }}</p>
 
-    <div v-if="me" class="panel">
-      <h3 style="margin-top:0">{{ t('account.myInfo') }}</h3>
-      <p class="kv"><span class="muted">{{ t('login.email') }}</span> {{ me.email }}</p>
-      <p class="kv"><span class="muted">{{ t('account.name') }}</span> {{ me.name }}</p>
-      <p class="kv"><span class="muted">{{ t('account.role') }}</span> {{ me.role === 'admin' ? t('shell.roleAdmin') : t('shell.roleUser') }} <a v-if="me.role === 'admin'" href="#admin">{{ t('account.adminLink') }}</a></p>
-    </div>
+    <div class="cols">
+      <div class="col">
+        <section v-if="me" class="card">
+          <div class="ch"><h2>{{ t('account.myInfo') }}</h2><a v-if="me.role === 'admin'" class="btn sm ghost" href="#admin">{{ t('account.adminLink') }}</a></div>
+          <dl class="kv">
+            <dt>{{ t('login.email') }}</dt><dd>{{ me.email }}</dd>
+            <dt>{{ t('account.name') }}</dt><dd>{{ me.name }}</dd>
+            <dt>{{ t('account.role') }}</dt><dd><span class="pill ok">{{ me.role === 'admin' ? t('shell.roleAdmin') : t('shell.roleUser') }}</span></dd>
+          </dl>
+        </section>
 
-    <div class="panel">
-      <h3 style="margin-top:0">{{ t('account.methods') }}</h3>
-      <ul class="list">
-        <li v-for="a in linked" :key="a.id">
-          <span>{{ nameOf(a.providerId) }}</span>
-          <span class="small muted">{{ t('account.since', { date: fmt(a.createdAt) }) }}</span>
-          <button class="btn" type="button" :disabled="busy || linked.length <= 1" @click="unlink(a)">{{ t('account.unlink') }}</button>
-        </li>
-      </ul>
-      <div v-if="linkable().length" class="btns">
-        <button v-for="m in linkable()" :key="m.id" class="btn" type="button" :disabled="busy" @click="link(m.id)">{{ t('account.link', { name: m.name }) }}</button>
+        <section class="card">
+          <div class="ch"><h2>{{ t('account.methods') }}</h2></div>
+          <ul class="list methods">
+            <li v-for="a in linked" :key="a.id">
+              <span class="ic" aria-hidden="true"><Icon name="security" :stroke="1.75" /></span>
+              <span class="mn"><b>{{ nameOf(a.providerId) }}</b><small class="hint num">{{ t('account.since', { date: fmt(a.createdAt) }) }}</small></span>
+              <button class="btn sm" type="button" :disabled="busy || linked.length <= 1" @click="unlink(a)">{{ t('account.unlink') }}</button>
+            </li>
+          </ul>
+          <div v-if="linkable().length" class="fs link">
+            <button v-for="m in linkable()" :key="m.id" class="btn sm" type="button" :disabled="busy" @click="link(m.id)">{{ t('account.link', { name: m.name }) }}</button>
+          </div>
+        </section>
       </div>
-    </div>
 
-    <form v-if="hasPassword() && passwordOn()" class="panel" @submit.prevent="changePassword">
-      <h3 style="margin-top:0">{{ t('account.changePw') }}</h3>
-      <div class="form">
-        <div class="field"><label for="a-cur">{{ t('account.currentPw') }}</label><input id="a-cur" v-model="pw.current" class="in" type="password" autocomplete="current-password" required></div>
-        <div class="field"><label for="a-new">{{ t('account.newPw') }}</label><input id="a-new" v-model="pw.next" class="in" type="password" autocomplete="new-password" minlength="8" required></div>
-        <div class="field"><label for="a-again">{{ t('account.newPwAgain') }}</label><input id="a-again" v-model="pw.again" class="in" type="password" autocomplete="new-password" required></div>
-      </div>
-      <div class="btns"><button class="btn pri" type="submit" :disabled="busy">{{ t('account.change') }}</button></div>
-    </form>
+      <form v-if="hasPassword() && passwordOn()" class="card pwc" :aria-label="t('account.changePw')" @submit.prevent="changePassword">
+        <div class="ch"><h2>{{ t('account.changePw') }}</h2></div>
+        <div class="fs">
+          <div class="field"><label for="a-cur">{{ t('account.currentPw') }}</label><input id="a-cur" v-model="pw.current" class="in" type="password" autocomplete="current-password" required></div>
+          <div class="field"><label for="a-new">{{ t('account.newPw') }}</label><input id="a-new" v-model="pw.next" class="in" type="password" autocomplete="new-password" minlength="8" required></div>
+          <div class="field"><label for="a-again">{{ t('account.newPwAgain') }}</label><input id="a-again" v-model="pw.again" class="in" type="password" autocomplete="new-password" required></div>
+          <div class="soonrow"><Soon class="btn sm">{{ t('account.pwPolicy') }}</Soon><Soon class="btn sm">{{ t('account.pwGenerate') }}</Soon></div>
+        </div>
+        <div class="cf"><span class="sp"></span><button class="btn sm pri" type="submit" :disabled="busy">{{ t('account.change') }}</button></div>
+      </form>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.panel{margin-bottom:14px}
-.kv{margin:4px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
-.list{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px}
-.list li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.list li .btn{margin-left:auto}
+.cols{grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));align-items:start}
+.col{display:flex;flex-direction:column;gap:16px}
+.ch{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.ch h2{margin:0;font-size:15px;font-weight:600}
+.kv{margin:0;padding:6px 18px 12px;display:grid;grid-template-columns:96px 1fr;font-size:13px}
+.kv dt{padding:8px 0;color:var(--subtle);border-bottom:1px solid var(--divider)}
+.kv dd{margin:0;padding:8px 0;border-bottom:1px solid var(--divider);overflow-wrap:anywhere}
+.methods{padding:0 18px}
+.methods li{display:flex;align-items:center;gap:12px;padding:14px 0}
+.ic{width:36px;height:36px;border-radius:var(--r-card);background:var(--fill);display:grid;place-items:center;color:var(--muted);flex:none}
+.ic svg{width:18px;height:18px}
+.mn{flex:1;min-width:0;display:flex;flex-direction:column}
+.link{flex-direction:row;flex-wrap:wrap;border-top:1px solid var(--border)}
+.fs .field{display:block}
+.fs .field > label{display:block;font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+.in{height:40px}
+.soonrow{display:flex;gap:8px;flex-wrap:wrap}
 </style>

@@ -120,7 +120,6 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
   if (!set) throw new NotFound(m('changeNotFound'))
   if (set.revertedBy) throw new Conflict(m('changeReverted'), 'change_set', { id })
   const logs = await q.select().from(t.changeLog).where(and(eq(t.changeLog.userId, uid), eq(t.changeLog.setId, id))).orderBy(desc(t.changeLog.id))
-  const hadRemainder = await remainderCount(q, uid)
 
   for (const log of logs) {
     const table = byName.get(log.tableName)
@@ -148,7 +147,7 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
       await rec.record(table, log.rowKey, 'update', current, written as Row)
     }
   }
-  await checkRules(q, uid, hadRemainder)
+  await checkRules(q, uid)
   if (rec.id) await q.update(t.changeSet).set({ revertedBy: rec.id }).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id)))
 }
 
@@ -169,12 +168,8 @@ async function hasChildren(q: Db, uid: string, table: PgTable, key: RowKey) {
   return false
 }
 
-const remainderCount = async (q: Db, uid: string) =>
-  (await q.select({ id: t.allocationTarget.id }).from(t.allocationTarget)
-    .where(and(eq(t.allocationTarget.userId, uid), eq(t.allocationTarget.kind, 'remainder')))).length
-
 /** The API's own rules, over the user's whole data (the database checks the rest). */
-async function checkRules(q: Db, uid: string, hadRemainder: number) {
+async function checkRules(q: Db, uid: string) {
   const phases = await q.select().from(t.phase).where(eq(t.phase.userId, uid))
   const end = (x: string | null) => x ?? '9999-12'
   for (const [i, a] of phases.entries()) {
@@ -188,7 +183,6 @@ async function checkRules(q: Db, uid: string, hadRemainder: number) {
       .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), eq(t.allocationTarget.kind, 'fixed')))
     if (fixed.length !== ids.length) throw new RuleBroken(m('revertAmounts'))
   }
-  if (hadRemainder > 0 && (await remainderCount(q, uid)) === 0) throw new RuleBroken(m('revertRemainder'))
 }
 
 // ── Listing ──

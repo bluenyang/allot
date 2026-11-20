@@ -4,6 +4,7 @@ import type {
 } from '../data/types'
 import { ApiError, api } from './api'
 import { t } from '../i18n'
+import { createSessionGuard, type Scope } from './session-guard'
 import { DEFAULT_LIVING, DEFAULT_PREFERENCES, DEFAULT_SETTINGS } from '../data/defaults'
 
 // App state comes from the API (PostgreSQL). Every change goes to the API first;
@@ -36,31 +37,46 @@ const empty = (): State => ({
 export const store = reactive<State>(empty())
 export const status = reactive({ loaded: false, loading: false, error: '' })
 
+// The state belongs to the signed-in session. `newSession` (called when the session changes) kills every
+// load and save that started before it (src/lib/session-guard.ts): a stale answer, error or recovery
+// reload never reaches the next account's store. Every write after an await goes through a scope.
+const guard = createSessionGuard()
+export const newSession = () => guard.next()
+/** The current session, noted when a screen's save starts: a save that runs several requests checks it before each one (spec 010 A-20). */
+export const sessionScope = (): Scope => guard.begin()
+
 export async function loadState() {
-  status.loading = true
+  const s = guard.begin()
+  s.ifCurrent(() => { status.loading = true })
   try {
-    Object.assign(store, await api<State>('GET', '/api/state'))
-    status.loaded = true
-    status.error = ''
+    const next = await api<State>('GET', '/api/state')
+    s.ifCurrent(() => {
+      Object.assign(store, next)
+      status.loaded = true
+      status.error = ''
+    })
   } catch (e) {
-    status.error = message(e)
+    s.ifCurrent(() => { status.error = message(e) })
   } finally {
-    status.loading = false
+    s.ifCurrent(() => { status.loading = false })
   }
 }
 
 const message = (e: unknown) => (e instanceof ApiError ? e.message : t('api.offline'))
 
-/** Run a save; on failure show the error and reload, so the screen never shows unsaved values. */
-async function save<T>(run: () => Promise<T>): Promise<T> {
+/** Run a save; on failure show the error and reload, so the screen never shows unsaved values. The writes go through `s`. */
+async function save<T>(run: (s: Scope) => Promise<T>): Promise<T> {
+  const s = guard.begin()
   try {
-    const r = await run()
-    status.error = ''
+    const r = await run(s)
+    s.ifCurrent(() => { status.error = '' })
     return r
   } catch (e) {
-    const msg = message(e)
-    await loadState() // put the saved values back on screen…
-    status.error = msg // …and keep saying why the change did not stick
+    if (s.alive()) {
+      const msg = message(e)
+      await loadState() // put the saved values back on screen…
+      s.ifCurrent(() => { status.error = msg }) // …and keep saying why the change did not stick
+    }
     throw e
   }
 }
@@ -81,46 +97,56 @@ export type ListKey = keyof typeof RESOURCES
 
 /** Create (no id) or replace an item; returns the saved item. */
 export function saveItem<K extends ListKey>(key: K, item: State[K][number]): Promise<State[K][number]> {
-  return save(async () => {
+  return save(async (s) => {
     const { id, ...body } = item as { id: string }
-    const list = store[key] as { id: string }[]
     const saved = await api<{ id: string }>(id ? 'PUT' : 'POST', id ? `${RESOURCES[key]}/${id}` : RESOURCES[key], body)
-    const i = list.findIndex((x) => x.id === saved.id)
-    if (i >= 0) list[i] = saved
-    else list.push(saved)
-    // Mirrors the server: a target that is no longer 'fixed' loses its phase amounts.
-    if (key === 'targets' && (saved as { kind?: string }).kind !== 'fixed') {
-      for (const p of store.phases) delete p.amounts[saved.id]
-    }
+    s.ifCurrent(() => {
+      // the list is read now, after the answer: the store may have been loaded again meanwhile
+      const list = store[key] as { id: string }[]
+      const i = list.findIndex((x) => x.id === saved.id)
+      if (i >= 0) list[i] = saved
+      else list.push(saved)
+      // Mirrors the server: a target that is no longer 'fixed' loses its phase amounts.
+      if (key === 'targets' && (saved as { kind?: string }).kind !== 'fixed') {
+        for (const p of store.phases) delete p.amounts[saved.id]
+      }
+    })
     return saved as State[K][number]
   })
 }
 
 export function deleteItem(key: ListKey, id: string) {
-  return save(async () => {
+  return save(async (s) => {
     await api('DELETE', `${RESOURCES[key]}/${id}`)
-    ;(store[key] as { id: string }[]).splice((store[key] as { id: string }[]).findIndex((x) => x.id === id), 1)
-    // Cascades in the DB, mirrored here: a subscription takes its plan changes, a target its phase amounts.
-    if (key === 'subscriptions') store.planChanges = store.planChanges.filter((c) => c.subId !== id)
-    if (key === 'targets') for (const p of store.phases) delete p.amounts[id]
+    s.ifCurrent(() => {
+      const list = store[key] as { id: string }[]
+      const i = list.findIndex((x) => x.id === id)
+      if (i >= 0) list.splice(i, 1) // never splice(-1): a missing id removes nothing
+      // Cascades in the DB, mirrored here: a subscription takes its plan changes, a target its phase amounts.
+      if (key === 'subscriptions') store.planChanges = store.planChanges.filter((c) => c.subId !== id)
+      if (key === 'targets') for (const p of store.phases) delete p.amounts[id]
+    })
   })
 }
 
 export function saveSettings(patch: Partial<Settings> = {}) {
-  return save(async () => {
-    store.settings = await api<Settings>('PUT', '/api/settings', { ...store.settings, ...patch })
+  return save(async (s) => {
+    const saved = await api<Settings>('PUT', '/api/settings', { ...store.settings, ...patch })
+    s.ifCurrent(() => { store.settings = saved })
   })
 }
 
 export function savePreferences(next: Preferences) {
-  return save(async () => {
-    store.preferences = await api<Preferences>('PUT', '/api/preferences', next)
+  return save(async (s) => {
+    const saved = await api<Preferences>('PUT', '/api/preferences', next)
+    s.ifCurrent(() => { store.preferences = saved })
   })
 }
 
 export function saveLiving(patch: Partial<Living> = {}) {
-  return save(async () => {
-    store.living = await api<Living>('PUT', '/api/living', { ...store.living, ...patch })
+  return save(async (s) => {
+    const saved = await api<Living>('PUT', '/api/living', { ...store.living, ...patch })
+    s.ifCurrent(() => { store.living = saved })
   })
 }
 

@@ -29,8 +29,6 @@ const ko = {
   oneLiving: "'생활비 합계' 대상은 하나만 둘 수 있어요.",
   oneSubscriptions: "'구독 이체액' 대상은 하나만 둘 수 있어요.",
   oneRemainder: "'나머지' 대상은 하나만 둘 수 있어요.",
-  remainderKindLocked: '나머지 대상은 하나 있어야 해서 종류를 바꿀 수 없어요. 이름은 바꿀 수 있어요.',
-  remainderNoDelete: '나머지 대상은 지울 수 없어요. 나머지를 받을 곳이 하나는 있어야 해요.',
   beforeNotTime: 'before는 시각이어야 해요.',
   beforeBoth: 'before와 beforeId는 함께 보내야 해요.',
   changeNotFound: '변경 묶음을 찾을 수 없어요.',
@@ -39,7 +37,6 @@ const ko = {
   changeChild: '이후에 연결된 항목이 생겨서 되돌릴 수 없어요.',
   revertOverlap: "되돌리면 '{a}' 구간과 '{b}' 구간이 겹쳐요.",
   revertAmounts: '되돌리면 고정 대상이 아닌 곳에 구간 금액이 생겨요.',
-  revertRemainder: '되돌리면 나머지 대상이 없어져요.',
   // proposals from an AI key (spec 009)
   proposalNotFound: '제안을 찾을 수 없어요.',
   proposalNotPending: '이미 처리된 제안이에요.',
@@ -166,8 +163,6 @@ const en: Record<MsgKey, string> = {
   oneLiving: "Only one 'Living total' target is allowed.",
   oneSubscriptions: "Only one 'Subscription transfer' target is allowed.",
   oneRemainder: "Only one 'Remainder' target is allowed.",
-  remainderKindLocked: 'There must be one remainder target, so its type cannot change. You can rename it.',
-  remainderNoDelete: 'The remainder target cannot be deleted. Something has to receive what is left over.',
   beforeNotTime: 'before must be a timestamp.',
   beforeBoth: 'before and beforeId must be sent together.',
   changeNotFound: 'Change set not found.',
@@ -176,7 +171,6 @@ const en: Record<MsgKey, string> = {
   changeChild: 'Something was linked to it afterwards, so this cannot be reverted.',
   revertOverlap: "Reverting would make the '{a}' and '{b}' phases overlap.",
   revertAmounts: 'Reverting would leave a phase amount on a target that is not fixed.',
-  revertRemainder: 'Reverting would leave no remainder target.',
   // proposals from an AI key (spec 009)
   proposalNotFound: 'Proposal not found.',
   proposalNotPending: 'This proposal has already been handled.',

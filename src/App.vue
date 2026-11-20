@@ -1,44 +1,49 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, type AsyncComponentLoader, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
+import MoreSheet from './components/MoreSheet.vue'
+import Soon from './components/Soon.vue'
+import Toast from './components/Toast.vue'
+import PageLoadError from './components/PageLoadError.vue'
 import Dashboard from './pages/Dashboard.vue'
-import Subscriptions from './pages/Subscriptions.vue'
-import Payroll from './pages/Payroll.vue'
-import Timeline from './pages/Timeline.vue'
-import History from './pages/History.vue'
-import Dev from './pages/Dev.vue'
-import Settings from './pages/Settings.vue'
-import Admin from './pages/Admin.vue'
 import { api } from './lib/api'
-import { savePreferences, status, store } from './lib/store'
-import { notReady, view } from './lib/view'
+import { status, store } from './lib/store'
+import { toast, hideToast } from './lib/toast'
+import { view } from './lib/view'
 import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
 import { t, type MessageKey } from './i18n'
+import { phaseTag } from './lib/labels'
 
-// Shell (spec 007 S-2): grouped sidebar with the user at the bottom, a footer on every page;
-// on a phone a top bar and a bottom tab bar. Menus for features that do not exist yet are not here (S-3).
+// Shell (spec 010 S-4): a grouped sidebar with the user at the bottom, a header bar and a footer on
+// every page; on a phone a top bar, a bottom bar and a "더보기" sheet. Menu entries for features that
+// do not exist yet are `Soon` (S-3): shown, inert, with no route behind them.
+// A page loaded on first open; if its code cannot be downloaded, say so and offer a reload.
+const lazyPage = (loader: AsyncComponentLoader) =>
+  defineAsyncComponent({ loader, errorComponent: PageLoadError, delay: 200 })
 interface Page { id: string; comp: unknown }
 const PAGES: Record<string, Page> = {
+  // Only the dashboard is in the first chunk; every other page loads when it is first opened (spec 010 V-1, A-24).
   home: { id: 'home', comp: Dashboard },
-  subs: { id: 'subs', comp: Subscriptions },
-  pay: { id: 'pay', comp: Payroll },
-  events: { id: 'events', comp: Timeline },
-  pending: { id: 'pending', comp: defineAsyncComponent(() => import('./pages/Pending.vue')) }, // loaded when opened: the first screen stays small
-  history: { id: 'history', comp: History },
-  settings: { id: 'settings', comp: Settings },
-  admin: { id: 'admin', comp: Admin },
-  dev: { id: 'dev', comp: Dev },
+  subs: { id: 'subs', comp: lazyPage(() => import('./pages/Subscriptions.vue')) },
+  pay: { id: 'pay', comp: lazyPage(() => import('./pages/Payroll.vue')) },
+  events: { id: 'events', comp: lazyPage(() => import('./pages/Timeline.vue')) },
+  pending: { id: 'pending', comp: lazyPage(() => import('./pages/Pending.vue')) },
+  history: { id: 'history', comp: lazyPage(() => import('./pages/History.vue')) },
+  settings: { id: 'settings', comp: lazyPage(() => import('./pages/Settings.vue')) },
+  admin: { id: 'admin', comp: lazyPage(() => import('./pages/Admin.vue')) },
+  dev: { id: 'dev', comp: lazyPage(() => import('./pages/Dev.vue')) }, // no menu entry: reached by the address #dev only
 }
 const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
-const groups = [
-  { id: 'overview', items: ['home'] },
-  { id: 'manage', items: ['subs', 'pay', 'events', 'pending', 'history'] },
+interface Entry { id: string; soon?: boolean }
+const groups: { id: 'overview' | 'budget' | 'manage' | 'ai'; items: Entry[] }[] = [
+  { id: 'overview', items: [{ id: 'home' }] },
+  { id: 'budget', items: [{ id: 'pay' }, { id: 'living', soon: true }, { id: 'subs' }, { id: 'saving', soon: true }, { id: 'invest', soon: true }] },
+  { id: 'manage', items: [{ id: 'events' }, { id: 'pending' }, { id: 'history' }] },
+  { id: 'ai', items: [{ id: 'statements', soon: true }, { id: 'assistant', soon: true }] },
 ]
-const BOTTOM = ['home', 'subs', 'pay', 'events', 'history', 'settings']
-/** The pending page has a place on the phone's bar only while something waits there. */
-const bottom = computed(() => (store.pendingProposals ? [...BOTTOM.slice(0, 4), 'pending', ...BOTTOM.slice(4)] : BOTTOM))
+const GROUP_LABEL = { overview: 'shell.groupOverview', budget: 'shell.groupBudget', manage: 'shell.groupManage', ai: 'shell.groupAi' } as const
 
 interface Me { name: string; email: string; role: string }
 const me = ref<Me | null>(null)
@@ -47,7 +52,7 @@ onMounted(async () => {
 })
 const isAdmin = computed(() => me.value?.role === 'admin')
 /** The admin page shows for admins only; the server refuses everyone else anyway. */
-const lower = computed(() => ['settings', ...(isAdmin.value ? ['admin'] : []), 'dev'])
+const lower = computed(() => ['settings', ...(isAdmin.value ? ['admin'] : [])])
 
 // Hash routes: #home, #subs, …, #settings/<tab>. #account is kept as an alias of the
 // login & security tab, because external-login linking returns to /#account (spec 007 S-12).
@@ -66,22 +71,36 @@ onBeforeUnmount(() => window.removeEventListener('hashchange', onHash))
 
 const activeSubs = computed(() => store.subscriptions.filter((s) => s.status === 'active').length)
 
-// ── Header bar (spec 007 S-15): where you are (the dashboard: its month and phase), search and
-// notifications as drawn (not there yet → "not available yet"), and the light/dark switch (S-16).
-const GROUP_OF: Record<string, 'groupOverview' | 'groupManage' | 'groupSettings'> = { home: 'groupOverview', subs: 'groupManage', pay: 'groupManage', events: 'groupManage', pending: 'groupManage', history: 'groupManage', settings: 'groupSettings', admin: 'groupSettings', dev: 'groupSettings' }
+// ── Header bar (spec 010 S-4): where you are (the overview: its month and phase), search and
+// notifications as drawn (not there yet → `Soon`). No light/dark switch: the theme is chosen in Settings (D-10).
+const GROUP_OF: Record<string, MessageKey> = { subs: 'shell.groupBudget', pay: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
 const crumbPage = computed(() => (route.value.page === 'settings'
   ? t(`settings.tabs.${['general', 'theme', 'ai', 'security'].includes(route.value.sub) ? route.value.sub : 'general'}` as MessageKey)
   : label(route.value.page)))
-const tools = computed(() => !['settings', 'admin', 'dev'].includes(route.value.page))
 const phase = computed(() => phaseAt(store.phases, view.ym))
-const prefersDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => { prefersDark.value = e.matches })
-const dark = computed(() => store.preferences.themeMode === 'dark' || (store.preferences.themeMode === 'system' && prefersDark.value))
-const flipTheme = () => savePreferences({ ...store.preferences, themeMode: dark.value ? 'light' : 'dark' }).catch(() => {})
-const onSearch = (e: Event) => { e.preventDefault(); notReady('shell.search') }
+const soonName = (what: string) => `${what} (${t('common.soon')})`
 const logout = () => authClient.signOut()
 const version = __APP_VERSION__
 const REPO = 'https://github.com/bluenyang/allot'
+
+// ── Phone: the bottom bar and the "더보기" sheet (spec 010 S-4). The pending page has a place on the
+// bar only while something waits there (spec 009 A-7); the budget slot opens the pay split, and
+// stays current on the subscriptions page too.
+const bottom = computed(() => [
+  { id: 'home', href: '#home', icon: 'home', label: t('shell.tabs.home'), on: route.value.page === 'home' },
+  { id: 'budget', href: '#pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'subs'].includes(route.value.page) },
+  { id: 'events', href: '#events', icon: 'events', label: t('shell.tabs.events'), on: route.value.page === 'events' },
+  ...(store.pendingProposals ? [{ id: 'pending', href: '#pending', icon: 'pending', label: t('shell.tabs.pending'), on: route.value.page === 'pending', badge: store.pendingProposals }] : []),
+])
+const moreOpen = ref(false)
+const moreOn = computed(() => ['history', 'settings', 'admin', 'dev'].includes(route.value.page))
+watch(route, () => { moreOpen.value = false })
+// The sheet is for the phone layout: it goes away when the window becomes wide.
+const wide = window.matchMedia('(min-width: 761px)')
+const onWide = (e: MediaQueryListEvent) => { if (e.matches) moreOpen.value = false }
+onMounted(() => wide.addEventListener('change', onWide))
+onBeforeUnmount(() => wide.removeEventListener('change', onWide))
+const toastAction = () => { const f = toast.onAction; hideToast(); f?.() }
 
 // ── Sidebar width and folding (spec 007 S-20): drag or arrow keys on the edge, double-click for the default.
 const side = ref<HTMLElement | null>(null)
@@ -124,29 +143,33 @@ const onGripKey = (e: KeyboardEvent) => {
     <aside id="side" ref="side" class="side">
       <div class="brand">
         <span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>{{ t('shell.tagline') }}</small></span>
-        <button class="btn icon fold" type="button" :aria-label="sideFolded ? t('shell.foldOpen') : t('shell.foldClose')" :title="sideFolded ? t('shell.foldOpen') : t('shell.foldClose')"
+        <button class="fold" type="button" :aria-label="sideFolded ? t('shell.foldOpen') : t('shell.foldClose')" :title="sideFolded ? t('shell.foldOpen') : t('shell.foldClose')"
           :aria-expanded="!sideFolded" aria-controls="side" @click="toggleSide"><Icon name="panel" /></button>
       </div>
       <nav :aria-label="t('shell.menu')" class="groups">
         <div v-for="g in groups" :key="g.id" class="grp">
-          <span class="glabel">{{ g.id === 'overview' ? t('shell.groupOverview') : t('shell.groupManage') }}</span>
-          <a v-for="id in g.items" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? label(id) : undefined">
-            <Icon :name="id" /><span class="grow lbl">{{ label(id) }}</span>
-            <span v-if="id === 'subs'" class="ncount" :aria-label="t('shell.activeSubs', { n: activeSubs })">{{ activeSubs }}</span>
-            <span v-if="id === 'pending' && store.pendingProposals" class="ncount badge" :aria-label="t('shell.pendingN', { n: store.pendingProposals })">{{ store.pendingProposals }}</span>
-          </a>
+          <span class="glabel">{{ t(GROUP_LABEL[g.id]) }}</span>
+          <template v-for="it in g.items" :key="it.id">
+            <Soon v-if="it.soon" tag="div" class="ni" :title="sideFolded ? soonName(label(it.id)) : undefined"><Icon :name="it.id" /><span class="grow lbl">{{ label(it.id) }}</span></Soon>
+            <a v-else class="ni" :href="'#' + it.id" :aria-current="route.page === it.id ? 'true' : 'false'" :title="sideFolded ? label(it.id) : undefined">
+              <Icon :name="it.id" /><span class="grow lbl">{{ label(it.id) }}</span>
+              <span v-if="it.id === 'subs'" class="ncount" :aria-label="t('shell.activeSubs', { n: activeSubs })">{{ activeSubs }}</span>
+              <span v-if="it.id === 'pending' && store.pendingProposals" class="ncount badge" :aria-label="t('shell.pendingN', { n: store.pendingProposals })">{{ store.pendingProposals }}</span>
+            </a>
+          </template>
         </div>
       </nav>
       <div class="lower">
         <nav :aria-label="t('shell.settingsMenu')">
-          <a v-for="id in lower" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? label(id) : undefined"><Icon :name="id" /><span class="lbl">{{ label(id) }}</span></a>
+          <a v-for="id in lower" :key="id" class="ni" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? label(id) : undefined"><Icon :name="id" /><span class="lbl">{{ label(id) }}</span></a>
         </nav>
-        <div v-if="me" class="who">
-          <span class="ava" aria-hidden="true">{{ (me.name || me.email).slice(0, 1) }}</span>
-          <span class="wn"><b>{{ me.name || me.email }}</b><small>{{ me.role === 'admin' ? t('shell.roleAdmin') : t('shell.roleUser') }}</small></span>
-          <button class="btn icon" type="button" :aria-label="t('shell.logout')" :title="t('shell.logout')" @click="logout"><Icon name="logout" /></button>
+        <div class="who">
+          <template v-if="me">
+            <span class="ava" aria-hidden="true">{{ (me.name || me.email).slice(0, 1) }}</span>
+            <span class="wn"><b>{{ me.name || me.email }}</b><small>{{ me.role === 'admin' ? t('shell.roleAdmin') : t('shell.roleUser') }}</small></span>
+          </template>
+          <button class="lo" type="button" :aria-label="t('shell.logout')" :title="t('shell.logout')" @click="logout"><Icon name="logout" :stroke="1.9" /></button>
         </div>
-        <button v-else class="logout" type="button" @click="logout">{{ t('shell.logout') }}</button>
       </div>
     </aside>
     <!-- On the sidebar's border line, outside its scroll box so the knob can straddle it (S-20) -->
@@ -155,31 +178,32 @@ const onGripKey = (e: KeyboardEvent) => {
       @pointerdown="onGripDown" @pointermove="onGripMove" @pointerup="onGripUp" @pointercancel="onGripUp" @lostpointercapture="onGripUp" @keydown="onGripKey" @dblclick="setSideWidth(SIDE.default)"><span class="knob" aria-hidden="true"></span></div>
 
     <div class="col">
+      <div class="mbar">
+        <span class="logo" aria-hidden="true">A</span>
+        <b>{{ label(route.page) }}</b>
+        <span class="sp"></span>
+        <Soon class="tb" :pill="false" :aria-label="soonName(t('shell.search'))" :title="soonName(t('shell.search'))"><Icon name="search" :stroke="2" /></Soon>
+        <Soon class="tb" :pill="false" :aria-label="soonName(t('shell.notifications'))" :title="soonName(t('shell.notifications'))"><Icon name="bell" /></Soon>
+      </div>
       <header class="topbar">
         <div v-if="route.page === 'home'" class="monthnav">
-          <button class="btn icon" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
+          <button class="btn icon" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" :stroke="2" /></button>
           <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}</span>
-          <button class="btn icon" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
-          <span class="phasebadge">{{ phase ? `${phase.label} · ${phase.name}` : t('shell.outOfPhase') }}</span>
+          <button class="btn icon" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" :stroke="2" /></button>
+          <span class="phasebadge">{{ phase ? phaseTag(store.phases, phase) : t('shell.outOfPhase') }}</span>
         </div>
-        <nav v-else class="crumbs" :aria-label="t('shell.here')"><span>{{ t(`shell.${GROUP_OF[route.page]}`) }}</span><Icon name="chev" /><b>{{ crumbPage }}</b></nav>
+        <nav v-else class="crumbs" :aria-label="t('shell.here')">
+          <template v-if="route.page === 'settings'"><b>{{ label('settings') }}</b><span aria-hidden="true">/</span><span>{{ crumbPage }}</span></template>
+          <template v-else><span>{{ t(GROUP_OF[route.page]!) }}</span><span aria-hidden="true">/</span><b>{{ crumbPage }}</b></template>
+        </nav>
         <span class="sp"></span>
-        <form v-if="tools" class="search" role="search" @submit="onSearch" @click="notReady('shell.search')">
-          <Icon name="search" />
-          <input type="search" :aria-label="t('shell.search')" :placeholder="t('shell.searchPlaceholder')" @focus="notReady('shell.search')">
-          <kbd>/</kbd>
-        </form>
-        <button v-if="tools" class="btn icon tb" type="button" :aria-label="t('shell.notifications')" @click="notReady('shell.notifications')"><Icon name="bell" /><i class="dotn" aria-hidden="true"></i></button>
-        <button class="btn icon tb" type="button" :aria-label="dark ? t('shell.toLight') : t('shell.toDark')" :title="dark ? t('shell.toLightShort') : t('shell.toDarkShort')" @click="flipTheme"><Icon :name="dark ? 'sun' : 'moon'" /></button>
+        <Soon class="search" :aria-label="soonName(t('shell.search'))">
+          <Icon name="search" :stroke="2" /><span class="st">{{ t('shell.searchPlaceholder') }}</span><span class="kbds" aria-hidden="true"><kbd class="kbd">Ctrl</kbd><kbd class="kbd">K</kbd></span>
+        </Soon>
+        <Soon class="tb" :pill="false" :aria-label="soonName(t('shell.notifications'))" :title="soonName(t('shell.notifications'))"><Icon name="bell" /></Soon>
       </header>
-      <p v-if="view.notice" class="toast" role="status">{{ view.notice }}</p>
+      <Toast v-if="toast.message" :message="toast.message" :action-label="toast.actionLabel || undefined" :error="toast.error" :dismissible="toast.error" @action="toastAction" @dismiss="hideToast" />
       <main class="main">
-        <div class="mtop">
-          <span class="logo" aria-hidden="true">A</span><b>Allot</b><span class="ver">v{{ version }}</span>
-          <button class="acct" type="button" :aria-label="dark ? t('shell.toLight') : t('shell.toDark')" @click="flipTheme"><Icon :name="dark ? 'sun' : 'moon'" /></button>
-          <a class="acct" href="#settings" :aria-label="t('shell.settingsLink')"><Icon name="settings" /></a>
-          <button class="logout m" type="button" @click="logout">{{ t('shell.logout') }}</button>
-        </div>
         <p v-if="status.error" class="save-err" role="alert">{{ status.error }} <button type="button" @click="status.error = ''">{{ t('common.close') }}</button></p>
         <KeepAlive><component :is="PAGES[route.page]!.comp" :key="route.page" v-bind="route.page === 'settings' ? { sub: route.sub } : {}" /></KeepAlive>
       </main>
@@ -189,37 +213,30 @@ const onGripKey = (e: KeyboardEvent) => {
           <a :href="REPO" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a :href="REPO + '/releases'" target="_blank" rel="noopener noreferrer">{{ t('shell.changelog') }}</a>
           <a :href="REPO + '/issues'" target="_blank" rel="noopener noreferrer">{{ t('shell.issues') }}</a>
-          <a href="#" @click.prevent="notReady('shell.apiDocs')">{{ t('shell.apiDocs') }}</a>
+          <Soon tag="span" class="fsoon">{{ t('shell.apiDocs') }}</Soon>
         </nav>
-        <div class="where"><Icon name="security" /><span>{{ t('shell.dataNote') }}</span></div>
+        <div class="where">{{ t('shell.dataNote') }}</div>
       </footer>
     </div>
 
     <nav class="botnav" :aria-label="t('shell.menu')">
-      <a v-for="id in bottom" :key="id" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'"><Icon :name="id" />{{ label(id) }}</a>
+      <a v-for="it in bottom" :key="it.id" class="mi" :href="it.href" :aria-current="it.on ? 'true' : 'false'">
+        <Icon :name="it.icon" />{{ it.label }}<span v-if="it.badge" class="b" :aria-label="t('shell.pendingN', { n: it.badge })">{{ it.badge }}</span>
+      </a>
+      <button class="mi" :class="{ on: moreOn }" type="button" aria-haspopup="dialog" :aria-expanded="moreOpen" @click="moreOpen = true"><Icon name="more" />{{ t('shell.tabs.more') }}</button>
     </nav>
+    <MoreSheet v-model="moreOpen" :name="me?.name ?? ''" :email="me?.email ?? ''" :admin="isAdmin" :pending="store.pendingProposals" @logout="logout" />
   </div>
 </template>
 
 <style scoped>
 .bn{display:flex;flex-direction:column;line-height:1.25}
 .bn small{font-size:11px;color:var(--subtle)}
-.groups{display:flex !important;flex-direction:column;gap:18px}
-.grp{display:grid;gap:2px}
-.glabel{font-size:11px;font-weight:600;color:var(--subtle);padding:0 10px 6px;letter-spacing:.04em}
 .grow{flex-grow:1}
-.ncount{font-size:12px;color:var(--subtle);font-variant-numeric:tabular-nums}
-.ncount.badge{color:var(--accent-text);background:var(--accent-soft);border-radius:var(--r-badge);padding:0 6px;font-weight:600}
-.lower{margin-top:auto;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);padding-top:12px}
-.who{display:flex;align-items:center;gap:10px;padding:6px 4px 0 10px}
-.ava{width:32px;height:32px;border-radius:var(--r-ctl);background:var(--fill);color:var(--text-2);display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
 .wn{display:flex;flex-direction:column;min-width:0;flex:1}
 .wn b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wn small{font-size:12px;color:var(--subtle)}
-.who .btn{color:var(--muted)}
 /* Sidebar width and folding (spec 007 S-20) */
-.brand .fold{margin-left:auto;width:30px;height:30px;color:var(--muted);flex:none}
-.brand .fold svg{width:18px;height:18px}
 .grip{display:none}
 @media (min-width:761px){
   .grip{display:block;position:fixed;top:0;bottom:0;left:calc(var(--side-w) - 5px);width:10px;cursor:col-resize;touch-action:none;z-index:35}
@@ -231,50 +248,32 @@ const onGripKey = (e: KeyboardEvent) => {
   .grip:focus-visible{outline:none}
 }
 :global(body.resizing){cursor:col-resize;user-select:none}
-.folded .bn,.folded .glabel,.folded .ncount,.folded .wn{display:none}
-.folded .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.folded .brand{flex-direction:column;gap:8px;padding:2px 0 10px}
-.folded .brand .fold{margin-left:0}
-.folded .groups{gap:10px}
-.folded nav a{justify-content:center;padding:0;gap:0}
-.folded .grp + .grp{border-top:1px solid var(--border);padding-top:10px}
-.folded .who{flex-direction:column;padding:6px 0 0;gap:8px}
 .col{display:flex;flex-direction:column;min-width:0;min-height:100vh;container:col / inline-size}
 .topbar{display:none}
-.topbar .sp{flex:1}
+.topbar .sp,.mbar .sp{flex:1}
 @media (min-width:761px){
   .topbar{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;padding:12px var(--col-pad);min-height:61px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
 }
 .crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--subtle)}
-.crumbs svg{width:14px;height:14px}
-.crumbs b{color:var(--text);font-weight:600}
+.crumbs b{color:var(--text);font-weight:700}
 .monthnav{display:flex;align-items:center;gap:4px;flex:0 1 auto;min-width:0}
-.monthnav .btn{width:32px;height:32px;color:var(--muted);flex:none}
-.monthnav .ml{font-weight:600;padding:0 10px;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+.monthnav .btn{width:32px;height:30px;color:var(--text);flex:none;border-color:var(--border-strong)}
+.monthnav .btn svg{width:16px;height:16px}
+.monthnav .ml{font-weight:700;padding:0 10px;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
 .phasebadge{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin-left:8px;font-size:12px;color:var(--muted);padding:2px 8px;border:1px solid var(--border);border-radius:var(--r-badge);background:var(--surface-2)}
-.search{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface-2);flex:0 20 300px;min-width:0;color:var(--subtle)}
+/* search box and bell: drawn as in the design, inert for now (`Soon`) */
+.search{display:flex;align-items:center;gap:8px;height:36px;padding:0 8px 0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface-2);flex:0 20 320px;min-width:0;max-width:100%;color:var(--subtle);overflow:hidden}
+.search:hover{background:var(--surface-2);color:var(--subtle)}
 .search svg{width:16px;height:16px;flex:none}
-.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text)}
-.search:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
-.search kbd{font:11px var(--f-mono);border:1px solid var(--border);border-radius:var(--r-badge);padding:0 5px;background:var(--surface)}
-/* A narrow content column (small window or a wide sidebar): the hint goes first, then the box becomes its icon (review 22) */
-@container col (max-width: 720px){ .search kbd{display:none} }
-@container col (max-width: 600px){ .search{flex:none;width:36px;padding:0;justify-content:center;position:relative;cursor:pointer} .search input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none} }
-.tb{width:36px;height:36px;position:relative;color:var(--muted);flex:none}
+.search .st{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search .kbds{display:inline-flex;gap:3px;flex:none}
+/* A narrow content column (small window or a wide sidebar): the hints (keys, 준비 중 pill) go first, then the box becomes its icon (review 22) */
+@container col (max-width: 720px){ .search .kbds,.search :deep(.soon-pill){display:none} }
+@container col (max-width: 600px){ .search{flex:none;width:36px;padding:0;justify-content:center} .search .st,.search :deep(.soon-pill){display:none} }
+.tb{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface);color:var(--text-2);flex:none}
+.tb:hover{background:var(--surface);color:var(--text-2)}
 .tb svg{width:18px;height:18px}
-.dotn{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--accent);border:1.5px solid var(--surface)}
-.toast{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:80;margin:0;padding:8px 14px;border-radius:var(--r-ctl);background:var(--text);color:var(--surface);font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
-.mtop .acct{background:var(--surface)}
 .col .main{flex:1;width:100%}
-.foot-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;padding:16px max(16px,env(safe-area-inset-right,0px)) calc(96px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border-top:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--subtle)}
-.foot-bar .fl{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.foot-bar .fl b{font-weight:700;color:var(--text)}
-.foot-bar .fl .mono{font-size:12px}
-.foot-bar nav{display:flex;gap:16px;flex-wrap:wrap}
-.foot-bar a{color:var(--muted);text-decoration:none}
-.foot-bar a:hover{text-decoration:underline}
-.foot-bar .where{display:flex;align-items:center;gap:6px}
-.foot-bar .where svg{width:14px;height:14px}
-@media (min-width:761px){.foot-bar{padding:16px var(--col-pad)}}
+.foot-bar .fsoon{color:var(--subtle)}
 @media (max-width:760px){.col .main{padding-bottom:16px}}
 </style>

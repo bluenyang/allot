@@ -1,7 +1,8 @@
 // Display names of the stored enum values (spec 008 S-9): the data keeps its codes (and the
 // Korean event kinds), the screens show them in the current language.
 import { t, type MessageKey } from '../i18n'
-import type { AllocationKind, Category, Cycle, EventKind, PayPath, SubStatus } from '../data/types'
+import { phaseNumbers } from './calc'
+import type { Phase, AllocationKind, Category, Cycle, EventKind, PayPath, SubStatus } from '../data/types'
 
 export const CATEGORY_IDS: Category[] = ['ai', 'telecom', 'content', 'tool', 'insurance', 'life']
 export const catLabel = (id: string) => t(`label.category.${id}` as MessageKey)
@@ -21,3 +22,16 @@ export const eventKindLabel = (kind: string) => (kind in EVENT_KEY ? t(`label.ev
 export const kindDetail = (kind: AllocationKind) => t(`label.allocDetail.${kind}` as MessageKey)
 /** The kind of an allocation target, as a name. */
 export const kindName = (kind: AllocationKind) => t(`label.allocKind.${kind}` as MessageKey)
+
+/** The repayment methods the debt form offers; the stored value is the Korean label (the data keeps one spelling in both languages). */
+const DEBT_METHOD_KEY = { '원리금 균등': 'equalPayment', '원금 균등': 'equalPrincipal', '만기 일시': 'bullet' } as const
+export const DEBT_METHODS = Object.keys(DEBT_METHOD_KEY) as (keyof typeof DEBT_METHOD_KEY)[]
+export const isDebtMethod = (v: string): v is keyof typeof DEBT_METHOD_KEY => v in DEBT_METHOD_KEY
+/** A stored method as shown: one of the three in the current language, anything else as typed. */
+export const debtMethodLabel = (v: string) => (isDebtMethod(v) ? t(`label.debtMethod.${DEBT_METHOD_KEY[v]}` as MessageKey) : v)
+
+/** A debt's rate as shown: a plain number is a percentage, any other text stays as typed (spec 010 EV-35). */
+export const rateText = (rate: string) => (/^\s*\d+(\.\d+)?\s*$/.test(rate) ? `${rate.trim()}%` : rate)
+
+/** "1단계 · name": the phase's automatic number and its name, never the stored symbol (spec 010 U-4). */
+export const phaseTag = (phases: Pick<Phase, 'id' | 'from'>[], p: Pick<Phase, 'id' | 'name'>) => `${t('payroll.phaseNo', { n: phaseNumbers(phases)[p.id] ?? 0 })} · ${p.name}`

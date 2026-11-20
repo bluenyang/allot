@@ -64,7 +64,7 @@ Decisions from the committee review (2026-11-11), accepted by the user ("그렇�
 | 0.1.1 (released 2026-11-12) | Security foundation: `user_id` on every table (existing data kept for the current user), row-level security, change sets with revert, explicit trusted origins, HTTPS in the production example |
 | 0.1.2 (released 2026-11-16) | Login and admin: generic OIDC, GitHub, Google and password, each on/off; per-provider sign-up policy (admin-created, approval, or group/organization/domain rules); admin menu; initial admin from env (email or OIDC subject); encryption module; auth that a future mobile app can use (bearer tokens, deep-link return) |
 | 0.1.3 (released 2026-11-17) | MCP read: API keys (hashed, scoped, expiring, revocable), key management page, read tools; UI language setting (added 2026-11-15: "언어를 빼둔다? 그럼 다음 패치 버전으로 일단 적어놔봐.") |
-| 0.1.4 | MCP write: write tools, preview before confirm, revert of AI change sets |
+| 0.1.4 | MCP write: write tools, preview before confirm, revert of AI change sets. rc.2: redesign of every screen from the design canvas and a design system (`DESIGN.md`); features not built yet shown as "coming soon"; the remainder target may be deleted (added after the fact, first audit of intent 010, F-1) |
 | 0.1.5 | One-off expenses: lump sum, split payment, installments |
 | 0.1.6 | Account management: purposes linked to accounts, target amounts (allocation stops at the target), buffers that refill gradually after use |
 | 0.1.7 | Transactions: file import and card statements from Gmail; matching against expected payments (paid, delayed, foreign-currency amount); the actual salary drives the month |

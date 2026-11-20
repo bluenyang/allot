@@ -3,8 +3,8 @@
 // so the AI and the screen see the same numbers. No database here: the unit tests run without one.
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
-  addYm, changesIn, chargeKrw, distributionAt, monthDates, monthlyKrw, nextOccurrence, parseDate, planAt, splitRemainder,
-  transferAt, upcomingPayments, ymd, ymOf, type MonthDate,
+  addYm, changesIn, chargeKrw, distributionAt, monthDates, monthlyKrw, nextPayment, parseDate, planAt, splitRemainder,
+  transferAt, unallocated, upcomingPayments, ymd, ymOf, type MonthDate,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 import type {
@@ -92,6 +92,8 @@ export function overview(d: Data, ym: string) {
       phase: dist.phase ? { id: dist.phase.id, label: dist.phase.label, name: dist.phase.name, from: dist.phase.from, to: dist.phase.to } : null,
       rows: dist.rows.map((r) => ({ targetId: r.key, name: r.name, kind: r.kind, amountKrw: krw(r.amount) })),
       remainderKrw: krw(dist.remainder),
+      /** What stays in the pay account when no target takes the remainder (0 when one does); negative = short. */
+      unallocatedKrw: krw(unallocated(dist)),
       livingKrw: dist.living,
       subscriptionsKrw: dist.subscriptions,
     },
@@ -105,7 +107,7 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
   const ym = ymOf(now)
   const rows = d.subscriptions.map((base) => {
     const p = planAt(base, d.planChanges, ym)
-    const next = p.status === 'active' ? nextOccurrence(p, now) : null
+    const next = p.status === 'active' ? nextPayment(base, d.planChanges, now) : null
     return {
       id: base.id,
       name: base.name,

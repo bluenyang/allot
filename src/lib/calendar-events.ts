@@ -11,7 +11,8 @@ import { t, type MessageKey } from '../i18n'
 import { holidayName } from './holiday-names'
 
 export type CalKind = 'pay' | 'transfer' | 'billing' | 'sub' | 'change' | 'holiday'
-export interface CalEvent { date: string; title: string; kind: CalKind }
+/** `name` and `krw` are set for subscription payments (the agenda shows the amount apart from the name). */
+export interface CalEvent { date: string; title: string; kind: CalKind; name?: string; krw?: number }
 
 export const kindLabel = (kind: CalKind) => t(`calendar.kind.${kind}` as MessageKey)
 
@@ -48,7 +49,7 @@ export function calendarEvents(from: string, to: string): CalEvent[] {
   const start = parseDate(from)
   const days = Math.round((parseDate(to).getTime() - start.getTime()) / DAY) - 1
   for (const p of upcomingPayments(store.subscriptions, store.planChanges, store.settings, start, days)) {
-    out.push({ date: ymd(p.date), title: `${p.sub.name} ${fmtMoney(p.krw)}`, kind: 'sub' })
+    out.push({ date: ymd(p.date), title: `${p.sub.name} ${fmtMoney(p.krw)}`, kind: 'sub', name: p.sub.name, krw: p.krw })
   }
   for (const c of store.planChanges) {
     if (c.effective && c.effective >= from && c.effective <= last) out.push({ date: c.effective, title: t('calendar.changeOf', { name: subName(c.subId) }), kind: 'change' })

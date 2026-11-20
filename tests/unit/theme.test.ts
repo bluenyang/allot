@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { ACCENT_PRESETS, DEFAULT_ACCENT, DEFAULT_PRIMARY, GROUND, PRIMARY_PRESETS, contrast, derive } from '../../src/lib/theme'
+import { ACCENT_PRESETS, DEFAULT_ACCENT, DEFAULT_PRIMARY, GROUND, PRIMARY_PRESETS, contrast, derive, lift } from '../../src/lib/theme'
 import { dateText, money, moneyClass } from '../../src/lib/format'
 
 /** The pairs the theme promises (spec 007 S-7), per mode. */
@@ -15,13 +15,14 @@ function problems(primary: string, accent: string): string[] {
     const g = GROUND[mode]
     const pairs: [string, string, string, number][] = [
       ['primary-text', t['primary-text']!, 'surface', 4.5], ['primary-text', t['primary-text']!, 'surface-2', 4.5],
+      ['primary-hover', t['primary-hover']!, 'surface', 4.5], ['primary-hover', t['primary-hover']!, 'bg', 4.5],
       ['primary-text', t['primary-text']!, 'primary-soft', 4.5], ['primary-ink', t['primary-ink']!, 'primary', 4.5],
       ['accent-text', t['accent-text']!, 'surface', 4.5], ['accent-text', t['accent-text']!, 'accent-soft', 4.5],
       ['accent-ink', t['accent-ink']!, 'accent', 4.5],
       // fills stand out from the page ground (S-7 "primary/surface 3", review 1 R11)
       ['primary', t.primary!, 'surface', 3], ['accent', t.accent!, 'surface', 3],
     ]
-    const bg: Record<string, string> = { surface: g.surface, 'surface-2': g.surface2, 'primary-soft': t['primary-soft']!, primary: t.primary!, 'accent-soft': t['accent-soft']!, accent: t.accent! }
+    const bg: Record<string, string> = { bg: g.bg, surface: g.surface, 'surface-2': g.surface2, 'primary-soft': t['primary-soft']!, primary: t.primary!, 'accent-soft': t['accent-soft']!, accent: t.accent! }
     for (const [name, fg, on, min] of pairs) {
       const r = contrast(fg, bg[on]!)
       if (r < min) out.push(`${mode} ${primary}/${accent}: ${name} ${fg} on ${on} ${bg[on]} = ${r.toFixed(2)}`)
@@ -53,6 +54,18 @@ test('the default colours derive exactly the tokens in style.css', () => {
   for (const [mode, have] of [['light', light], ['dark', dark]] as const) {
     for (const [k, v] of Object.entries(derive(DEFAULT_PRIMARY, DEFAULT_ACCENT, mode))) assert.equal(have[k], v, `${mode} --${k}`)
   }
+})
+
+test('canvas lift: the default colours lift to the canvas dark values', () => {
+  assert.equal(lift('#14705A', 0.46, 0.6), '#2FBC9A')
+  assert.equal(lift('#E0670E', 0.54, 0.85), '#ED7B26')
+  assert.equal(lift('#808080', 0.46, 0.6), '#808080') // grey stays grey
+})
+
+test('dark orange badge: the dark ink reads on the dark accent (D-10), the light text would not', () => {
+  const t = derive(DEFAULT_PRIMARY, DEFAULT_ACCENT, 'dark')
+  assert.ok(contrast(t['accent-ink']!, t.accent!) >= 4.5)
+  assert.ok(contrast('#ECEDEE', t.accent!) < 3)
 })
 
 test('display formats: units, negatives, dates', () => {

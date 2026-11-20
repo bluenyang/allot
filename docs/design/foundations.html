@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allot design tokens</title>
+<style>
+:root{color-scheme:light}
+body{margin:0;background:#F5F6F5}
+button,input,select{font:inherit}
+</style>
+</head>
+<body>
+<div style="width: 100%; max-width: 1440px; margin: 0 auto; box-sizing: border-box; padding: 56px 64px; background: #F5F6F5; color: #16201B; font-family: 'IBM Plex Sans KR', system-ui, sans-serif; font-size: 14px; line-height: 1.5; display: flex; flex-direction: column; gap: 28px;">
+
+  <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; border-bottom: 1px solid #CBD0CD; padding-bottom: 24px;">
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #47534D;">ALLOT DESIGN SYSTEM · v1</span>
+      <h1 style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em;">원장처럼 정확하게, 숫자가 먼저 보이게</h1>
+    </div>
+    <div style="display: flex; gap: 24px; max-width: 640px;">
+      <div style="flex: 1;"><div style="font-weight: 600; font-size: 13px;">중립 배경</div><div style="font-size: 12px; color: #47534D;">면은 회색·흰색. 초록은 행동과 선택에만.</div></div>
+      <div style="flex: 1;"><div style="font-weight: 600; font-size: 13px;">주황은 신호</div><div style="font-size: 12px; color: #47534D;">임박, 차이, 확인 필요, AI. 화면당 몇 곳만.</div></div>
+      <div style="flex: 1;"><div style="font-weight: 600; font-size: 13px;">작은 모서리</div><div style="font-size: 12px; color: #47534D;">4px 컨트롤, 6px 카드. 표와 선으로 정리.</div></div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px;">
+
+    <!-- Colors -->
+    <section style="background: #FFFFFF; border: 1px solid #E2E5E3; border-radius: 6px; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px;">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600;">색상</h2>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 600; color: #47534D;">Primary · 설정에서 변경</span>
+        <div style="display: flex; gap: 4px;">
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #E8F1EF; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">50</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#E8F1EF</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #C4DBD6; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">100</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#C4DBD6</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #7EB0A4; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">300</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#7EB0A4</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #14705A; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">500</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#14705A</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #115F4D; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">600</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#115F4D</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #0E4E3F; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">700</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#0E4E3F</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #093228; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">900</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#093228</span>
+            </div>
+          
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 600; color: #47534D;">Accent · 설정에서 변경</span>
+        <div style="display: flex; gap: 4px;">
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #FCF0E7; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">50</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#FCF0E7</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #F7D9C3; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">100</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#F7D9C3</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #EEAB7A; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">300</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#EEAB7A</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #E0670E; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">500</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#E0670E</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #BE580C; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">600</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#BE580C</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #9D480A; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">700</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#9D480A</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #652E06; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">900</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#652E06</span>
+            </div>
+          
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 600; color: #47534D;">Neutral</span>
+        <div style="display: flex; gap: 4px;">
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #16201B; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">text</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#16201B</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #2F3A35; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">text-2</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#2F3A35</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #47534D; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">muted</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#47534D</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #5F6B65; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">subtle</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#5F6B65</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #CBD0CD; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">border-strong</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#CBD0CD</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #E2E5E3; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">border</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#E2E5E3</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #EEF0EF; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">fill</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#EEF0EF</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #F5F6F5; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">bg</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#F5F6F5</span>
+            </div>
+          
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <div style="height: 44px; border-radius: 3px; background: #FFFFFF; border: 1px solid #E2E5E3;"></div>
+              <span style="font-size: 11px; font-weight: 600;">surface</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">#FFFFFF</span>
+            </div>
+          
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 600; color: #47534D;">의미 색</span>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;">
+          
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 4px; background: #E8F1EF;">
+              <span style="width: 14px; height: 14px; border-radius: 2px; background: #14705A;"></span>
+              <span style="font-size: 12px; font-weight: 600; color: #14705A;">수입 · 일치</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 4px; background: #FBEDE2;">
+              <span style="width: 14px; height: 14px; border-radius: 2px; background: #E0670E;"></span>
+              <span style="font-size: 12px; font-weight: 600; color: #9D480A;">임박 · 차이</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 4px; background: #FBEAE8;">
+              <span style="width: 14px; height: 14px; border-radius: 2px; background: #C0362C;"></span>
+              <span style="font-size: 12px; font-weight: 600; color: #A8322A;">오류 · 초과</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 4px; background: #E8F0F7;">
+              <span style="width: 14px; height: 14px; border-radius: 2px; background: #2E6B9E;"></span>
+              <span style="font-size: 12px; font-weight: 600; color: #245580;">정보 · 투자</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 4px; background: #E8F0F7;">
+              <span style="width: 14px; height: 14px; border-radius: 2px; background: #1F5FA8;"></span>
+              <span style="font-size: 12px; font-weight: 600; color: #1F5FA8;">토요일</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 4px; background: #FBEAE8;">
+              <span style="width: 14px; height: 14px; border-radius: 2px; background: #C0362C;"></span>
+              <span style="font-size: 12px; font-weight: 600; color: #B0332A;">일요일</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 4px; background: #F8E7EE;">
+              <span style="width: 14px; height: 14px; border-radius: 2px; background: #B4245D;"></span>
+              <span style="font-size: 12px; font-weight: 600; color: #B4245D;">증가 · 지출 늘어남</span>
+            </div>
+          
+        </div>
+      </div>
+    </section>
+
+    <!-- Type -->
+    <section style="background: #FFFFFF; border: 1px solid #E2E5E3; border-radius: 6px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline;">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600;">타이포그래피</h2>
+        <span style="font-size: 12px; color: #47534D;">IBM Plex Sans KR · IBM Plex Mono · 숫자는 tabular-nums</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid #EEF0EF; padding-bottom: 10px;">
+        <span style="width: 120px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">KPI 26/700</span>
+        <span style="font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em;">₩1,020,000</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid #EEF0EF; padding-bottom: 10px;">
+        <span style="width: 120px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">H1 22/700</span>
+        <span style="font-size: 22px; font-weight: 700;">2026년 11월 현황</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid #EEF0EF; padding-bottom: 10px;">
+        <span style="width: 120px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">H2 15/600</span>
+        <span style="font-size: 15px; font-weight: 600;">26일 자동이체 분배</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid #EEF0EF; padding-bottom: 10px;">
+        <span style="width: 120px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">Body 14/400</span>
+        <span style="font-size: 14px;">남는 금액은 전부 예비 통장으로 가요.</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid #EEF0EF; padding-bottom: 10px;">
+        <span style="width: 120px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">Table 13/400</span>
+        <span style="font-size: 13px;">음악 스트리밍 · 월간 · ₩10,900</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid #EEF0EF; padding-bottom: 10px;">
+        <span style="width: 120px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">Small 12/400</span>
+        <span style="font-size: 12px; color: #47534D;">실수령 ₩3,400,000 중 30.0%</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid #EEF0EF; padding-bottom: 10px;">
+        <span style="width: 120px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">Label 11/600</span>
+        <span style="font-size: 11px; font-weight: 600; color: #5F6B65; letter-spacing: 0.04em;">관리</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 16px;">
+        <span style="width: 120px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #47534D;">Mono 12/400</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">2026-11-14 · USD 20.00 +10%</span>
+      </div>
+      <div style="display: flex; gap: 24px; margin-top: 6px; padding-top: 14px; border-top: 1px solid #E2E5E3;">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <span style="font-size: 12px; font-weight: 600; color: #47534D;">모서리</span>
+          <div style="display: flex; gap: 10px; align-items: flex-end;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;"><div style="width: 40px; height: 40px; border: 1.5px solid #16201B; border-radius: 2px;"></div><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">2 태그</span></div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;"><div style="width: 40px; height: 40px; border: 1.5px solid #16201B; border-radius: 3px;"></div><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">3 배지</span></div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;"><div style="width: 40px; height: 40px; border: 1.5px solid #14705A; border-radius: 4px;"></div><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">4 컨트롤</span></div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;"><div style="width: 40px; height: 40px; border: 1.5px solid #16201B; border-radius: 6px;"></div><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">6 카드</span></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <span style="font-size: 12px; font-weight: 600; color: #47534D;">간격 (4 단위)</span>
+          <div style="display: flex; gap: 10px; align-items: flex-end;">
+            
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div style="width: 4px; height: 4px; background: #7EB0A4;"></div>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">4</span>
+              </div>
+            
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div style="width: 8px; height: 8px; background: #7EB0A4;"></div>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">8</span>
+              </div>
+            
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div style="width: 12px; height: 12px; background: #7EB0A4;"></div>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">12</span>
+              </div>
+            
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div style="width: 16px; height: 16px; background: #7EB0A4;"></div>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">16</span>
+              </div>
+            
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div style="width: 20px; height: 20px; background: #7EB0A4;"></div>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">20</span>
+              </div>
+            
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div style="width: 24px; height: 24px; background: #7EB0A4;"></div>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">24</span>
+              </div>
+            
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div style="width: 32px; height: 32px; background: #7EB0A4;"></div>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">32</span>
+              </div>
+            
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Components -->
+  <section style="background: #FFFFFF; border: 1px solid #E2E5E3; border-radius: 6px; padding: 20px 24px; display: flex; flex-direction: column; gap: 22px;">
+    <h2 style="margin: 0; font-size: 15px; font-weight: 600;">컴포넌트</h2>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px;">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <span style="font-size: 12px; font-weight: 600; color: #47534D;">버튼 · 높이 36 / 작게 30</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 4px; border: 1px solid #14705A; background: #14705A; color: #FFFFFF; font-weight: 600;">저장</button>
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 4px; border: 1px solid #CBD0CD; background: #FFFFFF; color: #16201B; font-weight: 500;">취소</button>
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 4px; border: 1px solid #E0670E; background: #E0670E; color: #FFFFFF; font-weight: 600;">분석 결과 보기</button>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+          <button type="button" style="height: 36px; padding: 0 12px; border-radius: 4px; border: 1px solid #F3C29F; background: #FBEDE2; color: #9D480A; font-weight: 600;">AI 분석</button>
+          <button type="button" style="height: 36px; padding: 0 12px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: #14705A; font-weight: 600;">더 보기</button>
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 4px; border: 1px solid #E8BDB8; background: #FFFFFF; color: #A8322A; font-weight: 600;">삭제</button>
+          <button type="button" style="height: 30px; padding: 0 10px; border-radius: 4px; border: 1px solid #E2E5E3; background: #FFFFFF; color: #47534D; font-size: 12px;">수정</button>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <span style="font-size: 12px; font-weight: 600; color: #47534D;">입력</span>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="fd-a" style="font-size: 12px; font-weight: 600; color: #2F3A35;">서비스 이름</label>
+          <input id="fd-a" type="text" placeholder="예: 영상 스트리밍" style="height: 36px; padding: 0 10px; border: 1px solid #CBD0CD; border-radius: 4px; color: #16201B; box-sizing: border-box;">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="fd-b" style="font-size: 12px; font-weight: 600; color: #2F3A35;">금액</label>
+          <input id="fd-b" type="text" value="12,9OO" aria-invalid="true" aria-describedby="fd-b-err" style="height: 36px; padding: 0 10px; border: 1px solid #C0362C; border-radius: 4px; color: #16201B; text-align: right; box-sizing: border-box;">
+          <span id="fd-b-err" style="font-size: 12px; color: #A8322A;">숫자만 입력할 수 있어요</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <span style="font-size: 12px; font-weight: 600; color: #47534D;">배지 · 상태</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <span style="font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 3px; background: #E8F1EF; color: #14705A;">확인됨</span>
+          <span style="font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 3px; background: #FBEDE2; color: #9D480A;">미확인</span>
+          <span style="font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 3px; background: #FBEDE2; color: #9D480A;">새 정기 결제</span>
+          <span style="font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 3px; background: #EEF0EF; color: #47534D;">해지</span>
+          <span style="font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 3px; border: 1px solid #F3C29F; color: #9D480A;">Beta</span>
+          <span style="font-size: 12px; padding: 2px 7px; border-radius: 3px; border: 1px solid #E2E5E3; background: #F9FAF9; color: #47534D;">콘텐츠</span>
+        </div>
+        <div style="display: flex; gap: 10px; padding: 10px 12px; border-radius: 4px; background: #FBEDE2; color: #9D480A; font-size: 12px; font-weight: 500;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+          <span>결제 금액이 예상보다 ₩1,240 많아요.</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px;">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <span style="font-size: 12px; font-weight: 600; color: #47534D;">탭 · 아이콘 + 라벨, 선택 시 연한 면과 2px 밑줄</span>
+        <div role="tablist" aria-label="탭 예시" style="display: flex; gap: 2px; border-bottom: 1px solid #E2E5E3;">
+          <button type="button" role="tab" aria-selected="true" style="display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border: 0; border-radius: 4px 4px 0 0; font-weight: 600; background: #E8F1EF; color: #14705A; box-shadow: inset 0 -2px 0 #14705A;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M7 15l4-4 3 3 5-6"></path></svg>
+            이번 달
+          </button>
+          <button type="button" role="tab" aria-selected="false" style="display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border: 0; border-radius: 4px 4px 0 0; font-weight: 600; background: transparent; color: #47534D;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg>
+            예정 <span style="font-size: 11px; padding: 0 6px; border-radius: 3px; background: #EEF0EF; color: #47534D;">5</span>
+          </button>
+          <button type="button" role="tab" aria-selected="false" style="display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border: 0; border-radius: 4px 4px 0 0; font-weight: 600; background: transparent; color: #47534D;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+            확인할 것 <span style="font-size: 11px; padding: 0 6px; border-radius: 3px; background: #FBEDE2; color: #9D480A;">2</span>
+          </button>
+        </div>
+        <span style="font-size: 12px; color: #5F6B65;">페이지 안 보기 전환에만 써요. 같은 데이터를 다른 기준으로 나눠 볼 때.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <span style="font-size: 12px; font-weight: 600; color: #47534D;">표 · 헤더 회색 면, 줄 구분선, 금액 오른쪽 정렬</span>
+        <div style="border: 1px solid #E2E5E3; border-radius: 6px; overflow: hidden;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+              <tr style="background: #F9FAF9; color: #5F6B65; text-align: left;">
+                <th scope="col" style="padding: 8px 14px; font-weight: 500; border-bottom: 1px solid #E2E5E3;">서비스</th>
+                <th scope="col" style="padding: 8px 14px; font-weight: 500; border-bottom: 1px solid #E2E5E3;">다음 결제</th>
+                <th scope="col" style="padding: 8px 14px; font-weight: 500; border-bottom: 1px solid #E2E5E3; text-align: right;">월 환산</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td style="padding: 9px 14px; border-bottom: 1px solid #EEF0EF; font-weight: 600;">AI 어시스턴트 Pro</td><td style="padding: 9px 14px; border-bottom: 1px solid #EEF0EF; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">2026-11-14</td><td style="padding: 9px 14px; border-bottom: 1px solid #EEF0EF; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;">₩30,360</td></tr>
+              <tr><td style="padding: 9px 14px; font-weight: 600;">음악 스트리밍</td><td style="padding: 9px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">2026-11-17</td><td style="padding: 9px 14px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;">₩10,900</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; padding-top: 18px; border-top: 1px solid #EEF0EF;">
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 13px; font-weight: 600;">폼 = 모달 또는 새 페이지</span><span style="font-size: 12px; color: #47534D;">필드 6개 이하는 520px 모달, 그보다 많거나 여러 단계면 새 페이지. 목록 안에 펼치지 않아요.</span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 13px; font-weight: 600;">셸 = 사이드바 · 헤더 · 푸터</span><span style="font-size: 12px; color: #47534D;">사이드바 272px, 좁은 화면에서는 위로 쌓여요. 푸터에 버전, 저장 위치, 개발자 링크.</span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 13px; font-weight: 600;">AI는 제안, 사람은 반영</span><span style="font-size: 12px; color: #47534D;">AI 결과는 주황 테두리 카드와 배지로 구분하고, 바꾸는 동작은 항상 버튼으로 확인받아요.</span></div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

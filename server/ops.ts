@@ -164,18 +164,12 @@ export const RESOURCES = {
       if (x.kind !== 'fixed' && all.some((o) => o.kind === x.kind && o.id !== id)) {
         return m(ONE_ONLY[x.kind as keyof typeof ONE_ONLY])
       }
-      const was = all.find((o) => o.id === id)
-      if (was?.kind === 'remainder' && x.kind !== 'remainder') return m('remainderKindLocked')
       return null
     },
     // A target that is no longer 'fixed' keeps no phase amounts.
     afterWrite: async (q, rec, uid, id, x) => {
       if (x.kind !== 'fixed') await deleteChildren(q, rec, uid, t.allocationTarget, id)
       return {}
-    },
-    beforeDelete: async (q, uid, id) => {
-      const [row] = await q.select().from(t.allocationTarget).where(and(eq(t.allocationTarget.userId, uid), eq(t.allocationTarget.id, id)))
-      return row?.kind === 'remainder' ? m('remainderNoDelete') : null
     },
   }),
 } satisfies Record<string, ListResource>

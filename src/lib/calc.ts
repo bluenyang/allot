@@ -1,4 +1,4 @@
-import type { AllocationKind, AllocationTarget, DayShift, Living, Phase, Plan, PlanChange, RemainderSplit, Settings, Subscription } from '../data/types'
+import type { AllocationKind, AllocationTarget, Cycle, DayShift, Living, Phase, Plan, PlanChange, RemainderSplit, Settings, Subscription } from '../data/types'
 
 export const DAY = 86_400_000
 
@@ -151,25 +151,209 @@ export interface Payment {
   dday: number
 }
 
+interface Seg { start: number; end: number; cycle: Cycle; bill: number; active: boolean }
+/** The schedule's frame: the billing day, the one cycle ahead of a future anchor that may still be charged, and the cycle segments between plan-change months. */
+function frame(base: Subscription, changes: PlanChange[]) {
+  const anchor = parseDate(base.nextDate)
+  const idx = (ym: string) => Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1
+  const ymAt = (i: number) => `${String(Math.floor(i / 12)).padStart(4, '0')}-${String((i % 12) + 1).padStart(2, '0')}`
+  const cuts = [...new Set(changes.filter((c) => c.subId === base.id && c.effective).map((c) => idx(c.effective!.slice(0, 7))))].sort((x, y) => x - y)
+  const segs: Seg[] = []
+  let bill = anchor.getMonth()
+  for (let i = 0; i <= cuts.length; i++) {
+    const start = i === 0 ? -Infinity : cuts[i - 1]!
+    // the plan is the same in every month of a segment: it only changes in a change month
+    const plan = i === 0 ? base : planAt(base, changes, ymAt(start))
+    if (i > 0 && plan.cycle === 'yearly' && segs[i - 1]!.cycle === 'monthly') bill = start % 12
+    segs.push({ start, end: i < cuts.length ? cuts[i]! : Infinity, cycle: plan.cycle, bill, active: plan.status === 'active' })
+  }
+  return { day: anchor.getDate(), segs, floor: addMonths(anchor, base.cycle === 'yearly' ? -12 : -1) }
+}
+const dateIn = (i: number, day: number) => {
+  const y = Math.floor(i / 12)
+  const m = i % 12
+  return new Date(y, m, Math.min(day, new Date(y, m + 1, 0).getDate()))
+}
+const monthIdx = (d: Date) => d.getFullYear() * 12 + d.getMonth()
+const okDate = (base: Subscription) => /^\d{4}-\d{2}-\d{2}$/.test(base.nextDate)
+
+/**
+ * The dates `base` is charged on within [from, end]. The schedule is fixed by the billing anchor
+ * (`nextDate`) and the scheduled plan changes alone, never by the window asked for: the billing day
+ * is the anchor's day, or the month's last day when the month is shorter (Jan 31 → Feb 28 → Mar 31).
+ * The plan's cycle is a series of segments between change months. A monthly segment charges every
+ * month; a yearly one once a year, in the billing month — the anchor's month, or the month a change
+ * from monthly to yearly came in (that month is charged too). Only the months of the window are
+ * visited, so an old anchor or a far window costs the same. Nothing before one cycle ahead of the
+ * anchor is charged (the date the user entered is the next one), and a cancelled plan is not charged.
+ */
+export function paymentDates(base: Subscription, changes: PlanChange[], from: Date, end: Date): Date[] {
+  if (!okDate(base)) return []
+  const { day, segs, floor } = frame(base, changes)
+  const lo = new Date(Math.max(from.getTime(), floor.getTime()))
+  const loI = monthIdx(lo)
+  const hiI = monthIdx(end)
+  const out: Date[] = []
+  for (const g of segs) {
+    if (!g.active) continue
+    for (let i = Math.max(loI, g.start); i <= Math.min(hiI, g.end - 1); i++) {
+      if (g.cycle === 'yearly' && i % 12 !== g.bill) continue
+      const d = dateIn(i, day)
+      if (d >= lo && d <= end) out.push(d)
+    }
+  }
+  return out
+}
+
+/**
+ * The next charge on or after `from`, by the same schedule as `paymentDates`, found segment by segment with
+ * no horizon: a first charge any distance away is found. Null only when no segment charges again (a cancelled plan).
+ */
+export function nextPayment(base: Subscription, changes: PlanChange[], from: Date): Date | null {
+  if (!okDate(base)) return null
+  const { day, segs, floor } = frame(base, changes)
+  const lo = new Date(Math.max(from.getTime(), floor.getTime()))
+  const loI = monthIdx(lo)
+  for (const g of segs) {
+    if (!g.active) continue
+    let i = Math.max(loI, g.start)
+    if (g.cycle === 'yearly') i += (((g.bill - i) % 12) + 12) % 12
+    if (dateIn(i, day) < lo) i += g.cycle === 'yearly' ? 12 : 1
+    if (i <= g.end - 1) return dateIn(i, day)
+  }
+  return null
+}
+
 export function upcomingPayments(subs: Subscription[], changes: PlanChange[], s: Settings, from: Date, days: number): Payment[] {
-  const end = new Date(from.getTime() + days * DAY)
+  const end = new Date(from.getFullYear(), from.getMonth(), from.getDate() + days)
   const out: Payment[] = []
   for (const base of subs) {
-    let d = nextOccurrence(base, from)
-    while (d && d <= end) {
+    for (const d of paymentDates(base, changes, from, end)) {
       const p = planAt(base, changes, ymOf(d))
-      if (p.status === 'active') {
-        out.push({ date: d, sub: p, krw: chargeKrw(p, s), dday: Math.round((d.getTime() - from.getTime()) / DAY) })
-      }
-      d = addMonths(d, p.cycle === 'yearly' ? 12 : 1)
+      out.push({ date: d, sub: p, krw: chargeKrw(p, s), dday: Math.round((d.getTime() - from.getTime()) / DAY) })
     }
   }
   return out.sort((a, b) => a.date.getTime() - b.date.getTime())
 }
 
+/** Where a payment sits on the 31-day strip, in percent of its width (kept 2..97 so a dot stays inside). */
+export const dotPercent = (dday: number, days = 31) => Math.min(97, Math.max(2, (dday / days) * 100))
+
+/**
+ * The dots of the 31-day strip: payments (sorted by date) whose dots would sit closer than `dotPx` on a strip
+ * `widthPx` wide share one dot. A cluster keeps all its members (indexes into `ddays`); its dot sits where its
+ * first member does (spec 010 A-27).
+ */
+export function clusterDots(ddays: number[], widthPx: number, dotPx: number, days = 31): { pct: number; members: number[] }[] {
+  const out: { pct: number; members: number[] }[] = []
+  let anchor = -Infinity
+  ddays.forEach((d, i) => {
+    const pct = dotPercent(d, days)
+    const x = (pct / 100) * widthPx
+    const last = out[out.length - 1]
+    if (last && x - anchor < dotPx) last.members.push(i)
+    else { out.push({ pct, members: [i] }); anchor = x }
+  })
+  return out
+}
+
+/** The first calendar day after `from` + `days` (local dates; no millisecond math, so a clock change cannot move it). */
+const dayPlus = (from: Date, days: number) => new Date(from.getFullYear(), from.getMonth(), from.getDate() + days)
+
+export interface LaterPayment {
+  date: Date
+  sub: Subscription
+  krw: number
+  /** why it is listed: a yearly charge, or a new plan / amount */
+  reason: 'yearly' | 'plan'
+}
+
+/**
+ * Payments after the next 31 days, for the "31일 이후" list (spec 010 S-6): within one year of `from`,
+ * per subscription the first payment that is yearly or charges a new plan or amount (a plan change
+ * that comes in), at most `max` rows (3), the soonest first. A subscription whose only payments
+ * are the plain monthly ones it pays now is left out.
+ */
+export function paysAfter31(subs: Subscription[], changes: PlanChange[], s: Settings, from: Date, max = 3): LaterPayment[] {
+  const start = dayPlus(from, 31)
+  const end = dayPlus(from, 365)
+  const out: LaterPayment[] = []
+  for (const base of subs) {
+    const now = planAt(base, changes, ymOf(from))
+    for (const d of paymentDates(base, changes, start, end)) {
+      if (d <= start) continue
+      const p = planAt(base, changes, ymOf(d))
+      const krw = chargeKrw(p, s)
+      const yearly = p.cycle === 'yearly'
+      const changed = p.plan !== now.plan || krw !== chargeKrw(now, s)
+      if (yearly || changed) {
+        out.push({ date: d, sub: p, krw, reason: yearly ? 'yearly' : 'plan' })
+        break
+      }
+    }
+  }
+  return out.sort((a, b) => a.date.getTime() - b.date.getTime()).slice(0, max)
+}
+
+export interface Leftover {
+  /** the subscription transfer of `ym` (after rounding up) */
+  transfer: number
+  /** this transfer's day, and the day before the next month's transfer day (YYYY-MM-DD, both counted) */
+  from: string
+  to: string
+  /** what is charged in that window */
+  paid: number
+  count: number
+  /** transfer − paid; negative = the transfer does not cover the window */
+  left: number
+}
+
+/**
+ * "이체 후 남는 금액" (spec 010 D-9): the subscription transfer of `ym` minus the payments from that
+ * transfer day to the day before the next month's transfer day. This is not an account balance
+ * (the app holds none). `off` holds the holidays for the day shift, as in `monthDates`.
+ */
+export function leftoverAfterTransfer(
+  state: { subscriptions: Subscription[]; planChanges: PlanChange[]; settings: Settings },
+  ym: string,
+  off: ReadonlySet<string> = new Set(),
+): Leftover {
+  const { subscriptions, planChanges, settings } = state
+  const shift = settings.dayShift ?? 'none'
+  const from = monthDay(ym, settings.transferDay, shift, off).date
+  const nextStart = monthDay(addYm(ym, 1), settings.transferDay, shift, off).date
+  const startD = parseDate(from)
+  const last = ymd(dayPlus(parseDate(nextStart), -1))
+  const to = last < from ? from : last
+  // Ask for a few days more than the window, then cut by date: no clock arithmetic decides the edge.
+  const span = Math.round((parseDate(to).getTime() - startD.getTime()) / DAY) + 3
+  const inWindow = upcomingPayments(subscriptions, planChanges, settings, startD, span).filter((p) => ymd(p.date) >= from && ymd(p.date) <= to)
+  const paid = inWindow.reduce((a, p) => a + p.krw, 0)
+  const transfer = transferAt(subscriptions, planChanges, settings, ym).transfer
+  return { transfer, from, to, paid, count: inWindow.length, left: transfer - paid }
+}
+
+/** What is left of the pay when no target takes the remainder: the pay minus every target (negative = short). 0 when a remainder target exists. */
+export function unallocated(dist: Pick<Distribution, 'remainder' | 'remainderTarget'>): number {
+  return dist.remainderTarget ? 0 : dist.remainder
+}
+
 // ---------- payroll ----------
 export function phaseAt(phases: Phase[], ym: string): Phase | null {
   return phases.find((p) => p.from <= ym && (p.to === null || ym <= p.to)) ?? null
+}
+
+/**
+ * The phase numbers shown on screen: 1, 2, 3 … in the order of the start months (the screen never
+ * asks for a symbol). Phases that start in the same month keep their list order. Keyed by phase id.
+ */
+export function phaseNumbers(phases: Pick<Phase, 'id' | 'from'>[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  phases
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => (a.p.from < b.p.from ? -1 : a.p.from > b.p.from ? 1 : a.i - b.i))
+    .forEach((x, n) => { out[x.p.id] = n + 1 })
+  return out
 }
 
 export interface AllocRow {

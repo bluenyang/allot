@@ -2,6 +2,7 @@
 // server), the server's messages come in the screen language,
 // and the three English amount units. The shared admin account is put back to "follow the browser".
 // The sign-in screen and sign-out are in 00-i18n-signout.spec.ts (they sign in; the login rate limit is 5 a minute).
+import { choose } from './helpers'
 import { expect, test, type Page } from '@playwright/test'
 
 const MARK = `i18n-${Date.now().toString(36)}`
@@ -9,7 +10,7 @@ const MARK = `i18n-${Date.now().toString(36)}`
 /** Pick a language in 설정 › 일반 and wait until it is saved. */
 async function pickLanguage(page: Page, value: 'browser' | 'ko' | 'en') {
   const saved = page.waitForResponse((r) => r.url().endsWith('/api/preferences') && r.request().method() === 'PUT' && r.ok())
-  await page.locator('#g-lang').selectOption(value)
+  await choose(page.locator('#g-lang'), value)
   await saved
 }
 
@@ -21,7 +22,7 @@ async function openGeneral(page: Page) {
 test.afterEach(async ({ page }) => {
   // whatever happened, the shared account follows the browser again
   await openGeneral(page)
-  if ((await page.locator('#g-lang').inputValue()) !== 'browser') await pickLanguage(page, 'browser')
+  if ((await page.locator('#g-lang').getAttribute('data-value')) !== 'browser') await pickLanguage(page, 'browser')
 })
 
 test('English from the settings: menus, titles, html lang, kept after a reload', async ({ page }) => {
@@ -58,8 +59,9 @@ test('the server answers an invalid save in English', async ({ page }) => {
   await page.getByRole('button', { name: '+ Add set' }).click()
   const s = page.getByRole('form', { name: 'Add holiday set' })
   await s.getByLabel('Set name').fill(`${MARK} set`)
+  await s.getByRole('button', { name: 'Next' }).click()
   await s.getByLabel('Name', { exact: true }).fill('Founding day')
-  await s.getByLabel('Type').selectOption('rrule')
+  await choose(s.getByLabel('Type'), 'rrule')
   await s.getByLabel('RRULE').fill('FREQ=MONTHLY')
   await s.getByRole('button', { name: 'Save' }).click()
   await expect(s.getByRole('alert')).toContainText('Holiday rules only support FREQ=YEARLY')
@@ -77,5 +79,6 @@ test('amount units in English: ₩1,234 · ₩1,234K · ₩123.4×10K', async ({
   await expect(total).toHaveText(/^[−(]?₩[\d,]+K\)?$/)
   await unit('×10,000').click()
   await expect(total).toHaveText(/^[−(]?₩[\d,]+(\.\d)?×10K\)?$/)
-  await page.getByRole('button', { name: 'Cancel' }).click() // drop the unsaved draft
+  await unit('Won').click() // the unit is saved at once: put the shared account back
+  await expect(page.getByRole('status').filter({ hasText: 'Saved right away.' })).toBeVisible()
 })
