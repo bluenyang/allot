@@ -3,7 +3,7 @@
 // subscription, the two steps, and the same flow once in English. Every subscription made here carries
 // the test mark and is deleted at the end (a subscription takes its plan changes with it).
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { MARK as RUN, choose, optionTexts, go, saveSheet, sheet } from './helpers'
+import { MARK as RUN, choose, optionTexts, fillDate, go, readDate, saveSheet, sheet } from './helpers'
 
 const MARK = `${RUN}-sub`
 type Sub = { id: string; name: string; amount: number; currency: string; vat: number; status: string; cycle: string; plan: string }
@@ -33,7 +33,7 @@ async function addSub(page: Page, name: string, o: { currency?: 'KRW' | 'USD'; a
   if (o.currency === 'USD') await s.getByRole('button', { name: 'USD', exact: true }).click()
   await s.getByLabel('금액', { exact: true }).fill(o.amount)
   if (o.vat) await s.getByLabel('VAT (%)').fill(o.vat)
-  await s.getByLabel('다음 결제일').fill('2031-01-15')
+  await fillDate(s.getByRole('group', { name: '다음 결제일' }), '2031-01-15')
   await saveSheet(page, '구독 추가')
 }
 
@@ -102,7 +102,7 @@ test('(V-6) a cancelled subscription is still a target; an undated change and th
   await choose(s.getByLabel('대상 구독'), { label: sub.name })
   await expect(s.getByText('지금 플랜: ')).toContainText('해지')
   await s.getByLabel('날짜 미정').check()
-  await expect(s.getByLabel('적용일')).toBeDisabled()
+  await expect(s.getByRole('group', { name: '적용일' }).getByRole('spinbutton').first()).toHaveAttribute('aria-disabled', 'true')
   await expect(s.getByText('날짜를 정하기 전까지는')).toBeVisible()
   await s.getByRole('button', { name: '다음' }).click()
   await s.getByRole('group', { name: '상태' }).getByRole('button', { name: '구독 중' }).click()
@@ -157,7 +157,7 @@ test('(V-10) in English: the same two-step add, a plan change, delete asks first
     await add.getByRole('button', { name: 'Next' }).click()
     await expect(add.getByRole('listitem').filter({ hasText: 'Payment' })).toHaveAttribute('aria-current', 'step')
     await add.getByLabel('Amount', { exact: true }).fill('4,500')
-    await add.getByLabel('Next payment date').fill('2031-01-15')
+    await fillDate(add.getByRole('group', { name: 'Next payment date' }), '2031-01-15')
     await add.getByRole('button', { name: 'Save' }).click()
     await expect(add).toBeHidden()
     expect((await mine(request)).map((x) => x.amount)).toEqual([4500])
@@ -268,7 +268,7 @@ test('(A-9) the editor: Enter on step 1 goes on, Back keeps both steps, a server
   await s.getByLabel('서비스 이름').press('Enter')
   await expect(s.getByRole('listitem').filter({ hasText: '결제' })).toHaveAttribute('aria-current', 'step')
   await s.getByLabel('금액', { exact: true }).fill('99999999999') // past what the server takes
-  await s.getByLabel('다음 결제일').fill('2031-01-15')
+  await fillDate(s.getByRole('group', { name: '다음 결제일' }), '2031-01-15')
   await s.getByRole('button', { name: '저장' }).click()
   await expect(s.getByRole('alert')).toContainText('금액이 너무 커요.')
   await expect(s.getByRole('listitem').filter({ hasText: '결제' })).toHaveAttribute('aria-current', 'step')
@@ -277,7 +277,7 @@ test('(A-9) the editor: Enter on step 1 goes on, Back keeps both steps, a server
   await expect(s.getByLabel('플랜')).toHaveValue('플랜값')
   await s.getByRole('button', { name: '다음' }).click()
   await expect(s.getByLabel('금액', { exact: true })).toHaveValue('99,999,999,999')
-  await expect(s.getByLabel('다음 결제일')).toHaveValue('2031-01-15')
+  expect(await readDate(s.getByRole('group', { name: '다음 결제일' }))).toBe('2031-01-15')
   await s.getByRole('button', { name: '취소', exact: true }).click()
   await expect(s).toBeHidden()
 })

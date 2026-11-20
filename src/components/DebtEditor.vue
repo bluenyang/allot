@@ -62,7 +62,7 @@ watch(other, (v) => { if (otherOpen.value && edit.value) edit.value.method = v }
 <template>
   <EditSheet
     v-if="edit" v-model:step="step" :title="title" :steps="steps" :error="error" :busy="busy" :hint="t('timeline.saveHint')"
-    :can-advance="canAdvance" :can-delete="!!edit.id" @save="save" @cancel="close" @delete="remove"
+    :can-advance="canAdvance" :can-delete="!!edit.id" :delete-name="edit.name" @save="save" @cancel="close" @delete="remove"
   >
     <template #default="{ step: s }">
       <template v-if="s === 0">
@@ -100,5 +100,4 @@ watch(other, (v) => { if (otherOpen.value && edit.value) edit.value.method = v }
 <style scoped>
 .req::after{content:" *";color:var(--accent-text)}
 .flabel{font-size:12px;color:var(--text-2);font-weight:600}
-.seg{justify-self:start}
 </style>

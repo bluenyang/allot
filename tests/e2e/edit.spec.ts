@@ -2,7 +2,7 @@
 // and the result survives a reload (it came back from PostgreSQL).
 // Each test cleans up after itself so the seeded data is left as it was.
 import { expect, test } from '@playwright/test'
-import { MARK, choose, deleteInSheet, go, noSaveError, reload, saveSheet, sheet } from './helpers'
+import { MARK, choose, deleteInSheet, fillDate, go, noSaveError, reload, saveSheet, sheet } from './helpers'
 
 test.describe('login', () => {
   test.use({ storageState: { cookies: [], origins: [] } })
@@ -376,7 +376,7 @@ test('subscriptions and plan changes: 2-step add, edit (with memo), plan change,
   await add.getByRole('button', { name: '다음' }).click()
   await expect(add.getByLabel('금액', { exact: true })).toBeVisible()
   await add.getByLabel('금액', { exact: true }).fill('9900')
-  await add.getByLabel('다음 결제일').fill('2031-01-15')
+  await fillDate(add.getByRole('group', { name: '다음 결제일' }), '2031-01-15')
   await add.getByRole('button', { name: '메모 추가' }).click()
   await add.getByLabel('메모').fill('메모1')
   await saveSheet(page, '구독 추가')

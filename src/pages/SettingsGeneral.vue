@@ -5,6 +5,7 @@ import Seg from '../components/Seg.vue'
 import Soon from '../components/Soon.vue'
 import Switch from '../components/Switch.vue'
 import { applyPreference, lang, t, type Lang, type MessageKey } from '../i18n'
+import { showToast } from '../lib/toast'
 import { saveItem, savePreferences, saveSettings, sessionScope, status, store } from '../lib/store'
 import { runSteps } from '../lib/session-guard'
 import { useEditor } from '../lib/useEditor'
@@ -24,23 +25,21 @@ const CalendarView = defineAsyncComponent(() => import('../components/CalendarVi
 const g = (k: string) => t(`settings.general.${k}` as MessageKey)
 
 // ── 화면: language and theme apply and save at once ──
-const msg = ref('')
 const langChoice = computed(() => store.preferences.language ?? 'browser')
 /** The saves of this screen go one after the other: a pick made while one is on its way waits, then is merged onto what the server last answered (spec 010 A-21). */
 let queue: Promise<unknown> = Promise.resolve()
-/** Save a preference, then (in the same session only) show what it did. */
+/** Save a preference, then (in the same session only) tell what it did in a toast: no line in the card, so the card never changes height. */
 function saveNow(patch: Partial<Preferences>, after?: () => void, done = g('themeApplied')) {
   const scope = sessionScope()
   const run = async () => {
-    msg.value = ''
     try {
       const ran = await runSteps(scope, [
         () => savePreferences({ ...store.preferences, ...patch }), // read now, after the earlier save has finished
         async () => { after?.() },
       ])
-      if (ran) msg.value = done
+      if (ran) showToast(done)
     } catch (e) {
-      if (scope.alive()) msg.value = (e as Error).message
+      if (scope.alive()) showToast((e as Error).message, { error: true })
     }
   }
   const next = queue.then(run)
@@ -212,7 +211,6 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
         <div class="field"><label for="g-tz">{{ g('timezone') }}</label>
           <Soon tag="div" class="soon-fld"><Select id="g-tz" disabled model-value="tz" :options="[{ value: 'tz', label: 'Asia/Seoul (UTC+09:00)' }]" /></Soon>
           <span class="hint">{{ g('timezoneDesc') }}</span></div>
-        <p v-if="msg" class="small subtle" role="status">{{ msg }}</p>
       </div></section>
     </div>
 
@@ -329,7 +327,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
     </EditSheet>
 
     <EditSheet v-if="setEd.item.value" :key="setEd.item.value.id || 'new'" v-model:step="step" :title="setEd.item.value.id ? g('setEditTitle') : g('setAddTitle')" :error="setEd.error.value" :busy="setEd.busy.value"
-      :steps="[g('stepSet'), g('stepRules')]" :can-advance="canAdvance" :hint="setFoot" :can-delete="!!setEd.item.value.id" :desc="g('setDesc')" @save="saveSet" @cancel="setEd.close" @delete="setEd.remove">
+      :steps="[g('stepSet'), g('stepRules')]" :can-advance="canAdvance" :hint="setFoot" :can-delete="!!setEd.item.value.id" :delete-name="setEd.item.value.name" :desc="g('setDesc')" @save="saveSet" @cancel="setEd.close" @delete="setEd.remove">
       <template v-if="step === 0">
         <div class="field"><label for="hs-name">{{ g('setName') }} <span class="req">*</span></label><input id="hs-name" v-model="setEd.item.value.name" class="in" :placeholder="g('setNamePh')"><span class="hint">{{ g('setNameHint') }}</span></div>
       </template>
@@ -375,7 +373,9 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 .fmtgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);overflow:hidden}
 .fmtgrid .pv{border-left:1px solid var(--border);background:var(--surface-2);min-width:0}
 .pvh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:14px 18px 10px}
-.pvh b{font-size:13px}
+.pvh b{font-size:13px;white-space:nowrap}
+.pvh .hint{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv td:nth-child(2){max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* one line per row, so the card keeps its height whichever format is picked */
 .pv table{font-size:13px;width:100%}
 .pv th{background:var(--fill);border-top:0}
 .pv td.mono{font-size:12px;color:var(--muted);white-space:nowrap}

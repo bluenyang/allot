@@ -24,11 +24,12 @@ export async function saveSheet(page: Page, title: string | RegExp, button = '�
   await expect(s).toBeHidden()
 }
 
-/** Press-twice delete in the open sheet. */
+/** Delete in the open sheet: the delete button asks in a confirmation dialog (spec 010 S-14); confirm it. */
 export async function deleteInSheet(page: Page, title: string | RegExp) {
   const s = sheet(page, title)
   await s.getByRole('button', { name: '삭제' }).click()
-  await s.getByRole('button', { name: '한 번 더 누르면 삭제' }).click()
+  const ask = page.getByRole('alertdialog')
+  await ask.getByRole('button', { name: '삭제', exact: true }).click()
   await expect(s).toBeHidden()
 }
 
@@ -56,4 +57,23 @@ export async function optionTexts(trigger: Locator) {
   await page.keyboard.press('Escape')
   await expect(list).toBeHidden()
   return texts
+}
+
+/**
+ * Type a day into a DateInput (spec 010 S-14): click its first part and type year, month and day in the order the
+ * field shows them (the language decides it); each part moves on by itself.
+ * `field` is the input's group (`page.getByRole('group', { name: '다음 결제일' })`).
+ */
+export async function fillDate(field: Locator, ymd: string) {
+  const [y, m, d] = ymd.split('-')
+  const order = await field.locator('[data-reka-date-field-segment]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.rekaDateFieldSegment))
+  await field.getByRole('spinbutton').first().click()
+  await field.page().keyboard.type(order.filter((p) => p === 'year' || p === 'month' || p === 'day').map((p) => (p === 'year' ? y : p === 'month' ? m : d)).join(''))
+}
+
+/** The `YYYY-MM-DD` a DateInput shows, from its parts (year, month, day by their names). */
+export async function readDate(field: Locator) {
+  const parts = await field.locator('[data-reka-date-field-segment]').evaluateAll((els) => els.map((e) => [(e as HTMLElement).dataset.rekaDateFieldSegment, (e as HTMLElement).innerText.trim()]))
+  const get = (n: string) => parts.find(([k]) => k === n)?.[1] ?? ''
+  return `${get('year').padStart(4, '0')}-${get('month').padStart(2, '0')}-${get('day').padStart(2, '0')}`
 }

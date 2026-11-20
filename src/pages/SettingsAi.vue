@@ -246,7 +246,7 @@ const PROVIDERS = [['Anthropic Claude', 'AC'], ['OpenAI', 'OA'], ['Google Gemini
     <EditSheet v-if="draft" :title="t('settingsAi.newKeyTitle')" :desc="t('settingsAi.shownOnceNote')" :error="draftError" :busy="busy" :save-label="t('settingsAi.makeBtn')" :hint="expFoot" @save="make" @cancel="draft = null">
       <div class="field"><label for="k-name">{{ t('settingsAi.nameLabel') }} <span class="req">*</span></label><input id="k-name" v-model="draft.name" class="in" maxlength="32" autocomplete="off" :placeholder="t('settingsAi.namePh')"><span class="hint">{{ t('settingsAi.nameHint') }}</span></div>
       <div class="field"><span id="k-exp" class="lbl">{{ t('settingsAi.expiry') }}</span>
-        <div class="seg full" role="group" aria-labelledby="k-exp">
+        <div class="seg" role="group" aria-labelledby="k-exp">
           <button v-for="o in expOptions" :key="o.id" type="button" :aria-pressed="draft.expires === o.id ? 'true' : 'false'" @click="draft.expires = o.id">{{ o.label }}</button>
         </div>
         <span v-if="!noExpiry" class="hint">{{ t('settingsAi.noExpiryOff') }}</span></div>
@@ -344,8 +344,6 @@ td b{font-weight:600}
 .fresh h2{color:var(--accent-text)}
 .keybox{display:flex;gap:8px;align-items:center}
 .keybox .in{flex:1;min-width:0;height:40px}
-.seg.full{display:flex}
-.seg.full button{flex:1;justify-content:center}
 .choices{display:flex;flex-direction:column;gap:8px}
 .choice{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);color:var(--text);text-align:left;cursor:pointer;font:inherit}
 .choice:hover{border-color:var(--border-strong)}

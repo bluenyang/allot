@@ -15,6 +15,7 @@ import { fmtMoney } from '../lib/display'
 import { addYm, monthlyKrw, num, planAt, today, transferAt, ymOf } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
 import Select from './Select.vue'
+import DateInput from './DateInput.vue'
 
 const props = defineProps<{ initial: PlanChange | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -126,7 +127,7 @@ function canAdvance(from: number) {
         </div>
         <div class="field">
           <label for="c-eff">{{ t('subscriptions.effective') }}</label>
-          <input id="c-eff" v-model="effective" class="in" type="date" :disabled="undated">
+          <DateInput id="c-eff" v-model="effective" :disabled="undated" :aria-label="t('subscriptions.effective')" />
           <label class="undated" for="c-undated"><input id="c-undated" type="checkbox" :checked="undated" @change="toggleUndated(($event.target as HTMLInputElement).checked)">{{ t('subscriptions.noDate') }}</label>
           <span class="hint">{{ undated ? t('subscriptions.dateHintUndated') : t('subscriptions.dateHintDated') }}</span>
         </div>

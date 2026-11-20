@@ -375,7 +375,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
       <section v-if="tab === 'checks'" class="card checks">
         <div class="card-hd"><h2>{{ t('dashboard.checks') }}</h2><button class="btn sm add" type="button" :aria-label="t('dashboard.addCheckLabel')" @click="adding = 'todo'">{{ t('dashboard.addBtn') }}</button></div>
         <EditSheet v-if="chkEd.item.value" :key="chkEd.item.value.id || 'new'" :title="t('dashboard.editCheck')" :error="chkEd.error.value" :busy="chkEd.busy.value"
-          :can-delete="!!chkEd.item.value.id" @save="chkEd.save" @cancel="chkEd.close" @delete="chkEd.remove">
+          :can-delete="!!chkEd.item.value.id" :delete-name="chkEd.item.value.text" @save="chkEd.save" @cancel="chkEd.close" @delete="chkEd.remove">
           <div class="field" style="grid-column:1/-1"><label for="ck-text">{{ t('dashboard.details') }}</label><input id="ck-text" v-model="chkEd.item.value.text" class="in"></div>
         </EditSheet>
         <ul class="items">

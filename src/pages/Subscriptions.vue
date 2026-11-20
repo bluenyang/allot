@@ -14,6 +14,7 @@ import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../l
 import { addYm, changesIn, monthlyKrw, nextPayment, num, planAt, today, transferAt, usd, ymOf, ymRange } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
+import MonthInput from '../components/MonthInput.vue'
 
 // The editors load when one is opened: the first screen stays small.
 const SubEditor = defineAsyncComponent(() => import('../components/SubEditor.vue'))
@@ -96,13 +97,6 @@ onDeactivated(() => window.removeEventListener('hashchange', checkAdd))
 const from = ref(ymOf(now))
 const nextDated = computed(() => store.planChanges.filter((c) => c.effective && c.effective.slice(0, 7) > ymOf(now)).map((c) => c.effective!.slice(0, 7)).sort()[0])
 const to = ref(nextDated.value ?? addYm(ymOf(now), 1))
-/** A month field keeps the old month when it is emptied. */
-function pickMonth(which: 'ym' | 'from' | 'to' | 'chartFrom', e: Event) {
-  const el = e.target as HTMLInputElement
-  const r = { ym, from, to, chartFrom }[which]
-  if (/^\d{4}-\d{2}$/.test(el.value)) r.value = el.value
-  else el.value = r.value
-}
 const cmp = computed(() => {
   const a = transferAt(store.subscriptions, store.planChanges, store.settings, from.value)
   const b = transferAt(store.subscriptions, store.planChanges, store.settings, to.value)
@@ -227,7 +221,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
             <label class="fsearch"><Icon name="search" /><input v-model="q" type="search" :aria-label="t('subscriptions.searchLabel')" :placeholder="t('subscriptions.searchPh')"></label>
             <Select v-model="cat" class="fsel" :aria-label="t('subscriptions.category')" :options="[{ value: '', label: t('subscriptions.allCategories') }, ...CATEGORY_IDS.map((k) => ({ value: k, label: catLabel(k) }))]" />
             <Select v-model="path" class="fsel" :aria-label="t('subscriptions.path')" :options="[{ value: '', label: t('subscriptions.allPaths') }, ...PATH_IDS.map((k) => ({ value: k, label: pathLabel(k) }))]" />
-            <label class="fmonth">{{ t('subscriptions.baseMonth') }}<input class="in" type="month" :value="ym" @change="pickMonth('ym', $event)"></label>
+            <label class="fmonth">{{ t('subscriptions.baseMonth') }}<MonthInput v-model="ym" /></label>
             <span class="hint count">{{ t('subscriptions.count', { n: shown.length }) }}</span>
           </div>
 
@@ -274,9 +268,9 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
         <!-- 전환 미리보기 -->
         <template v-else-if="tab === 'preview'">
           <div class="frow">
-            <label class="fmonth">{{ t('subscriptions.compareMonth') }}<input class="in" type="month" :value="from" @change="pickMonth('from', $event)"></label>
+            <label class="fmonth">{{ t('subscriptions.compareMonth') }}<MonthInput v-model="from" /></label>
             <span aria-hidden="true">→</span>
-            <input class="in fm2" type="month" :aria-label="t('subscriptions.afterMonth')" :value="to" @change="pickMonth('to', $event)">
+            <MonthInput v-model="to" class="fm2" :aria-label="t('subscriptions.afterMonth')" />
           </div>
           <div class="tbl">
             <table>
@@ -325,7 +319,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
           <p class="foot">{{ t('subscriptions.calcFoot') }}</p>
           <div class="frow chartbar">
             <h2 class="sec">{{ t('subscriptions.needed12') }} <small class="hint">{{ t('subscriptions.clickBar') }}</small></h2>
-            <label class="fmonth">{{ t('subscriptions.startMonth') }}<input class="in" type="month" :value="chartFrom" @change="pickMonth('chartFrom', $event)"></label>
+            <label class="fmonth">{{ t('subscriptions.startMonth') }}<MonthInput v-model="chartFrom" /></label>
           </div>
           <div class="chartwrap"><TransferChart :points="series" :selected="pick" @pick="(m) => (pick = m)" /></div>
           <div class="tbl share">
@@ -365,7 +359,8 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
 .frow.end{justify-content:flex-end}
 .vr{width:1px;height:24px;background:var(--border)}
 .fmonth{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
-.fmonth input,.fm2{width:150px;height:34px;font-size:13px}
+.fmonth .dpi,.fm2{width:150px}
+.fmonth :deep(.in),.fm2 :deep(.in){height:34px;font-size:13px}
 .count{margin-left:auto}
 .fsearch{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);flex:1 1 180px;max-width:260px;color:var(--subtle);background:var(--input)}
 .fsearch:focus-within{border-color:var(--primary-text)}
