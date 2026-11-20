@@ -117,6 +117,14 @@ The shared components are in `src/components/`; their styles are in `src/style.c
 ### Select (`Select.vue`, `.in.sel-t` + `.sel-pop`)
 A button that looks like `.in` (same height, border, radius and focus colour; a chevron at the right) opening a list on Reka's Select. The list is a card (`--surface`, `--border`, `--r-card`, `--shadow-pop`), one option per row (36px, 44px on a phone), the highlighted row on `--fill`, the selected one in `--primary-text` with a check on the right; it is as wide as the trigger at least and stays 8px inside the screen. API close to the native one: `v-model`, `options` (`{ value, label, disabled? }`, values string or number and given back as they were), `id` (a `<label for>` names it), `aria-label` / `aria-labelledby`, `placeholder`, `disabled`. A stored value that is not among the options is shown and stays selected (an extra option). Inside a dialog the list opens inside it, and Escape closes the list only. Keyboard: Enter, Space or the arrows open it, arrows move, Enter picks, Escape closes and the focus returns to the trigger.
 
+**No native date or month input.** The browser's `date` and `month` inputs are not used anywhere: the calendar they open cannot follow the tokens and differs per platform. Use `DateInput` for a day and `MonthInput` for a month.
+
+### DateInput (`DateInput.vue`, `.in.dpf` + `.dp-pop`)
+A day field on Reka's DatePicker: three typed parts in the language's order (digits and arrows move through them; each part moves on by itself) and a calendar button inside the field that opens a calendar card (`--surface`, `--border`, `--r-card`, `--shadow-pop`; cells 34px, 40px on a phone; the selected day on `--primary`, today with a `--primary-text` ring, Saturday `--sat` and Sunday `--sun`, days outside `min`/`max` dimmed). The model is the stored string `YYYY-MM-DD`, or '' for none; a half-typed date is ''. `min` / `max` dim days and mark the field invalid; a typed day outside them is still taken. `clearable` adds a clear button, `aria-label` names the field. The card opens inside the dialog that holds the field and Escape closes it only.
+
+### MonthInput (`MonthInput.vue`, `.in.dpf` + `.dp-pop.mp`)
+A month field: a text field (`YYYY-MM`; `2027-3`, `2027.03` and `202703` are read too) with a calendar button that opens a year card of twelve months (Reka MonthPicker; the selected month on `--primary`, this month ringed). The model is the stored string `YYYY-MM`, or ''. A full month is taken as it is typed; leaving the field puts back the last month when the text is not one, unless `clearable` and it was emptied. `min` / `max` dim months; a typed month outside them is still taken. Same card and Escape rule as `DateInput`.
+
 ### Buttons
 Class `.btn` (`.pri`, `.bad`, `.sm`, `.icon`, `.ghost`). Height 36px, small 30px (inside a modal 40 and 32; login 44). Primary is `--primary` fill with `--primary-ink`; secondary is a bordered surface; the signal button is `--accent`; delete (`.bad`) is bordered in `--neg-text`. One primary button per view or modal.
 
@@ -127,7 +135,7 @@ A form is a column of rows: label above, control below, optional help text under
 A text input with a right-aligned number, an optional prefix or suffix, and thousands separators while typing. It accepts everything a number input accepts (decimals, with or without commas, zero); it never narrows what the server takes.
 
 ### EditSheet (`EditSheet.vue`, `.modal`)
-The modal form. Width 520px by default (`width` also takes 440, 560 or 640; full width minus 32px on a phone), radius `--r-pop`, `--border-strong` border, `--shadow-pop`, over `--backdrop`. Header with the title and a close button; the body scrolls; the footer holds the actions right-aligned (cancel left of the primary). A stepped modal puts a centred step list (`ol.stp`, labelled for the steps, short connectors) in the header and the footer moves between steps.
+The modal form. Its delete button asks in a `ConfirmDialog` ("{name}을(를) 삭제할까요?", `deleteName` names the item; the cancel button has the first focus); there is no press-twice delete. Width 520px by default (`width` also takes 440, 560 or 640; full width minus 32px on a phone), radius `--r-pop`, `--border-strong` border, `--shadow-pop`, over `--backdrop`. Header with the title and a close button; the body scrolls; the footer holds the actions right-aligned (cancel left of the primary). A stepped modal puts a centred step list (`ol.stp`, labelled for the steps, short connectors) in the header and the footer moves between steps.
 
 ### ConfirmDialog (`ConfirmDialog.vue`, `.cdlg`)
 A 440px `alertdialog` with a short sentence and two buttons; the destructive one is named by its action, not "OK" (`danger` makes it `.bad`).
@@ -136,7 +144,7 @@ A 440px `alertdialog` with a short sentence and two buttons; the destructive one
 On a phone a bottom sheet replaces a popover or the "more" menu: radius `--r-pop` on top, a grabber, rows at least 56px tall, closes on Escape, the backdrop or a drag down.
 
 ### Toast (`Toast.vue`, `.toast`)
-A short message at the bottom, radius `--r-pop`, `--shadow-pop`. It tells what happened ("Saved"), never asks a question, and goes away by itself; an error (`role="alert"`) stays until dismissed.
+A short message at the bottom, radius `--r-pop`, `--shadow-pop`. It tells what happened ("Saved"), never asks a question, and goes away by itself; an error (`role="alert"`) stays until dismissed. A setting that saves the moment it is changed says so here, never in a line inside its card (the card would change height).
 
 ### Seg (`Seg.vue`, `.seg`)
 Two to five exclusive options (Reka ToggleGroup, single) on one track (`--fill` ground, 5px outer radius, 4px buttons); the selected button (`aria-pressed`) is raised on the surface. `bordered` gives the joined variant with a `--sel` selected face. Use it for a mode, not for navigation.
