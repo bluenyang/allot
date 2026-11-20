@@ -410,13 +410,15 @@ pre code{background:none;padding:0;font-size:inherit}
 @media (max-width:760px){.panel > .card-h:first-child,.panel > h3:first-child{margin:-16px -16px 14px}}
 
 /* ---------- inside a modal (EditSheet, ConfirmDialog): larger controls (spec 010 SH-30) ---------- */
-dialog .field label,dialog .lbl{font-size:13px}
-dialog .in{height:44px;padding:0 12px;font-size:14px}
-dialog button.in.sel-t{padding-right:10px}
-dialog textarea.in{height:auto;padding:10px 12px}
-dialog .btn{height:40px}
-dialog .btn.sm,dialog .btn.icon{height:32px}
-dialog .seg button{height:38px;padding:0 14px}
-dialog .chip{height:36px;padding:0 14px}
-dialog .money .in{height:44px}
-@media (max-width:760px){dialog .seg:not(.bordered){display:flex;width:100%}dialog .seg:not(.bordered) button{flex:1 1 0;min-width:0;padding:0 6px}}
+.dlg .field label,.dlg .lbl{font-size:13px}
+.dlg .in{height:44px;padding:0 12px;font-size:14px}
+.dlg button.in.sel-t{padding-right:10px}
+.dlg textarea.in{height:auto;padding:10px 12px}
+.dlg .btn{height:40px}
+.dlg .btn.sm,.dlg .btn.icon{height:32px}
+.dlg .seg button{height:38px;padding:0 14px}
+.dlg .chip{height:36px;padding:0 14px}
+.dlg .money .in{height:44px}
+@media (max-width:760px){.dlg .seg:not(.bordered){display:flex;width:100%}.dlg .seg:not(.bordered) button{flex:1 1 0;min-width:0;padding:0 6px}}
+/* dialogs (EditSheet, ConfirmDialog, Sheet; spec 010 S-13): the dimmed layer behind a Reka Dialog */
+.dlg-ov{position:fixed;inset:0;z-index:50;background:var(--backdrop)}

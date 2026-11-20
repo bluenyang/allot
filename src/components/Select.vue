@@ -34,18 +34,18 @@ function pick(k: unknown) {
   if (o && o.value !== props.modelValue) emit('update:modelValue', o.value)
 }
 
-// Escape closes the list only. Reka does not cancel the key itself, so a native <dialog> around the
-// trigger would take it as its own cancel and close the editor: cancel the key and close the list here.
+// Escape closes the list only: the list is the topmost Reka layer, so a Dialog around the trigger leaves
+// the key alone; the list is closed here (and the key cancelled, so nothing else acts on it).
 const isOpen = ref(false)
 function onEscape(e: KeyboardEvent) {
   e.preventDefault()
   isOpen.value = false
 }
 
-// The list opens inside the dialog that holds the trigger (a modal <dialog> makes everything outside it inert).
+// The list opens inside the dialog that holds the trigger (a Reka Dialog makes everything outside it inert).
 const trigger = ref<{ $el: HTMLElement } | null>(null)
 const host = ref<HTMLElement | 'body'>('body')
-onMounted(() => { host.value = (trigger.value?.$el.closest('dialog') as HTMLElement | null) ?? 'body' })
+onMounted(() => { host.value = (trigger.value?.$el.closest('[role="dialog"],[role="alertdialog"]') as HTMLElement | null) ?? 'body' })
 </script>
 
 <template>

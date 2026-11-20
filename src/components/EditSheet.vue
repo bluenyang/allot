@@ -2,10 +2,12 @@
 // Editor shared by every list (spec 007 S-6, restyled by spec 010 S-5): a modal (520px; a card on a
 // phone) holding a form named by its title. Optional stepped header (`steps`, `v-model:step`): a
 // centred step list in the header, 이전/다음 in the footer, one <form> whose sections the page shows
-// per step (slot prop `step`). Save / cancel / press-twice delete as before. The native modal <dialog>
-// makes the page behind inert and Tab wraps inside it (trap below); Esc cancels; on close the focus
-// goes back to the button that opened it. A click outside does not close it (no lost input).
-import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+// per step (slot prop `step`). Save / cancel / press-twice delete as before. On Reka's Dialog (S-13): the
+// page behind is inert, Tab wraps inside, Esc cancels (an open Select list or help bubble takes the key
+// first: Reka closes only the topmost layer); on close the focus goes back to the button that opened it.
+// A click outside does not close it (no lost input).
+import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
+import { computed, nextTick, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { t } from '../i18n'
 
 const props = defineProps<{
@@ -31,7 +33,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ save: []; cancel: []; delete: []; 'update:step': [n: number] }>()
 
-const dlg = ref<HTMLDialogElement | null>(null)
+const dlg = ref<{ $el: HTMLElement } | null>(null)
 const armed = ref(false)
 const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
 const stepped = computed(() => (props.steps?.length ?? 0) > 1)
@@ -41,33 +43,15 @@ const last = computed(() => !stepped.value || cur.value === props.steps!.length 
 const focusFirst = async () => {
   await nextTick()
   // the first control that is shown (a step's other sections may be display:none)
-  const all = dlg.value?.querySelectorAll<HTMLElement>('.body input, .body select, .body textarea') ?? []
+  const all = dlg.value?.$el.querySelectorAll<HTMLElement>('.body input, .body button[role="combobox"], .body textarea') ?? []
   ;[...all].find((el) => !el.hasAttribute('disabled') && el.getClientRects().length > 0)?.focus()
 }
-onMounted(() => {
-  dlg.value?.showModal()
-  void focusFirst()
-})
-onBeforeUnmount(() => {
-  dlg.value?.close()
-  if (opener?.isConnected) opener.focus()
+onUnmounted(() => {
+  setTimeout(() => { if (opener?.isConnected) opener.focus() }, 0) // after Reka has released its focus trap
 })
 watch(cur, () => void focusFirst())
 // The page was left (KeepAlive) while the editor was open: drop the edit, as Cancel would.
 onDeactivated(() => emit('cancel'))
-
-// The native modal makes the page inert, but Tab from the last control would leave for the browser's
-// own UI: wrap it to the first control (and Shift+Tab from the first to the last).
-function trap(e: KeyboardEvent) {
-  if (e.key !== 'Tab' || !dlg.value) return
-  const items = [...dlg.value.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')]
-    .filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null)
-  if (!items.length) return
-  const first = items[0]!
-  const lastEl = items[items.length - 1]!
-  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); lastEl.focus() }
-  else if (!e.shiftKey && document.activeElement === lastEl) { e.preventDefault(); first.focus() }
-}
 
 function del() {
   if (!armed.value) return (armed.value = true)
@@ -82,12 +66,15 @@ function submit() {
 </script>
 
 <template>
-  <dialog ref="dlg" class="modal" :style="{ '--mw': `${props.width ?? 520}px` }" :aria-label="props.title" @cancel.prevent="emit('cancel')" @keydown="trap">
+  <DialogRoot :open="true" @update:open="(o: boolean) => !o && emit('cancel')">
+    <DialogPortal>
+      <DialogOverlay class="dlg-ov" />
+      <DialogContent ref="dlg" class="modal dlg" :style="{ '--mw': `${props.width ?? 520}px` }" :aria-label="props.title" :aria-describedby="undefined" @pointer-down-outside.prevent @interact-outside.prevent @open-auto-focus.prevent="focusFirst" @close-auto-focus.prevent>
     <form class="sheet-f" novalidate :aria-label="props.title" @submit.prevent="submit">
       <header class="mh">
         <div class="mh-row">
           <div class="mh-t">
-            <h2>{{ props.title }}</h2>
+            <DialogTitle as="h2">{{ props.title }}</DialogTitle>
             <p v-if="props.desc" class="small muted">{{ props.desc }}</p>
           </div>
           <slot name="head" />
@@ -119,44 +106,45 @@ function submit() {
         <button v-else-if="!props.hideSave" class="btn" :class="props.danger ? 'bad' : 'pri'" type="submit" :disabled="props.busy">{{ props.saveLabel ?? t('common.save') }}</button>
       </footer>
     </form>
-  </dialog>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 </template>
 
-<style scoped>
-.modal{width:min(var(--mw,520px),calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:0;border:1px solid var(--border-strong);border-radius:var(--r-pop);background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);overflow:hidden}
-.modal::backdrop{background:var(--backdrop)}
-.sheet-f{display:flex;flex-direction:column;max-height:calc(100dvh - 50px)}
-.mh{display:flex;flex-direction:column;gap:10px;padding:10px 12px 10px 20px;border-bottom:1px solid var(--border)}
-.mh-row{display:flex;align-items:flex-start;gap:12px;min-height:44px}
-.mh-t{flex:1;min-width:0;align-self:center}
-.mh h2{margin:0;font-size:16px;font-weight:600;overflow-wrap:anywhere}
-.mh p{margin:2px 0 0}
-.x{color:var(--muted);flex:none;width:32px;margin-top:6px}
-.x:hover{background:var(--fill)}
-.stp{list-style:none;margin:0 8px 2px 0;padding:0;display:flex;align-items:center;justify-content:center;gap:10px;font-size:13px}
-.stp li:not(.cn){display:flex;align-items:center;gap:8px;font-weight:600;color:var(--subtle);min-width:0}
-.stp li.on{color:var(--text)}
-.stp .mk{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:12px;background:var(--fill);color:var(--subtle)}
-.stp li.on .mk{background:var(--primary);color:var(--primary-ink)}
-.stp li.done .mk{background:var(--primary-soft);color:var(--primary-text)}
-.stp .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.stp .cn{flex:0 1 88px;height:2px;background:var(--border)}
-.stp .cn.pass{background:var(--primary-text)}
-.body{padding:18px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
-.err{color:var(--neg-text);margin:0}
-.mf{display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);background:var(--surface-2)}
-.ft-hint{min-width:0}
-.sp{flex:1}
+<style>
+.modal{position:fixed;inset:0;z-index:51;margin:auto;height:fit-content;width:min(var(--mw,520px),calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:0;border:1px solid var(--border-strong);border-radius:var(--r-pop);background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);overflow:hidden}
+.modal .sheet-f{display:flex;flex-direction:column;max-height:calc(100dvh - 50px)}
+.modal .mh{display:flex;flex-direction:column;gap:10px;padding:10px 12px 10px 20px;border-bottom:1px solid var(--border)}
+.modal .mh-row{display:flex;align-items:flex-start;gap:12px;min-height:44px}
+.modal .mh-t{flex:1;min-width:0;align-self:center}
+.modal .mh h2{margin:0;font-size:16px;font-weight:600;overflow-wrap:anywhere}
+.modal .mh p{margin:2px 0 0}
+.modal .x{color:var(--muted);flex:none;width:32px;margin-top:6px}
+.modal .x:hover{background:var(--fill)}
+.modal .stp{list-style:none;margin:0 8px 2px 0;padding:0;display:flex;align-items:center;justify-content:center;gap:10px;font-size:13px}
+.modal .stp li:not(.cn){display:flex;align-items:center;gap:8px;font-weight:600;color:var(--subtle);min-width:0}
+.modal .stp li.on{color:var(--text)}
+.modal .stp .mk{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:12px;background:var(--fill);color:var(--subtle)}
+.modal .stp li.on .mk{background:var(--primary);color:var(--primary-ink)}
+.modal .stp li.done .mk{background:var(--primary-soft);color:var(--primary-text)}
+.modal .stp .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal .stp .cn{flex:0 1 88px;height:2px;background:var(--border)}
+.modal .stp .cn.pass{background:var(--primary-text)}
+.modal .body{padding:18px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
+.modal .err{color:var(--neg-text);margin:0}
+.modal .mf{display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border);background:var(--surface-2)}
+.modal .ft-hint{min-width:0}
+.modal .sp{flex:1}
 @media (max-width:760px){
   .modal{width:calc(100vw - 16px);max-width:calc(100vw - 16px);max-height:calc(100dvh - 24px);margin:12px auto auto}
-  .sheet-f{max-height:calc(100dvh - 26px)}
-  .mh{padding-left:16px}
-  .stp .nm{display:none}
-  .stp li.on .nm{display:inline}
-  .body{padding:16px}
-  .mf{padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));flex-wrap:wrap}
-  .ft-hint{order:-1;flex-basis:100%}
+  .modal .sheet-f{max-height:calc(100dvh - 26px)}
+  .modal .mh{padding-left:16px}
+  .modal .stp .nm{display:none}
+  .modal .stp li.on .nm{display:inline}
+  .modal .body{padding:16px}
+  .modal .mf{padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));flex-wrap:wrap}
+  .modal .ft-hint{order:-1;flex-basis:100%}
 }
-@media (prefers-reduced-motion:no-preference){.modal[open]{animation:pop-in .14s ease-out}}
+@media (prefers-reduced-motion:no-preference){.modal[data-state="open"]{animation:pop-in .14s ease-out}}
 @keyframes pop-in{from{opacity:0;transform:translateY(6px)}}
 </style>

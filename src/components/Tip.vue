@@ -14,8 +14,8 @@ import { t } from '../i18n'
 const openTips = new Map<() => void, HTMLElement | null>()
 function onEscape(e: KeyboardEvent) {
   if (e.key !== 'Escape' || !openTips.size) return
-  const topDialog = (e.target instanceof Element ? e.target : document.activeElement)?.closest('dialog') ?? null
-  const here = [...openTips.values()].some((el) => (el?.closest('dialog') ?? null) === topDialog)
+  const topDialog = (e.target instanceof Element ? e.target : document.activeElement)?.closest('[role="dialog"],[role="alertdialog"]') ?? null
+  const here = [...openTips.values()].some((el) => (el?.closest('[role="dialog"],[role="alertdialog"]') ?? null) === topDialog)
   if (here) {
     e.preventDefault()
     e.stopPropagation()

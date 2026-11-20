@@ -201,7 +201,7 @@ function canAdvance(from: number) {
 .amt-row :deep(.money){flex:1;min-width:0}
 .amt-row .cur{flex:none;width:auto}
 @media (max-width:760px){
-  dialog .amt-row .cur{display:inline-flex;width:auto}
+  .dlg .amt-row .cur{display:inline-flex;width:auto}
   .amt-row .cur :deep(button){flex:none;padding:0 12px}
 }
 .addnote{align-self:flex-start;padding:0 4px}

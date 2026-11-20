@@ -228,7 +228,7 @@ async function confirmDelete() { await remove() }
 .amt-row .cur{flex:none;width:auto}
 @media (max-width:760px){
   .two,.amt.two{grid-template-columns:minmax(0,1fr)}
-  dialog .amt-row .cur{display:inline-flex;width:auto}
+  .dlg .amt-row .cur{display:inline-flex;width:auto}
   .amt-row .cur :deep(button){flex:none;padding:0 12px}
 }
 .vchk{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--input);font-size:14px;color:var(--text-2);cursor:pointer}
