@@ -18,12 +18,13 @@ const props = defineProps<{ modelValue?: string | null; id?: string; min?: strin
 const locale = computed(() => lang.value)
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
+const open = ref(false)
 const value = computed(() => ymdToValue(props.modelValue))
 function pick(v: unknown) {
   const next = v && typeof v === 'object' ? valueToYmd(v as { year: number; month: number; day: number }) : ''
   if (next !== (props.modelValue ?? '')) emit('update:modelValue', next)
+  if (next) open.value = false // a day was picked (or typed): the calendar's job is done
 }
-const open = ref(false)
 const gen = ref(0) // a new key re-creates the field, which empties a half-typed date
 function clear() {
   gen.value++
