@@ -126,7 +126,7 @@ summary_for_user: |
 - [x] W-7 일정 + 변경 내역. (S-9) — 커밋 de542e9, 86356e0
 - [x] W-8 설정 + 관리. (S-11)
 - [x] W-9 E2E 갱신(전 화면, 새 선택자), i18n 검사, CHANGELOG·README. (S-12) — E2E·i18n은 W-1~W-8 각 단위에서 갱신(e2e-w8fix2.log 93 passed), 문서 커밋 50e1e38 + 리뷰 수정(A-23)
-- [ ] W-10 Reka UI 의존성 + 입력·선택 컴포넌트(Select 새로, Switch, Seg, SubTabs, Tip)와 앱의 select 8곳 교체, DESIGN.md. (S-13, S-10)
+- [x] W-10 Reka UI 의존성 + 입력·선택 컴포넌트(Select 새로, Switch, Seg, SubTabs, Tip)와 앱의 select 8곳 교체, DESIGN.md. (S-13, S-10) — 커밋 610448d, 0f8a8ea, b68231a
 - [ ] W-11 덮개 컴포넌트(EditSheet, ConfirmDialog, Sheet)를 Reka Dialog로. (S-13)
 
 ## 검증 기준
