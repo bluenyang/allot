@@ -3,8 +3,8 @@
 // input. A text field (`YYYY-MM`; `2027-3`, `2027.03` and `202703` are read too) with a calendar button that
 // opens a year card of twelve months (Reka's MonthPicker, on the design tokens). The model is the string the
 // app stores, `YYYY-MM`, and '' for none. A complete month is taken as it is typed; on leaving the field
-// whatever is not a month goes back to the model's value, or to '' when `clearable` and the field was emptied
-// (without `clearable`, an emptied field keeps the old month). `min` / `max` (same format) grey months in the
+// a `clearable` field gives '' for anything that is not a complete month (as the native input did; the draft
+// text stays); without `clearable`, text that is not a month goes back to the old month. `min` / `max` (same format) grey months in the
 // card; a typed month outside them is still taken (as the native input did). `id` / `aria-label` go to the text field.
 // Escape closes the card only (an open dialog around the field stays); the card opens inside the dialog
 // that holds the field.
@@ -20,7 +20,10 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
 const model = computed(() => props.modelValue ?? '')
 const text = ref(model.value)
-watch(model, (v) => { if (parseMonthText(text.value) !== v) text.value = v })
+watch(model, (v) => {
+  if (props.clearable && v === '' && text.value.trim()) return // an unfinished draft stays visible while the model is ''
+  if (parseMonthText(text.value) !== v) text.value = v
+})
 
 function commit(next: string) {
   if (next !== model.value) emit('update:modelValue', next)
@@ -28,13 +31,13 @@ function commit(next: string) {
 function onInput() {
   const ym = parseMonthText(text.value)
   if (ym && /^\d{4}-\d{2}$/.test(text.value.trim())) commit(ym) // typed out in full: taken at once
-  else if (!text.value.trim() && props.clearable) commit('')
+  else if (props.clearable) commit('') // not a complete month (also half-typed): '' as the native field gave
 }
 function settle() {
   const ym = parseMonthText(text.value)
   if (ym) commit(ym)
-  else if (!text.value.trim() && props.clearable) commit('')
-  text.value = ym ?? (!text.value.trim() && props.clearable ? '' : model.value)
+  else if (props.clearable) commit('')
+  text.value = ym ?? (props.clearable ? text.value : model.value) // a clearable field keeps the draft text: the model is ''
 }
 function clear() {
   text.value = ''

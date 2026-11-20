@@ -211,3 +211,29 @@ test('(V-14 e) an instant save is told in a toast, there is no line in the card,
     await api(request, 'PUT', '/api/preferences', s0.preferences)
   }
 })
+
+test('(V-14 b, A-41) a half-erased month is "empty", as the native field gave: event range end, required phase start', async ({ page, request }) => {
+  await go(page, 'events', '타임라인')
+  await page.getByRole('button', { name: '이벤트 추가', exact: true }).click()
+  const s = sheet(page, '이벤트 추가')
+  await s.getByLabel('내용').fill(`${MARK}-half`)
+  await s.getByRole('button', { name: '기간', exact: true }).click()
+  await s.getByLabel('시작 월').fill('2031-01')
+  await s.getByLabel('끝 월').fill('2031-06')
+  await s.getByLabel('끝 월').fill('2031-') // the month part erased: no end month, not the old 2031-06
+  await expect(s.getByLabel('끝 월')).toHaveValue('2031-')
+  await s.getByLabel('끝 월').blur()
+  await expect(s.getByLabel('끝 월')).toHaveValue('2031-')
+  await saveSheet(page, '이벤트 추가')
+  expect((await state(request)).events.find((e) => e.title === `${MARK}-half`)?.when).toBe('2031-01')
+
+  await go(page, 'pay', '구간')
+  await page.getByRole('button', { name: '+ 구간 추가' }).click()
+  const add = sheet(page, '구간 추가')
+  await add.getByLabel('이름').fill(`${MARK}-ph`)
+  await add.getByLabel('시작 월').fill('2090-01')
+  await add.getByLabel('시작 월').fill('2090-') // required field half erased: its own error, not a silent 2090-01
+  await add.getByRole('button', { name: '저장' }).click()
+  await expect(add.getByRole('alert')).toContainText('시작')
+  await add.getByRole('button', { name: '취소' }).click()
+})
