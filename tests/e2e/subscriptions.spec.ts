@@ -3,7 +3,7 @@
 // subscription, the two steps, and the same flow once in English. Every subscription made here carries
 // the test mark and is deleted at the end (a subscription takes its plan changes with it).
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { MARK as RUN, go, saveSheet, sheet } from './helpers'
+import { MARK as RUN, choose, optionTexts, go, saveSheet, sheet } from './helpers'
 
 const MARK = `${RUN}-sub`
 type Sub = { id: string; name: string; amount: number; currency: string; vat: number; status: string; cycle: string; plan: string }
@@ -66,7 +66,7 @@ test('(V-6) a plan change keeps VAT, 상태 and "그대로": saved as given, not
   await page.getByRole('button', { name: '+ 전환 예약' }).click()
   const s = sheet(page, '플랜 전환 예약')
   await expect(s.getByRole('listitem').filter({ hasText: '대상 · 적용일' })).toHaveAttribute('aria-current', 'step')
-  await s.getByLabel('대상 구독').selectOption({ label: sub.name })
+  await choose(s.getByLabel('대상 구독'), { label: sub.name })
   await expect(s.getByText('지금 플랜: ')).toContainText('USD 20.00 +10%')
   await s.getByRole('button', { name: '다음' }).click()
   await expect(s.getByRole('listitem').filter({ hasText: '새 플랜 · 금액' })).toHaveAttribute('aria-current', 'step')
@@ -98,8 +98,8 @@ test('(V-6) a cancelled subscription is still a target; an undated change and th
   await go(page, 'subs', '변경 일정')
   await page.getByRole('button', { name: '+ 전환 예약' }).click()
   const s = sheet(page, '플랜 전환 예약')
-  await expect(s.getByLabel('대상 구독').locator('option', { hasText: sub.name })).toHaveCount(1)
-  await s.getByLabel('대상 구독').selectOption({ label: sub.name })
+  expect((await optionTexts(s.getByLabel('대상 구독'))).filter((x) => x.includes(sub.name))).toHaveLength(1)
+  await choose(s.getByLabel('대상 구독'), { label: sub.name })
   await expect(s.getByText('지금 플랜: ')).toContainText('해지')
   await s.getByLabel('날짜 미정').check()
   await expect(s.getByLabel('적용일')).toBeDisabled()
@@ -165,7 +165,7 @@ test('(V-10) in English: the same two-step add, a plan change, delete asks first
     await page.getByRole('tab', { name: /Scheduled changes/ }).click()
     await page.getByRole('button', { name: '+ Schedule change' }).click()
     const c = sheet(page, 'Schedule plan change')
-    await c.getByLabel('Subscription').selectOption({ label: `${MARK}-en` })
+    await choose(c.getByLabel('Subscription'), { label: `${MARK}-en` })
     await c.getByRole('button', { name: 'Next' }).click()
     await c.getByLabel('New amount').fill('5,000')
     await c.getByRole('button', { name: 'Save' }).click()
@@ -246,12 +246,12 @@ test('(A-9) the plan change always has the VAT field: for a KRW plan too, and wh
   await go(page, 'subs', '변경 일정')
   await page.getByRole('button', { name: '+ 전환 예약' }).click()
   const s = sheet(page, '플랜 전환 예약')
-  await s.getByLabel('대상 구독').selectOption({ label: sub.name })
+  await choose(s.getByLabel('대상 구독'), { label: sub.name })
   await s.getByRole('button', { name: '다음' }).click()
   await expect(s.getByLabel('VAT (%)')).toBeVisible()
   await expect(s.getByText('VAT는 USD 결제에만')).toHaveCount(0)
   await s.getByRole('button', { name: '이전' }).click()
-  await s.getByLabel('대상 구독').selectOption({ label: krw.name })
+  await choose(s.getByLabel('대상 구독'), { label: krw.name })
   await s.getByRole('button', { name: '다음' }).click()
   await expect(s.getByLabel('VAT (%)')).toBeVisible() // a KRW plan, currency "그대로"
   await s.getByLabel('VAT (%)').fill('9')

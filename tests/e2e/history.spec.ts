@@ -1,6 +1,6 @@
 // spec 005 V-10 (W-4): the change history shows a save as one entry and can revert it.
 import { expect, test } from '@playwright/test'
-import { MARK, go, reload, saveSheet, sheet } from './helpers'
+import { MARK, choose, go, optionTexts, reload, saveSheet, sheet } from './helpers'
 
 test('history: a save shows up, revert undoes it, the revert is listed', async ({ page }) => {
   const text = `${MARK}-hist`
@@ -64,13 +64,14 @@ test('history (spec 010 S-9): day groups, the actor and the item filters, a refu
     await seg.getByRole('button', { name: /^전체/ }).click()
     // item type: 체크리스트 keeps it, 구독 drops it; the remainder filter is named after the remainder target kind, not 투자
     const kind = page.getByLabel('항목 종류')
-    await kind.selectOption({ label: '체크리스트' })
+    await choose(kind, { label: '체크리스트' })
     await expect(list.getByRole('listitem').filter({ hasText: text })).toBeVisible()
-    await kind.selectOption({ label: '구독' })
+    await choose(kind, { label: '구독' })
     await expect(list.getByRole('listitem').filter({ hasText: text })).toHaveCount(0)
-    expect(await kind.locator('option').allTextContents()).not.toContain('투자 계좌')
-    expect(await kind.locator('option').allTextContents()).toContain('나머지 대상')
-    await kind.selectOption({ label: '항목 전체' })
+    const kinds = await optionTexts(kind)
+    expect(kinds).not.toContain('투자 계좌')
+    expect(kinds).toContain('나머지 대상')
+    await choose(kind, { label: '항목 전체' })
     // the same row changed since: the revert is refused and the modal shows why
     await request.delete(`/api/checks/${made.id}`)
     await page.reload()
@@ -94,7 +95,7 @@ test('history (A-18): a filter that matches nothing in the loaded page does not 
   test.skip(!(await more.isVisible()), 'fewer changes than one page on this stack')
   await expect(page.getByText(/^불러온 변경 중 \d+개/)).toBeVisible()
   for (const label of ['공휴일 세트', '부채', '분배 대상', '구간 금액']) {
-    await page.getByLabel('항목 종류').selectOption({ label })
+    await choose(page.getByLabel('항목 종류'), { label })
     if ((await list.getByRole('listitem').count()) === 0) {
       await expect(page.locator('[data-more]')).toContainText('불러온 변경에는')
       await expect(more).toBeVisible()

@@ -3,7 +3,7 @@
 // changes nothing; the same flow in English; making a write key in English. Runs on the dev stack; the
 // markers it adds are removed and every proposal it made is rejected afterwards.
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { MARK, sheet } from './helpers'
+import { MARK, choose, sheet } from './helpers'
 import { CHECK, KEY_NAME, SUB, makeKey, propose, type Proposal } from './proposal-helpers'
 
 const state = async (request: APIRequestContext) => (await (await request.get('/api/state')).json()) as {
@@ -14,7 +14,7 @@ test.afterEach(async ({ page, request }) => {
   // whatever happened, the shared account follows the browser's language again
   await page.goto('/#settings/general')
   await page.locator('#g-lang').waitFor()
-  if ((await page.locator('#g-lang').inputValue()) !== 'browser') await pickLanguage(page, 'browser')
+  if ((await page.locator('#g-lang').getAttribute('data-value')) !== 'browser') await pickLanguage(page, 'browser')
   const props = (await (await request.get('/api/proposals?status=pending')).json()) as Proposal[]
   for (const p of props.filter((x) => x.keyName.startsWith(MARK))) await request.post(`/api/proposals/${p.id}/reject`)
   const keys = (await (await request.get('/api/keys')).json()) as { keys: { id: string; name: string }[] }
@@ -146,7 +146,7 @@ test('pending: a proposal whose key was revoked cannot be confirmed, only reject
 
 async function pickLanguage(page: Page, value: 'browser' | 'en') {
   const saved = page.waitForResponse((r) => r.url().endsWith('/api/preferences') && r.request().method() === 'PUT' && r.ok())
-  await page.locator('#g-lang').selectOption(value)
+  await choose(page.locator('#g-lang'), value)
   await saved
 }
 

@@ -4,7 +4,7 @@
 // English for the run through the API and back to what it was in afterAll; everything the tests make
 // is deleted again (also when a test fails).
 import { expect, test, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test'
-import { MARK, sheet } from './helpers'
+import { MARK, choose, optionTexts, sheet } from './helpers'
 
 const M = `${MARK}-en`
 
@@ -74,15 +74,15 @@ test('pay split: automatic phase numbers, the rounding select with "Off", saved 
     await payTab(page, 'Accounts, living costs, settings')
     const form = page.getByRole('form', { name: 'Pay settings' })
     const round = form.getByLabel('Subscription transfer rounding unit')
-    await expect(round.getByRole('option').last()).toHaveText('Off')
-    await round.selectOption({ label: '₩50,000' })
-    await round.selectOption({ label: 'Off' })
+    expect((await optionTexts(round)).at(-1)).toBe('Off')
+    await choose(round, { label: '₩50,000' })
+    await choose(round, { label: 'Off' })
     await form.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(form.getByRole('status')).toBeVisible()
     expect((await state(request)).settings.subRound).toBe(1)
     await page.reload()
     await payTab(page, 'Accounts, living costs, settings')
-    await expect(round.locator('option:checked')).toHaveText('Off')
+    await expect(round).toHaveText('Off')
   } finally {
     await api(request, 'PUT', '/api/settings', before)
   }
@@ -267,12 +267,12 @@ test('history: day groups, the actor and item filters, the revert modal and its 
     await seg.getByRole('button', { name: /^All/ }).click()
     // item type
     const kind = page.getByLabel('Item type')
-    await kind.selectOption({ label: 'Checklist item' })
+    await choose(kind, { label: 'Checklist item' })
     await expect(row).toBeVisible()
-    await kind.selectOption({ label: 'Subscription' })
+    await choose(kind, { label: 'Subscription' })
     await expect(row).toHaveCount(0)
-    expect(await kind.locator('option').allTextContents()).toContain('Remainder target')
-    await kind.selectOption({ label: 'All items' })
+    expect(await optionTexts(kind)).toContain('Remainder target')
+    await choose(kind, { label: 'All items' })
 
     // the revert modal says what happens; the result is a set of its own
     await row.getByRole('button', { name: 'Revert', exact: true }).click()
@@ -308,7 +308,7 @@ test('settings: the display format saves at once; a holiday set is added, switch
     await s.getByLabel('Set name').fill(`${M}-set`)
     await s.getByRole('button', { name: 'Next' }).click()
     await s.getByLabel('Name', { exact: true }).fill('Founding day')
-    await s.getByLabel('Type').selectOption('dates')
+    await choose(s.getByLabel('Type'), 'dates')
     await s.getByLabel(/^Dates/).fill('2031-03-01')
     await s.getByRole('button', { name: 'Save' }).click()
     await expect(s).toBeHidden()

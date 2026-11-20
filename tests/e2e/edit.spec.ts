@@ -2,7 +2,7 @@
 // and the result survives a reload (it came back from PostgreSQL).
 // Each test cleans up after itself so the seeded data is left as it was.
 import { expect, test } from '@playwright/test'
-import { MARK, deleteInSheet, go, noSaveError, reload, saveSheet, sheet } from './helpers'
+import { MARK, choose, deleteInSheet, go, noSaveError, reload, saveSheet, sheet } from './helpers'
 
 test.describe('login', () => {
   test.use({ storageState: { cookies: [], origins: [] } })
@@ -21,13 +21,13 @@ test('settings: edit, reload, restore', async ({ page }) => {
   await go(page, 'pay', '통장·생활비·설정')
   const form = () => page.getByRole('form', { name: '분배 설정' })
   const round = () => form().getByLabel('구독 이체 올림 단위')
-  const before = await round().inputValue()
-  await round().selectOption({ label: '₩50,000' })
+  const before = (await round().textContent())!.trim()
+  await choose(round(), { label: '₩50,000' })
   await form().getByRole('button', { name: '저장', exact: true }).click()
   await expect(form().getByRole('status')).toHaveText('저장했어요.')
   await reload(page, 'pay', '통장·생활비·설정')
-  await expect(round()).toHaveValue('50000')
-  await round().selectOption(before)
+  await expect(round()).toHaveText('₩50,000')
+  await choose(round(), { label: before })
   await form().getByRole('button', { name: '저장', exact: true }).click()
   await expect(form().getByRole('status')).toHaveText('저장했어요.')
   await noSaveError(page)
@@ -108,7 +108,7 @@ test('allocation targets: add a fixed target, give it a phase amount, see it in 
   await page.getByRole('button', { name: '+ 분배 대상 추가' }).click()
   const add = sheet(page, '분배 대상 추가')
   await add.getByLabel('이름').fill(MARK)
-  await add.getByLabel('종류').selectOption({ label: '구간별 고정' })
+  await choose(add.getByLabel('종류'), { label: '구간별 고정' })
   await saveSheet(page, '분배 대상 추가')
   await reload(page, 'pay', '구간')
   await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('구간별 고정')
@@ -125,7 +125,7 @@ test('allocation targets: add a fixed target, give it a phase amount, see it in 
   await go(page, 'pay', '구간')
   await page.getByRole('button', { name: '+ 분배 대상 추가' }).click()
   await sheet(page, '분배 대상 추가').getByLabel('이름').fill(`${MARK}-rem`)
-  await sheet(page, '분배 대상 추가').getByLabel('종류').selectOption('remainder')
+  await choose(sheet(page, '분배 대상 추가').getByLabel('종류'), 'remainder')
   await sheet(page, '분배 대상 추가').getByRole('button', { name: '저장' }).click()
   await expect(sheet(page, '분배 대상 추가').getByRole('alert')).toContainText('하나만')
   await sheet(page, '분배 대상 추가').getByRole('button', { name: '취소' }).click()
@@ -395,7 +395,7 @@ test('subscriptions and plan changes: 2-step add, edit (with memo), plan change,
   await go(page, 'subs', '변경 일정')
   await page.getByRole('button', { name: '+ 전환 예약' }).click()
   const chg = sheet(page, '플랜 전환 예약')
-  await chg.getByLabel('대상 구독').selectOption({ label: MARK })
+  await choose(chg.getByLabel('대상 구독'), { label: MARK })
   await chg.getByRole('button', { name: '다음' }).click()
   await chg.getByLabel('새 금액').fill('12000')
   await chg.getByRole('button', { name: '메모 추가' }).click()

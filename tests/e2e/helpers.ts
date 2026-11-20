@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 export const MARK = `E2E-${Date.now().toString(36)}`
 
@@ -34,4 +34,26 @@ export async function deleteInSheet(page: Page, title: string | RegExp) {
 
 export async function noSaveError(page: Page) {
   await expect(page.locator('.save-err')).toHaveCount(0)
+}
+
+/** Pick an option of a Select (spec 010 S-13) by label, or by stored value as a string. */
+export async function choose(trigger: Locator, pick: string | { label: string }) {
+  const page = trigger.page()
+  await trigger.click()
+  const list = page.getByRole('listbox')
+  const o = typeof pick === 'string' ? list.locator(`[role="option"][data-value="${pick}"]`) : list.getByRole('option', { name: pick.label, exact: true })
+  await o.click()
+  await expect(list).toBeHidden()
+}
+
+/** The labels of a Select's options (opens the list and closes it again). */
+export async function optionTexts(trigger: Locator) {
+  const page = trigger.page()
+  await trigger.click()
+  const list = page.getByRole('listbox')
+  await expect(list).toBeVisible()
+  const texts = (await list.getByRole('option').allTextContents()).map((x) => x.trim())
+  await page.keyboard.press('Escape')
+  await expect(list).toBeHidden()
+  return texts
 }

@@ -2,6 +2,7 @@
 // language the user chose. No sign-in happens here (the login rate limit is 5 a minute): the browser-
 // language checks have no session, and the sign-out test ends the shared session, so this file is
 // named to run last. The next run signs in again in global-setup.
+import { choose } from './helpers'
 import { expect, test, type Browser } from '@playwright/test'
 
 async function guest(browser: Browser, locale: string) {
@@ -26,7 +27,7 @@ test('the sign-in screen follows the browser language: English for en-US, Korean
 test('after signing out, the sign-in screen is in the language the user chose (English in a Korean browser)', async ({ page }) => {
   await page.goto('/#settings/general')
   const saved = page.waitForResponse((r) => r.url().endsWith('/api/preferences') && r.request().method() === 'PUT' && r.ok())
-  await page.locator('#g-lang').selectOption('en')
+  await choose(page.locator('#g-lang'), 'en')
   await saved
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   // put the account back to "follow the browser" on the server; the open page keeps English, as the choice is kept in this browser

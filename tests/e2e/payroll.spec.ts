@@ -4,7 +4,7 @@
 // stay), a revert from the history brings the target back, the pay simulation and the calculation dialog,
 // the account role as free text with the chips and 들어오는 돈. Everything is put back at the end.
 import { expect, test, type APIRequestContext } from '@playwright/test'
-import { MARK, deleteInSheet, go, saveSheet, sheet } from './helpers'
+import { MARK, choose, deleteInSheet, go, optionTexts, saveSheet, sheet } from './helpers'
 
 type Settings = Record<string, unknown> & { subRound: number; netPay: number }
 type Phase = { id: string; label: string; name: string; from: string; to: string | null; amounts: Record<string, number>; note: string }
@@ -24,20 +24,19 @@ test('(V-7) a stored rounding unit of 20,000 is an option and selected; another 
     expect((await api(request, 'PUT', '/api/settings', { ...before, subRound: 20_000 })).status).toBe(200)
     await go(page, 'pay', '통장·생활비·설정')
     const round = page.getByRole('form', { name: '분배 설정' }).getByLabel('구독 이체 올림 단위')
-    await expect(round).toHaveValue('20000')
-    await expect(round.getByRole('option')).toHaveText(['₩10,000', '₩20,000', '₩50,000', '₩100,000', '끄기'])
-    await round.selectOption({ label: '₩50,000' })
-    await round.selectOption({ label: '₩20,000' })
-    await expect(round).toHaveValue('20000')
+    await expect(round).toHaveText('₩20,000')
+    expect(await optionTexts(round)).toEqual(['₩10,000', '₩20,000', '₩50,000', '₩100,000', '끄기'])
+    await choose(round, { label: '₩50,000' })
+    await choose(round, { label: '₩20,000' })
+    await expect(round).toHaveText('₩20,000')
 
-    await round.selectOption({ label: '끄기' })
+    await choose(round, { label: '끄기' })
     await page.getByRole('form', { name: '분배 설정' }).getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.getByRole('form', { name: '분배 설정' }).getByRole('status')).toHaveText('저장했어요.')
     expect((await state(request)).settings.subRound).toBe(1)
     await page.reload()
     await go(page, 'pay', '통장·생활비·설정')
-    await expect(round).toHaveValue('1')
-    await expect(round.locator('option:checked')).toHaveText('끄기')
+    await expect(round).toHaveText('끄기')
   } finally {
     await api(request, 'PUT', '/api/settings', before)
   }

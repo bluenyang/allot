@@ -5,7 +5,7 @@
 // pacing: it signs in four times, and the login limit is 5 a minute (nothing after it signs in, zz-i18n-signout
 // uses the shared session).
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
-import { MARK } from './helpers'
+import { MARK, choose } from './helpers'
 import { KEY_NAME, SUB, makeKey, propose } from './proposal-helpers'
 
 test.afterEach(async ({ request }) => {
@@ -151,7 +151,7 @@ test('settings: a language pick of the first account does not reach the next acc
       await gate
       await route.fulfill({ response: res })
     })
-    await page.locator('#g-lang').selectOption('en')
+    await choose(page.locator('#g-lang'), 'en')
     await wasSent
     await page.getByRole('button', { name: '로그아웃' }).first().click()
     await page.getByLabel('이메일').waitFor()
@@ -164,7 +164,7 @@ test('settings: a language pick of the first account does not reach the next acc
     // the next account still follows its own choice (the browser: Korean)
     await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
     await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible()
-    await expect(page.locator('#g-lang')).toHaveValue('browser')
+    await expect(page.locator('#g-lang')).toHaveAttribute('data-value', 'browser')
   } finally {
     await ctx.close()
     const st = (await (await request.get('/api/state')).json()) as { preferences: Record<string, unknown> }
