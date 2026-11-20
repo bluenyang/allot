@@ -178,6 +178,7 @@ test('(V-10) in English: the same two-step add, a plan change, delete asks first
     await e.getByRole('button', { name: 'Delete' }).click()
     await expect(page.getByRole('alertdialog')).toContainText('scheduled plan changes')
     await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
+    await expect(page.getByRole('alertdialog')).toHaveCount(0) // while it is open the editor is hidden from the accessibility tree
     await expect(e).toBeHidden()
     expect(await mine(request)).toHaveLength(0)
   } finally {

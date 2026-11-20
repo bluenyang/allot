@@ -172,3 +172,64 @@ test('(V-13) on a phone a tap on the help "?" opens its bubble inside the screen
     await expect(s).toBeVisible()
   }
 })
+
+// W-11 (S-13): the dialogs on Reka. Outside click, focus in and back, Escape order.
+test('(V-13) editor: a click outside does not close it; Escape does and the focus goes back to the opener', async ({ page }) => {
+  await go(page, 'subs', '목록')
+  const opener = page.getByRole('button', { name: '구독 추가' })
+  await opener.click()
+  const dlg = page.getByRole('dialog', { name: '구독 추가' })
+  await expect(dlg).toBeVisible()
+  await expect(page.locator('#e-name')).toBeFocused()
+  await page.mouse.click(4, 4) // the dimmed layer
+  await expect(dlg).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dlg).toBeHidden()
+  await expect(opener).toBeFocused()
+})
+
+test('(V-13) confirmation over an editor: focus starts on the cancel button; the backdrop and Escape close only the confirmation; focus goes back', async ({ page, request }) => {
+  const mk = await request.post('/api/subscriptions', { data: { name: `${MARK}-cf`, category: 'tool', plan: 'p', amount: 1000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false } })
+  expect(mk.ok()).toBe(true)
+  const id = ((await mk.json()) as { id: string }).id
+  try {
+    await go(page, 'subs', '목록')
+    await page.getByRole('button', { name: `${MARK}-cf 수정` }).click()
+    const s = sheet(page, '구독 수정')
+    await s.getByRole('button', { name: '다음' }).click()
+    const del = s.getByRole('button', { name: '삭제' })
+    for (const how of ['backdrop', 'escape'] as const) {
+      await del.focus()
+      await page.keyboard.press('Enter')
+      const alert = page.getByRole('alertdialog')
+      await expect(alert).toBeVisible()
+      await expect(alert.getByRole('button', { name: '취소' })).toBeFocused()
+      if (how === 'backdrop') await page.mouse.click(4, 4)
+      else await page.keyboard.press('Escape')
+      await expect(alert).toHaveCount(0)
+      await expect(s).toBeVisible()
+      await expect(del).toBeFocused()
+    }
+    await page.keyboard.press('Escape')
+    await expect(s).toBeHidden()
+  } finally {
+    expect((await request.delete(`/api/subscriptions/${id}`)).ok()).toBe(true)
+  }
+})
+
+test('(V-13) the phone sheet opens with the focus inside; Escape and the backdrop close it and the focus goes back', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await go(page, 'home')
+  const more = page.getByRole('button', { name: '더보기' })
+  for (const how of ['escape', 'backdrop', 'close'] as const) {
+    await more.click()
+    const sh = page.getByRole('dialog', { name: '더보기' })
+    await expect(sh).toBeVisible()
+    expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
+    if (how === 'escape') await page.keyboard.press('Escape')
+    else if (how === 'backdrop') await page.mouse.click(195, 20)
+    else await sh.getByRole('button', { name: '닫기' }).click()
+    await expect(sh).toBeHidden()
+    await expect(more).toBeFocused()
+  }
+})

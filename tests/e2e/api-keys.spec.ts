@@ -86,7 +86,7 @@ test('keys: make one, see it once, use it, see when it was used, revoke it', asy
 
   // manage: the key's facts, then revoke in the dialog's own confirm step (no browser dialog)
   await page.getByRole('button', { name: `${NAME} 키 관리` }).click()
-  const manage = page.locator('dialog[open]') // its title changes in the confirm step
+  const manage = page.locator('[role="dialog"]') // its title changes in the confirm step
   await expect(manage.getByText(`${key.slice(0, 12)}…`)).toBeVisible()
   await manage.getByRole('button', { name: `${NAME} 키 폐기` }).click()
   await expect(manage.getByText('되돌릴 수 없어요').first()).toBeVisible()
@@ -258,7 +258,7 @@ test('keys: made and revoked while the proposal count is still loading, the list
   await expect(page.getByRole('row', { name: new RegExp(`${NAME}-hold`) })).toBeVisible() // fresh list while counting
   await page.getByRole('button', { name: '닫기', exact: true }).click()
   await page.getByRole('button', { name: `${NAME}-hold 키 관리` }).click()
-  const manage = page.locator('dialog[open]')
+  const manage = page.locator('[role="dialog"]')
   await manage.getByRole('button', { name: `${NAME}-hold 키 폐기` }).click()
   await manage.getByRole('button', { name: '폐기', exact: true }).click()
   await expect(page.getByRole('row', { name: new RegExp(`${NAME}-hold`) })).toHaveCount(0)

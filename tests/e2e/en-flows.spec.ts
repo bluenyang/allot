@@ -351,7 +351,7 @@ test('settings: an AI key is made, shown once, and revoked', async ({ page, requ
     await page.getByRole('button', { name: 'Close', exact: true }).click()
     await expect(box).toHaveCount(0)
     await page.getByRole('button', { name: `Manage key ${M}-key` }).click()
-    const manage = page.locator('dialog[open]')
+    const manage = page.locator('[role="dialog"]')
     await manage.getByRole('button', { name: `Revoke key ${M}-key` }).click()
     await expect(manage.getByText('This cannot be undone').first()).toBeVisible()
     await manage.getByRole('button', { name: 'Revoke', exact: true }).click()

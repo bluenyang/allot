@@ -181,7 +181,7 @@ test('(V-6 f) editor modal: focus inside, Tab stays inside, Esc closes and retur
   expect(await page.evaluate(() => document.activeElement?.id)).toBe('e-name')
   for (let i = 0; i < 25; i++) {
     await page.keyboard.press('Tab')
-    expect(await page.evaluate(() => !!document.activeElement?.closest('dialog'))).toBe(true)
+    expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
   }
   await page.keyboard.press('Escape')
   await expect(dlg).toBeHidden()
