@@ -233,3 +233,83 @@ test('(V-13) the phone sheet opens with the focus inside; Escape and the backdro
     await expect(more).toBeFocused()
   }
 })
+
+// W-11 review (A-38): an editor without a field still takes the focus; stacked modals are separate layers.
+async function stays(page: import('@playwright/test').Page) {
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
+  for (const key of ['Tab', 'Shift+Tab']) {
+    for (let i = 0; i < 12; i++) {
+      await page.keyboard.press(key)
+      expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]')), `${key} ${i}`).toBe(true)
+    }
+  }
+}
+
+test('(V-13) the history revert confirmation (no field) takes the focus and keeps Tab inside', async ({ page, request }) => {
+  const text = `${MARK}-fb`
+  const made = await request.post('/api/checks', { data: { text, done: false } })
+  expect(made.ok()).toBe(true)
+  const id = ((await made.json()) as { id: string }).id
+  try {
+    await page.goto('/#history')
+    const list = page.getByRole('list', { name: '변경 목록' })
+    const first = list.getByRole('listitem').first()
+    await expect(first).toContainText(text)
+    await first.getByRole('button', { name: new RegExp(text) }).click()
+    await first.getByRole('button', { name: '되돌리기', exact: true }).click()
+    const ask = page.getByRole('dialog', { name: '이 변경을 되돌릴까요?' })
+    await expect(ask).toBeVisible()
+    await stays(page)
+    await page.keyboard.press('Escape')
+    await expect(ask).toBeHidden()
+  } finally {
+    expect((await request.delete(`/api/checks/${id}`)).ok()).toBe(true)
+  }
+})
+
+test('(V-13) the API key manage dialog (no field) takes the focus and keeps Tab inside', async ({ page, request }) => {
+  const key = await request.post('/api/keys', { data: { name: `${MARK}-fk`, expiresInDays: 30, write: false } })
+  expect(key.ok()).toBe(true)
+  try {
+    await page.goto('/#settings/ai')
+    await page.getByRole('button', { name: `${MARK}-fk 키 관리` }).click()
+    const manage = page.getByRole('dialog').first()
+    await expect(manage).toBeVisible()
+    await stays(page)
+    await page.keyboard.press('Escape')
+    await expect(manage).toBeHidden()
+  } finally {
+    const keys = ((await (await request.get('/api/keys')).json()) as { keys: { id: string; name: string }[] }).keys
+    for (const k of keys.filter((x) => x.name === `${MARK}-fk`)) expect((await request.delete(`/api/keys/${k.id}`)).ok()).toBe(true)
+  }
+})
+
+test('(V-13) a confirmation over an editor covers it with its own overlay; a click there closes only the confirmation', async ({ page, request }) => {
+  const mk = await request.post('/api/subscriptions', { data: { name: `${MARK}-ov`, category: 'tool', plan: 'p', amount: 1000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false } })
+  expect(mk.ok()).toBe(true)
+  const id = ((await mk.json()) as { id: string }).id
+  try {
+    await go(page, 'subs', '목록')
+    await page.getByRole('button', { name: `${MARK}-ov 수정` }).click()
+    const s = sheet(page, '구독 수정')
+    await s.getByRole('button', { name: '다음' }).click()
+    const editorBox = (await page.locator('.modal').boundingBox())!
+    await s.getByRole('button', { name: '삭제' }).click()
+    const alert = page.getByRole('alertdialog')
+    await expect(alert).toBeVisible()
+    const x = editorBox.x + 8
+    const y = editorBox.y + 8
+    const hit = await page.evaluate(([px, py]) => {
+      const el = document.elementFromPoint(px!, py!)
+      return { overlay: !!el?.classList.contains('dlg-ov'), lastLayer: el?.closest('.dlg-layer') === [...document.querySelectorAll('.dlg-layer')].at(-1) }
+    }, [x, y])
+    expect(hit).toEqual({ overlay: true, lastLayer: true })
+    await page.mouse.click(x, y)
+    await expect(alert).toHaveCount(0)
+    await expect(s).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(s).toBeHidden()
+  } finally {
+    expect((await request.delete(`/api/subscriptions/${id}`)).ok()).toBe(true)
+  }
+})
