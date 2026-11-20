@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.4-rc.2 — 2026-11-19
+## 0.1.4-rc.2 — 2026-11-20
 
 Redesign of every screen and a design system. Intent 010 (`.agents/intent/010_canvas-redesign/`). Server changes: the remainder target is no longer fixed, and the MCP views use the same payment schedule as the screens (both below); the database schema is unchanged.
 
@@ -11,6 +11,7 @@ Redesign of every screen and a design system. Intent 010 (`.agents/intent/010_ca
 - Phase numbers are automatic ("Phase N", in order of start month). The phase code is no longer typed on screen; a saved code is kept as it is, and the server still accepts one.
 - "Money left after the transfer" box on the dashboard (this transfer day to the day before the next, payments subtracted from the subscription transfer; negative when it falls short), and "after the 31st" (payments within a year, up to three lines).
 - Subscriptions: search by name, a 12-month transfer chart and per-subscription share table (select a bar to switch month), two-step add/edit dialog, delete and cancel confirmations, two-step plan change.
+- UI components on Reka UI (`reka-ui` 2.11.0, headless, MIT), styled with the app's tokens: a new Select replaces every native select (the open list is styled too, on desktop and phone); switches, segmented controls, tabs, help bubbles and dialogs are rebuilt on it. Keyboard and screen-reader behaviour follows Reka's WAI-ARIA implementation; the choices and saved values are the same as before.
 
 ### Changed
 - Every screen follows the new design, in light and dark, on desktop and phone: dashboard (with a Pending tab for AI proposals), Pending changes, Subscriptions, Salary allocation, Schedule, Change history, Settings and Admin, and the sign-in screen.
@@ -22,6 +23,8 @@ Redesign of every screen and a design system. Intent 010 (`.agents/intent/010_ca
 - Settings › General has five sections; display formats are saved as soon as you choose them.
 - The change-history item filter lists every table of the app, and the remainder split is named "remainder target" there.
 - Reverting an applied proposal on the Pending changes screen reverts its change set; a rejected proposal cannot be reverted.
+- Every page but the dashboard loads when it is first opened (a smaller first download). If its code cannot be downloaded (offline, or an old tab after a new version), the page says so and offers a reload.
+- While a dialog is open the page behind it is hidden from assistive technology and cannot be clicked; Escape closes the topmost layer first (an open list or help bubble before the dialog).
 
 ### Removed
 - The rule that the remainder target must exist and keep its kind. It can now be deleted, or changed to another kind (living, subscription-transfer and remainder targets are still at most one each; fixed targets may be many). Without it, what is left of the net pay after the targets is shown as staying in the salary account ("short" when negative), and the MCP overview carries `unallocatedKrw`. The remainder split rows stay when the target is deleted. A change set that removed the target can be reverted even though the remainder target is missing.
@@ -34,6 +37,7 @@ Redesign of every screen and a design system. Intent 010 (`.agents/intent/010_ca
 - The change history counts only the changes loaded so far ("of the loaded changes"), and when a filter shows nothing but older changes exist it says so instead of "none".
 - Event timing accepts typed values again ("direct entry"), checked only by the server's pattern (`YYYY-MM` or `YYYY-MM~MM`); a stored value the month picker cannot hold opens in the text field unchanged.
 - Editing the remainder split without touching a ratio saves the stored ratio unchanged.
+- Unit tests that start git in a temporary repository no longer inherit the git hook's repository variables; run by the pre-commit gates inside a linked worktree they could mark the real repository bare.
 
 ## 0.1.4-rc.1 — 2026-11-18
 
