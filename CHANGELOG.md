@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 — 2026-11-21
+
+Same code as 0.1.4-rc.3, checked on the test server. 0.1.4 brings MCP write through proposals (rc.1) and the redesign of every screen with the design system and UI components on Reka UI (rc.2, rc.3); see those entries.
+
 ## 0.1.4-rc.3 — 2026-11-20
 
 Fixes from checking 0.1.4-rc.2 on the test server (spec 010 W-12). No server or schema change.
