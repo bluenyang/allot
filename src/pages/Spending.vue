@@ -88,7 +88,7 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
         <div>
           <span class="ms-l">{{ t('spending.toTransfer') }}</span>
           <b class="num">{{ fmtMoney(month.add) }}</b>
-          <small class="hint">{{ t('spending.transferLine') }} <b class="num strong"><template v-if="month.add">{{ fmtMoney(month.before) }} → {{ fmtMoney(month.after) }}</template><template v-else>{{ fmtMoney(month.after) }}</template></b></small>
+          <small class="hint">{{ t('spending.transferLine') }} <b class="num"><template v-if="month.add">{{ fmtMoney(month.before) }} → {{ fmtMoney(month.after) }}</template><template v-else>{{ fmtMoney(month.after) }}</template></b></small>
           <small v-if="month.itemText" class="hint">{{ month.itemText }}</small>
         </div>
         <div>
@@ -127,7 +127,7 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
 .ms-g > div + div{border-left:1px solid var(--divider)}
 .ms-g b.num{font-size:20px;font-weight:700}
 .ms-g b.num.neg{color:var(--accent-text)}
-.ms-g b.num.strong{font-size:inherit;font-weight:600;color:var(--text)}
+.ms-g small b.num{font-size:inherit;font-weight:600;color:var(--text)}
 .ms-l{font-size:12px;font-weight:600;color:var(--muted)}
 .rem{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .kstack{display:flex;height:10px;gap:2px;border-radius:2px;overflow:hidden}
