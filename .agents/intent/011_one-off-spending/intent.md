@@ -11,6 +11,13 @@ approvals:
     words: "승인"
     rev: ada3388
     note: "열린 질문 3(중도 완납)·4(홈 기록 추가 창)은 PM 제안대로 받음."
+  - role: user
+    kind: release
+    by: BlueNyang
+    at: "2026-11-22"
+    words: "rc.1 → stable까지 (Recommended)"
+    rev: d934cf2
+    note: "PM 질문(릴리스를 어떻게 할까요) 보기 중 하나를 고름: '릴리스 노트 PR을 머지하고 0.1.5-rc.1을 내 V-10을 돌린 뒤, 문제가 없으면 stable 0.1.5까지 내고 2차 감사·회고. 이 답을 릴리스 노트 머지와 stable 지시로 기록'. 앞선 지시: '보완이 완료되면 머지하고 회고할 것.'"
 waivers: []
 supersedes: null
 ---
