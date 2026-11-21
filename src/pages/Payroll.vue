@@ -115,7 +115,7 @@ function viewGo() {
   const k = view.value?.kind
   view.value = null
   if (k === 'living') tab.value = 'accounts'
-  else if (k === 'subscriptions') location.hash = '#subs'
+  else if (k === 'subscriptions') location.hash = '#spend/subs'
   else openPay()
 }
 

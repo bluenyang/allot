@@ -272,7 +272,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
         </div>
 
         <section class="card col-side paycard">
-          <div class="card-hd"><h2>{{ t('dashboard.upcomingPayments') }}</h2><a href="#subs" class="aux">{{ t('dashboard.allSubs') }}</a></div>
+          <div class="card-hd"><h2>{{ t('dashboard.upcomingPayments') }}</h2><a href="#spend/subs" class="aux">{{ t('dashboard.allSubs') }}</a></div>
           <template v-if="pays.length">
             <div class="psum"><span>{{ t('dashboard.fromToday') }}</span><b class="num">{{ t('dashboard.paySummary', { n: pays.length, amount: fmtMoney(paysSum) }) }}</b></div>
             <ul class="items pays">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t, type MessageKey } from '../i18n'
-import { computed, defineAsyncComponent, onActivated, onDeactivated, ref } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import SubTabs from '../components/SubTabs.vue'
 import PageHeader from '../components/PageHeader.vue'
 import TransferChart from '../components/TransferChart.vue'
@@ -86,14 +86,11 @@ const chEd = ref<{ item: PlanChange | null } | null>(null)
 function openSub(s?: Subscription) { tab.value = 'list'; subEd.value = { item: s ?? null } }
 function editChange(c: PlanChange) { subEd.value = null; tab.value = 'changes'; chEd.value = { item: c } }
 
-// "#subs?add" (the record modal's 구독) opens the add editor; the hash goes back to plain "#subs".
-function checkAdd() {
-  if (!/^#subs\?(.*&)?add\b/.test(location.hash)) return
-  history.replaceState(null, '', `${location.pathname}${location.search}#subs`)
-  openSub()
-}
-onActivated(() => { checkAdd(); window.addEventListener('hashchange', checkAdd) })
-onDeactivated(() => window.removeEventListener('hashchange', checkAdd))
+// The 지출 page (spec 011 S-1) owns the add button and the "#subs?add" / "#spend/subs?add" addresses; it asks
+// for the add editor with `adding`, and this page says when it has opened it.
+const props = defineProps<{ embedded?: boolean; adding?: boolean }>()
+const emit = defineEmits<{ added: [] }>()
+watch(() => props.adding, (on) => { if (on) { openSub(); emit('added') } }, { immediate: true })
 
 // ---------- preview ----------
 const from = ref(ymOf(now))
@@ -189,7 +186,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
 
 <template>
   <section class="page-gap">
-    <PageHeader :title="t('subscriptions.title')" :desc="t('subscriptions.desc')">
+    <PageHeader v-if="!embedded" :title="t('subscriptions.title')" :desc="t('subscriptions.desc')">
       <Soon class="soon-btn" :aria-label="`${t('shell.csvExport')} (${t('common.soon')})`"><Icon name="download" />{{ t('shell.csvExport') }}</Soon>
       <button class="btn pri" type="button" @click="openSub()"><Icon name="plus" />{{ t('subscriptions.addSub') }}</button>
     </PageHeader>
