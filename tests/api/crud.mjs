@@ -11,7 +11,20 @@ const BASE = process.env.BASE ?? 'http://localhost:15173'
 const STATE = new URL('./.state.json', import.meta.url)
 const phase = process.argv[2] ?? 'create'
 let failed = 0
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run (knowledge: stop-at-first-failure): it throws once (when `armed`), no
+// further write happens, and what this run made is removed by `rollback` below. Later failures are only reported.
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
+// Every row this run created (POST → 201, by path/id) and every change to existing data that must be put back.
+const made = []
+const restores = []
 
 let cookie = ''
 async function api(method, path, body) {
@@ -25,6 +38,8 @@ async function api(method, path, body) {
   const text = await res.text()
   let json = null
   try { json = text ? JSON.parse(text) : null } catch { json = text }
+  if (method === 'POST' && res.status === 201 && json?.id) made.push(`${path}/${json.id}`)
+  if (method === 'DELETE' && res.status === 204) { const i = made.indexOf(path); if (i >= 0) made.splice(i, 1) }
   return { status: res.status, json }
 }
 
@@ -32,6 +47,24 @@ async function signIn() {
   const r = await api('POST', '/api/auth/sign-in/email', { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })
   ok(r.status === 200, `sign-in → ${r.status}`)
   if (r.status !== 200) process.exit(1)
+}
+
+// After a failed create phase: delete what was made (newest first), then put back what was changed. Reports each
+// step, never throws, never hides the first failure.
+async function rollback() {
+  console.log(`ROLLBACK: removing ${made.length} row(s) this run made, then ${restores.length} restore(s)`)
+  for (const path of [...made].reverse()) {
+    try {
+      const d = await api('DELETE', path)
+      console.log(`${d.status === 204 ? 'CLEANUP' : 'CLEANUP-FAIL'} DELETE ${path.split('/').slice(0, 3).join('/')}/<id> → ${d.status}`)
+    } catch (e) { console.log(`CLEANUP-FAIL DELETE ${path}: ${e?.message ?? e}`) }
+  }
+  for (const [name, fn] of [...restores].reverse()) {
+    try {
+      const r = await fn()
+      console.log(`${r.status === 200 ? 'CLEANUP' : 'CLEANUP-FAIL'} restore ${name} → ${r.status}`)
+    } catch (e) { console.log(`CLEANUP-FAIL restore ${name}: ${e?.message ?? e}`) }
+  }
 }
 
 const MARK = 'V8-marker'
@@ -47,6 +80,8 @@ const spend = {
 }
 const sub = { name: MARK, category: 'tool', plan: 'p', amount: 1.5, currency: 'USD', vat: 10, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false, note: 'n' }
 
+armed = true
+try {
 if (phase === 'create') {
   const anon = await api('GET', '/api/state')
   ok(anon.status === 401, `GET /api/state without session → ${anon.status} (want 401)`)
@@ -71,6 +106,8 @@ if (phase === 'create') {
   ok(before.status === 200, `GET /api/state with session → ${before.status}`)
   const ids = { settings: before.json.settings, living: before.json.living }
 
+  restores.push(['settings', () => api('PUT', '/api/settings', ids.settings)])
+  restores.push(['living', () => api('PUT', '/api/living', ids.living)])
   const s1 = await api('PUT', '/api/settings', { ...before.json.settings, netPay: 2_600_001 })
   ok(s1.status === 200 && s1.json.netPay === 2_600_001, `PUT /api/settings → ${s1.status}`)
   const l1 = await api('PUT', '/api/living', { ...before.json.living, food: 300_001 })
@@ -91,6 +128,7 @@ if (phase === 'create') {
   ids.openPhases = before.json.phases.filter((p) => p.to === null)
   for (const p of ids.openPhases) {
     const { id, ...rest } = p
+    restores.push([`open phase ${p.label}`, () => api('PUT', `/api/phases/${id}`, rest)])
     const r = await api('PUT', `/api/phases/${id}`, { ...rest, to: '2089-12' })
     ok(r.status === 200, `close open phase ${p.label} for the test → ${r.status}`)
   }
@@ -176,6 +214,7 @@ if (phase === 'create') {
   // for a moment, race 15 times, then check no amount sits on a non-fixed target.
   if (subsT) {
     const { id: subsId, ...subsBody } = subsT
+    restores.push(['subscriptions target', () => api('PUT', `/api/targets/${subsId}`, { ...subsBody, note: subsBody.note ?? '' })])
     const freed = await api('PUT', `/api/targets/${subsId}`, { ...subsBody, kind: 'fixed' })
     ok(freed.status === 200, `free the subscriptions kind for the race test → ${freed.status}`)
     const x = await api('POST', '/api/targets', { name: `${MARK}-race`, kind: 'fixed' })
@@ -268,6 +307,10 @@ if (phase === 'verify' || phase === 'cleanup') {
     const l = await api('PUT', '/api/living', ids.living)
     ok(s.status === 200 && l.status === 200, 'settings/living restored')
   }
+}
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
+  if (phase === 'create') await rollback()
 }
 
 console.log(failed === 0 ? `\nALL PASS (${phase})` : `\n${failed} FAILED (${phase})`)

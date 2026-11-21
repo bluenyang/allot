@@ -4,7 +4,17 @@
 // B's rows are removed at the end (in finally); its change history and the account stay, so run it on a
 // disposable test database. Exit code 0 only when every check passed.
 let failed = 0
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run: it throws once (when `armed`), the `finally` below removes what was
+// made, and later failures there are only reported (knowledge: stop-at-first-failure).
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
 const BASE = process.env.BASE ?? 'http://localhost:15173'
 const MARK = 'V5-marker'
 
@@ -69,6 +79,7 @@ ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings
 const created = [] // [path, id]
 const track = (path, r) => { if (r.status === 201 && r.json?.id) created.push([path, r.json.id]); return r }
 let aRestore = null
+armed = true
 try {
   // B cannot point at A's rows
   const pc = track('/api/plan-changes', await B('POST', '/api/plan-changes', { subId: aSub.id, effective: null, to: { amount: 1 }, note: MARK }))
@@ -116,6 +127,8 @@ try {
     const rv = await B('POST', `/api/changes/${aSet.id}/revert`)
     ok(rv.status === 404, `B revert of A's change set → ${rv.status} (want 404)`)
   } else ok(false, 'A has a change set to try')
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
 } finally {
   // cleanup: try every step even when one throws; report each, then look at B's rows for the marker
   const step = async (name, run) => {
