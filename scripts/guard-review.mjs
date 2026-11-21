@@ -17,13 +17,16 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { LEADERS, PH, SHELLS, WRAPPERS, baseName, parseShell } from './shell-words.mjs'
+import { PH, parseShell } from './shell-words.mjs'
 
 // Threat model: this hook stops the agent's own accidental or habitual PR create/merge without a
 // review mark, including shell-quoting variants. It is not a sandbox against deliberate obfuscation
 // (decoding a payload and piping it to a shell); AGENTS.md's red lines already forbid that.
-// Detection looks at command words (scripts/shell-words.mjs splits the command into simple
-// commands): quoted text, heredoc bodies and comments are data, not PR operations.
+// Detection is safe by default: scripts/shell-words.mjs splits the command into simple commands and
+// each one is read as text, except a small allowlist of data contexts (echo, printf, grep, cat,
+// `git commit`, `codex exec < file`, read-only `gh`) whose quoted arguments and heredocs are ignored.
+// Anything that can run a command given as text (shells, interpreters, find -exec, xargs, env, sudo,
+// pnpm exec ...) is scanned. Input the parser cannot handle (too large or nested) is refused.
 //
 // Allowlist: a command that looks like a PR operation is allowed only in one canonical form,
 // standing alone; everything else is refused with the forms to use.
@@ -35,7 +38,7 @@ export const FORMS = [
 
 const SAFE_PR = new Set(['view', 'checks', 'list', 'diff', 'status', 'edit', 'close', 'comment', 'ready', 'reopen'])
 
-// Legacy text reading, used only for hook input that is not JSON with a string command (so there
+// Text rules: the default for every command, and the only reading of hook input that is not JSON with a string command (so there
 // are no command words to look at): any reading of the text that spells a PR operation.
 // `gh pr` followed by anything but a literal safe subcommand (so `gh pr ${x}ge`, `gh pr $(echo merge)`)
 const UNKNOWN_PR = new RegExp(`\\bgh\\s+pr\\s+(?!(?:${[...SAFE_PR].join('|')})(?=$|[\\s"'}\\],\\\;&|)]))`)
@@ -49,9 +52,30 @@ const decodeEscapes = (t) =>
     .replace(/\\([tnr/bf"\\])/g, (_, c) => ({ t: '\t', n: '\n', r: '\r', b: '\b', f: '\f' })[c] ?? c)
 
 const GH_VALUE_FLAGS = new Set(['-R', '--repo', '-H', '--hostname'])
+const ASSIGN = /^[A-Za-z_]\w*=/
+const LEADERS = new Set(['{', '}', '!', 'if', 'then', 'do', 'else', 'elif', 'while', 'until'])
+// Programs whose arguments are data: they print, search or read files and never run an argument.
+// Everything else (shells, interpreters, find -exec, xargs, env, sudo, pnpm exec, script, git -c ...)
+// can run a command given as text, so its whole text is scanned with the text rules above.
+const DATA_PROGS = new Set(['echo', 'printf', 'grep', 'egrep', 'fgrep', 'rg', 'cat', 'head', 'tail', 'wc'])
+const REDIR = /^\d*(?:>>?|<|<>|>\||>&|&>)/
+const REDIR_ONLY = /^\d*(?:>>?|<|<>|>\||>&|&>)$/
 
-/** After `gh`: is this `gh pr <not a safe subcommand>` or `gh api` touching pulls or merge? */
-function ghCandidate(rest) {
+/** Words without redirections (`2>/dev/null`, `> f`, `< f`, `>&2`); `hasIn` when stdin comes from a file. */
+function stripRedirs(words) {
+  const args = []
+  let hasIn = false
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    if (!REDIR.test(w)) { args.push(w); continue }
+    if (/^\d*<(?!<)/.test(w)) hasIn = true
+    if (REDIR_ONLY.test(w)) i++ // the operator stands alone: its target is the next word
+  }
+  return { args, hasIn }
+}
+
+/** `gh` words (after gh): a subcommand that only reads or edits, never creates or merges. */
+function ghSafe(rest) {
   const nextNonFlag = (from) => {
     let j = from
     while (j < rest.length) {
@@ -62,64 +86,79 @@ function ghCandidate(rest) {
     return -1
   }
   const a = nextNonFlag(0)
-  if (a < 0) return false
-  if (rest[a].includes(PH)) return true // the subcommand is only known at run time
-  if (rest[a] === 'api') return rest.slice(a + 1).some((x) => x.includes(PH) || /\b(pulls|merge)\b/.test(x))
+  if (a < 0 || rest[a].includes(PH)) return false
+  if (rest[a] === 'run' || rest[a] === 'issue') return true
   if (rest[a] !== 'pr') return false
   const b = nextNonFlag(a + 1)
-  if (b < 0) return false
-  return rest[b].includes(PH) || !SAFE_PR.has(rest[b])
+  return b >= 0 && !rest[b].includes(PH) && SAFE_PR.has(rest[b])
 }
 
-function segmentCandidate(seg, depth) {
-  const w = seg.words
+/** A segment whose program is a proven data context: its arguments and here-documents are ignored. */
+function isData(seg) {
+  const { args, hasIn } = stripRedirs(seg.words)
   let k = 0
-  while (k < w.length && (/^[A-Za-z_]\w*=/.test(w[k]) || LEADERS.has(w[k]))) k++
-  if (k >= w.length) return false
-  let prog = baseName(w[k])
-  // env/sudo/xargs/... run the next program: look through them to the gh or shell they start
-  for (let guard = 0; WRAPPERS.has(prog) && guard < 4; guard++) {
-    const j = w.findIndex((x, idx) => idx > k && (baseName(x) === 'gh' || SHELLS.has(baseName(x)) || WRAPPERS.has(baseName(x))))
-    if (j < 0) {
-      return depth < 4 && w.slice(k + 1).some((x) => /\s/.test(x) && isCommandCandidate(x, depth + 1))
-    }
-    k = j
-    prog = baseName(w[k])
-  }
-  if (prog === 'gh') return ghCandidate(w.slice(k + 1))
-  if (w[k].includes(PH)) return w.slice(k + 1, k + 4).some((x) => x === 'pr' || x === 'api') // `$GH pr merge`
-  if (SHELLS.has(prog) && depth < 4) {
-    const args = w.slice(k + 1)
-    return args.some((x) => isCommandCandidate(x, depth + 1)) ||
-      (prog === 'eval' && isCommandCandidate(args.join(' '), depth + 1)) ||
-      seg.heredocs.some((b) => isCommandCandidate(b, depth + 1))
-  }
+  while (k < args.length && (ASSIGN.test(args[k]) || LEADERS.has(args[k]))) k++
+  if (k >= args.length || args[k].includes(PH)) return false
+  const prog = args[k]
+  if (DATA_PROGS.has(prog)) return true
+  if (prog === 'git') return args[k + 1] === 'commit'
+  if (prog === 'codex') return args[k + 1] === 'exec' && hasIn
+  if (prog === 'gh') return ghSafe(args.slice(k + 1))
   return false
 }
 
-/** True when a command word (not quoted data, not a heredoc body) starts a PR operation. */
-function isCommandCandidate(command, depth = 0) {
-  return [false, true].some((nlSpace) => parseShell(command, { nlSpace }).some((seg) => segmentCandidate(seg, depth)))
+// A command line that also runs a shell or interpreter may feed it the text of an echo or cat
+// (`echo "..." | sh`, `source <(echo "...")`): nothing in such a line is treated as data.
+const EXECUTORS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'busybox', 'eval', 'source', '.', 'python', 'python3', 'node', 'perl', 'ruby', 'php', 'lua'])
+const runsExecutor = (seg) => {
+  const { args } = stripRedirs(seg.words)
+  let k = 0
+  while (k < args.length && (ASSIGN.test(args[k]) || LEADERS.has(args[k]))) k++
+  return k < args.length && EXECUTORS.has(args[k].split('/').pop())
+}
+
+function segmentCandidate(seg, noData) {
+  if (!noData && isData(seg)) return false
+  if (seg.ansi) return true // $'..' / $".." can spell any word
+  const text = [seg.words.join(' '), ...seg.heredocs].join('\n')
+  return looksLikePr(text.replace(/\\/g, ' ').replace(/['"]/g, '')) || looksLikePr(text.replace(/[\\'"]/g, ''))
 }
 
 /**
- * Candidate check on the raw hook input. A candidate is a simple command whose program is `gh`
- * (also behind env/sudo/command/xargs..., or inside `sh -c`, `eval` or a script fed to a shell)
- * followed by `pr` and anything but a safe subcommand, or by `api` and pulls/merge. Text that only
- * mentions those words (echo, printf, heredoc bodies, quoted arguments, comments) is data.
- * Input that is not JSON with a string command has no command words: it is read as text, as before.
+ * Text rules on every simple command except the proven data contexts. A command is read as
+ * commands (not as one text) so that `echo "gh pr merge"` is data while `find . -exec gh pr merge 1 \;`,
+ * `python -c '...'`, `sudo -u x gh ...` and `2>/dev/null gh ...` are scanned as before.
+ */
+function isCommandCandidate(command) {
+  return [false, true].some((nlSpace) => {
+    const segs = parseShell(command, { nlSpace })
+    const noData = segs.some(runsExecutor)
+    return segs.some((seg) => segmentCandidate(seg, noData))
+  })
+}
+
+/**
+ * Candidate check on the raw hook input. Fails closed: input the parser cannot handle (too nested,
+ * too large) is a candidate. Input that is not JSON with a string command is read as text, as before.
  */
 export function isCandidate(raw) {
   const text = String(raw ?? '')
-  let command
-  try { command = JSON.parse(text)?.tool_input?.command } catch { /* not JSON */ }
-  if (typeof command === 'string') return isCommandCandidate(command)
-  const views = [text, decodeEscapes(text)]
-  // shell line continuations (backslash-newline) vanish before the shell splits words: join them first
-  for (const v of [...views]) views.push(v.replace(/\\\r?\n/g, ''))
-  // ANSI-C / locale quoting ($'..', $"..") can spell any word: always a candidate
-  return views.some((v) => /\$['"]/.test(v) || looksLikePr(v.replace(/\\/g, ' ').replace(/['"]/g, '')) || looksLikePr(v.replace(/[\\'"]/g, '')))
+  try {
+    if (text.length > MAX_INPUT) return true
+    let command
+    try { command = JSON.parse(text)?.tool_input?.command } catch { /* not JSON */ }
+    if (typeof command === 'string') return isCommandCandidate(command)
+    const views = [text, decodeEscapes(text)]
+    // shell line continuations (backslash-newline) vanish before the shell splits words: join them first
+    for (const v of [...views]) views.push(v.replace(/\\\r?\n/g, ''))
+    // ANSI-C / locale quoting ($'..', $"..") can spell any word: always a candidate
+    return views.some((v) => /\$['"]/.test(v) || looksLikePr(v.replace(/\\/g, ' ').replace(/['"]/g, '')) || looksLikePr(v.replace(/[\\'"]/g, '')))
+  } catch {
+    return true
+  }
 }
+
+const MAX_INPUT = 100000
 
 /** Small POSIX-shell-word tokenizer. Returns an array of words, or null (unbalanced/unsupported). */
 export function tokenize(cmd) {
@@ -247,7 +286,7 @@ function selfTest() {
   t('candidates', ['gh pr mer\\ge 24', 'gh api --raw-field=t=x repos/o/r/pulls', '"gh" "pr" "merge"'].map(isCandidate), [true, true, true])
   t('not candidates', ['git push -u origin x', 'gh pr view 24', 'gh pr checks 24', 'gh pr edit 24 --body-file f', 'gh pr close 22', 'git commit -F msg.txt'].map(isCandidate), [false, false, false, false, false, false])
   const cand = (c) => isCandidate(JSON.stringify({ tool_name: 'Bash', tool_input: { command: c } }))
-  t('mentions are data', ['echo "gh pr merge 24" > prompt.md', "grep -n '^codex$' f", "python3 - <<'EOF'\nPR 28 merge, gh pr create\nEOF"].map(cand), [false, false, false])
+  t('mentions are data', ['echo "gh pr merge 24" > prompt.md', "grep -n '^codex$' f", "python3 - <<'EOF'\nPR 28 merge, create notes\nEOF"].map(cand), [false, false, false])
   t('command words are candidates', ['git push x && gh pr merge 24', 'sh -c "gh pr merge 24"', 'env GH_REPO=o/r gh pr create --head b', "gh pr $'\\155erge' 24"].map(cand), [true, true, true, true])
   t('equal allows', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'aaa', recorded: 'aaa' }), null)
   t('different blocks', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'bbb', recorded: 'aaa' }) !== null, true)
@@ -280,7 +319,7 @@ function resolveHead(dir, p) {
 function hook() {
   let input = ''
   process.stdin.on('data', (d) => { input += d })
-  process.stdin.on('end', () => {
+  const handle = () => {
     const block = (why) => { console.error(`guard-review: ${why}`); process.exit(2) }
     // A non-candidate cannot contain a PR operation, so unreadable or command-less input that is not a
     // candidate is allowed: blocking every call on a format change would stop all work. A Bash call
@@ -303,6 +342,13 @@ function hook() {
     const why = decide({ command, branch, headSha, recorded: readRecord(dir, branch) })
     if (why) block(why)
     process.exit(0)
+  }
+  // fail closed: a parser error, a size or nesting limit, or any other failure refuses the call
+  process.stdin.on('end', () => {
+    try { handle() } catch (e) {
+      console.error(`guard-review: failed closed (${String(e?.message ?? e).split('\n')[0]}); refusing. Allowed forms:\n  ${FORMS}`)
+      process.exit(2)
+    }
   })
 }
 

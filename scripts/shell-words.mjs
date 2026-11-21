@@ -37,11 +37,16 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
   // substitutions in an unquoted here-document body still run; the rest of the body is data
   const scanBody = (text) => out.push(...parseShell(text, { nlSpace, body: true }))
 
-  function run(closer, asBody = false) {
+  let nest = 0
+  const run = (closer, asBody = false) => { // nesting is limited: deeper input is refused by the callers (they catch the error)
+    if (++nest > 40) throw new Error("shell nesting too deep")
+    try { runInner(closer, asBody) } finally { nest-- }
+  }
+  function runInner(closer, asBody) {
     let seg = null
     let word = null
     const pending = []
-    const getSeg = () => (seg ??= { words: [], dyn: false, heredocs: [] })
+    const getSeg = () => (seg ??= { words: [], dyn: false, ansi: false, heredocs: [] })
     const endWord = () => { if (word !== null) { getSeg().words.push(word); word = null } }
     const endSeg = () => { endWord(); if (seg) { out.push(seg); seg = null } }
     const add = (t) => { word = (word ?? '') + t }
@@ -78,11 +83,11 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
       } else if (c === '"') {
         i++; dq()
       } else if (c === '$' && s[i + 1] === "'") {
-        i += 2; mark()
+        i += 2; mark(); getSeg().ansi = true
         while (i < n && s[i] !== "'") i += s[i] === '\\' ? 2 : 1
         i++
       } else if (c === '$' && s[i + 1] === '"') {
-        i += 2; mark(); dq()
+        i += 2; mark(); getSeg().ansi = true; dq()
       } else if (c === '$' && s[i + 1] === '(') {
         i += 2; mark(); run(')')
       } else if (c === '$' && s[i + 1] === '{') {
@@ -147,12 +152,6 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
   return out
 }
 
-/** Programs that run a command given as text or as the following words. */
-export const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'busybox', 'eval', 'source', '.'])
-/** Programs that run the next program: `env`, `sudo`, `xargs`... */
-export const WRAPPERS = new Set(['env', 'sudo', 'doas', 'xargs', 'timeout', 'nice', 'ionice', 'nohup', 'time', 'command', 'exec', 'builtin', 'stdbuf', 'setsid', 'watch', 'flock'])
-/** Shell keywords that may stand before a command word. */
-export const LEADERS = new Set(['{', '}', '!', 'if', 'then', 'do', 'else', 'elif', 'while', 'until'])
 
 /** Program name of a word: the last path component. */
 export const baseName = (w) => String(w ?? '').split('/').pop()
