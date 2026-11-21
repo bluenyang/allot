@@ -139,6 +139,8 @@ if (phase === 'create') {
     'KRW with a rate': { ...spend, fxRate: 1380 },
     'USD without a buffer': { ...spend, currency: 'USD', fxRate: 1380, fxBuffer: null },
     'KRW with a buffer': { ...spend, fxBuffer: 3 },
+    'USD with a 3-decimal buffer': { ...spend, currency: 'USD', fxRate: 1380, fxBuffer: 3.456 },
+    'USD with a 3-decimal rate': { ...spend, currency: 'USD', fxRate: 1380.256, fxBuffer: 3 },
     'lump with 2 rounds': { ...spend, how: 'lump', count: 1, fee: 0, rounds: spend.rounds.slice(0, 2) },
     'fee on a salary installment': { ...spend, payBy: 'salary' },
     'interval on an installment': { ...spend, interval: 'monthly' },

@@ -46,6 +46,10 @@ test('the buffer is fixed with the rate: USD needs it, KRW has none, it stays wi
   no({ ...usd, fxBuffer: 101 })
   ok({ ...usd, fxBuffer: 0 })
   ok({ ...usd, fxBuffer: 3.5 })
+  ok({ ...usd, fxBuffer: 3.46 })
+  no({ ...usd, fxBuffer: 3.456 }, 'fxBuffer')
+  ok({ ...usd, fxRate: 1380.25 })
+  no({ ...usd, fxRate: 1380.256 }, 'fxRate')
 })
 
 test('refuses a way to pay that does not fit the count, the fee or the interval', () => {
