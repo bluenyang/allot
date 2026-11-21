@@ -223,7 +223,7 @@ export const resourceOf = (name: string): ListResource | SingleResource | undefi
   (Object.hasOwn(RESOURCES, name) ? RESOURCES[name as ListName] : Object.hasOwn(SINGLES, name) ? SINGLES[name as SingleName] : undefined)
 
 /** What an AI may change (spec 009 S-2): not accounts, debts, holiday sets or display settings. */
-export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks'] as const
+export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings'] as const
 export const AI_SINGLES = ['settings', 'living'] as const
 export type AiResource = (typeof AI_LISTS)[number] | (typeof AI_SINGLES)[number]
 export const AI_RESOURCES: readonly string[] = [...AI_LISTS, ...AI_SINGLES]

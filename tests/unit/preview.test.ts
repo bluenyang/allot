@@ -47,3 +47,21 @@ test('a target that exists on one side only shows null on the other', () => {
   const gone = monthPreview(after, data, '2026-11')
   assert.deepEqual(gone.distribution.find((r) => r.targetId === 't-new')!.amountKrw, { before: 100_000, after: null })
 })
+
+test('a proposed spending moves the month it falls in: remainder (salary) or transfer (subscription account)', () => {
+  const round = (date: string, amount: number) => [{ no: 1, date, amount, state: 'left' as const, edited: false }]
+  const sp = (id: string, payBy: 'salary' | 'subs', amount: number) => ({
+    id, name: id, category: 'etc', bought: '2026-11-02', amount, currency: 'KRW' as const, fxRate: null, fxBuffer: null, how: 'lump' as const, payBy, count: 1, fee: 0, interval: null, cancelled: false,
+    rounds: round('2026-11-12', amount),
+  })
+  const salary = monthPreview(data, { ...data, spendings: [sp('a', 'salary', 70_000)] }, '2026-11')
+  assert.equal(salary.remainderKrw.before - salary.remainderKrw.after, 70_000)
+  assert.deepEqual(salary.transferKrw.before, salary.transferKrw.after)
+  const subs = monthPreview(data, { ...data, spendings: [sp('b', 'subs', 40_000)] }, '2026-11')
+  assert.ok(subs.transferKrw.after > subs.transferKrw.before)
+  assert.ok(subs.neededKrw.after - subs.neededKrw.before === 40_000)
+  assert.ok(subs.remainderKrw.after < subs.remainderKrw.before) // the larger transfer comes off the remainder too
+  const other = monthPreview(data, { ...data, spendings: [sp('a', 'salary', 70_000)] }, '2026-12')
+  assert.deepEqual(other.remainderKrw.before, other.remainderKrw.after)
+  assert.notEqual(hashState(data), hashState({ ...data, spendings: [sp('a', 'salary', 70_000)] }))
+})

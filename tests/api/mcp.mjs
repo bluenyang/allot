@@ -6,8 +6,8 @@
 // written straight into the `apikey` table in the form the plugin stores them (the way a key made
 // on the screen looks in the database: SHA-256 base64url of the key); making keys through the
 // screen's API is tests/api/api-keys.mjs. No raw key is printed or written anywhere.
-//   isolation  V-5: users A and B each put marked data in; A's key calls all six tools and nothing of B shows, and back.
-//   tools      V-6: tools/list (six, read-only), get_overview for this month and three months on against calc.ts,
+//   isolation  V-5: users A and B each put marked data in; A's key calls all seven tools and nothing of B shows, and back.
+//   tools      V-6: tools/list (seven, read-only), get_overview for this month and three months on against calc.ts,
 //              an unknown tool and bad arguments, list_changes paging.
 //   write      spec 009 V-3…V-9 through the tools: scope, proposals, previews, apply, confirmation methods,
 //              stale / expired / revoked, revert, isolation (a fresh user W; keys are made through the API).
@@ -82,7 +82,7 @@ const createUser = async (tag) => {
   return r.json.user.id
 }
 
-const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes']
+const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes', 'list_spendings']
 let rpcId = 100
 /** tools/call → { status, result (the tool's result), error (JSON-RPC error), data (structuredContent) } */
 async function tool(key, name, args = {}) {
@@ -253,7 +253,7 @@ async function isolationMode() {
   const ownStrings = (state) => [...state.subscriptions.map((x) => x.name), ...state.targets.map((x) => x.name), ...state.accounts.map((x) => x.name), ...state.debts.map((x) => x.name)].filter((x) => x.length >= 4)
   const states = {}
   for (const tag of ['A', 'B']) states[tag] = (await users[tag].api('GET', '/api/state')).json
-  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }]]
+  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }], ['list_spendings', {}]]
   for (const [me, other] of [['A', 'B'], ['B', 'A']]) {
     const out = {}
     for (const [name, args] of calls) {
@@ -262,7 +262,7 @@ async function isolationMode() {
       out[name] = t.text
     }
     const all = Object.values(out).join('\n')
-    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the six answers`)
+    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the seven answers`)
     const foreignIds = uuidIds(states[other]).filter((x) => !uuidIds(states[me]).includes(x))
     ok(foreignIds.length > 0 && !foreignIds.some((x) => all.includes(x)), `${me}'s key: none of ${other}'s ${foreignIds.length} ids appear`)
     const foreignNames = ownStrings(states[other]).filter((n) => !ownStrings(states[me]).includes(n))
@@ -286,7 +286,7 @@ async function toolsMode() {
   const key = await insertKey(aId)
   const list = await mcp(A, key)
   const tools = list.json?.result?.tools ?? []
-  ok(tools.length === 6 && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the six tools (${tools.map((t) => t.name).join(', ')})`)
+  ok(tools.length === 7 && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the seven tools (${tools.map((t) => t.name).join(', ')})`)
   ok(tools.every((t) => t.annotations?.readOnlyHint === true), 'every tool says readOnlyHint: true')
   ok(tools.every((t) => !/create|update|delete|write|set_|add_|remove/.test(t.name)), 'no tool name is a write')
   ok(tools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'descriptions are English text')
@@ -313,8 +313,8 @@ async function toolsMode() {
     const t = await tool(key, 'get_overview', { month: ym })
     ok(!failedCall(t) && t.data?.month === ym, `get_overview ${ym} → ${t.status}`)
     const o = t.data
-    const x = calc.transferAt(state.subscriptions, state.planChanges, state.settings, ym)
-    const dist = calc.distributionAt(ym, state.settings.netPay, state.phases, state.targets, state.living, state.subscriptions, state.planChanges, state.settings)
+    // monthMoney: the same call every screen makes, so one-off spendings are in both halves (spec 011 S-5)
+    const { transfer: x, dist } = calc.monthMoney(state, ym)
     ok(o.subscriptionTransfer.transferKrw === x.transfer && o.subscriptionTransfer.neededKrw === x.needed, `${ym}: the subscription transfer is calc.ts's (${x.transfer})`)
     ok(JSON.stringify(o.distribution.rows.map((r) => [r.targetId, r.amountKrw])) === JSON.stringify(dist.rows.map((r) => [r.key, Math.round(r.amount)])) && o.distribution.remainderKrw === Math.round(dist.remainder),
       `${ym}: the distribution rows and the remainder are calc.ts's (${dist.rows.length} rows)`)
@@ -334,6 +334,14 @@ async function toolsMode() {
   ok(pc.data.planChanges.length === state.planChanges.length, `list_plan_changes: ${state.planChanges.length}`)
   const al = await tool(key, 'get_allocation', {})
   ok(al.data.targets.length === state.targets.length && al.data.phases.length === state.phases.length && al.data.debts.length === state.debts.length, 'get_allocation: targets, phases, debts as stored')
+  const ls = await tool(key, 'list_spendings', {})
+  const stSp = state.spendings ?? []
+  ok(!failedCall(ls) && ls.data.spendings.length === stSp.length && stSp.every((x) => ls.data.spendings.some((y) => y.id === x.id && y.rounds.length === x.rounds.length)), `list_spendings: all ${stSp.length} spendings with their rounds`)
+  for (const st of ['active', 'done', 'cancelled']) {
+    const f = await tool(key, 'list_spendings', { status: st })
+    ok(!failedCall(f) && f.data.spendings.every((x) => (st === 'cancelled' ? x.cancelled : st === 'done' ? x.state === 'paid' : !x.cancelled && x.state !== 'paid')), `list_spendings status ${st}`)
+  }
+  for (const bad of [{ status: 'gone' }, { month: '2026-13' }, { extra: 1 }]) ok(failedCall(await tool(key, 'list_spendings', bad)), `list_spendings ${JSON.stringify(bad)} is refused`)
   const sc = await tool(key, 'get_schedule', { from: ym0, months: 3 })
   ok(sc.data.months.length === 3 && sc.data.months[0].month === ym0 && sc.data.months[2].month === calc.addYm(ym0, 2), 'get_schedule: three months from the first')
   const sc12 = await tool(key, 'get_schedule', { months: 12 })
@@ -371,17 +379,17 @@ async function writeMode() {
 
   // ── V-3: scope ──
   const rn = await names(kRead.key)
-  ok(rn.length === 6 && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the six read tools and no write tool')
+  ok(rn.length === 7 && rn.includes('list_spendings') && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the seven read tools (list_spendings among them) and no write tool')
   for (const [name, args] of [['propose_changes', { changes: [] }], ['apply_proposal', { proposalId: 'x' }], ['get_proposal', { proposalId: 'x' }], ['propose_revert', { changeSetId: 'x' }]]) {
     ok(failedCall(await tool(kRead.key, name, args)), `a read key calling ${name} is an MCP error`)
   }
   const un = await mcp(A, kUi.key)
   const utools = un.json?.result?.tools ?? []
-  ok(utools.length === 10 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: ten tools (${utools.length})`)
+  ok(utools.length === 11 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: eleven tools (${utools.length})`)
   ok(utools.find((t) => t.name === 'apply_proposal')?.annotations?.destructiveHint === true && utools.find((t) => t.name === 'get_proposal')?.annotations?.readOnlyHint === true && utools.find((t) => t.name === 'propose_changes')?.annotations?.readOnlyHint === false, 'annotations: apply is destructive, get is read-only, propose is not read-only')
   ok(utools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'write tool descriptions are English text')
   const pc = utools.find((t) => t.name === 'propose_changes')
-  ok(JSON.stringify(pc?.inputSchema ?? {}).includes('subscriptions') && JSON.stringify(pc?.inputSchema ?? {}).includes('remainder-split'), 'propose_changes advertises the resource shapes')
+  ok(JSON.stringify(pc?.inputSchema ?? {}).includes('subscriptions') && JSON.stringify(pc?.inputSchema ?? {}).includes('remainder-split') && JSON.stringify(pc?.inputSchema ?? {}).includes('spendings') && /spendings/.test(pc?.description ?? ''), 'propose_changes advertises the resource shapes (spendings too)')
   console.log(`INFO propose_changes input schema: ${JSON.stringify(pc?.inputSchema ?? {}).length} bytes`)
 
   // without the badge's number, which a proposal changes by existing
@@ -545,6 +553,80 @@ async function writeMode() {
   const before6 = JSON.stringify((await wState()).events.filter((e) => e.title === 'mcp-event-2'))
   const ui = await W('POST', `/api/changes/${ap6.data.changeSetId}/revert`)
   ok(ui.status === 200 && before6 !== '[]' && (await wState()).events.every((e) => e.title !== 'mcp-event-2'), `the screen's revert works on an AI change set → ${ui.status}`)
+
+  // ── spec 011 V-9: one-off spendings through the tools ──
+  const ymNow = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}` })()
+  const SP = (name, payBy, amount, over = {}) => ({
+    name, note: '', category: 'etc', bought: `${ymNow}-02`, amount, currency: 'KRW', fxRate: null, fxBuffer: null, how: 'lump', payBy, count: 1, fee: 0, interval: null, cancelled: false,
+    rounds: [{ no: 1, date: `${ymNow}-15`, amount, state: 'left', edited: false }], ...over,
+  })
+  const spendIds = []
+  const mjs = await import('../../src/lib/calc.ts')
+  const sp0 = JSON.stringify(await wState())
+  const spCount = async () => Number((await sql`select count(*)::int as n from spending where user_id = ${wId}`)[0].n)
+  const roundCount = async () => Number((await sql`select count(*)::int as n from spending_round where user_id = ${wId}`)[0].n)
+  const overviewNow = async (k) => (await tool(k, 'get_overview', { month: ymNow })).data
+  const o0 = await overviewNow(kUi.key)
+  ok((await tool(kRead.key, 'list_spendings', {})).data?.spendings?.length === 0, 'list_spendings (a read key): none yet')
+
+  // a salary-paid spending: the preview shows the month's remainder before and after, nothing is written
+  const ps = await tool(kUi.key, 'propose_changes', { note: 'v9', changes: [{ resource: 'spendings', action: 'create', data: SP('mcp-spend', 'salary', 120_000) }] })
+  ok(!failedCall(ps) && ps.data?.confirm === 'ui' && ps.data.preview?.rows?.some((r) => r.table === 'spending' && r.op === 'insert') && ps.data.preview.rows.some((r) => r.table === 'spending_round'), `propose_changes (spending): the preview has the spending and its round (${ps.data?.preview?.rows?.map((r) => r.table)})`)
+  const m0 = ps.data?.preview?.months?.[0]
+  ok(m0?.month === ymNow && m0.remainderKrw.before - m0.remainderKrw.after === 120_000 && m0.transferKrw.before === m0.transferKrw.after, `the preview's remainder is 120,000 lower and the transfer the same (${m0?.remainderKrw?.before} → ${m0?.remainderKrw?.after})`)
+  ok(m0?.remainderKrw?.before === o0.distribution.remainderKrw, "the preview's before is this month's remainder")
+  ok(JSON.stringify(await wState()) === sp0 && await spCount() === 0 && await roundCount() === 0, 'proposing wrote no spending and no round')
+  // a spending from the subscription account: the preview shows the transfer
+  const pt = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('mcp-spend-subs', 'subs', 40_000) }] })
+  const t0 = pt.data?.preview?.months?.[0]
+  ok(!failedCall(pt) && t0.neededKrw.after - t0.neededKrw.before >= 40_000 && t0.neededKrw.after - t0.neededKrw.before < 41_000 && t0.transferKrw.after >= t0.transferKrw.before && t0.remainderKrw.after <= t0.remainderKrw.before, `the preview's needed amount is 40,000 higher (rounded up to 1,000) (${t0?.neededKrw?.before} → ${t0?.neededKrw?.after}), the transfer ${t0?.transferKrw?.before} → ${t0?.transferKrw?.after}`)
+  ok((await W('POST', `/api/proposals/${pt.data.proposalId}/reject`)).status === 204, 'rejected: the subscription-account proposal')
+  // rules of the screen apply: a round count that does not fit, a USD amount with a long rate
+  const bad1 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 1000, { count: 2 }) }] })
+  const bad2 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 10, { currency: 'USD', fxRate: 1300.123, fxBuffer: 2 }) }] })
+  ok(failedCall(bad1) && failedCall(bad2) && !/spendFx|spendHow|spendRounds/.test(bad1.text + bad2.text), `spending rules reach the AI in English (${(bad1.error?.message ?? bad1.text).slice(0, 80)} | ${(bad2.error?.message ?? bad2.text).slice(0, 80)})`)
+  // the user confirms on the screen
+  const apS = await W('POST', `/api/proposals/${ps.data.proposalId}/apply`)
+  ok(apS.status === 200 && await spCount() === 1 && await roundCount() === 1, `the screen's confirmation applied it → ${apS.status}`)
+  const st9 = await wState()
+  const made9 = st9.spendings.find((x) => x.name === 'mcp-spend')
+  ok(!!made9 && made9.rounds.length === 1 && made9.rounds[0].amount === 120_000, 'the spending and its round are in the data')
+  if (made9) spendIds.push(made9.id)
+  const lsw = await tool(kRead.key, 'list_spendings', {})
+  const lm = lsw.data?.spendings?.[0]
+  ok(lsw.data?.spendings?.length === 1 && lm.id === made9?.id && lm.rounds.length === 1 && lm.progress.left === 1 && lm.progress.next?.amountKrw === 120_000 && ['planned', 'billing'].includes(lm.state), `list_spendings (read key): the spending with its round (${lm?.state})`)
+  const lmonth = await tool(kRead.key, 'list_spendings', { month: ymNow, status: 'active' })
+  ok(lmonth.data?.spendings?.length === 1 && lmonth.data.monthTotals.remainderKrw === 120_000 && lmonth.data.monthTotals.subscriptionAccountKrw === 0, 'list_spendings month and status filters')
+  const o1 = await overviewNow(kRead.key)
+  ok(o1.distribution.remainderKrw === m0.remainderKrw.after && o1.distribution.spendingKrw === 120_000, "get_overview: the remainder is the preview's after, and the spending is named")
+  ok(o1.spendingRounds?.length === 1 && o1.spendingRounds[0].name === 'mcp-spend' && o1.spendingRounds[0].amountKrw === 120_000 && JSON.stringify(o1.payments) === JSON.stringify(o0.payments), 'get_overview: the round is its own item, the subscription charges are unchanged')
+  const sc9 = (await tool(kRead.key, 'get_schedule', { from: ymNow, months: 1 })).data
+  ok(sc9?.months?.[0]?.spendingRounds?.some((r) => r.name === 'mcp-spend' && r.round === 1 && r.of === 1), 'get_schedule: the round is in its month')
+  const stNow = await wState()
+  const mm = mjs.monthMoney(stNow, ymNow)
+  ok(mm.dist.remainder === o1.distribution.remainderKrw, "the tool's remainder is monthMoney's")
+  // reverting the creation in the change history: no spending, no round, the data as before
+  ok(apS.json?.changeSet && (await W('POST', `/api/changes/${apS.json.changeSet}/revert`)).status === 200 && await spCount() === 0 && await roundCount() === 0 && JSON.stringify(await wState()) === sp0, 'reverting the creation in the change history: no spending, no round, the data as before')
+  ok((await tool(kRead.key, 'list_spendings', {})).data?.spendings?.length === 0 && (await overviewNow(kRead.key)).distribution.remainderKrw === o0.distribution.remainderKrw, 'list_spendings is empty again and the remainder is back')
+  // a chat key: create, update (cancelled), delete, revert the delete; each is one change set
+  const crt = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('mcp-spend-2', 'salary', 90_000) }] })
+  const apC = await tool(kChat.key, 'apply_proposal', { proposalId: crt.data?.proposalId })
+  const made2 = (await wState()).spendings.find((x) => x.name === 'mcp-spend-2')
+  ok(!failedCall(apC) && !!made2, 'a chat key creates a spending')
+  if (made2) spendIds.push(made2.id)
+  const upd = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'update', id: made2?.id, data: { ...SP('mcp-spend-2', 'salary', 90_000), cancelled: true } }] })
+  ok(!failedCall(upd) && upd.data.preview.months[0].remainderKrw.after - upd.data.preview.months[0].remainderKrw.before === 90_000, 'an update to cancelled: the preview gives the 90,000 back')
+  const apU = await tool(kChat.key, 'apply_proposal', { proposalId: upd.data.proposalId })
+  ok(!failedCall(apU) && (await tool(kRead.key, 'list_spendings', { status: 'cancelled' })).data.spendings.length === 1 && (await overviewNow(kRead.key)).distribution.remainderKrw === o0.distribution.remainderKrw, 'applied: cancelled in list_spendings and the remainder is back')
+  const del = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'delete', id: made2?.id }] })
+  ok(!failedCall(del) && del.data.preview.rows.some((r) => r.table === 'spending_round' && r.op === 'delete'), 'deleting: the preview shows the round going too')
+  const apD = await tool(kChat.key, 'apply_proposal', { proposalId: del.data?.proposalId })
+  ok(!failedCall(apD) && await spCount() === 0 && await roundCount() === 0, 'deleted with its rounds')
+  const rvD = await tool(kChat.key, 'propose_revert', { changeSetId: apD.data?.changeSetId })
+  const apRv = failedCall(rvD) ? rvD : await tool(kChat.key, 'apply_proposal', { proposalId: rvD.data.proposalId })
+  ok(!failedCall(apRv) && await spCount() === 1 && await roundCount() === 1, `propose_revert of the delete brings the spending and its round back (${rvD.text?.slice(0, 80)})`)
+  // clean up by id (W is deleted at the end too)
+  for (const id of spendIds) await W('DELETE', `/api/spendings/${id}`)
 
   // ── V-9: another user ──
   const wSet = ap.data.changeSetId

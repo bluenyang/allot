@@ -2,8 +2,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { distributionAt, monthDates, monthlyKrw, nextPayment, parseDate, planAt, transferAt, upcomingPayments, ymd } from '../../src/lib/calc'
-import type { Subscription } from '../../src/data/types'
-import { allocation, overview, planChangeList, schedule, subscriptionList, type Data } from '../../server/mcp/views'
+import type { Spending, Subscription } from '../../src/data/types'
+import { allocation, overview, planChangeList, schedule, spendingList, subscriptionList, type Data } from '../../server/mcp/views'
 
 const sub = (over: Partial<Subscription> & { id: string; name: string }): Subscription => ({
   category: 'tool', plan: 'basic', amount: 10_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active',
@@ -164,4 +164,75 @@ test('overview: one-off spendings are in the transfer and the remainder, with th
   assert.equal(o.distribution.rows.reduce((a, r) => a + r.amountKrw, 0), data.settings.netPay - 100_000)
   // another month is the same as without spendings
   assert.deepEqual(overview(withSpend, '2027-02'), overview(data, '2027-02'))
+})
+
+const rnd = (no: number, date: string, amount: number, state: 'left' | 'paid' | 'merged' = 'left') => ({ no, date, amount, state, edited: false })
+const inst: Spending = {
+  id: 'i1', name: 'Laptop', category: 'etc', bought: '2026-10-05', amount: 300_000, currency: 'KRW', fxRate: null, fxBuffer: null,
+  how: 'installment', payBy: 'card', count: 3, fee: 0, interval: null, cancelled: false,
+  rounds: [rnd(1, '2026-11-14', 100_000, 'paid'), rnd(2, '2026-12-14', 100_000), rnd(3, '2027-01-14', 100_000)],
+}
+const lump: Spending = {
+  id: 'l1', name: 'Chair', category: 'etc', bought: '2026-11-02', amount: 50_000, currency: 'KRW', fxRate: null, fxBuffer: null,
+  how: 'lump', payBy: 'subs', count: 1, fee: 0, interval: null, cancelled: false, rounds: [rnd(1, '2026-12-12', 50_000)],
+}
+const usd: Spending = {
+  id: 'u1', name: 'Course', category: 'edu', bought: '2026-09-01', amount: 100, currency: 'USD', fxRate: 1300, fxBuffer: 2,
+  how: 'lump', payBy: 'salary', count: 1, fee: 0, interval: null, cancelled: false, rounds: [rnd(1, '2026-09-25', 132_600, 'paid')],
+}
+const gone: Spending = { ...lump, id: 'g1', name: 'Gone', cancelled: true }
+const withSp: Data = { ...data, spendings: [inst, lump, usd, gone] }
+const NOW = new Date(2026, 10, 21)
+
+test('list_spendings: rounds, progress and state per spending', () => {
+  const l = spendingList(withSp, NOW)
+  assert.deepEqual(l.spendings.map((x) => x.id), ['i1', 'l1', 'u1', 'g1'])
+  const i = l.spendings[0]!
+  assert.equal(i.state, 'planned')
+  assert.deepEqual(i.progress, { paid: 1, left: 2, merged: 0, next: { round: 2, date: '2026-12-14', amountKrw: 100_000 } })
+  assert.deepEqual(i.rounds.map((r) => [r.round, r.state, r.amountKrw]), [[1, 'paid', 100_000], [2, 'left', 100_000], [3, 'left', 100_000]])
+  assert.equal(i.principalKrw, 300_000)
+  assert.equal(i.payBy, 'card')
+  assert.equal(l.spendings[1]!.payBy, 'subs')
+  const u = l.spendings[2]!
+  assert.equal(u.state, 'paid')
+  assert.equal(u.principalKrw, 132_600) // 100 x 1300 x 1.02 with the rate saved with it, not the settings'
+  assert.equal(u.progress.next, null)
+  const g = l.spendings[3]!
+  assert.equal(g.state, 'cancelled')
+  assert.equal(g.progress.next, null)
+})
+
+test('list_spendings: status and month filters', () => {
+  const ids = (f: Parameters<typeof spendingList>[2]) => spendingList(withSp, NOW, f).spendings.map((x) => x.id)
+  assert.deepEqual(ids({ status: 'active' }), ['i1', 'l1'])
+  assert.deepEqual(ids({ status: 'done' }), ['u1'])
+  assert.deepEqual(ids({ status: 'cancelled' }), ['g1'])
+  assert.deepEqual(ids({ status: 'all' }), ['i1', 'l1', 'u1', 'g1'])
+  assert.deepEqual(ids({ month: '2026-12' }), ['i1', 'l1', 'g1'])
+  assert.deepEqual(ids({ month: '2026-12', status: 'active' }), ['i1', 'l1'])
+  assert.deepEqual(ids({ month: '2026-03' }), [])
+  const m = spendingList(withSp, NOW, { month: '2026-12' })
+  assert.deepEqual(m.monthTotals, { subscriptionAccountKrw: 50_000, remainderKrw: 100_000 }) // the cancelled one adds nothing
+  assert.equal('monthTotals' in spendingList(withSp, NOW), false)
+  assert.deepEqual(spendingList(data, NOW).spendings, [])
+})
+
+test('list_spendings: a payoff round and a merged round are told apart', () => {
+  const paid: Spending = { ...inst, rounds: [rnd(1, '2026-11-14', 100_000, 'paid'), rnd(2, '2026-12-14', 100_000, 'merged'), rnd(3, '2027-01-14', 100_000, 'merged'), rnd(4, '2026-11-20', 200_000)] }
+  const x = spendingList({ ...data, spendings: [paid] }, NOW).spendings[0]!
+  assert.deepEqual([x.progress.paid, x.progress.left, x.progress.merged], [1, 1, 2])
+  assert.equal(x.progress.next?.round, 4)
+  const r = overview({ ...data, spendings: [paid] }, '2026-11').spendingRounds
+  assert.deepEqual(r.map((y) => [y.round, y.of, y.payoff ?? false, y.state]), [[1, 3, false, 'paid'], [4, 3, true, 'left']])
+})
+
+test('overview and schedule: spending rounds are items of their own, not in the subscription charges', () => {
+  const o = overview(withSp, '2026-12')
+  assert.deepEqual(o.spendingRounds.map((r) => [r.date, r.name, r.round, r.of, r.amountKrw, r.payBy]), [['2026-12-12', 'Chair', 1, 1, 50_000, 'subs'], ['2026-12-14', 'Laptop', 2, 3, 100_000, 'card']])
+  assert.deepEqual(o.payments, overview(data, '2026-12').payments)
+  const s = schedule(withSp, '2026-11', 3)
+  assert.deepEqual(s.months.map((m) => m.spendingRounds.length), [1, 2, 1])
+  assert.deepEqual(s.months.map((m) => m.payments), schedule(data, '2026-11', 3).months.map((m) => m.payments))
+  assert.deepEqual(schedule(data, '2026-11', 1).months[0]!.spendingRounds, [])
 })

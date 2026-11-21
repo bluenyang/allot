@@ -3,7 +3,7 @@
 // so the AI and the screen see the same numbers. No database here: the unit tests run without one.
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
-  addYm, changesIn, chargeKrw, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate, planAt, splitRemainder,
+  addYm, changesIn, chargeKrw, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate, planAt, spendingIn, spendingKrw, spendState, splitRemainder,
   transferAt, unallocated, upcomingPayments, ymd, ymOf, type MonthDate,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
@@ -50,6 +50,20 @@ function paymentsIn(d: Data, ym: string) {
   return upcomingPayments(d.subscriptions, d.planChanges, d.settings, start, lastDay(ym) - 1)
     .filter((p) => ymOf(p.date) === ym)
     .map((p) => ({ date: ymd(p.date), subscriptionId: p.sub.id, name: p.sub.name, plan: p.sub.plan, amountKrw: krw(p.krw), cycle: p.sub.cycle }))
+}
+
+/**
+ * One-off spending rounds of a month (spec 011 S-8), as items of their own kind and never part of the subscription charges:
+ * the rounds the month's transfer and remainder take (paid ones too, cancelled and merged ones not). `of` is the round count
+ * of the plan; a round after it (an early payoff's) has `payoff: true`.
+ */
+function spendRoundsIn(d: Data, ym: string) {
+  return spendingIn(d.spendings ?? [], ym).items
+    .sort((a, b) => (a.round.date < b.round.date ? -1 : a.round.date > b.round.date ? 1 : a.spending.name.localeCompare(b.spending.name) || a.round.no - b.round.no))
+    .map(({ spending: sp, round }) => ({
+      date: round.date, spendingId: sp.id, name: sp.name, how: sp.how, payBy: sp.payBy,
+      round: round.no, of: sp.count, ...(round.no > sp.count ? { payoff: true } : {}), amountKrw: krw(round.amount), state: round.state,
+    }))
 }
 
 const changeView = (c: PlanChange, d: Data) => ({
@@ -105,7 +119,60 @@ export function overview(d: Data, ym: string) {
     },
     remainderSplit: split.map((s) => ({ id: s.id, name: s.name, code: s.code, ratio: s.ratio, amountKrw: s.amount })),
     payments: paymentsIn(d, ym),
+    spendingRounds: spendRoundsIn(d, ym),
     planChanges: changesIn(d.planChanges, ym).map((c) => changeView(c, d)),
+  }
+}
+
+export type SpendFilter = { status?: 'active' | 'done' | 'cancelled' | 'all'; month?: string }
+
+/** Every one-off spending with its rounds and derived state (spec 011 S-6); `state` is the general tab's, `progress` counts the rounds. */
+export function spendingList(d: Data, now: Date, filter: SpendFilter = {}) {
+  const all = d.spendings ?? []
+  const today = ymd(now)
+  const yms = all.map((x) => x.bought.slice(0, 7)).sort()
+  const off = yms.length ? offDays(d, yms[0]!, addYm(yms[yms.length - 1]!, 1)) : new Set<string>()
+  const rows = all.map((sp) => {
+    const state = spendState(sp, today, d.settings, off)
+    const live = sp.rounds.filter((r) => r.state !== 'merged')
+    const next = sp.cancelled ? undefined : [...live].filter((r) => r.state === 'left').sort((a, b) => a.no - b.no)[0]
+    return {
+      id: sp.id,
+      name: sp.name,
+      category: sp.category,
+      ...(sp.note ? { note: sp.note } : {}),
+      bought: sp.bought,
+      amount: sp.amount,
+      currency: sp.currency,
+      ...(sp.currency === 'USD' ? { fxRate: sp.fxRate, fxBuffer: sp.fxBuffer } : {}),
+      principalKrw: krw(spendingKrw(sp.amount, sp.currency, { fxRate: sp.fxRate ?? d.settings.fxRate, fxBuffer: sp.fxBuffer ?? d.settings.fxBuffer })),
+      feeKrw: krw(sp.fee),
+      how: sp.how,
+      payBy: sp.payBy,
+      count: sp.count,
+      ...(sp.interval ? { interval: sp.interval } : {}),
+      cancelled: sp.cancelled,
+      state,
+      progress: {
+        paid: sp.rounds.filter((r) => r.state === 'paid').length,
+        left: sp.rounds.filter((r) => r.state === 'left').length,
+        merged: sp.rounds.filter((r) => r.state === 'merged').length,
+        next: next ? { round: next.no, date: next.date, amountKrw: krw(next.amount) } : null,
+      },
+      rounds: [...sp.rounds].sort((a, b) => a.no - b.no).map((r) => ({ round: r.no, date: r.date, amountKrw: krw(r.amount), state: r.state, edited: r.edited })),
+    }
+  })
+  const status = filter.status ?? 'all'
+  const byStatus = rows.filter((r) => status === 'all'
+    || (status === 'cancelled' ? r.cancelled : status === 'done' ? r.state === 'paid' : !r.cancelled && r.state !== 'paid'))
+  const month = filter.month
+  const list = month
+    ? byStatus.filter((r) => all.find((x) => x.id === r.id)!.rounds.some((x) => x.state !== 'merged' && x.date.slice(0, 7) === month))
+    : byStatus
+  const m = month ? spendingIn(all, month) : null
+  return {
+    ...(month ? { month, monthTotals: { subscriptionAccountKrw: krw(m!.subs), remainderKrw: krw(m!.remainder) } } : {}),
+    spendings: list,
   }
 }
 
@@ -170,6 +237,7 @@ export function schedule(d: Data, from: string, months: number) {
       month: ym,
       dates: datesOf(d, ym, off),
       payments: paymentsIn(d, ym),
+      spendingRounds: spendRoundsIn(d, ym),
       planChanges: changesIn(d.planChanges, ym).map((c) => changeView(c, d)),
       planEvents: d.events
         .filter((e) => { const r = eventMonths(e.when); return r.from <= ym && ym <= r.to })
