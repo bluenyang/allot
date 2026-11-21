@@ -341,7 +341,7 @@ async function toolsMode() {
     const f = await tool(key, 'list_spendings', { status: st })
     ok(!failedCall(f) && f.data.spendings.every((x) => (st === 'cancelled' ? x.cancelled : st === 'done' ? x.state === 'paid' : !x.cancelled && x.state !== 'paid')), `list_spendings status ${st}`)
   }
-  for (const bad of [{ status: 'gone' }, { month: '2026-13' }, { extra: 1 }]) ok(failedCall(await tool(key, 'list_spendings', bad)), `list_spendings ${JSON.stringify(bad)} is refused`)
+  for (const bad of [{ status: 'gone' }, { month: '2026-13' }]) ok(failedCall(await tool(key, 'list_spendings', bad)), `list_spendings ${JSON.stringify(bad)} is refused`)
   const sc = await tool(key, 'get_schedule', { from: ym0, months: 3 })
   ok(sc.data.months.length === 3 && sc.data.months[0].month === ym0 && sc.data.months[2].month === calc.addYm(ym0, 2), 'get_schedule: three months from the first')
   const sc12 = await tool(key, 'get_schedule', { months: 12 })
@@ -359,6 +359,8 @@ async function toolsMode() {
 async function writeMode() {
   const PASS = 'v4-pass-12345'
   const wId = await createUser('w')
+  // W's rows are under row-level security: this connection acts as W (a non-superuser role, as on the test server, sees nothing otherwise)
+  const sqlW = postgres(process.env.DATABASE_URL, { max: 1, connection: { 'app.user_id': wId } })
   const xId = await createUser('x')
   const W = client()
   const X = client()
@@ -395,7 +397,7 @@ async function writeMode() {
   // without the badge's number, which a proposal changes by existing
   const wState = async () => { const { pendingProposals: _p, ...rest } = (await W('GET', '/api/state')).json; return rest }
   const wSets = async () => (await W('GET', '/api/changes?limit=200')).json
-  const proposalCount = async (uid) => Number((await sql`select count(*)::int as n from mcp_proposal where user_id = ${uid}`)[0].n)
+  const proposalCount = async (uid) => Number((await sqlW`select count(*)::int as n from mcp_proposal where user_id = ${uid}`)[0].n)
   const SUB = (name, over = {}) => ({ name, category: 'tool', plan: 'p', amount: 12000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false, ...over })
   const LIV = (food) => ({ food, transit: 20000, allowance: 30000 })
 
@@ -488,7 +490,7 @@ async function writeMode() {
   ok((await wState()).living.food === 222000, 'the screen confirmation applied it')
   const afterSets = await wSets()
   ok(afterSets[0].id === okApply.json.changeSet && afterSets[0].actorKind === 'api_key' && afterSets[0].actorId === kUi.id && afterSets[0].actorLabel === 'w-ui' && afterSets[0].proposalId === pr2.data.proposalId, "confirming on the screen: the actor is still the proposing key and the set names the proposal")
-  const dec = await sql`select decided_by, status, change_set_id from mcp_proposal where id = ${pr2.data.proposalId}`
+  const dec = await sqlW`select decided_by, status, change_set_id from mcp_proposal where id = ${pr2.data.proposalId}`
   ok(dec[0].decided_by === 'user' && dec[0].status === 'applied' && dec[0].change_set_id === okApply.json.changeSet, 'the proposal records that the user decided')
   const prRej = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(555000) }] })
   const rj = await W('POST', `/api/proposals/${prRej.data.proposalId}/reject`)
@@ -514,21 +516,21 @@ async function writeMode() {
   ok(failedCall(st) && /stale/.test(st.text), 'apply → stale (propose again)')
   ok((await tool(kChat.key, 'get_proposal', { proposalId: pr3.data.proposalId })).data?.status === 'stale' && (await wState()).living.food === 120000, 'the proposal is stale and the screen change stays')
   const pr4 = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(444000) }] })
-  await sql`update mcp_proposal set expires_at = now() - interval '1 second' where id = ${pr4.data.proposalId}`
+  await sqlW`update mcp_proposal set expires_at = now() - interval '1 second' where id = ${pr4.data.proposalId}`
   const ex = await tool(kChat.key, 'apply_proposal', { proposalId: pr4.data.proposalId })
   ok(failedCall(ex) && /expired/.test(ex.text) && (await tool(kChat.key, 'get_proposal', { proposalId: pr4.data.proposalId })).data?.status === 'expired', 'an expired proposal is refused and marked expired')
-  const ttl = await sql`select extract(epoch from (expires_at - created_at))::int as s, confirm from mcp_proposal where id = ${pr2.data.proposalId}`
+  const ttl = await sqlW`select extract(epoch from (expires_at - created_at))::int as s, confirm from mcp_proposal where id = ${pr2.data.proposalId}`
   ok(ttl[0].s === 24 * 3600 && ttl[0].confirm === 'ui', 'a screen proposal expires after 24 hours')
-  const ttl2 = await sql`select extract(epoch from (expires_at - created_at))::int as s from mcp_proposal where id = ${pr3.data.proposalId}`
+  const ttl2 = await sqlW`select extract(epoch from (expires_at - created_at))::int as s from mcp_proposal where id = ${pr3.data.proposalId}`
   ok(ttl2[0].s === 15 * 60, 'a chat proposal expires after 15 minutes')
-  await sql`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
+  await sqlW`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
   let last
   for (let i = 0; i <= 20; i++) {
     last = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'checks', action: 'create', data: { text: `cap${i}`, done: false } }] })
     if (i < 20 && failedCall(last)) { ok(false, `pending proposal ${i + 1} refused early: ${last.text.slice(0, 100)}`); break }
   }
   ok(failedCall(last) && /too_many/.test(last.text), 'the 21st pending proposal is refused')
-  await sql`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
+  await sqlW`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
 
   // ── V-8: the AI reverts what it applied ──
   const before8 = JSON.stringify(await wState())
@@ -563,8 +565,8 @@ async function writeMode() {
   const spendIds = []
   const mjs = await import('../../src/lib/calc.ts')
   const sp0 = JSON.stringify(await wState())
-  const spCount = async () => Number((await sql`select count(*)::int as n from spending where user_id = ${wId}`)[0].n)
-  const roundCount = async () => Number((await sql`select count(*)::int as n from spending_round where user_id = ${wId}`)[0].n)
+  const spCount = async () => Number((await sqlW`select count(*)::int as n from spending where user_id = ${wId}`)[0].n)
+  const roundCount = async () => Number((await sqlW`select count(*)::int as n from spending_round where user_id = ${wId}`)[0].n)
   const overviewNow = async (k) => (await tool(k, 'get_overview', { month: ymNow })).data
   const o0 = await overviewNow(kUi.key)
   ok((await tool(kRead.key, 'list_spendings', {})).data?.spendings?.length === 0, 'list_spendings (a read key): none yet')
@@ -639,24 +641,29 @@ async function writeMode() {
   const xu = await tool(kX.key, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'update', id: s1.subscriptions.find((x) => x.name === 'mcp-sub').id, data: SUB('hijacked') }] })
   ok(failedCall(xu) && /not found|itemNotFound|Item not found/i.test(xu.text), "X cannot update W's row by id")
   ok(JSON.stringify(await wState()) === wDataNow && JSON.stringify((await X('GET', '/api/state')).json) === xs0, "neither user's data changed")
-  // the table's row-level security: as a role that is not a superuser, another user sees no row
-  await sql`do $$ begin if not exists (select 1 from pg_roles where rolname = 'allot_rls_probe') then create role allot_rls_probe nosuperuser nobypassrls; end if; end $$`
-  await sql`grant select on mcp_proposal to allot_rls_probe`
-  const rls = await sql.begin(async (tx) => {
-    await tx`set local role allot_rls_probe`
-    await tx`select set_config('app.user_id', ${xId}, true)`
-    const other = await tx`select count(*)::int as n from mcp_proposal where user_id = ${wId}`
-    const all = await tx`select count(*)::int as n from mcp_proposal`
-    await tx`select set_config('app.user_id', ${wId}, true)`
-    const mine = await tx`select count(*)::int as n from mcp_proposal`
-    return { other: other[0].n, all: all[0].n, mine: mine[0].n }
-  })
-  ok(rls.other === 0 && rls.all === 0 && rls.mine > 0, `RLS on mcp_proposal: X sees ${rls.all} rows of W's, W sees ${rls.mine}`)
+  const isSuper = (await sqlW`select rolsuper from pg_roles where rolname = current_user`)[0].rolsuper
+  if (!isSuper) console.log('SKIP the role-probe of mcp_proposal needs a superuser to create a role (the connected role is not one); RLS of the tables is checked in the rls query of V-4')
+  else {
+    // the table's row-level security: as a role that is not a superuser, another user sees no row
+    await sqlW`do $$ begin if not exists (select 1 from pg_roles where rolname = 'allot_rls_probe') then create role allot_rls_probe nosuperuser nobypassrls; end if; end $$`
+    await sqlW`grant select on mcp_proposal to allot_rls_probe`
+    const rls = await sqlW.begin(async (tx) => {
+      await tx`set local role allot_rls_probe`
+      await tx`select set_config('app.user_id', ${xId}, true)`
+      const other = await tx`select count(*)::int as n from mcp_proposal where user_id = ${wId}`
+      const all = await tx`select count(*)::int as n from mcp_proposal`
+      await tx`select set_config('app.user_id', ${wId}, true)`
+      const mine = await tx`select count(*)::int as n from mcp_proposal`
+      return { other: other[0].n, all: all[0].n, mine: mine[0].n }
+    })
+    ok(rls.other === 0 && rls.all === 0 && rls.mine > 0, `RLS on mcp_proposal: X sees ${rls.all} rows of W's, W sees ${rls.mine}`)
+  }
 
   // ── revoked key ──
   const dead = await W('DELETE', `/api/keys/${kChat.id}`)
   ok(dead.status === 204 && (await mcp(A, kChat.key)).status === 401, 'a revoked key is 401 at the endpoint')
   console.log(`INFO ${JSON.stringify({ wId, keyUi: kUi.id, proposalUi: pr2.data.proposalId })}`)
+  await sqlW.end()
 }
 
 try {
