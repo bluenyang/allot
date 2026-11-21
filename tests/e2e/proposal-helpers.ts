@@ -15,7 +15,7 @@ export async function makeKey(request: APIRequestContext, confirm: 'ui' | 'chat'
 }
 
 /** A tool call with a key and no session. */
-async function tool(baseURL: string, key: string, name: string, args: Record<string, unknown>) {
+export async function tool(baseURL: string, key: string, name: string, args: Record<string, unknown>) {
   const ctx = await playwrightRequest.newContext({ baseURL, storageState: { cookies: [], origins: [] } })
   try {
     const r = await ctx.post('/api/mcp', {
@@ -38,3 +38,21 @@ export const propose = (baseURL: string, key: string) => tool(baseURL, key, 'pro
   ],
 })
 
+
+export const SPEND = `${MARK}-spend-ai`
+export const SPEND_AMOUNT = 123_000
+
+/** A salary-account lump sum in this month (Korea's today), as the screen would write it (spec 011 S-2). */
+export function spendingBody(name = SPEND, amount = SPEND_AMOUNT) {
+  const ym = new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).slice(0, 7)
+  return {
+    name, note: '', category: '생활', bought: `${ym}-05`, amount, currency: 'KRW', fxRate: null, fxBuffer: null,
+    how: 'lump', payBy: 'salary', count: 1, fee: 0, interval: null, cancelled: false,
+    rounds: [{ no: 1, date: `${ym}-28`, amount, state: 'left', edited: false }],
+  }
+}
+
+export const proposeSpending = (baseURL: string, key: string) => tool(baseURL, key, 'propose_changes', {
+  note: `${MARK} spending note`,
+  changes: [{ resource: 'spendings', action: 'create', data: spendingBody() }],
+})

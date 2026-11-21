@@ -7,6 +7,9 @@ import { test } from 'node:test'
 import { browserLang, i18n, languageOf } from '../../src/i18n'
 import { en } from '../../src/i18n/en'
 import { ko } from '../../src/i18n/ko'
+import { loadSpendingMessages } from '../../src/i18n/spending'
+import { spendingEn } from '../../src/i18n/spending.en'
+import { spendingKo } from '../../src/i18n/spending.ko'
 import { MESSAGES, MSG_KEYS, langFromHeader, text } from '../../server/messages'
 
 function flatten(o: unknown, prefix = ''): Record<string, string> {
@@ -19,8 +22,18 @@ function flatten(o: unknown, prefix = ''): Record<string, string> {
 }
 const vars = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!).sort()
 
-const fko = flatten(ko)
-const fen = flatten(en)
+// The 지출 page's lazy parts live in their own modules (spec 011 V-8); the checks below cover both lists together.
+// (taken before the page loader runs: vue-i18n merges the lazy messages into the main objects)
+const mainKo = flatten(ko)
+const fko = { ...flatten(ko), ...flatten(spendingKo) }
+const fen = { ...flatten(en), ...flatten(spendingEn) }
+await loadSpendingMessages()
+
+test('the lazy modules hold none of the keys of the main lists, and the page loader merges them', () => {
+  for (const k of Object.keys(flatten(spendingKo))) assert.ok(!(k in mainKo), k)
+  assert.equal(i18n.global.t('spending.inst.cancelDo', {}, { locale: 'en' }), spendingEn.spending.inst.cancelDo)
+  assert.equal(i18n.global.t('spending.inst.cancelDo', {}, { locale: 'ko' }), spendingKo.spending.inst.cancelDo)
+})
 
 test('ko and en have the same keys', () => {
   assert.deepEqual(Object.keys(fen).sort(), Object.keys(fko).sort())
@@ -104,7 +117,8 @@ test('keys built from data exist for every value (categories, kinds, states, tab
     'settings.general.units': ['won', 'thousand', 'man'],
     'settings.general.shifts': ['before', 'after', 'none'],
     'settings.tabs': ['general', 'theme', 'ai', 'security'],
-    'shell.pages': ['home', 'subs', 'pay', 'events', 'history', 'settings', 'admin', 'dev'],
+    'spending.tabs': ['general', 'inst', 'subs'],
+    'shell.pages': ['home', 'spend', 'pay', 'events', 'history', 'settings', 'admin', 'dev'],
     'calendar.kind': ['pay', 'transfer', 'billing', 'sub', 'change', 'holiday'],
     'history.table': ['settings', 'living', 'subscription', 'plan_change', 'phase', 'plan_event', 'check_item', 'bank_account', 'debt', 'allocation_target', 'phase_amount', 'remainder_split', 'preference', 'holiday_set'],
     'history.op': ['insert', 'update', 'delete'],

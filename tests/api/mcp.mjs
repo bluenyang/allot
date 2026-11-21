@@ -6,8 +6,8 @@
 // written straight into the `apikey` table in the form the plugin stores them (the way a key made
 // on the screen looks in the database: SHA-256 base64url of the key); making keys through the
 // screen's API is tests/api/api-keys.mjs. No raw key is printed or written anywhere.
-//   isolation  V-5: users A and B each put marked data in; A's key calls all six tools and nothing of B shows, and back.
-//   tools      V-6: tools/list (six, read-only), get_overview for this month and three months on against calc.ts,
+//   isolation  V-5: users A and B each put marked data in; A's key calls all seven tools and nothing of B shows, and back.
+//   tools      V-6: tools/list (seven, read-only), get_overview for this month and three months on against calc.ts,
 //              an unknown tool and bad arguments, list_changes paging.
 //   write      spec 009 V-3…V-9 through the tools: scope, proposals, previews, apply, confirmation methods,
 //              stale / expired / revoked, revert, isolation (a fresh user W; keys are made through the API).
@@ -21,6 +21,7 @@ import postgres from 'postgres'
 const mode = process.argv[2]
 if (!['auth', 'isolation', 'tools', 'write'].includes(mode)) throw new Error('usage: mcp.mjs auth|isolation|tools|write')
 let failed = 0
+const cleanups = [] // run in the final `finally` (rows made by id, deleted by id even if a check threw)
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
 const BASE = process.env.BASE ?? 'http://127.0.0.1:3000'
 const sql = postgres(process.env.DATABASE_URL, { max: 1 })
@@ -82,7 +83,7 @@ const createUser = async (tag) => {
   return r.json.user.id
 }
 
-const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes']
+const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes', 'list_spendings']
 let rpcId = 100
 /** tools/call → { status, result (the tool's result), error (JSON-RPC error), data (structuredContent) } */
 async function tool(key, name, args = {}) {
@@ -210,6 +211,7 @@ async function authMode() {
 }
 
 async function isolationMode() {
+  const calc0 = await import('../../src/lib/calc.ts')
   const stamp = Date.now()
   const users = {}
   const mk = async (tag, existing) => {
@@ -238,8 +240,11 @@ async function isolationMode() {
     await post('/api/events', { when: thisMonth, kind: '저축', title: `${marker}-event`, state: 'todo' })
     await post('/api/checks', { text: `${marker}-check`, done: false })
     await post('/api/accounts', { name: `${marker}-account`, role: 'r', inflow: 'i', outflow: 'o' })
+    await post('/api/spendings', { name: `${marker}-spend`, note: '', category: 'etc', bought: `${thisMonth}-02`, amount: 33_000, currency: 'KRW', fxRate: null, fxBuffer: null, how: 'installment', payBy: 'salary', count: 2, fee: 0, interval: null, cancelled: false,
+      rounds: [{ no: 1, date: `${thisMonth}-15`, amount: 16_500, state: 'left', edited: false }, { no: 2, date: `${calc0.addYm(thisMonth, 1)}-15`, amount: 16_500, state: 'left', edited: false }] })
     await post('/api/debts', { name: `${marker}-debt`, principal: 1000, rate: '1%', method: 'm', plan: 'p' })
     users[tag] = { id, api, key, marker, made: made_ }
+    cleanups.push(async () => { for (const [path, rid] of [...made_].reverse()) await api('DELETE', `${path}/${rid}`) })
   }
   const aExisting = { api: A, id: aId }
   await mk('A', aExisting)
@@ -250,19 +255,21 @@ async function isolationMode() {
   users.B.made.push(['/api/phases', bPhase.json?.id])
 
   const uuidIds = (state) => JSON.stringify(state).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g) ?? []
-  const ownStrings = (state) => [...state.subscriptions.map((x) => x.name), ...state.targets.map((x) => x.name), ...state.accounts.map((x) => x.name), ...state.debts.map((x) => x.name)].filter((x) => x.length >= 4)
+  const ownStrings = (state) => [...state.subscriptions.map((x) => x.name), ...state.targets.map((x) => x.name), ...state.accounts.map((x) => x.name), ...state.debts.map((x) => x.name), ...(state.spendings ?? []).map((x) => x.name)].filter((x) => x.length >= 4)
   const states = {}
   for (const tag of ['A', 'B']) states[tag] = (await users[tag].api('GET', '/api/state')).json
-  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }]]
+  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }], ['list_spendings', {}]]
   for (const [me, other] of [['A', 'B'], ['B', 'A']]) {
     const out = {}
+    const outD = {}
     for (const [name, args] of calls) {
       const t = await tool(users[me].key, name, args)
       ok(!failedCall(t) && !!t.data, `${me}'s key: ${name} → ${t.status}${t.error ? ' ' + JSON.stringify(t.error) : ''}`)
       out[name] = t.text
+      outD[name] = t.data
     }
     const all = Object.values(out).join('\n')
-    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the six answers`)
+    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the seven answers`)
     const foreignIds = uuidIds(states[other]).filter((x) => !uuidIds(states[me]).includes(x))
     ok(foreignIds.length > 0 && !foreignIds.some((x) => all.includes(x)), `${me}'s key: none of ${other}'s ${foreignIds.length} ids appear`)
     const foreignNames = ownStrings(states[other]).filter((n) => !ownStrings(states[me]).includes(n))
@@ -272,13 +279,18 @@ async function isolationMode() {
     ok(out.list_subscriptions.includes(`${m}-sub`) && out.list_plan_changes.includes(`${m}-change`) && out.get_allocation.includes(`${m}-target`)
       && out.get_allocation.includes(`${m}-account`) && out.get_allocation.includes(`${m}-debt`) && out.get_schedule.includes(`${m}-event`) && out.get_schedule.includes(`${m}-check`),
       `${me}'s key: ${me}'s own marked data is in the answers`)
+    const mine = outD.list_spendings.spendings.filter((x) => x.name.startsWith('ISO'))
+    ok(mine.length === 1 && mine[0].name === `${m}-spend` && mine[0].rounds.length === 2 && outD.get_overview.spendingRounds.some((r) => r.name === `${m}-spend`) && out.get_schedule.includes(`${m}-spend`),
+      `${me}'s key: list_spendings, get_overview and get_schedule show ${me}'s own spending and its rounds, and no other ISO one`)
+    ok(!out.list_spendings.includes(users[other].marker) && !out.get_overview.includes(users[other].marker) && !out.get_schedule.includes(users[other].marker), `${me}'s key: ${other}'s spending is in none of the three`)
     ok(out.list_changes.includes('subscription') || out.list_changes.includes(`${m}-sub`), `${me}'s key: list_changes shows ${me}'s own changes`)
   }
   // A's key cannot ask for B's data by id or by any argument: the tools take none, and an extra argument is ignored or refused
   const sneaky = await tool(users.A.key, 'list_changes', { limit: 50, userId: users.B.id })
   ok(!JSON.stringify(sneaky.text).includes(users.B.marker), "an extra userId argument does not reach B's data")
-  // clean up A's marked rows (B goes with the user)
-  for (const [path, id] of [...users.A.made].reverse()) await A('DELETE', `${path}/${id}`)
+  // clean up both users' marked rows by id (the users go at the end), then the spendings must be gone
+  for (const tag of ['A', 'B']) for (const [path, id] of [...users[tag].made].reverse()) await users[tag].api('DELETE', `${path}/${id}`)
+  for (const tag of ['A', 'B']) ok(!(await users[tag].api('GET', '/api/state')).json.spendings.some((x) => x.name.includes(users[tag].marker)), `${tag}'s marked spending is gone`)
 }
 
 async function toolsMode() {
@@ -286,7 +298,7 @@ async function toolsMode() {
   const key = await insertKey(aId)
   const list = await mcp(A, key)
   const tools = list.json?.result?.tools ?? []
-  ok(tools.length === 6 && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the six tools (${tools.map((t) => t.name).join(', ')})`)
+  ok(tools.length === 7 && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the seven tools (${tools.map((t) => t.name).join(', ')})`)
   ok(tools.every((t) => t.annotations?.readOnlyHint === true), 'every tool says readOnlyHint: true')
   ok(tools.every((t) => !/create|update|delete|write|set_|add_|remove/.test(t.name)), 'no tool name is a write')
   ok(tools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'descriptions are English text')
@@ -313,8 +325,8 @@ async function toolsMode() {
     const t = await tool(key, 'get_overview', { month: ym })
     ok(!failedCall(t) && t.data?.month === ym, `get_overview ${ym} → ${t.status}`)
     const o = t.data
-    const x = calc.transferAt(state.subscriptions, state.planChanges, state.settings, ym)
-    const dist = calc.distributionAt(ym, state.settings.netPay, state.phases, state.targets, state.living, state.subscriptions, state.planChanges, state.settings)
+    // monthMoney: the same call every screen makes, so one-off spendings are in both halves (spec 011 S-5)
+    const { transfer: x, dist } = calc.monthMoney(state, ym)
     ok(o.subscriptionTransfer.transferKrw === x.transfer && o.subscriptionTransfer.neededKrw === x.needed, `${ym}: the subscription transfer is calc.ts's (${x.transfer})`)
     ok(JSON.stringify(o.distribution.rows.map((r) => [r.targetId, r.amountKrw])) === JSON.stringify(dist.rows.map((r) => [r.key, Math.round(r.amount)])) && o.distribution.remainderKrw === Math.round(dist.remainder),
       `${ym}: the distribution rows and the remainder are calc.ts's (${dist.rows.length} rows)`)
@@ -334,6 +346,14 @@ async function toolsMode() {
   ok(pc.data.planChanges.length === state.planChanges.length, `list_plan_changes: ${state.planChanges.length}`)
   const al = await tool(key, 'get_allocation', {})
   ok(al.data.targets.length === state.targets.length && al.data.phases.length === state.phases.length && al.data.debts.length === state.debts.length, 'get_allocation: targets, phases, debts as stored')
+  const ls = await tool(key, 'list_spendings', {})
+  const stSp = state.spendings ?? []
+  ok(!failedCall(ls) && ls.data.spendings.length === stSp.length && stSp.every((x) => ls.data.spendings.some((y) => y.id === x.id && y.rounds.length === x.rounds.length)), `list_spendings: all ${stSp.length} spendings with their rounds`)
+  for (const st of ['active', 'done', 'cancelled']) {
+    const f = await tool(key, 'list_spendings', { status: st })
+    ok(!failedCall(f) && f.data.spendings.every((x) => (st === 'cancelled' ? x.cancelled : st === 'done' ? x.state === 'paid' : !x.cancelled && x.state !== 'paid')), `list_spendings status ${st}`)
+  }
+  for (const bad of [{ status: 'gone' }, { month: '2026-13' }]) ok(failedCall(await tool(key, 'list_spendings', bad)), `list_spendings ${JSON.stringify(bad)} is refused`)
   const sc = await tool(key, 'get_schedule', { from: ym0, months: 3 })
   ok(sc.data.months.length === 3 && sc.data.months[0].month === ym0 && sc.data.months[2].month === calc.addYm(ym0, 2), 'get_schedule: three months from the first')
   const sc12 = await tool(key, 'get_schedule', { months: 12 })
@@ -351,6 +371,8 @@ async function toolsMode() {
 async function writeMode() {
   const PASS = 'v4-pass-12345'
   const wId = await createUser('w')
+  // W's rows are under row-level security: this connection acts as W (a non-superuser role, as on the test server, sees nothing otherwise)
+  const sqlW = postgres(process.env.DATABASE_URL, { max: 1, connection: { 'app.user_id': wId } })
   const xId = await createUser('x')
   const W = client()
   const X = client()
@@ -371,23 +393,23 @@ async function writeMode() {
 
   // ── V-3: scope ──
   const rn = await names(kRead.key)
-  ok(rn.length === 6 && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the six read tools and no write tool')
+  ok(rn.length === 7 && rn.includes('list_spendings') && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the seven read tools (list_spendings among them) and no write tool')
   for (const [name, args] of [['propose_changes', { changes: [] }], ['apply_proposal', { proposalId: 'x' }], ['get_proposal', { proposalId: 'x' }], ['propose_revert', { changeSetId: 'x' }]]) {
     ok(failedCall(await tool(kRead.key, name, args)), `a read key calling ${name} is an MCP error`)
   }
   const un = await mcp(A, kUi.key)
   const utools = un.json?.result?.tools ?? []
-  ok(utools.length === 10 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: ten tools (${utools.length})`)
+  ok(utools.length === 11 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: eleven tools (${utools.length})`)
   ok(utools.find((t) => t.name === 'apply_proposal')?.annotations?.destructiveHint === true && utools.find((t) => t.name === 'get_proposal')?.annotations?.readOnlyHint === true && utools.find((t) => t.name === 'propose_changes')?.annotations?.readOnlyHint === false, 'annotations: apply is destructive, get is read-only, propose is not read-only')
   ok(utools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'write tool descriptions are English text')
   const pc = utools.find((t) => t.name === 'propose_changes')
-  ok(JSON.stringify(pc?.inputSchema ?? {}).includes('subscriptions') && JSON.stringify(pc?.inputSchema ?? {}).includes('remainder-split'), 'propose_changes advertises the resource shapes')
+  ok(JSON.stringify(pc?.inputSchema ?? {}).includes('subscriptions') && JSON.stringify(pc?.inputSchema ?? {}).includes('remainder-split') && JSON.stringify(pc?.inputSchema ?? {}).includes('spendings') && /spendings/.test(pc?.description ?? ''), 'propose_changes advertises the resource shapes (spendings too)')
   console.log(`INFO propose_changes input schema: ${JSON.stringify(pc?.inputSchema ?? {}).length} bytes`)
 
   // without the badge's number, which a proposal changes by existing
   const wState = async () => { const { pendingProposals: _p, ...rest } = (await W('GET', '/api/state')).json; return rest }
   const wSets = async () => (await W('GET', '/api/changes?limit=200')).json
-  const proposalCount = async (uid) => Number((await sql`select count(*)::int as n from mcp_proposal where user_id = ${uid}`)[0].n)
+  const proposalCount = async (uid) => Number((await sqlW`select count(*)::int as n from mcp_proposal where user_id = ${uid}`)[0].n)
   const SUB = (name, over = {}) => ({ name, category: 'tool', plan: 'p', amount: 12000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false, ...over })
   const LIV = (food) => ({ food, transit: 20000, allowance: 30000 })
 
@@ -480,7 +502,7 @@ async function writeMode() {
   ok((await wState()).living.food === 222000, 'the screen confirmation applied it')
   const afterSets = await wSets()
   ok(afterSets[0].id === okApply.json.changeSet && afterSets[0].actorKind === 'api_key' && afterSets[0].actorId === kUi.id && afterSets[0].actorLabel === 'w-ui' && afterSets[0].proposalId === pr2.data.proposalId, "confirming on the screen: the actor is still the proposing key and the set names the proposal")
-  const dec = await sql`select decided_by, status, change_set_id from mcp_proposal where id = ${pr2.data.proposalId}`
+  const dec = await sqlW`select decided_by, status, change_set_id from mcp_proposal where id = ${pr2.data.proposalId}`
   ok(dec[0].decided_by === 'user' && dec[0].status === 'applied' && dec[0].change_set_id === okApply.json.changeSet, 'the proposal records that the user decided')
   const prRej = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(555000) }] })
   const rj = await W('POST', `/api/proposals/${prRej.data.proposalId}/reject`)
@@ -506,21 +528,21 @@ async function writeMode() {
   ok(failedCall(st) && /stale/.test(st.text), 'apply → stale (propose again)')
   ok((await tool(kChat.key, 'get_proposal', { proposalId: pr3.data.proposalId })).data?.status === 'stale' && (await wState()).living.food === 120000, 'the proposal is stale and the screen change stays')
   const pr4 = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'living', action: 'update', data: LIV(444000) }] })
-  await sql`update mcp_proposal set expires_at = now() - interval '1 second' where id = ${pr4.data.proposalId}`
+  await sqlW`update mcp_proposal set expires_at = now() - interval '1 second' where id = ${pr4.data.proposalId}`
   const ex = await tool(kChat.key, 'apply_proposal', { proposalId: pr4.data.proposalId })
   ok(failedCall(ex) && /expired/.test(ex.text) && (await tool(kChat.key, 'get_proposal', { proposalId: pr4.data.proposalId })).data?.status === 'expired', 'an expired proposal is refused and marked expired')
-  const ttl = await sql`select extract(epoch from (expires_at - created_at))::int as s, confirm from mcp_proposal where id = ${pr2.data.proposalId}`
+  const ttl = await sqlW`select extract(epoch from (expires_at - created_at))::int as s, confirm from mcp_proposal where id = ${pr2.data.proposalId}`
   ok(ttl[0].s === 24 * 3600 && ttl[0].confirm === 'ui', 'a screen proposal expires after 24 hours')
-  const ttl2 = await sql`select extract(epoch from (expires_at - created_at))::int as s from mcp_proposal where id = ${pr3.data.proposalId}`
+  const ttl2 = await sqlW`select extract(epoch from (expires_at - created_at))::int as s from mcp_proposal where id = ${pr3.data.proposalId}`
   ok(ttl2[0].s === 15 * 60, 'a chat proposal expires after 15 minutes')
-  await sql`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
+  await sqlW`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
   let last
   for (let i = 0; i <= 20; i++) {
     last = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'checks', action: 'create', data: { text: `cap${i}`, done: false } }] })
     if (i < 20 && failedCall(last)) { ok(false, `pending proposal ${i + 1} refused early: ${last.text.slice(0, 100)}`); break }
   }
   ok(failedCall(last) && /too_many/.test(last.text), 'the 21st pending proposal is refused')
-  await sql`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
+  await sqlW`update mcp_proposal set status = 'rejected' where user_id = ${wId} and status = 'pending'`
 
   // ── V-8: the AI reverts what it applied ──
   const before8 = JSON.stringify(await wState())
@@ -546,6 +568,111 @@ async function writeMode() {
   const ui = await W('POST', `/api/changes/${ap6.data.changeSetId}/revert`)
   ok(ui.status === 200 && before6 !== '[]' && (await wState()).events.every((e) => e.title !== 'mcp-event-2'), `the screen's revert works on an AI change set → ${ui.status}`)
 
+  // ── spec 011 V-9: one-off spendings through the tools ──
+  const ymNow = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}` })()
+  const SP = (name, payBy, amount, over = {}) => ({
+    name, note: '', category: 'etc', bought: `${ymNow}-02`, amount, currency: 'KRW', fxRate: null, fxBuffer: null, how: 'lump', payBy, count: 1, fee: 0, interval: null, cancelled: false,
+    rounds: [{ no: 1, date: `${ymNow}-15`, amount, state: 'left', edited: false }], ...over,
+  })
+  const spendIds = []
+  const mjs = await import('../../src/lib/calc.ts')
+  const sp0 = JSON.stringify(await wState())
+  const spCount = async () => Number((await sqlW`select count(*)::int as n from spending where user_id = ${wId}`)[0].n)
+  const roundCount = async () => Number((await sqlW`select count(*)::int as n from spending_round where user_id = ${wId}`)[0].n)
+  const overviewNow = async (k) => (await tool(k, 'get_overview', { month: ymNow })).data
+  const o0 = await overviewNow(kUi.key)
+  ok((await tool(kRead.key, 'list_spendings', {})).data?.spendings?.length === 0, 'list_spendings (a read key): none yet')
+
+  // a salary-paid spending: the preview shows the month's remainder before and after, nothing is written
+  const ps = await tool(kUi.key, 'propose_changes', { note: 'v9', changes: [{ resource: 'spendings', action: 'create', data: SP('mcp-spend', 'salary', 120_000) }] })
+  ok(!failedCall(ps) && ps.data?.confirm === 'ui' && ps.data.preview?.rows?.some((r) => r.table === 'spending' && r.op === 'insert') && ps.data.preview.rows.some((r) => r.table === 'spending_round'), `propose_changes (spending): the preview has the spending and its round (${ps.data?.preview?.rows?.map((r) => r.table)})`)
+  const m0 = ps.data?.preview?.months?.[0]
+  ok(m0?.month === ymNow && m0.remainderKrw.before - m0.remainderKrw.after === 120_000 && m0.transferKrw.before === m0.transferKrw.after, `the preview's remainder is 120,000 lower and the transfer the same (${m0?.remainderKrw?.before} → ${m0?.remainderKrw?.after})`)
+  ok(m0?.remainderKrw?.before === o0.distribution.remainderKrw, "the preview's before is this month's remainder")
+  ok(JSON.stringify(await wState()) === sp0 && await spCount() === 0 && await roundCount() === 0, 'proposing wrote no spending and no round')
+  // a spending from the subscription account: the preview shows the transfer
+  const pt = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('mcp-spend-subs', 'subs', 40_000) }] })
+  const t0 = pt.data?.preview?.months?.[0]
+  ok(!failedCall(pt) && t0.neededKrw.after - t0.neededKrw.before >= 40_000 && t0.neededKrw.after - t0.neededKrw.before < 41_000 && t0.transferKrw.after >= t0.transferKrw.before && t0.remainderKrw.after <= t0.remainderKrw.before, `the preview's needed amount is 40,000 higher (rounded up to 1,000) (${t0?.neededKrw?.before} → ${t0?.neededKrw?.after}), the transfer ${t0?.transferKrw?.before} → ${t0?.transferKrw?.after}`)
+  ok((await W('POST', `/api/proposals/${pt.data.proposalId}/reject`)).status === 204, 'rejected: the subscription-account proposal')
+  // rules of the screen apply: a round count that does not fit, a USD amount with a long rate
+  const bad1 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 1000, { count: 2 }) }] })
+  const bad2 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 10, { currency: 'USD', fxRate: 1300.123, fxBuffer: 2 }) }] })
+  ok(failedCall(bad1) && failedCall(bad2) && !/spendFx|spendHow|spendRounds/.test(bad1.text + bad2.text), `spending rules reach the AI in English (${(bad1.error?.message ?? bad1.text).slice(0, 80)} | ${(bad2.error?.message ?? bad2.text).slice(0, 80)})`)
+  // the user confirms on the screen
+  const apS = await W('POST', `/api/proposals/${ps.data.proposalId}/apply`)
+  ok(apS.status === 200 && await spCount() === 1 && await roundCount() === 1, `the screen's confirmation applied it → ${apS.status}`)
+  const st9 = await wState()
+  const made9 = st9.spendings.find((x) => x.name === 'mcp-spend')
+  ok(!!made9 && made9.rounds.length === 1 && made9.rounds[0].amount === 120_000, 'the spending and its round are in the data')
+  if (made9) spendIds.push(made9.id)
+  const lsw = await tool(kRead.key, 'list_spendings', {})
+  const lm = lsw.data?.spendings?.[0]
+  ok(lsw.data?.spendings?.length === 1 && lm.id === made9?.id && lm.rounds.length === 1 && lm.progress.left === 1 && lm.progress.next?.amountKrw === 120_000 && ['planned', 'billing'].includes(lm.state), `list_spendings (read key): the spending with its round (${lm?.state})`)
+  const lmonth = await tool(kRead.key, 'list_spendings', { month: ymNow, status: 'active' })
+  ok(lmonth.data?.spendings?.length === 1 && lmonth.data.monthTotals.remainderKrw === 120_000 && lmonth.data.monthTotals.subscriptionAccountKrw === 0, 'list_spendings month and status filters')
+  const o1 = await overviewNow(kRead.key)
+  ok(o1.distribution.remainderKrw === m0.remainderKrw.after && o1.distribution.spendingKrw === 120_000, "get_overview: the remainder is the preview's after, and the spending is named")
+  ok(o1.spendingRounds?.length === 1 && o1.spendingRounds[0].name === 'mcp-spend' && o1.spendingRounds[0].amountKrw === 120_000 && JSON.stringify(o1.payments) === JSON.stringify(o0.payments), 'get_overview: the round is its own item, the subscription charges are unchanged')
+  const sc9 = (await tool(kRead.key, 'get_schedule', { from: ymNow, months: 1 })).data
+  ok(sc9?.months?.[0]?.spendingRounds?.some((r) => r.name === 'mcp-spend' && r.round === 1 && r.of === 1), 'get_schedule: the round is in its month')
+  const stNow = await wState()
+  const mm = mjs.monthMoney(stNow, ymNow)
+  ok(mm.dist.remainder === o1.distribution.remainderKrw, "the tool's remainder is monthMoney's")
+  // reverting the creation in the change history: no spending, no round, the data as before
+  ok(apS.json?.changeSet && (await W('POST', `/api/changes/${apS.json.changeSet}/revert`)).status === 200 && await spCount() === 0 && await roundCount() === 0 && JSON.stringify(await wState()) === sp0, 'reverting the creation in the change history: no spending, no round, the data as before')
+  ok((await tool(kRead.key, 'list_spendings', {})).data?.spendings?.length === 0 && (await overviewNow(kRead.key)).distribution.remainderKrw === o0.distribution.remainderKrw, 'list_spendings is empty again and the remainder is back')
+  // a chat key: create, update (cancelled), delete, revert the delete; each is one change set
+  const crt = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('mcp-spend-2', 'salary', 90_000) }] })
+  const apC = await tool(kChat.key, 'apply_proposal', { proposalId: crt.data?.proposalId })
+  const made2 = (await wState()).spendings.find((x) => x.name === 'mcp-spend-2')
+  ok(!failedCall(apC) && !!made2, 'a chat key creates a spending')
+  if (made2) spendIds.push(made2.id)
+  const upd = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'update', id: made2?.id, data: { ...SP('mcp-spend-2', 'salary', 90_000), cancelled: true } }] })
+  ok(!failedCall(upd) && upd.data.preview.months[0].remainderKrw.after - upd.data.preview.months[0].remainderKrw.before === 90_000, 'an update to cancelled: the preview gives the 90,000 back')
+  const apU = await tool(kChat.key, 'apply_proposal', { proposalId: upd.data.proposalId })
+  ok(!failedCall(apU) && (await tool(kRead.key, 'list_spendings', { status: 'cancelled' })).data.spendings.length === 1 && (await overviewNow(kRead.key)).distribution.remainderKrw === o0.distribution.remainderKrw, 'applied: cancelled in list_spendings and the remainder is back')
+  const del = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'delete', id: made2?.id }] })
+  ok(!failedCall(del) && del.data.preview.rows.some((r) => r.table === 'spending_round' && r.op === 'delete'), 'deleting: the preview shows the round going too')
+  const apD = await tool(kChat.key, 'apply_proposal', { proposalId: del.data?.proposalId })
+  ok(!failedCall(apD) && await spCount() === 0 && await roundCount() === 0, 'deleted with its rounds')
+  const rvD = await tool(kChat.key, 'propose_revert', { changeSetId: apD.data?.changeSetId })
+  const apRv = failedCall(rvD) ? rvD : await tool(kChat.key, 'apply_proposal', { proposalId: rvD.data.proposalId })
+  ok(!failedCall(apRv) && await spCount() === 1 && await roundCount() === 1, `propose_revert of the delete brings the spending and its round back (${rvD.text?.slice(0, 80)})`)
+  // clean up by id (W is deleted at the end too)
+  for (const id of spendIds) await W('DELETE', `/api/spendings/${id}`)
+  cleanups.push(async () => { for (const id of spendIds) await W('DELETE', `/api/spendings/${id}`) })
+
+  // ── spending isolation: both W and X own a spending with rounds while the cross-user checks run ──
+  const iso = async (U, name) => {
+    const r = await U('POST', '/api/spendings', SP(name, 'salary', 80_000, { how: 'installment', count: 2, rounds: [{ no: 1, date: `${ymNow}-15`, amount: 40_000, state: 'left', edited: false }, { no: 2, date: `${mjs.addYm(ymNow, 1)}-15`, amount: 40_000, state: 'left', edited: false }] }))
+    if (r.status !== 201) throw new Error(`seed spending ${name} → ${r.status} ${r.text}`)
+    return r.json.id
+  }
+  const wSpend = await iso(W, 'iso-w-spend')
+  const xSpend = await iso(X, 'iso-x-spend')
+  cleanups.push(async () => { await W('DELETE', `/api/spendings/${wSpend}`); await X('DELETE', `/api/spendings/${xSpend}`) })
+  const wSpendSet = (await wSets())[0]
+  ok(await spCount() === 1 && await roundCount() === 2 && !!wSpendSet?.id, "W's spending has two rounds and a change set")
+  const text9 = async (k, name, args) => (await tool(k, name, args)).text
+  for (const [who, key, own, foreign] of [['W', kChat.key, 'iso-w-spend', 'iso-x-spend'], ['X', kX.key, 'iso-x-spend', 'iso-w-spend']]) {
+    const lT = await tool(key, 'list_spendings', {})
+    const [l, o, sc] = [lT.text, await text9(key, 'get_overview', { month: ymNow }), await text9(key, 'get_schedule', { from: ymNow, months: 2 })]
+    ok(l.includes(own) && o.includes(own) && sc.includes(own), `${who}'s key sees its own spending in list_spendings, get_overview and get_schedule`)
+    ok(!l.includes(foreign) && !o.includes(foreign) && !sc.includes(foreign), `${who}'s key sees none of ${foreign === 'iso-x-spend' ? "X's" : "W's"} spending or rounds`)
+    ok(lT.data?.spendings?.length === 1 && lT.data.spendings[0].rounds.length === 2, `${who}'s key: exactly one spending with its two rounds`)
+  }
+  const xProp0 = (await X('GET', '/api/proposals')).json.length
+  const wProp0 = await proposalCount(wId)
+  const xUpd = await tool(kX.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'update', id: wSpend, data: SP('hijacked', 'salary', 1000) }] })
+  const xDel = await tool(kX.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'delete', id: wSpend }] })
+  ok(failedCall(xUpd) && failedCall(xDel) && /not found|itemNotFound|Item not found/i.test(xUpd.text + xDel.text), `X cannot update or delete W's spending by id (${(xUpd.text ?? '').slice(0, 70)})`)
+  const wUpd = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'delete', id: xSpend }] })
+  ok(failedCall(wUpd), "W cannot delete X's spending by id")
+  const xRev = await tool(kX.key, 'propose_revert', { changeSetId: wSpendSet.id })
+  ok(failedCall(xRev) && /not_found/.test(xRev.text), "X cannot propose reverting W's spending change set (not_found)")
+  ok((await X('GET', '/api/proposals')).json.length === xProp0 && await proposalCount(wId) === wProp0, 'none of these made a proposal')
+  ok(await spCount() === 1 && await roundCount() === 2 && (await X('GET', '/api/state')).json.spendings.length === 1, "both spendings are unchanged")
   // ── V-9: another user ──
   const wSet = ap.data.changeSetId
   const xs0 = JSON.stringify((await X('GET', '/api/state')).json)
@@ -557,24 +684,44 @@ async function writeMode() {
   const xu = await tool(kX.key, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'update', id: s1.subscriptions.find((x) => x.name === 'mcp-sub').id, data: SUB('hijacked') }] })
   ok(failedCall(xu) && /not found|itemNotFound|Item not found/i.test(xu.text), "X cannot update W's row by id")
   ok(JSON.stringify(await wState()) === wDataNow && JSON.stringify((await X('GET', '/api/state')).json) === xs0, "neither user's data changed")
-  // the table's row-level security: as a role that is not a superuser, another user sees no row
-  await sql`do $$ begin if not exists (select 1 from pg_roles where rolname = 'allot_rls_probe') then create role allot_rls_probe nosuperuser nobypassrls; end if; end $$`
-  await sql`grant select on mcp_proposal to allot_rls_probe`
-  const rls = await sql.begin(async (tx) => {
-    await tx`set local role allot_rls_probe`
+  // row-level security of W's rows, read and written as another user: the same assertions run as the connected role
+  // when it is not a superuser (a superuser bypasses RLS, so it first switches to a plain role, which needs privileges)
+  const probe = async (tx) => {
     await tx`select set_config('app.user_id', ${xId}, true)`
-    const other = await tx`select count(*)::int as n from mcp_proposal where user_id = ${wId}`
-    const all = await tx`select count(*)::int as n from mcp_proposal`
+    const seen = {}
+    for (const t of ['mcp_proposal', 'spending', 'spending_round']) {
+      seen[t] = (await tx.unsafe(`select count(*)::int as n from ${t} where user_id = $1`, [wId]))[0].n
+      seen[`${t}.notX`] = (await tx.unsafe(`select count(*)::int as n from ${t} where user_id <> $1`, [xId]))[0].n // every row X can see is X's own
+    }
+    const upd = { mcp_proposal: (await tx`update mcp_proposal set status = status where user_id = ${wId}`).count, spending: (await tx`update spending set name = name where user_id = ${wId}`).count, spending_round: (await tx`update spending_round set amount = amount where user_id = ${wId}`).count }
+    const del = { mcp_proposal: (await tx`delete from mcp_proposal where user_id = ${wId}`).count, spending: (await tx`delete from spending where user_id = ${wId}`).count, spending_round: (await tx`delete from spending_round where user_id = ${wId}`).count }
     await tx`select set_config('app.user_id', ${wId}, true)`
-    const mine = await tx`select count(*)::int as n from mcp_proposal`
-    return { other: other[0].n, all: all[0].n, mine: mine[0].n }
-  })
-  ok(rls.other === 0 && rls.all === 0 && rls.mine > 0, `RLS on mcp_proposal: X sees ${rls.all} rows of W's, W sees ${rls.mine}`)
+    const mine = {}
+    for (const t of ['mcp_proposal', 'spending', 'spending_round']) mine[t] = (await tx.unsafe(`select count(*)::int as n from ${t}`))[0].n
+    return { seen, upd, del, mine }
+  }
+  const judge = (r, who) => {
+    ok(Object.values(r.seen).every((n) => n === 0), `RLS (${who}): X sees none of W's mcp_proposal, spending and spending_round rows (${JSON.stringify(r.seen)})`)
+    ok(Object.values(r.upd).every((n) => n === 0) && Object.values(r.del).every((n) => n === 0), `RLS (${who}): X can neither update nor delete them (${JSON.stringify([r.upd, r.del])})`)
+    ok(r.mine.mcp_proposal > 0 && r.mine.spending >= 1 && r.mine.spending_round >= 2, `RLS (${who}): W sees them (${JSON.stringify(r.mine)})`)
+  }
+  const isSuper = (await sqlW`select rolsuper from pg_roles where rolname = current_user`)[0].rolsuper
+  if (!isSuper) judge(await sqlW.begin(probe), 'the connected non-superuser role')
+  else {
+    await sqlW`do $$ begin if not exists (select 1 from pg_roles where rolname = 'allot_rls_probe') then create role allot_rls_probe nosuperuser nobypassrls; end if; end $$`
+    await sqlW`grant select, update, delete on mcp_proposal, spending, spending_round to allot_rls_probe`
+    judge(await sqlW.begin(async (tx) => { await tx`set local role allot_rls_probe`; return probe(tx) }), 'a plain role made for the probe')
+  }
+  // clean up by id, and the rows must be gone
+  await W('DELETE', `/api/spendings/${wSpend}`)
+  await X('DELETE', `/api/spendings/${xSpend}`)
+  ok(await spCount() === 0 && await roundCount() === 0 && (await X('GET', '/api/state')).json.spendings.length === 0, 'both seeded spendings and their rounds are gone')
 
   // ── revoked key ──
   const dead = await W('DELETE', `/api/keys/${kChat.id}`)
   ok(dead.status === 204 && (await mcp(A, kChat.key)).status === 401, 'a revoked key is 401 at the endpoint')
   console.log(`INFO ${JSON.stringify({ wId, keyUi: kUi.id, proposalUi: pr2.data.proposalId })}`)
+  await sqlW.end()
 }
 
 try {
@@ -583,6 +730,7 @@ try {
   else if (mode === 'isolation') await isolationMode()
   else await toolsMode()
 } finally {
+  for (const f of cleanups) await f().catch(() => {})
   await sql`delete from apikey where name = 'v4'`.catch(() => {})
   for (const u of made) {
     const r = await A('DELETE', `/api/admin/users/${u.id}`, { confirmEmail: u.email })

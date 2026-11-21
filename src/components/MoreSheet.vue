@@ -22,7 +22,7 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
         <p class="hint">{{ t('shell.groupBudget') }}</p>
         <div class="tiles">
           <Soon tag="div" class="tile" :aria-label="`${t('shell.pages.living')} (${t('common.soon')})`"><span class="ti"><Icon name="living" /></span>{{ t('shell.pages.living') }}</Soon>
-          <a class="tile" href="#subs"><span class="ti"><Icon name="subs" /></span>{{ t('shell.pages.subs') }}</a>
+          <a class="tile" href="#spend/subs"><span class="ti"><Icon name="spend" /></span>{{ t('shell.pages.spend') }}</a>
           <Soon tag="div" class="tile" :aria-label="`${t('shell.pages.saving')} (${t('common.soon')})`"><span class="ti"><Icon name="saving" /></span>{{ t('shell.pages.saving') }}</Soon>
           <Soon tag="div" class="tile" :aria-label="`${t('shell.pages.invest')} (${t('common.soon')})`"><span class="ti"><Icon name="invest" /></span>{{ t('shell.pages.invest') }}</Soon>
         </div>

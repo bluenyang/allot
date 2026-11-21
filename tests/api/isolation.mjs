@@ -4,7 +4,17 @@
 // B's rows are removed at the end (in finally); its change history and the account stay, so run it on a
 // disposable test database. Exit code 0 only when every check passed.
 let failed = 0
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run: it throws once (when `armed`), the `finally` below removes what was
+// made, and later failures there are only reported (knowledge: stop-at-first-failure).
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
 const BASE = process.env.BASE ?? 'http://localhost:15173'
 const MARK = 'V5-marker'
 
@@ -24,6 +34,12 @@ function client() {
     return { status: res.status, json }
   }
 }
+const created = [] // [path, id]: everything B creates, removed in `finally`
+const track = (path, r) => { if (r.status === 201 && r.json?.id) created.push([path, r.json.id]); return r }
+let aRestore = null
+let aOrig = null // A's three rows as they were, put back in `finally` when a check found them changed
+const LISTS = ['subscriptions', 'planChanges', 'phases', 'events', 'checks', 'accounts', 'debts', 'targets', 'remainderSplit']
+const isState = (j) => !!j && LISTS.every((k) => Array.isArray(j[k]))
 const A = client()
 const B = client()
 const sa = await A('POST', '/api/auth/sign-in/email', { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })
@@ -31,18 +47,20 @@ const sb = await B('POST', '/api/auth/sign-in/email', { email: process.env.B_EMA
 ok(sa.status === 200 && sb.status === 200, `sign-in A ${sa.status}, B ${sb.status}`)
 if (failed) process.exit(1)
 
+// From here every write sits behind the first failed check: it stops the run, `finally` puts back what it can.
+armed = true
+try {
 const aState = (await A('GET', '/api/state')).json
 const aSub = aState.subscriptions[0]
 const aCheck = aState.checks[0]
 const aTarget = aState.targets.find((t) => t.kind === 'fixed')
 const aPhase = aState.phases[0]
 ok(!!aSub && !!aCheck && !!aTarget && !!aPhase, 'A has a subscription, a check, a fixed target and a phase (needed below)')
+aOrig = [['subscriptions', aSub], ['checks', aCheck], ['targets', aTarget]]
 
 // B sees nothing of A
 const bState = await B('GET', '/api/state')
 const aIds = [aSub.id, aCheck.id, aTarget.id, aPhase.id]
-const LISTS = ['subscriptions', 'planChanges', 'phases', 'events', 'checks', 'accounts', 'debts', 'targets', 'remainderSplit']
-const isState = (j) => !!j && LISTS.every((k) => Array.isArray(j[k]))
 // spec 006 S-7: a new account gets the defaults (200) instead of 0.1.1's 409; never any of A's rows.
 ok(bState.status === 200 && isState(bState.json) && !aIds.some((id) => JSON.stringify(bState.json).includes(id)),
   `B GET /api/state → ${bState.status} (want 200 without any of A's rows)`)
@@ -54,8 +72,9 @@ for (const [path, body] of [
   [`/api/targets/${aTarget.id}`, { name: MARK, kind: 'fixed' }],
 ]) {
   const put = await B('PUT', path, body)
+  ok(put.status === 404, `B PUT ${path.split('/').slice(0, 3).join('/')}/<A's id> → ${put.status} (want 404)`) // no DELETE after a PUT that got through
   const del = await B('DELETE', path)
-  ok(put.status === 404 && del.status === 404, `B PUT/DELETE ${path.split('/').slice(0, 3).join('/')}/<A's id> → ${put.status}/${del.status} (want 404/404)`)
+  ok(del.status === 404, `B DELETE ${path.split('/').slice(0, 3).join('/')}/<A's id> → ${del.status} (want 404)`)
 }
 const aAfter = (await A('GET', '/api/state')).json
 ok(JSON.stringify(aAfter) === JSON.stringify(aState), "A's data is unchanged")
@@ -65,11 +84,6 @@ const bSettings = await B('PUT', '/api/settings', { netPay: 1, fxRate: 1, fxBuff
 const bLiving = await B('PUT', '/api/living', { food: 0, transit: 0, allowance: 0 })
 ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings and living → ${bSettings.status}, ${bLiving.status}`)
 
-// Everything B creates is tracked and removed in `finally`, also when a check throws.
-const created = [] // [path, id]
-const track = (path, r) => { if (r.status === 201 && r.json?.id) created.push([path, r.json.id]); return r }
-let aRestore = null
-try {
   // B cannot point at A's rows
   const pc = track('/api/plan-changes', await B('POST', '/api/plan-changes', { subId: aSub.id, effective: null, to: { amount: 1 }, note: MARK }))
   ok(pc.status === 400, `B plan change on A's subscription → ${pc.status} (want 400)`)
@@ -92,6 +106,21 @@ try {
   ok(t1.status === 200 && t2.status === 200 && back?.done === aCheck.done && aSet?.changes?.[0]?.rowKey?.id === aCheck.id,
     `A toggles its check and back (${t1.status}, ${t2.status}); restored; the first toggle is A's set`)
   if (t2.status === 200 && back?.done === aCheck.done) aRestore = null // only when the value really is back
+  // spec 011 S-9: A's spending (with rounds) is invisible to B and out of its reach.
+  const aSpend = await A('POST', '/api/spendings', { name: MARK, category: 'x', bought: '2090-01-10', amount: 1000, currency: 'KRW', fxRate: null, how: 'lump', payBy: 'salary', count: 1, fee: 0, interval: null, cancelled: false,
+    rounds: [{ no: 1, date: '2090-01-10', amount: 1000, state: 'left', edited: false }] })
+  try {
+    const bSees = (await B('GET', '/api/state')).json
+    ok(aSpend.status === 201 && !JSON.stringify(bSees.spendings).includes(aSpend.json.id), `A creates a spending; B's state has none of it (${aSpend.status})`)
+    const sPut = await B('PUT', `/api/spendings/${aSpend.json.id}`, { name: MARK, category: 'x', bought: '2090-01-10', amount: 1, currency: 'KRW', fxRate: null, how: 'lump', payBy: 'salary', count: 1, fee: 0, interval: null, cancelled: false,
+      rounds: [{ no: 1, date: '2090-01-10', amount: 1, state: 'paid', edited: true }] })
+    const sDel = await B('DELETE', `/api/spendings/${aSpend.json.id}`)
+    ok(sPut.status === 404 && sDel.status === 404, `B PUT/DELETE A's spending → ${sPut.status}/${sDel.status} (want 404/404)`)
+    const aSp = (await A('GET', '/api/state')).json.spendings.find((x) => x.id === aSpend.json.id)
+    ok(aSp?.amount === 1000 && aSp.rounds.length === 1 && aSp.rounds[0].state === 'left', "A's spending and its round are unchanged")
+  } finally {
+    if (aSpend.status === 201) ok((await A('DELETE', `/api/spendings/${aSpend.json.id}`)).status === 204, "A's test spending removed")
+  }
   const aSets = (await A('GET', '/api/changes?limit=200')).json
   const bSets = (await B('GET', '/api/changes?limit=200')).json
   ok(Array.isArray(bSets) && bSets.length >= 2 && bSets.every((x) => !aSets.some((y) => y.id === x.id)), `B lists only its own change sets (${bSets.length})`)
@@ -101,6 +130,8 @@ try {
     const rv = await B('POST', `/api/changes/${aSet.id}/revert`)
     ok(rv.status === 404, `B revert of A's change set → ${rv.status} (want 404)`)
   } else ok(false, 'A has a change set to try')
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
 } finally {
   // cleanup: try every step even when one throws; report each, then look at B's rows for the marker
   const step = async (name, run) => {
@@ -110,6 +141,18 @@ try {
     await step(`DELETE ${path}`, async () => {
       const d = await B('DELETE', `${path}/${id}`)
       ok(d.status === 204, `cleanup DELETE ${path}/<id> → ${d.status}`)
+    })
+  }
+  if (aOrig) {
+    await step("restore A's rows when a check changed them", async () => {
+      const now = (await A('GET', '/api/state')).json
+      for (const [list, row] of aOrig) {
+        const cur = now?.[list]?.find((x) => x.id === row.id)
+        if (JSON.stringify(cur) === JSON.stringify(row)) continue
+        const { id, ...body } = row
+        const r = cur ? await A('PUT', `/api/${list === 'checks' ? 'checks' : list}/${id}`, body) : { status: 'row is gone' }
+        ok(r.status === 200, `cleanup: A's ${list} row put back → ${r.status}`)
+      }
     })
   }
   if (aRestore) {

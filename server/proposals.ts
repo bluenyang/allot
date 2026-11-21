@@ -128,7 +128,7 @@ const AI_META = { method: 'MCP', path: '/api/mcp' }
  * A change set that touches any other table is refused whole.
  */
 export const AI_REVERT_TABLES: ReadonlySet<string> = new Set(
-  [...AI_LISTS.map((r) => RESOURCES[r].table), ...AI_SINGLES.map((r) => SINGLES[r].table), t.phaseAmount].map((x) => getTableName(x)),
+  [...AI_LISTS.map((r) => RESOURCES[r].table), ...AI_SINGLES.map((r) => SINGLES[r].table), t.phaseAmount, t.spendingRound].map((x) => getTableName(x)),
 )
 
 /** Refuse a revert whose change set touches a table the AI may not change. A set that does not exist is left to revert() to report. */

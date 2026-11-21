@@ -18,7 +18,7 @@ import { saveLiving, saveSettings, store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
 import { kindDetail } from '../lib/labels'
-import { addYm, distributionAt, phaseNumbers, splitRemainder, today, transferAt, ymLabel, ymOf, type AllocRow } from '../lib/calc'
+import { addYm, monthMoney, phaseNumbers, splitRemainder, today, ymLabel, ymOf, type AllocRow } from '../lib/calc'
 import type { AllocationKind, Settings } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
@@ -30,8 +30,8 @@ const tabs = computed(() => [
   { id: 'accounts', label: t('payroll.tabAccounts'), icon: 'money' },
 ])
 const now = ymOf(today())
-const dist = (ym: string, pay = store.settings.netPay) =>
-  distributionAt(ym, pay, store.phases, store.targets, store.living, store.subscriptions, store.planChanges, store.settings)
+// The month's distribution with its one-off spendings (spec 011 S-5); `pay` is a value tried on this screen.
+const dist = (ym: string, pay = store.settings.netPay) => monthMoney(store, ym, { pay }).dist
 
 const LEFT_COLOR = 'var(--c7)'
 const numbers = computed(() => phaseNumbers(store.phases))
@@ -63,6 +63,8 @@ const ym = ref(now)
 const payTry = ref<number | null>(null)
 const pay = computed(() => payTry.value ?? store.settings.netPay)
 const sim = computed(() => dist(ym.value, pay.value))
+/** The salary and card one-offs taken off this month's remainder (the basis line under the table). */
+const simSpend = computed(() => { const s = monthMoney(store, ym.value).spend; return s.general + s.installment })
 const remainderTarget = computed(() => store.targets.find((x) => x.kind === 'remainder') ?? null)
 const split = computed(() => (sim.value.remainderTarget ? splitRemainder(sim.value.remainder, store.remainderSplit) : []))
 const livingSum = computed(() => store.living.food + store.living.transit + store.living.allowance)
@@ -100,7 +102,7 @@ const view = ref<SimRow | null>(null)
 const viewBody = computed(() => {
   const r = view.value
   if (!r) return null
-  const x = transferAt(store.subscriptions, store.planChanges, store.settings, ym.value)
+  const x = monthMoney(store, ym.value).transfer
   const others = pay.value - sim.value.remainder
   if (r.kind === 'living') return { formula: t('payroll.fLiving', { food: fmtMoney(store.living.food), transit: fmtMoney(store.living.transit), allowance: fmtMoney(store.living.allowance) }), where: t('payroll.whereLiving'), go: t('payroll.openLiving') }
   if (r.kind === 'subscriptions') {
@@ -113,7 +115,7 @@ function viewGo() {
   const k = view.value?.kind
   view.value = null
   if (k === 'living') tab.value = 'accounts'
-  else if (k === 'subscriptions') location.hash = '#subs'
+  else if (k === 'subscriptions') location.hash = '#spend/subs'
   else openPay()
 }
 
@@ -143,7 +145,8 @@ const phasePreview = computed(() => {
   if (!p) return null
   const ymP = YM.test(p.from) ? p.from : now
   const draft = { ...p, to: p.to, amounts: Object.fromEntries(Object.entries(p.amounts).map(([k, v]) => [k, Number(v) || 0])) }
-  const d = distributionAt(ymP, store.settings.netPay, [{ ...draft, from: '0000-01', to: null }], store.targets, store.living, store.subscriptions, store.planChanges, store.settings)
+  // The same month's spendings as the real distribution: the preview differs only by the draft phase.
+  const d = monthMoney(store, ymP, { phases: [{ ...draft, from: '0000-01', to: null }] }).dist
   return { ym: ymP, segs: segsOf(d), note: restNote(d) }
 })
 
@@ -308,6 +311,7 @@ const livingRows = computed(() => [
             </tbody>
           </table>
         </div>
+        <p v-if="simSpend > 0" class="foot spend-line">{{ t('payroll.spendLine', { amount: fmtMoney(simSpend) }) }}</p>
         <div v-if="simShort" class="callout warn short"><span class="lbl">{{ t('payroll.shortLabel') }}</span><p>{{ t('payroll.shortText', { amount: fmtMoney(-sim.remainder) }) }}</p></div>
         <p class="foot">{{ t('payroll.simFoot') }}</p>
       </section>

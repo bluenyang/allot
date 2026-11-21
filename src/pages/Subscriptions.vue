@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t, type MessageKey } from '../i18n'
-import { computed, defineAsyncComponent, onActivated, onDeactivated, ref } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import SubTabs from '../components/SubTabs.vue'
 import PageHeader from '../components/PageHeader.vue'
 import TransferChart from '../components/TransferChart.vue'
@@ -11,7 +11,7 @@ import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, nextPayment, num, planAt, today, transferAt, usd, ymOf, ymRange } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, today, usd, ymOf, ymRange } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
@@ -48,8 +48,10 @@ const rows = computed(() =>
     return { base, p, monthly: monthly(p), next: p.status === 'active' ? upcoming(base) : null, pending }
   }),
 )
-const xfer = computed(() => transferAt(store.subscriptions, store.planChanges, store.settings, ym.value))
-const xferNext = computed(() => transferAt(store.subscriptions, store.planChanges, store.settings, addYm(ym.value, 1)))
+// The month's transfer with its subscription-account one-offs (spec 011 S-5).
+const xfer = computed(() => monthMoney(store, ym.value).transfer)
+const xferNext = computed(() => monthMoney(store, addYm(ym.value, 1)).transfer)
+const spendSubs = (m: string) => monthMoney(store, m).spend.subs
 const monthlyTotal = computed(() => xfer.value.monthlySum + xfer.value.yearlyMonthly)
 const nextTotal = computed(() => xferNext.value.monthlySum + xferNext.value.yearlyMonthly)
 const nextDiff = computed(() => Math.round(nextTotal.value) - Math.round(monthlyTotal.value))
@@ -84,22 +86,20 @@ const chEd = ref<{ item: PlanChange | null } | null>(null)
 function openSub(s?: Subscription) { tab.value = 'list'; subEd.value = { item: s ?? null } }
 function editChange(c: PlanChange) { subEd.value = null; tab.value = 'changes'; chEd.value = { item: c } }
 
-// "#subs?add" (the record modal's 구독) opens the add editor; the hash goes back to plain "#subs".
-function checkAdd() {
-  if (!/^#subs\?(.*&)?add\b/.test(location.hash)) return
-  history.replaceState(null, '', `${location.pathname}${location.search}#subs`)
-  openSub()
-}
-onActivated(() => { checkAdd(); window.addEventListener('hashchange', checkAdd) })
-onDeactivated(() => window.removeEventListener('hashchange', checkAdd))
+// The 지출 page (spec 011 S-1) owns the add button and the "#subs?add" / "#spend/subs?add" addresses; it asks
+// for the add editor with `adding`, and this page says when it has opened it.
+const props = defineProps<{ embedded?: boolean; adding?: boolean }>()
+const emit = defineEmits<{ added: [] }>()
+watch(() => props.adding, (on) => { if (on) { openSub(); emit('added') } }, { immediate: true })
 
 // ---------- preview ----------
 const from = ref(ymOf(now))
 const nextDated = computed(() => store.planChanges.filter((c) => c.effective && c.effective.slice(0, 7) > ymOf(now)).map((c) => c.effective!.slice(0, 7)).sort()[0])
 const to = ref(nextDated.value ?? addYm(ymOf(now), 1))
 const cmp = computed(() => {
-  const a = transferAt(store.subscriptions, store.planChanges, store.settings, from.value)
-  const b = transferAt(store.subscriptions, store.planChanges, store.settings, to.value)
+  // The comparison shows the plan and price items; each month carries its own one-offs as in the calc cards.
+  const a = monthMoney(store, from.value).transfer
+  const b = monthMoney(store, to.value).transfer
   const ids = new Set([...a.items, ...b.items].map((i) => i.sub.id))
   const all = [...ids].map((id) => {
     const x = a.items.find((i) => i.sub.id === id)
@@ -157,13 +157,13 @@ const chartFrom = ref(ymOf(now))
 const series = computed(() =>
   ymRange(chartFrom.value, 12).map((m) => ({
     ym: m,
-    value: transferAt(store.subscriptions, store.planChanges, store.settings, m).needed,
+    value: monthMoney(store, m).transfer.needed,
     changed: changesIn(store.planChanges, m).length > 0,
   })),
 )
 const pick = ref(ymOf(now))
 const shares = computed(() => {
-  const x = transferAt(store.subscriptions, store.planChanges, store.settings, pick.value)
+  const x = monthMoney(store, pick.value).transfer
   const total = x.monthlySum + x.yearlyMonthly
   return x.items.map((i) => ({ id: i.sub.id, name: i.sub.name, plan: i.sub.plan, monthly: i.monthly, pct: total ? Math.round((i.monthly / total) * 100) : 0 }))
 })
@@ -176,6 +176,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
     lines: [
       { k: t('subscriptions.monthlyTotal'), v: fmtMoney(x.monthlySum + x.yearlyMonthly) },
       { k: t('subscriptions.fxBuffer', { pct: store.settings.fxBuffer }), v: `+${fmtMoney(x.buffer)}` },
+      ...(spendSubs(m) > 0 ? [{ k: t('subscriptions.spendLine'), v: `+${fmtMoney(spendSubs(m))}` }] : []),
       { k: t('subscriptions.neededTransfer'), v: fmtMoney(x.needed) },
       { k: t('subscriptions.roundTo', { unit: fmtMoney(store.settings.subRound), name: subsName.value }), v: fmtMoney(x.transfer), strong: true },
     ],
@@ -185,7 +186,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
 
 <template>
   <section class="page-gap">
-    <PageHeader :title="t('subscriptions.title')" :desc="t('subscriptions.desc')">
+    <PageHeader v-if="!embedded" :title="t('subscriptions.title')" :desc="t('subscriptions.desc')">
       <Soon class="soon-btn" :aria-label="`${t('shell.csvExport')} (${t('common.soon')})`"><Icon name="download" />{{ t('shell.csvExport') }}</Soon>
       <button class="btn pri" type="button" @click="openSub()"><Icon name="plus" />{{ t('subscriptions.addSub') }}</button>
     </PageHeader>

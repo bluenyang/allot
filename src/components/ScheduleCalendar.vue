@@ -34,8 +34,8 @@ const rows = computed(() => events.value.map((e) => {
   const d = parseDate(e.date)
   const label = kindLabel(e.kind)
   // the pill says the kind; the text is what is left of the title (a holiday's own name, a subscription's name)
-  const text = e.kind === 'sub' ? (e.name ?? e.title) : e.title.startsWith(label) ? e.title.slice(label.length).trim() : e.title
-  return { key: `${e.date}-${e.kind}-${e.title}`, day: d.getDate(), wd: weekdayShort(d), dow: d.getDay(), kind: e.kind as CalKind, label, text, amount: e.kind === 'sub' && e.krw !== undefined ? fmtMoney(e.krw) : '', past: e.date < todayIso }
+  const text = e.kind === 'sub' || e.kind === 'spend' ? (e.name ?? e.title) : e.title.startsWith(label) ? e.title.slice(label.length).trim() : e.title
+  return { key: `${e.date}-${e.kind}-${e.title}`, day: d.getDate(), wd: weekdayShort(d), dow: d.getDay(), kind: e.kind as CalKind, label, text, amount: (e.kind === 'sub' || e.kind === 'spend') && e.krw !== undefined ? fmtMoney(e.krw) : '', past: e.date < todayIso }
 }))
 const subTotal = computed(() => events.value.reduce((n, e) => n + (e.kind === 'sub' ? e.krw ?? 0 : 0), 0))
 const subsLabel = computed(() => (ym.value === nowYm ? t('timeline.subsThisMonth') : t('timeline.subsOfMonth', { month: lang.value === 'en' ? monthLong(monthNum.value) : monthNum.value })))
@@ -103,6 +103,7 @@ const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
 .pill.k-pay,.pill.k-transfer{color:var(--primary-text);background:var(--primary-soft)}
 .pill.k-billing{color:var(--info-text);background:var(--info-soft)}
 .pill.k-sub{color:var(--accent-text);background:var(--accent-soft)}
+.pill.k-spend{color:var(--primary-text);background:var(--primary-soft)}
 .pill.k-change{color:var(--accent-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--accent-line)}
 .pill.k-holiday{color:var(--neg-text);background:var(--neg-soft)}
 .agf{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);font-size:13px}

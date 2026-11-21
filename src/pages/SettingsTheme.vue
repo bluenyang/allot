@@ -4,7 +4,7 @@ import Seg from '../components/Seg.vue'
 import { savePreferences, store } from '../lib/store'
 import { ACCENT_PRESETS, DEFAULT_ACCENT, DEFAULT_PRIMARY, PRIMARY_PRESETS, derive, isHex } from '../lib/theme'
 import { money as fmtAs } from '../lib/format'
-import { distributionAt, upcomingPayments, today, ymOf } from '../lib/calc'
+import { monthMoney, upcomingPayments, today, ymOf } from '../lib/calc'
 import type { Preferences } from '../data/types'
 import { t, type MessageKey } from '../i18n'
 
@@ -56,7 +56,7 @@ const adjusted = computed(() => {
 // The preview box shows the user's own numbers.
 const now = today()
 const pays = computed(() => upcomingPayments(store.subscriptions, store.planChanges, store.settings, now, 31))
-const remainder = computed(() => distributionAt(ymOf(now), store.settings.netPay, store.phases, store.targets, store.living, store.subscriptions, store.planChanges, store.settings).remainder)
+const remainder = computed(() => monthMoney(store, ymOf(now)).dist.remainder)
 const paysSum = computed(() => pays.value.reduce((a, p) => a + p.krw, 0))
 /** Amounts in the preview follow the draft's 금액 표시. */
 const money = (n: number) => fmtAs(n, { ...store.preferences, amountUnit: d.value.amountUnit })

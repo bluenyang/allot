@@ -11,7 +11,20 @@ const BASE = process.env.BASE ?? 'http://localhost:15173'
 const STATE = new URL('./.state.json', import.meta.url)
 const phase = process.argv[2] ?? 'create'
 let failed = 0
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run (knowledge: stop-at-first-failure): it throws once (when `armed`), no
+// further write happens, and what this run made is removed by `rollback` below. Later failures are only reported.
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
+// Every row this run created (POST → 201, by path/id) and every change to existing data that must be put back.
+const made = []
+const restores = []
 
 let cookie = ''
 async function api(method, path, body) {
@@ -25,6 +38,8 @@ async function api(method, path, body) {
   const text = await res.text()
   let json = null
   try { json = text ? JSON.parse(text) : null } catch { json = text }
+  if (method === 'POST' && res.status === 201 && json?.id) made.push(`${path}/${json.id}`)
+  if (method === 'DELETE' && res.status === 204) { const i = made.indexOf(path); if (i >= 0) made.splice(i, 1) }
   return { status: res.status, json }
 }
 
@@ -34,9 +49,41 @@ async function signIn() {
   if (r.status !== 200) process.exit(1)
 }
 
+// After a failed create phase: delete what was made (newest first), then put back what was changed. Reports each
+// step, never throws, never hides the first failure.
+async function rollback() {
+  console.log(`ROLLBACK: removing ${made.length} row(s) this run made, then ${restores.length} restore(s)`)
+  for (const path of [...made].reverse()) {
+    try {
+      const d = await api('DELETE', path)
+      console.log(`${d.status === 204 ? 'CLEANUP' : 'CLEANUP-FAIL'} DELETE ${path.split('/').slice(0, 3).join('/')}/<id> → ${d.status}`)
+    } catch (e) { console.log(`CLEANUP-FAIL DELETE ${path}: ${e?.message ?? e}`) }
+  }
+  for (const [name, fn] of [...restores].reverse()) {
+    try {
+      const r = await fn()
+      console.log(`${r.status === 200 ? 'CLEANUP' : 'CLEANUP-FAIL'} restore ${name} → ${r.status}`)
+    } catch (e) { console.log(`CLEANUP-FAIL restore ${name}: ${e?.message ?? e}`) }
+  }
+}
+
 const MARK = 'V8-marker'
+// A card installment over 3 months with a fee; rounds as the screen would write them (spec 011 S-2).
+const spend = {
+  name: MARK, note: 'n', category: '가전', bought: '2090-01-10', amount: 300_000, currency: 'KRW', fxRate: null, fxBuffer: null,
+  how: 'installment', payBy: 'card', count: 3, fee: 3_000, interval: null, cancelled: false,
+  rounds: [
+    { no: 1, date: '2090-02-16', amount: 101_000, state: 'left', edited: false },
+    { no: 2, date: '2090-03-16', amount: 101_000, state: 'left', edited: false },
+    { no: 3, date: '2090-04-16', amount: 101_000, state: 'left', edited: false },
+  ],
+}
 const sub = { name: MARK, category: 'tool', plan: 'p', amount: 1.5, currency: 'USD', vat: 10, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false, note: 'n' }
 
+// create and verify stop at the first failed check; cleanup tries every step (a leftover is the worse outcome)
+// and still exits non-zero when any step failed.
+armed = phase !== 'cleanup'
+try {
 if (phase === 'create') {
   const anon = await api('GET', '/api/state')
   ok(anon.status === 401, `GET /api/state without session → ${anon.status} (want 401)`)
@@ -61,6 +108,8 @@ if (phase === 'create') {
   ok(before.status === 200, `GET /api/state with session → ${before.status}`)
   const ids = { settings: before.json.settings, living: before.json.living }
 
+  restores.push(['settings', () => api('PUT', '/api/settings', ids.settings)])
+  restores.push(['living', () => api('PUT', '/api/living', ids.living)])
   const s1 = await api('PUT', '/api/settings', { ...before.json.settings, netPay: 2_600_001 })
   ok(s1.status === 200 && s1.json.netPay === 2_600_001, `PUT /api/settings → ${s1.status}`)
   const l1 = await api('PUT', '/api/living', { ...before.json.living, food: 300_001 })
@@ -81,6 +130,7 @@ if (phase === 'create') {
   ids.openPhases = before.json.phases.filter((p) => p.to === null)
   for (const p of ids.openPhases) {
     const { id, ...rest } = p
+    restores.push([`open phase ${p.label}`, () => api('PUT', `/api/phases/${id}`, rest)])
     const r = await api('PUT', `/api/phases/${id}`, { ...rest, to: '2089-12' })
     ok(r.status === 200, `close open phase ${p.label} for the test → ${r.status}`)
   }
@@ -93,6 +143,59 @@ if (phase === 'create') {
   ids.check = await created('/api/checks', { text: MARK, done: false }, { done: true })
   ids.account = await created('/api/accounts', { name: MARK, role: '', inflow: '', outflow: '' }, { role: 'r' })
   ids.debt = await created('/api/debts', { name: MARK, principal: 1, rate: '', method: '', plan: '' }, { principal: 2 })
+  // Spendings with rounds: the rounds come back with the spending, are replaced as a whole, and a revert restores them.
+  ids.spend = await created('/api/spendings', spend, { rounds: spend.rounds.map((r) => (r.no === 2 ? { ...r, amount: 100_500, edited: true } : r)) })
+  const sp = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === ids.spend)
+  ok(sp?.rounds?.length === 3 && sp.rounds[1].amount === 100_500 && sp.rounds[1].edited === true && sp.rounds.every((r, i) => r.no === i + 1), 'spending rounds replaced by PUT, sorted by no')
+  const putSet = (await api('GET', '/api/changes?limit=1')).json?.[0]
+  const rvSp = await api('POST', `/api/changes/${putSet?.id}/revert`)
+  const spBack = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === ids.spend)
+  ok(rvSp.status === 200 && spBack?.rounds?.[1]?.amount === 101_000 && spBack.rounds[1].edited === false, `revert of a spending PUT restores its rounds → ${rvSp.status}`)
+  const spAgain = await api('PUT', `/api/spendings/${ids.spend}`, { ...spend, rounds: spend.rounds.map((r) => (r.no === 2 ? { ...r, amount: 100_500, edited: true } : r)) })
+  ok(spAgain.status === 200 && spAgain.json.rounds[1].amount === 100_500, `spending PUT again after the revert → ${spAgain.status}`)
+  // Review 1 (P2): a revert that would leave rounds not matching the count is refused, and nothing changes.
+  const own = await api('POST', '/api/spendings', { ...spend, fee: 0, payBy: 'salary', name: `${MARK}-rv` })
+  const ownPath = `/api/spendings/${own.json?.id}`
+  const paidOff = [{ ...spend.rounds[0], state: 'paid' }, { ...spend.rounds[1], state: 'merged' }, { ...spend.rounds[2], state: 'merged' }, { no: 4, date: '2090-05-16', amount: 202_000, state: 'left', edited: false }]
+  const offPut = await api('PUT', ownPath, { ...spend, fee: 0, payBy: 'salary', name: `${MARK}-rv`, rounds: paidOff })
+  const offSet = (await api('GET', '/api/changes?limit=1')).json?.[0]
+  const countPut = await api('PUT', ownPath, { ...spend, fee: 0, payBy: 'salary', name: `${MARK}-rv`, count: 4, rounds: paidOff })
+  const beforeRv = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === own.json?.id)
+  const rvBad = await api('POST', `/api/changes/${offSet?.id}/revert`)
+  const afterRv = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === own.json?.id)
+  ok(own.status === 201 && offPut.status === 200 && countPut.status === 200 && rvBad.status === 400 && JSON.stringify(afterRv) === JSON.stringify(beforeRv) && afterRv?.count === 4 && afterRv.rounds.length === 4,
+    `revert of a payoff after the count changed is refused, data unchanged (${own.status}, ${offPut.status}, ${countPut.status}, ${rvBad.status})`)
+  ok((await api('POST', '/api/spendings', { ...spend, fee: 0, payBy: 'salary', name: `${MARK}-big`, amount: 3_000_000_000, rounds: spend.rounds.map((r) => ({ ...r, amount: 1_000_000_000 })) })).status === 400, 'POST spending whose rounds add up past 2147483647 → 400')
+  if (own.status === 201) ok((await api('DELETE', ownPath)).status === 204, 'DELETE the revert test spending')
+  // Rules (spec 011 S-2, S-4): each of these is refused.
+  // the rate and the buffer a USD spending was saved with come back as they were (S-3)
+  const usdBody = { ...spend, name: `${MARK}-usd`, currency: 'USD', amount: 100, fxRate: 1000, fxBuffer: 3.5, fee: 0, payBy: 'salary', how: 'lump', count: 1, rounds: [{ no: 1, date: '2090-02-16', amount: 103_500, state: 'left', edited: false }] }
+  const usdPost = await api('POST', '/api/spendings', usdBody)
+  const usdBack = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === usdPost.json?.id)
+  ok(usdPost.status === 201 && usdBack?.fxRate === 1000 && usdBack?.fxBuffer === 3.5, `USD spending keeps fxRate and fxBuffer → ${usdPost.status} ${usdBack?.fxRate}/${usdBack?.fxBuffer}`)
+  if (usdPost.status === 201) ok((await api('DELETE', `/api/spendings/${usdPost.json.id}`)).status === 204, 'DELETE the USD test spending')
+  const spendBad = {
+    'USD without a rate': { ...spend, currency: 'USD', fxRate: null },
+    'KRW with a rate': { ...spend, fxRate: 1380 },
+    'USD without a buffer': { ...spend, currency: 'USD', fxRate: 1380, fxBuffer: null },
+    'KRW with a buffer': { ...spend, fxBuffer: 3 },
+    'USD with a 3-decimal buffer': { ...spend, currency: 'USD', fxRate: 1380, fxBuffer: 3.456 },
+    'USD with a 3-decimal rate': { ...spend, currency: 'USD', fxRate: 1380.256, fxBuffer: 3 },
+    'lump with 2 rounds': { ...spend, how: 'lump', count: 1, fee: 0, rounds: spend.rounds.slice(0, 2) },
+    'fee on a salary installment': { ...spend, payBy: 'salary' },
+    'interval on an installment': { ...spend, interval: 'monthly' },
+    'split without an interval': { ...spend, how: 'split', payBy: 'salary', fee: 0 },
+    'rounds not numbered from 1': { ...spend, rounds: spend.rounds.map((r) => ({ ...r, no: r.no + 1 })) },
+    'fewer rounds than the count': { ...spend, rounds: spend.rounds.slice(0, 2) },
+    'a negative round': { ...spend, rounds: spend.rounds.map((r) => (r.no === 1 ? { ...r, amount: -1 } : r)) },
+    'a date that does not exist': { ...spend, rounds: spend.rounds.map((r) => (r.no === 1 ? { ...r, date: '2090-02-30' } : r)) },
+    'how buffer': { ...spend, how: 'buffer' },
+    'no rounds': { ...spend, rounds: [] },
+  }
+  for (const [why, body] of Object.entries(spendBad)) {
+    const r = await api('POST', '/api/spendings', body)
+    ok(r.status === 400, `POST spending with ${why} → ${r.status} (want 400)`)
+  }
   ids.split = await created('/api/remainder-split', { name: MARK, code: 'X', ratio: 0 }, { ratio: 0.5 })
 
   // Target rules (spec 003 S-1). The seeded data must have one of each non-fixed kind;
@@ -113,6 +216,7 @@ if (phase === 'create') {
   // for a moment, race 15 times, then check no amount sits on a non-fixed target.
   if (subsT) {
     const { id: subsId, ...subsBody } = subsT
+    restores.push(['subscriptions target', () => api('PUT', `/api/targets/${subsId}`, { ...subsBody, note: subsBody.note ?? '' })])
     const freed = await api('PUT', `/api/targets/${subsId}`, { ...subsBody, kind: 'fixed' })
     ok(freed.status === 200, `free the subscriptions kind for the race test → ${freed.status}`)
     const x = await api('POST', '/api/targets', { name: `${MARK}-race`, kind: 'fixed' })
@@ -184,25 +288,43 @@ if (phase === 'verify' || phase === 'cleanup') {
     ok(find('accounts', ids.account)?.role === 'r', 'account persisted')
     ok(find('debts', ids.debt)?.principal === 2, 'debt persisted')
     ok(find('remainderSplit', ids.split)?.ratio === 0.5, 'remainder split persisted')
+    const sp = find('spendings', ids.spend)
+    ok(sp?.rounds?.length === 3 && sp.rounds[1].amount === 100_500 && sp.rounds[1].edited === true && sp.rounds[2].date === '2090-04-16' && sp.fee === 3_000 && sp.how === 'installment', 'spending with its rounds persisted')
   } else {
-    for (const [path, id] of [['/api/plan-changes', ids.chg], ['/api/subscriptions', ids.sub], ['/api/phases', ids.phase], ['/api/events', ids.event], ['/api/checks', ids.check], ['/api/accounts', ids.account], ['/api/debts', ids.debt], ['/api/remainder-split', ids.split], ['/api/targets', ids.target], ['/api/phases', ids.racePhase]]) {
+    for (const [path, id] of [['/api/plan-changes', ids.chg], ['/api/subscriptions', ids.sub], ['/api/phases', ids.phase], ['/api/events', ids.event], ['/api/checks', ids.check], ['/api/accounts', ids.account], ['/api/debts', ids.debt], ['/api/remainder-split', ids.split], ['/api/targets', ids.target], ['/api/phases', ids.racePhase], ['/api/spendings', ids.spend]]) {
       if (!id) continue
-      const d = await api('DELETE', `${path}/${id}`)
-      ok(d.status === 204, `DELETE ${path}/:id → ${d.status}`)
+      try {
+        const d = await api('DELETE', `${path}/${id}`)
+        ok(d.status === 204, `DELETE ${path}/:id → ${d.status}`)
+      } catch (e) { ok(false, `DELETE ${path}/:id threw: ${e?.message ?? e}`) }
     }
     // after the marker phase is gone, so the restored open phase does not overlap it
     for (const p of ids.openPhases ?? []) {
       const { id, ...rest } = p
-      const r = await api('PUT', `/api/phases/${id}`, rest)
-      ok(r.status === 200 && r.json.to === null, `restore open phase ${p.label} → ${r.status}`)
+      try {
+        const r = await api('PUT', `/api/phases/${id}`, rest)
+        ok(r.status === 200 && r.json.to === null, `restore open phase ${p.label} → ${r.status}`)
+      } catch (e) { ok(false, `restore open phase ${p.label} threw: ${e?.message ?? e}`) }
     }
-    const again = await api('GET', '/api/state')
-    const left = Object.values(again.json).flatMap((v) => (Array.isArray(v) ? v : [])).filter((x) => JSON.stringify(x).includes(MARK))
-    ok(left.length === 0, `no marker rows left (${left.length})`)
-    const s = await api('PUT', '/api/settings', ids.settings)
-    const l = await api('PUT', '/api/living', ids.living)
-    ok(s.status === 200 && l.status === 200, 'settings/living restored')
+    // Every remaining step on its own (review 21): one that throws never skips the next.
+    try {
+      const again = await api('GET', '/api/state')
+      const left = Object.values(again.json ?? {}).flatMap((v) => (Array.isArray(v) ? v : [])).filter((x) => JSON.stringify(x).includes(MARK))
+      ok(again.status === 200 && left.length === 0, `no marker rows left (${again.status}, ${left.length})`)
+    } catch (e) { ok(false, `marker check threw: ${e?.message ?? e}`) }
+    try {
+      const s = await api('PUT', '/api/settings', ids.settings)
+      ok(s.status === 200, `settings restored → ${s.status}`)
+    } catch (e) { ok(false, `settings restore threw: ${e?.message ?? e}`) }
+    try {
+      const l = await api('PUT', '/api/living', ids.living)
+      ok(l.status === 200, `living restored → ${l.status}`)
+    } catch (e) { ok(false, `living restore threw: ${e?.message ?? e}`) }
   }
+}
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
+  if (phase === 'create') await rollback()
 }
 
 console.log(failed === 0 ? `\nALL PASS (${phase})` : `\n${failed} FAILED (${phase})`)

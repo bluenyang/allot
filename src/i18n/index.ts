@@ -5,6 +5,7 @@
 import { createI18n } from 'vue-i18n'
 import { en } from './en'
 import { ko, type Messages } from './ko'
+import type { SpendingMessages } from './spending.ko'
 
 export type Lang = 'ko' | 'en'
 export const LANGS: readonly Lang[] = ['ko', 'en']
@@ -12,8 +13,8 @@ export const LANGS: readonly Lang[] = ['ko', 'en']
 type Path<T, P extends string = ''> = {
   [K in keyof T & string]: T[K] extends string ? `${P}${K}` : Path<T[K], `${P}${K}.`>
 }[keyof T & string]
-/** A key of the message lists, e.g. 'shell.menu'. */
-export type MessageKey = Path<Messages>
+/** A key of the message lists, e.g. 'shell.menu' (the 지출 page's lazy parts are in spending.ko.ts). */
+export type MessageKey = Path<Messages & SpendingMessages>
 
 const KEY = 'allot.lang'
 

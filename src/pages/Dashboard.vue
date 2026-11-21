@@ -9,13 +9,13 @@ import { saveItem, store, subName } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { notReady, view } from '../lib/view'
 import { allocColor } from '../lib/colors'
-import { kindDetail, phaseTag } from '../lib/labels'
+import { kindDetail, phaseTag, roundSuffix } from '../lib/labels'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
 import { manText, monthLong, monthShort, weekdayShort } from '../lib/format'
 import { t, lang } from '../i18n'
 import { offDays } from '../lib/holidays-lazy'
 import {
-  addYm, clusterDots, distributionAt, leftoverAfterTransfer, monthDates, parseDate, paysAfter31, splitRemainder, today, transferAt, unallocated, upcomingPayments, ymOf, ymRange,
+  addYm, clusterDots, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymOf, ymRange,
 } from '../lib/calc'
 import {
   canUndo, changed, decide, fieldName, listFor, loadProposals, money, proposals, proposalTitle, rowFields, rowLabel, rowTitle, shown, summary, tableName, undo, when, worded,
@@ -33,9 +33,16 @@ const ym = computed(() => view.ym)
 const year = computed(() => Number(view.ym.slice(0, 4)))
 const month = computed(() => Number(view.ym.slice(5, 7)))
 
-const dist = computed(() => distributionAt(ym.value, store.settings.netPay, store.phases, store.targets, store.living, store.subscriptions, store.planChanges, store.settings))
-const xfer = computed(() => transferAt(store.subscriptions, store.planChanges, store.settings, ym.value))
-const pays = computed(() => upcomingPayments(store.subscriptions, store.planChanges, store.settings, now, 31))
+// The month's real money: one-off spendings are in the transfer and the remainder (spec 011 S-5).
+const monthNow = computed(() => monthMoney(store, ym.value))
+const dist = computed(() => monthNow.value.dist)
+const xfer = computed(() => monthNow.value.transfer)
+// What is due in the next 31 days: subscription charges and the rounds of one-off spendings (spec 011 S-8), by date.
+interface Pay { key: string; date: Date; name: string; sub: string; krw: number; dday: number }
+const pays = computed<Pay[]>(() => [
+  ...upcomingPayments(store.subscriptions, store.planChanges, store.settings, now, 31).map((p) => ({ key: p.sub.id + p.date.getTime(), date: p.date, name: p.sub.name, sub: p.sub.plan || '—', krw: p.krw, dday: p.dday })),
+  ...upcomingSpendRounds(store.spendings, now, 31).map((d) => ({ key: `${d.spending.id}-${d.round.no}`, date: d.date, name: d.spending.name, sub: roundSuffix(d.spending, d.round) || t('dashboard.spendOne'), krw: d.krw, dday: d.dday })),
+].sort((a, b) => a.date.getTime() - b.date.getTime()))
 const paysSum = computed(() => pays.value.reduce((a, p) => a + p.krw, 0))
 const later = computed(() => paysAfter31(store.subscriptions, store.planChanges, store.settings, now))
 // The closest payment when nothing falls in the next 31 days.
@@ -64,12 +71,12 @@ const note = (x: { shifted: 'before' | 'after' | null; unresolved?: true }) =>
   x.unresolved ? ` (${t('calendar.noBizDay')})` : x.shifted === 'before' ? ` (${t('calendar.before')})` : x.shifted === 'after' ? ` (${t('calendar.after')})` : ''
 
 // "이체 후 남는 금액" (D-9): this transfer minus the payments until the next transfer.
-const left = computed(() => leftoverAfterTransfer(store, ym.value, off.value))
+const left = computed(() => leftoverAfterTransfer(store, ym.value, off.value, store.spendings))
 const leftPct = computed(() => (left.value.transfer > 0 ? Math.min(100, (left.value.paid / left.value.transfer) * 100) : left.value.paid > 0 ? 100 : 0))
 
 // Six months ahead: subscription monthly total with scheduled plan changes.
 const trend = computed(() => ymRange(ym.value, 6).map((m) => {
-  const t = transferAt(store.subscriptions, store.planChanges, store.settings, m)
+  const t = monthMoney(store, m).transfer
   return { ym: m, v: t.monthlySum + t.yearlyMonthly }
 }))
 const trendMax = computed(() => Math.max(1, ...trend.value.map((x) => x.v)))
@@ -102,8 +109,9 @@ const tabs = computed(() => [
 ])
 
 function changeDelta(id: string, eff: string) {
-  const before = transferAt(store.subscriptions, store.planChanges.filter((c) => c.id !== id), store.settings, eff.slice(0, 7))
-  const after = transferAt(store.subscriptions, store.planChanges, store.settings, eff.slice(0, 7))
+  // Same month's spendings on both sides: only the monthly sums are compared here, and they do not carry spendings.
+  const before = monthMoney({ ...store, planChanges: store.planChanges.filter((c) => c.id !== id) }, eff.slice(0, 7)).transfer
+  const after = monthMoney(store, eff.slice(0, 7)).transfer
   return (after.monthlySum + after.yearlyMonthly) - (before.monthlySum + before.yearlyMonthly)
 }
 const signed = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + fmtMoney(Math.abs(n))
@@ -153,11 +161,11 @@ watch(stripEl, (el) => {
   if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => { stripW.value = el.clientWidth || stripW.value }); ro.observe(el) }
 }, { flush: 'post' })
 onBeforeUnmount(() => ro?.disconnect())
-const payText = (p: (typeof pays.value)[number]) => `${mdd(p.date)} ${p.sub.name} ${fmtMoney(p.krw)}`
+const payText = (p: Pay) => `${mdd(p.date)} ${p.name} ${fmtMoney(p.krw)}`
 const dots = computed(() => clusterDots(pays.value.map((p) => p.dday), stripW.value, DOT_PX).map((c, i) => {
   const ms = c.members.map((k) => pays.value[k]!)
   const text = ms.length === 1 ? payText(ms[0]!) : `${t('dashboard.paymentCount', { n: ms.length })}: ${ms.map(payText).join(' · ')}`
-  return { id: ms.map((m) => m.sub.id + m.date.getTime()).join('+'), left: `${c.pct}%`, first: i === 0, n: ms.length, text }
+  return { id: ms.map((m) => m.key).join('+'), left: `${c.pct}%`, first: i === 0, n: ms.length, text }
 }))
 const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
 </script>
@@ -198,7 +206,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
         <div class="k-h"><span class="k-l">{{ t('dashboard.dueIn31') }}</span><span v-if="pays.length" class="pill acc">D-{{ pays[0]!.dday }}</span></div>
         <div class="k-v"><span class="num v">{{ fmtMoney(paysSum) }}</span><span class="hint k-side">{{ t('dashboard.paymentCount', { n: pays.length }) }}</span></div>
         <div ref="stripEl" class="k-bar dots" role="group" :aria-label="t('dashboard.dotsLabel')"><i v-for="d in dots" :key="d.id" role="img" :class="{ first: d.first, multi: d.n > 1 }" :style="{ left: d.left }" :title="d.text" :aria-label="d.text">{{ d.n > 1 ? d.n : '' }}</i></div>
-        <div class="k-f"><span v-if="pays.length">{{ t('dashboard.nextPay', { name: pays[0]!.sub.name, amount: fmtMoney(pays[0]!.krw) }) }}</span><span v-else></span><span v-if="pays.length">{{ mdd(pays[0]!.date) }}</span></div>
+        <div class="k-f"><span v-if="pays.length">{{ t('dashboard.nextPay', { name: pays[0]!.name, amount: fmtMoney(pays[0]!.krw) }) }}</span><span v-else></span><span v-if="pays.length">{{ mdd(pays[0]!.date) }}</span></div>
       </div>
       <div class="card kpi">
         <div class="k-h"><span class="k-l">{{ t('dashboard.needCheck') }}</span><button class="btn ghost sm k-go" type="button" @click="tab = 'pending'">{{ t('dashboard.view') }}</button></div>
@@ -269,13 +277,13 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
         </div>
 
         <section class="card col-side paycard">
-          <div class="card-hd"><h2>{{ t('dashboard.upcomingPayments') }}</h2><a href="#subs" class="aux">{{ t('dashboard.allSubs') }}</a></div>
+          <div class="card-hd"><h2>{{ t('dashboard.upcomingPayments') }}</h2><a href="#spend/subs" class="aux">{{ t('dashboard.allSubs') }}</a></div>
           <template v-if="pays.length">
             <div class="psum"><span>{{ t('dashboard.fromToday') }}</span><b class="num">{{ t('dashboard.paySummary', { n: pays.length, amount: fmtMoney(paysSum) }) }}</b></div>
             <ul class="items pays">
-              <li v-for="p in pays" :key="p.sub.id + p.date.getTime()">
+              <li v-for="p in pays" :key="p.key">
                 <span class="dbox"><b class="d num" :class="wcls(p.date)">{{ p.date.getDate() }}</b><small>{{ monthShort(p.date.getMonth() + 1) }} <b :class="wcls(p.date)">{{ weekdayShort(p.date) }}</b></small></span>
-                <span class="pn"><b>{{ p.sub.name }}</b><span>{{ p.sub.plan || '—' }}</span></span>
+                <span class="pn"><b>{{ p.name }}</b><span>{{ p.sub }}</span></span>
                 <span class="pa"><b class="num">{{ fmtMoney(p.krw) }}</b><span class="num" :class="{ soon: p.dday <= 3 }">D-{{ p.dday }}</span></span>
               </li>
             </ul>

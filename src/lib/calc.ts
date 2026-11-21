@@ -1,4 +1,4 @@
-import type { AllocationKind, AllocationTarget, Cycle, DayShift, Living, Phase, Plan, PlanChange, RemainderSplit, Settings, Subscription } from '../data/types'
+import type { AllocationKind, AllocationTarget, Currency, Cycle, DayShift, Living, PayBy, Phase, Plan, PlanChange, RemainderSplit, Settings, SpendHow, Spending, SpendingRound, SpendInterval, Subscription } from '../data/types'
 
 export const DAY = 86_400_000
 
@@ -100,8 +100,8 @@ export interface TransferCalc {
   items: { sub: Subscription; monthly: number }[]
 }
 
-/** 구독료 통장 계산기와 같은 식. */
-export function transferAt(subs: Subscription[], changes: PlanChange[], s: Settings, ym: string): TransferCalc {
+/** 구독료 통장 계산기와 같은 식. `extra`: one-off spending paid from the subscription account that month (spec 011 S-5), added before the round-ups. */
+export function transferAt(subs: Subscription[], changes: PlanChange[], s: Settings, ym: string, extra = 0): TransferCalc {
   let monthlySum = 0
   let yearlyMonthly = 0
   let usdMonthly = 0
@@ -117,7 +117,7 @@ export function transferAt(subs: Subscription[], changes: PlanChange[], s: Setti
   }
   items.sort((a, b) => b.monthly - a.monthly)
   const buffer = (usdMonthly * s.fxBuffer) / 100
-  const raw = monthlySum + yearlyMonthly + buffer
+  const raw = monthlySum + yearlyMonthly + buffer + extra
   const needed = Math.ceil(raw / 1000) * 1000
   const transfer = Math.ceil(needed / s.subRound) * s.subRound
   return { monthlySum, yearlyMonthly, usdMonthly, buffer, needed, transfer, items }
@@ -317,6 +317,7 @@ export function leftoverAfterTransfer(
   state: { subscriptions: Subscription[]; planChanges: PlanChange[]; settings: Settings },
   ym: string,
   off: ReadonlySet<string> = new Set(),
+  spendings: Spending[] = [],
 ): Leftover {
   const { subscriptions, planChanges, settings } = state
   const shift = settings.dayShift ?? 'none'
@@ -328,9 +329,11 @@ export function leftoverAfterTransfer(
   // Ask for a few days more than the window, then cut by date: no clock arithmetic decides the edge.
   const span = Math.round((parseDate(to).getTime() - startD.getTime()) / DAY) + 3
   const inWindow = upcomingPayments(subscriptions, planChanges, settings, startD, span).filter((p) => ymd(p.date) >= from && ymd(p.date) <= to)
-  const paid = inWindow.reduce((a, p) => a + p.krw, 0)
-  const transfer = transferAt(subscriptions, planChanges, settings, ym).transfer
-  return { transfer, from, to, paid, count: inWindow.length, left: transfer - paid }
+  // One-off rounds paid from the subscription account count as paid too (spec 011 S-5).
+  const spent = liveRounds(spendings).filter((x) => x.spending.payBy === 'subs' && x.round.date >= from && x.round.date <= to)
+  const paid = inWindow.reduce((a, p) => a + p.krw, 0) + spent.reduce((a, x) => a + x.round.amount, 0)
+  const transfer = transferAt(subscriptions, planChanges, settings, ym, spendingIn(spendings, ym).subs).transfer
+  return { transfer, from, to, paid, count: inWindow.length + spent.length, left: transfer - paid }
 }
 
 /** What is left of the pay when no target takes the remainder: the pay minus every target (negative = short). 0 when a remainder target exists. */
@@ -389,10 +392,12 @@ export function distributionAt(
   subs: Subscription[],
   changes: PlanChange[],
   s: Settings,
+  spendRemainder = 0,
+  spendSubs = 0,
 ): Distribution {
   const phase = phaseAt(phases, ym)
   const livingSum = living.food + living.transit + living.allowance
-  const subsTransfer = transferAt(subs, changes, s, ym).transfer
+  const subsTransfer = transferAt(subs, changes, s, ym, spendSubs).transfer
   const amountOf = (t: AllocationTarget) =>
     t.kind === 'living' ? livingSum
     : t.kind === 'subscriptions' ? subsTransfer
@@ -400,7 +405,7 @@ export function distributionAt(
     : 0
   const remainderTarget = targets.find((t) => t.kind === 'remainder') ?? null
   const others = targets.filter((t) => t.kind !== 'remainder').reduce((sum, t) => sum + amountOf(t), 0)
-  const remainder = netPay - others
+  const remainder = netPay - others - spendRemainder
   const rows: AllocRow[] = targets
     .map((t) => ({
       key: t.id,
@@ -415,6 +420,225 @@ export function distributionAt(
     living: targets.some((t) => t.kind === 'living') ? livingSum : 0,
     subscriptions: targets.some((t) => t.kind === 'subscriptions') ? subsTransfer : 0,
   }
+}
+
+// ---------- one-off spending (spec 011 S-3..S-6) ----------
+export interface SpendInput {
+  bought: string // YYYY-MM-DD
+  how: SpendHow
+  payBy: PayBy
+  count: number // 1..60
+  /** the KRW principal (spendingKrw) */
+  principal: number
+  /** total fee in KRW; only a card installment carries one */
+  fee?: number
+  interval?: SpendInterval | null
+  /** split: the first date (default `bought`) */
+  first?: string
+  /** split with interval 'custom': one date per round */
+  dates?: string[]
+}
+
+/** The KRW principal of a spending: USD = amount × rate × (1 + buffer%), rounded to the won (S-3). */
+export function spendingKrw(amount: number, currency: Currency, s: Pick<Settings, 'fxRate' | 'fxBuffer'>): number {
+  return currency === 'USD' ? Math.round(amount * s.fxRate * (1 + s.fxBuffer / 100)) : amount
+}
+
+/** Rounds of a spending (S-4): total = principal + fee, each ⌊total ÷ n ÷ 10⌋ × 10, the last takes the rest. */
+export function planRounds(input: SpendInput, s: Settings, off: ReadonlySet<string>): SpendingRound[] {
+  const { how, payBy } = input
+  const n = how === 'lump' ? 1 : input.count
+  if (!Number.isInteger(n) || n < 1 || n > 60) throw new RangeError(`rounds must be 1..60, got ${n}`)
+  const fee = how === 'installment' && payBy === 'card' ? (input.fee ?? 0) : 0
+  const total = input.principal + fee
+  const each = Math.floor(total / n / 10) * 10
+  const amounts = Array.from({ length: n }, (_, i) => (i === n - 1 ? total - each * (n - 1) : each))
+  let dates: string[]
+  if (how === 'split') {
+    const first = input.first ?? input.bought
+    if (input.interval === 'custom') {
+      if (!input.dates || input.dates.length !== n) throw new RangeError(`custom dates must have ${n} entries`)
+      dates = [...input.dates]
+    } else if (input.interval === 'biweekly') {
+      dates = Array.from({ length: n }, (_, i) => ymd(dayPlus(parseDate(first), 14 * i)))
+    } else {
+      dates = Array.from({ length: n }, (_, i) => ymd(addMonths(parseDate(first), i)))
+    }
+  } else if (payBy === 'card') {
+    const shift = s.dayShift ?? 'none'
+    const from = addYm(input.bought.slice(0, 7), 1)
+    dates = Array.from({ length: n }, (_, i) => monthDay(addYm(from, i), s.billingDay, shift, off).date)
+  } else {
+    dates = Array.from({ length: n }, () => input.bought)
+  }
+  return amounts.map((amount, i) => ({ no: i + 1, date: dates[i]!, amount, state: 'left' as const, edited: false }))
+}
+
+/** Early payoff (S-6): every left round is merged into one new left round on `date` (the sum, or `amount`). Paid rounds stay. */
+export function payOffEarly(rounds: SpendingRound[], date: string, amount?: number): SpendingRound[] {
+  const left = rounds.filter((r) => r.state === 'left')
+  if (!left.length) return rounds.map((r) => ({ ...r }))
+  // The rounds still to count add up to at most ROUND_MAX (server rule), so the sum fits one round; an `amount` the user types is checked by the server.
+  const sum = left.reduce((a, r) => a + r.amount, 0)
+  const no = Math.max(...rounds.map((r) => r.no)) + 1
+  return [
+    ...rounds.map((r) => (r.state === 'left' ? { ...r, state: 'merged' as const } : { ...r })),
+    { no, date, amount: amount ?? sum, state: 'left' as const, edited: false },
+  ]
+}
+
+/** Rounds that count in the month sums: not merged; a cancelled spending keeps only its paid rounds (S-5). */
+function liveRounds(spendings: Spending[]): { spending: Spending; round: SpendingRound }[] {
+  const out: { spending: Spending; round: SpendingRound }[] = []
+  for (const spending of spendings)
+    for (const round of spending.rounds) {
+      if (round.state === 'merged') continue
+      if (spending.cancelled && round.state === 'left') continue
+      out.push({ spending, round })
+    }
+  return out
+}
+
+export interface SpendingItem {
+  spending: Spending
+  round: SpendingRound
+  amount: number
+}
+export interface SpendingMonth {
+  /** paid from the subscription account: added to the month's subscription transfer */
+  subs: number
+  /** salary and card: taken off the month's remainder */
+  remainder: number
+  /** of `remainder`, the lump-sum part and the installment/split part */
+  general: number
+  installment: number
+  items: SpendingItem[]
+}
+
+/** What the spendings put on calendar month `ym` (S-5). */
+export function spendingIn(spendings: Spending[], ym: string): SpendingMonth {
+  const out: SpendingMonth = { subs: 0, remainder: 0, general: 0, installment: 0, items: [] }
+  for (const { spending, round } of liveRounds(spendings)) {
+    if (round.date.slice(0, 7) !== ym) continue
+    out.items.push({ spending, round, amount: round.amount })
+    if (spending.payBy === 'subs') out.subs += round.amount
+    else {
+      out.remainder += round.amount
+      if (spending.how === 'lump') out.general += round.amount
+      else out.installment += round.amount
+    }
+  }
+  return out
+}
+
+export interface Replan {
+  /** the new rounds with the states that carry over */
+  rounds: SpendingRound[]
+  /** old paid rounds whose paid mark stays on the round with the same number */
+  keptPaid: number
+  /** old paid rounds that have no round with their number any more, or whose mark a lump sum does not keep */
+  droppedPaid: number
+  /** edited rounds (not merged): their date and amount go back to the calculated ones */
+  droppedEdited: number
+  /** rounds an early payoff merged: they are gone */
+  droppedMerged: number
+  /** a lump sum made of these rounds: paid only if every round that still counted was paid (spec 011 A-22, A-38, A-39) */
+  lumpDefault: 'left' | 'paid'
+}
+/**
+ * What happens to a spending's stored rounds when its rounds are worked out again (`next`, from planRounds): the one rule the editor
+ * shows in its warning and saves, so the two cannot differ.
+ * - a new round is paid when the old round with the same number was paid (a merged round is not);
+ * - an old paid round whose number is gone, a payoff round above the new count included, is dropped;
+ * - every edited and every merged round is dropped (the new rounds are the calculated ones);
+ * - a lump sum is one round: `lump` says its state (paid, or left / cancelled = left, A-38); without it, `lumpDefault`.
+ *   A lump sum worked out again as a lump sum (one old round) keeps whatever `lump` says and counts nothing as dropped.
+ */
+export function replan(old: SpendingRound[], next: SpendingRound[], toHow: SpendHow, lump?: 'left' | 'paid' | 'cancelled'): Replan {
+  const counted = old.filter((r) => r.state !== 'merged')
+  const lumpDefault = counted.length > 0 && counted.every((r) => r.state === 'paid') ? 'paid' : 'left'
+  const oldPaid = old.filter((r) => r.state === 'paid')
+  const droppedEdited = old.filter((r) => r.edited && r.state !== 'merged').length
+  const droppedMerged = old.length - counted.length
+  if (toHow === 'lump') {
+    const state = (lump ?? lumpDefault) === 'paid' ? 'paid' : 'left'
+    const again = old.length === 1 // a lump sum that is a lump sum again: the user's state is a choice, not a loss
+    return {
+      rounds: next.map((r) => ({ ...r, state, edited: false })),
+      keptPaid: again || state !== 'paid' ? 0 : oldPaid.length,
+      droppedPaid: again || state === 'paid' ? 0 : oldPaid.length,
+      droppedEdited, droppedMerged, lumpDefault,
+    }
+  }
+  const keep = new Set(oldPaid.map((r) => r.no))
+  const rounds = next.map((r) => ({ ...r, state: keep.has(r.no) ? ('paid' as const) : ('left' as const), edited: false }))
+  const keptPaid = rounds.filter((r) => r.state === 'paid').length
+  return { rounds, keptPaid, droppedPaid: oldPaid.length - keptPaid, droppedEdited, droppedMerged, lumpDefault }
+}
+
+export interface SpendDue {
+  date: Date
+  spending: Spending
+  round: SpendingRound
+  krw: number
+  dday: number
+}
+/**
+ * The rounds still to pay (left, not cancelled) from `from` through `from` + `days` (both inclusive, local dates), by date (spec 011 S-8):
+ * what the home's upcoming payments and the schedule calendar show next to the subscription charges.
+ */
+export function upcomingSpendRounds(spendings: Spending[], from: Date, days: number): SpendDue[] {
+  const lo = new Date(from.getFullYear(), from.getMonth(), from.getDate())
+  const end = new Date(from.getFullYear(), from.getMonth(), from.getDate() + days)
+  const out: SpendDue[] = []
+  for (const { spending, round } of liveRounds(spendings)) {
+    if (round.state !== 'left' || !/^\d{4}-\d{2}-\d{2}$/.test(round.date)) continue
+    const d = parseDate(round.date)
+    if (d >= lo && d <= end) out.push({ date: d, spending, round, krw: round.amount, dday: Math.round((d.getTime() - lo.getTime()) / DAY) })
+  }
+  return out.sort((a, b) => a.date.getTime() - b.date.getTime() || a.spending.name.localeCompare(b.spending.name) || a.round.no - b.round.no)
+}
+
+/** What `monthMoney` reads. `spendings` may be missing (none). */
+export interface MonthState {
+  settings: Settings
+  phases: Phase[]
+  targets: AllocationTarget[]
+  living: Living
+  subscriptions: Subscription[]
+  planChanges: PlanChange[]
+  spendings?: Spending[]
+}
+
+/**
+ * The month's real money in one call (spec 011 S-5): the subscription transfer with the month's
+ * subscription-account spendings, the distribution with the same and with the salary/card spendings
+ * off the remainder, and the spendings themselves. Every screen and tool that shows the user's month
+ * goes through here so no half is forgotten. `pay` and `phases` are for what-if screens; a what-if
+ * passes the same spendings to both of its sides.
+ */
+export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; phases?: Phase[] } = {}) {
+  const spend = spendingIn(state.spendings ?? [], ym)
+  const transfer = transferAt(state.subscriptions, state.planChanges, state.settings, ym, spend.subs)
+  const dist = distributionAt(
+    ym, opt.pay ?? state.settings.netPay, opt.phases ?? state.phases, state.targets, state.living,
+    state.subscriptions, state.planChanges, state.settings, spend.remainder, spend.subs,
+  )
+  return { transfer, dist, spend }
+}
+
+export type SpendStateName = 'cancelled' | 'paid' | 'billing' | 'planned'
+
+/** The state shown in the general tab (S-6). `today` is YYYY-MM-DD. */
+export function spendState(sp: Spending, today: string, s: Settings, off: ReadonlySet<string>): SpendStateName {
+  if (sp.cancelled) return 'cancelled'
+  const live = sp.rounds.filter((r) => r.state !== 'merged')
+  if (live.length && live.every((r) => r.state === 'paid')) return 'paid'
+  if (sp.payBy === 'card') {
+    const bill = live[0]?.date ?? monthDay(addYm(sp.bought.slice(0, 7), 1), s.billingDay, s.dayShift ?? 'none', off).date
+    if (today >= sp.bought && today < bill) return 'billing'
+  }
+  return 'planned'
 }
 
 /** The remainder split by ratio: every item but the last is rounded to 10,000; the last takes what is left. */

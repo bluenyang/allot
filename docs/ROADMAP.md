@@ -65,12 +65,17 @@ Decisions from the committee review (2026-11-11), accepted by the user ("그렇�
 | 0.1.2 (released 2026-11-16) | Login and admin: generic OIDC, GitHub, Google and password, each on/off; per-provider sign-up policy (admin-created, approval, or group/organization/domain rules); admin menu; initial admin from env (email or OIDC subject); encryption module; auth that a future mobile app can use (bearer tokens, deep-link return) |
 | 0.1.3 (released 2026-11-17) | MCP read: API keys (hashed, scoped, expiring, revocable), key management page, read tools; UI language setting (added 2026-11-15: "언어를 빼둔다? 그럼 다음 패치 버전으로 일단 적어놔봐.") |
 | 0.1.4 (released 2026-11-21) | MCP write: write tools, preview before confirm, revert of AI change sets. rc.2: redesign of every screen from the design canvas and a design system (`DESIGN.md`); features not built yet shown as "coming soon"; the remainder target may be deleted (added after the fact, first audit of intent 010, F-1) |
-| 0.1.5 | One-off expenses: lump sum, split payment, installments |
-| 0.1.6 | Account management: purposes linked to accounts, target amounts (allocation stops at the target), buffers that refill gradually after use |
+| 0.1.5 | One-off expenses: lump sum, split payment, installments — KRW or USD, interest-free or with a fee, each round editable with a paid / remaining state; each round counts in its month by how it is paid (subscription account → that month's subscription transfer, salary account or card → that month's remainder); the Subscriptions menu becomes **Spending**, with General, Installments and Subscriptions tabs as drawn on the design canvas (settled 2026-11-21, see below) |
+| next patch after 0.1.5 | Routing: vue-router with history URLs in place of the hand-written hash routes; old `#…` addresses and login return addresses keep working; the server serves the app for every non-API path (settled 2026-11-21: "그렇게 하자 그럼. a방식으로." — its own small patch before account management; its version number is settled when it starts) |
+| 0.1.6 | Account management and the budget menus from the design canvas: Living, Savings and Investment screens (items by amount or ratio, the total is the salary allocation value), accounts linked to purposes, target amounts and per-account buffers that refill gradually — reaching a target raises a pending change that the user confirms before allocation stops; item amounts per phase; in Spending, paying a card purchase from an account's buffer and refilling it over chosen months by raising that account's transfer (drawn on the canvas, user: "버퍼에서 지출하는 기능(v0.1.6에서 추가될 예정)"). Actual spending from statements waits for 0.1.7 (settled 2026-11-21) |
 | 0.1.7 | Transactions: file import and card statements from Gmail; matching against expected payments (paid, delayed, foreign-currency amount); the actual salary drives the month |
 | 0.1.8 | Payslip deductions and month-end close |
 | 0.1.9 | Mobile app (Capacitor): payment notifications on Android; on iOS what Shortcuts and the share sheet allow |
 | 0.1.10 | MCP over OAuth: remote connectors that take only OAuth (claude.ai, the phone app); 0.1.3 ships API keys only (added 2026-11-16: "a만. 지금 계획되지 않은 빠른 버전이 뭐지? 거기로 미루면 될거 같은데" / "그럽시다.") |
+
+### 0.1.5 and 0.1.6 — settled before the 0.1.5 intent
+
+Settled on 2026-11-21 (user's answers to the PM's questions, Korean): how a round counts in its month — "결제 수단별 반영"; the list screen — "구독 화면에 탭을 둔다. 그런데, 구독 이라는 메뉴를 아예 \"지출\"이라는 메뉴로 개편하고 싶음"; what 0.1.5 accepts — foreign currency (USD), fees on installments, the state of each round, and the amount and date of each round; the scope of 0.1.6 — "캔버스 예산 메뉴 전체". The user then drew the Spending screens on the design canvas: "캔버스를 업데이트 하였음. 버퍼에서 지출하는 기능(v0.1.6에서 추가될 예정)도 포함되어 있음."
 
 ### 0.1.2 — redesign before rc.1
 

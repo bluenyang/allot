@@ -103,7 +103,7 @@ test('pending: nothing of the first account reaches the next one signed in on th
       const toast = page.getByRole('status').filter({ hasText: /제안을 (적용|되돌렸)/ })
       await expect(toast).toHaveCount(0)
       await page.goto('/#subs')
-      await expect(page.getByRole('heading', { name: '구독', exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: '지출', exact: true })).toBeVisible()
       await expect(page.getByText(SUB)).toHaveCount(0)
       await expect(page.getByText(sentinel)).toHaveCount(0)
       await page.goto('/#pending')

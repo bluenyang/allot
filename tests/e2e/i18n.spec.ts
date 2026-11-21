@@ -34,7 +34,7 @@ test('English from the settings: menus, titles, html lang, kept after a reload',
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   const nav = page.getByRole('navigation', { name: 'Menu' })
-  for (const name of ['Overview', 'Subscriptions', 'Pay split', 'Schedule', 'Change history']) await expect(nav.getByRole('link', { name })).toBeVisible()
+  for (const name of ['Overview', 'Spending', 'Pay split', 'Schedule', 'Change history']) await expect(nav.getByRole('link', { name })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'General' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign out' }).first()).toBeVisible()
 
@@ -45,12 +45,30 @@ test('English from the settings: menus, titles, html lang, kept after a reload',
   await page.goto('/#history')
   await expect(page.getByRole('heading', { name: 'Change history', exact: true })).toBeVisible()
   await page.goto('/#subs')
-  await expect(page.getByRole('heading', { name: 'Subscriptions', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Spending', exact: true })).toBeVisible()
 
   await openGeneral(page)
   await pickLanguage(page, 'ko')
   await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
   await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible()
+})
+
+// spec 011 V-8: the 지출 page's lazy messages hold both languages, so a switch after the tab is open still reads right.
+test('지출 › 할부: opened in Korean, then English from the settings, the tab speaks English', async ({ page }) => {
+  await page.goto('/#spend/inst')
+  await expect(page.getByRole('region', { name: '할부 요약' })).toBeVisible()
+
+  await openGeneral(page)
+  await pickLanguage(page, 'en')
+  await page.goto('/#spend/inst')
+  await expect(page.getByRole('region', { name: 'Installment summary' })).toBeVisible()
+  await expect(page.getByText('In progress', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('region', { name: '할부 요약' })).toHaveCount(0)
+
+  await openGeneral(page)
+  await pickLanguage(page, 'ko')
+  await page.goto('/#spend/inst')
+  await expect(page.getByRole('region', { name: '할부 요약' })).toBeVisible()
 })
 
 test('the server answers an invalid save in English', async ({ page }) => {

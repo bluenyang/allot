@@ -20,7 +20,7 @@ export function out<R extends Record<string, unknown>>(row: R, optional: string[
 export async function readState(q: Db, uid: string) {
   const list = <T extends ListTable>(table: T) =>
     q.select().from(table as never).where(eq(table.userId, uid)).orderBy(asc(table.seq)) as unknown as Promise<T['$inferSelect'][]>
-  const [[settings], [living], subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, targets, amounts, [prefs], holidaySets] = await Promise.all([
+  const [[settings], [living], subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, targets, amounts, [prefs], holidaySets, spendings, spendingRounds] = await Promise.all([
     q.select().from(t.settings).where(eq(t.settings.userId, uid)),
     q.select().from(t.living).where(eq(t.living.userId, uid)),
     list(t.subscription),
@@ -35,6 +35,8 @@ export async function readState(q: Db, uid: string) {
     q.select().from(t.phaseAmount).where(eq(t.phaseAmount.userId, uid)),
     q.select().from(t.preference).where(eq(t.preference.userId, uid)),
     list(t.holidaySet),
+    list(t.spending),
+    q.select().from(t.spendingRound).where(eq(t.spendingRound.userId, uid)).orderBy(asc(t.spendingRound.no)),
   ])
   const amountsOf = (phaseId: string) =>
     Object.fromEntries(amounts.filter((a) => a.phaseId === phaseId).map((a) => [a.targetId, a.amount]))
@@ -56,5 +58,9 @@ export async function readState(q: Db, uid: string) {
     remainderSplit: remainderSplit.map((x) => out(x)),
     preferences: p,
     holidaySets: holidaySets.map((x) => out(x)),
+    spendings: spendings.map((x) => ({
+      ...out(x, ['note']),
+      rounds: spendingRounds.filter((r) => r.spendingId === x.id).map(({ userId: _u, spendingId: _s, ...r }) => r),
+    })),
   }
 }

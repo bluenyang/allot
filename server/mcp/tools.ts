@@ -1,11 +1,12 @@
 // The MCP server of one request: built per request and bound to the user the key belongs to
-// (stateless; spec 008 S-5, S-6). Six read-only tools for every key and, for a key with the write
+// (stateless; spec 008 S-5, S-6). Seven read-only tools for every key and, for a key with the write
 // scope, four more that propose changes and apply them after confirmation (spec 009 S-6); each runs
 // as that user under row-level security, and what the read tools compute comes from server/mcp/views.ts.
 // Descriptions and errors are in English (spec 008 S-10); the data is as the user entered it.
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 import { today, ymOf } from '../../src/lib/calc'
+import { ROUND_MAX } from '../../src/lib/spending-rules'
 import { listSets } from '../changes'
 import { asUser } from '../db/scope'
 import { issueText } from '../messages'
@@ -13,7 +14,7 @@ import { AI_LISTS, AI_SINGLES, RESOURCES, SINGLES } from '../ops'
 import { applyProposal, getProposal, MAX_OPS, propose, ProposalError, proposalText, type KeyInfo, type ProposalView } from '../proposals'
 import { readState } from '../state'
 import { guarded, isTimestamp } from './safe'
-import { allocation, overview, planChangeList, schedule, subscriptionList, type Data } from './views'
+import { allocation, overview, planChangeList, schedule, spendingList, subscriptionList, type Data } from './views'
 
 const SERVER_VERSION = '0.1'
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'use YYYY-MM')
@@ -89,7 +90,7 @@ function proposalTool<A>(tool: string, fn: (args: A) => Promise<CallToolResult>)
 function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
   server.registerTool('propose_changes', {
     title: 'Propose changes',
-    description: `Propose changes to the user's data. Nothing changes yet: the proposal is stored with a preview (the rows before and after, and the subscription transfer and salary distribution of this month and the next, before and after) and waits for the user's confirmation. Up to ${MAX_OPS} changes per proposal, all applied together or not at all. You can change subscriptions, plan changes, phases (with their fixed amounts per allocation target), allocation targets, the remainder split, plan events, check items, the settings (net pay, pay days, exchange rate) and the living costs; deleting is allowed. Read the current data with the other tools first; update and delete need the row's id. If a rule is broken (for example phases overlapping) no proposal is made and the reason is returned. The server assigns the ids of created rows, so a new allocation target and a phase amount for that target cannot be in the same proposal: propose the target first, then the amounts once it exists (read its id with get_allocation).`,
+    description: `Propose changes to the user's data. Nothing changes yet: the proposal is stored with a preview (the rows before and after, and the subscription transfer and salary distribution of this month and the next, before and after) and waits for the user's confirmation. Up to ${MAX_OPS} changes per proposal, all applied together or not at all. You can change subscriptions, plan changes, phases (with their fixed amounts per allocation target), allocation targets, the remainder split, plan events, check items, the settings (net pay, pay days, exchange rate), the living costs and one-off spendings; deleting is allowed. A spending (resource 'spendings') is sent whole with its rounds: name, category, bought (YYYY-MM-DD), amount, currency (KRW or USD), fxRate and fxBuffer (USD only, else null; at most 2 decimals), how (lump, installment or split), payBy (card, salary or subs), count (1 for lump, else 2 to 60), fee (KRW; only a card installment has one, else 0), interval (monthly, biweekly or custom for split only, else null), cancelled, and rounds (no from 1, date, amount in whole KRW, state left, paid or merged, edited). The server does not work the rounds out: plan them so they add up to the amount plus the fee (round amounts are whole KRW), and keep what is paid or still to pay to at most ${ROUND_MAX.toLocaleString('en-US')} KRW in total. An update replaces the rounds too, so send all of them; list_spendings shows the shape. Read the current data with the other tools first; update and delete need the row's id. If a rule is broken (for example phases overlapping) no proposal is made and the reason is returned. The server assigns the ids of created rows, so a new allocation target and a phase amount for that target cannot be in the same proposal: propose the target first, then the amounts once it exists (read its id with get_allocation).`,
     inputSchema: englishIssues(z.object({
       changes: z.array(change).min(1).max(MAX_OPS).describe('the changes, in the order they are applied'),
       note: z.string().max(500).optional().describe('why, in a sentence; the user sees it next to the proposal'),
@@ -126,7 +127,7 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
 }
 
 export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServer {
-  const base = 'one person\'s Allot data: monthly salary distribution, subscriptions, scheduled plan changes and the change history. Amounts are whole KRW; dates are ISO (YYYY-MM-DD, months YYYY-MM).'
+  const base = 'one person\'s Allot data: monthly salary distribution, subscriptions, one-off spendings, scheduled plan changes and the change history. Amounts are whole KRW; dates are ISO (YYYY-MM-DD, months YYYY-MM).'
   const server = new McpServer({ name: 'allot', version: SERVER_VERSION }, {
     instructions: key
       ? `Access to ${base} You can read it and propose changes; a proposal never changes anything until the user confirms it (${key.confirm === 'ui' ? 'in the Allot app, under Pending changes' : 'in this conversation, then you call apply_proposal'}).`
@@ -136,7 +137,7 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
 
   server.registerTool('get_overview', {
     title: 'Overview of a month',
-    description: 'The month at a glance (default: this month): pay, transfer and card-billing dates (shifted off weekends and holidays when the user set that), the subscription transfer calculation, how the salary is distributed over the allocation targets (without a remainder target, what is left stays in the pay account as unallocatedKrw), the remainder split, the charges and scheduled plan changes of that month, and the settings (net pay, pay days, exchange rate).',
+    description: 'The month at a glance (default: this month): pay, transfer and card-billing dates (shifted off weekends and holidays when the user set that), the subscription transfer calculation, how the salary is distributed over the allocation targets (without a remainder target, what is left stays in the pay account as unallocatedKrw), the remainder split, the subscription charges, the one-off spending rounds (spendingRounds, kept apart from the charges) and scheduled plan changes of that month, and the settings (net pay, pay days, exchange rate).',
     inputSchema: z.object({ month: month.optional().describe('YYYY-MM; default this month') }),
     annotations: READ_ONLY,
   }, guarded('get_overview', async ({ month: ym }) => json(overview(await data(), ym ?? ymOf(today())))))
@@ -147,6 +148,16 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
     inputSchema: z.object({ status: z.enum(['active', 'cancelled', 'company']).optional().describe('only subscriptions with this status this month') }),
     annotations: READ_ONLY,
   }, guarded('list_subscriptions', async ({ status }) => json(subscriptionList(await data(), today(), status))))
+
+  server.registerTool('list_spendings', {
+    title: 'One-off spendings',
+    description: 'Every one-off spending (a purchase paid at once, in card installments or in rounds the user splits) with its rounds. Per spending: the amount and currency, the KRW principal (USD converted with the rate and buffer saved with it), the fee, how and payBy (card, salary or subs account), `state` (planned, billing = bought but the card is not billed yet, paid, cancelled), `progress` (rounds paid, left and merged by an early payoff, and the next round to pay) and every round with its date, KRW amount and state. Rounds paid from salary or card come off that month\'s remainder; those paid from the subscription account add to its transfer (get_overview shows both). Optional filters: `status` (active = not cancelled and not fully paid, done = fully paid, cancelled; default all) and `month` (YYYY-MM: only spendings with a round to pay that month, plus that month\'s totals).',
+    inputSchema: z.object({
+      status: z.enum(['active', 'done', 'cancelled', 'all']).optional().describe('default all'),
+      month: month.optional().describe('YYYY-MM: only spendings with a round in this month'),
+    }),
+    annotations: READ_ONLY,
+  }, guarded('list_spendings', async ({ status, month: ym }) => json(spendingList(await data(), today(), { status, month: ym }))))
 
   server.registerTool('list_plan_changes', {
     title: 'Scheduled plan changes',
@@ -164,7 +175,7 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
 
   server.registerTool('get_schedule', {
     title: 'Schedule over several months',
-    description: 'For each month from `from`: the pay, transfer and billing dates, the charges, the plan changes and the plan events; plus the check items and the holidays in the period (only the holiday sets the user has on).',
+    description: 'For each month from `from`: the pay, transfer and billing dates, the subscription charges, the one-off spending rounds (spendingRounds), the plan changes and the plan events; plus the check items and the holidays in the period (only the holiday sets the user has on).',
     inputSchema: z.object({
       from: month.optional().describe('first month, YYYY-MM; default this month'),
       months: z.number().int().min(1).max(12).optional().describe('how many months, 1 to 12; default 3'),

@@ -14,6 +14,7 @@ import { view } from './lib/view'
 import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
 import { t, type MessageKey } from './i18n'
+import { loadSpendingMessages } from './i18n/spending'
 import { phaseTag } from './lib/labels'
 
 // Shell (spec 010 S-4): a grouped sidebar with the user at the bottom, a header bar and a footer on
@@ -26,7 +27,7 @@ interface Page { id: string; comp: unknown }
 const PAGES: Record<string, Page> = {
   // Only the dashboard is in the first chunk; every other page loads when it is first opened (spec 010 V-1, A-24).
   home: { id: 'home', comp: Dashboard },
-  subs: { id: 'subs', comp: lazyPage(() => import('./pages/Subscriptions.vue')) },
+  spend: { id: 'spend', comp: lazyPage(() => loadSpendingMessages().then(() => import('./pages/Spending.vue'))) },
   pay: { id: 'pay', comp: lazyPage(() => import('./pages/Payroll.vue')) },
   events: { id: 'events', comp: lazyPage(() => import('./pages/Timeline.vue')) },
   pending: { id: 'pending', comp: lazyPage(() => import('./pages/Pending.vue')) },
@@ -39,7 +40,7 @@ const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 interface Entry { id: string; soon?: boolean }
 const groups: { id: 'overview' | 'budget' | 'manage' | 'ai'; items: Entry[] }[] = [
   { id: 'overview', items: [{ id: 'home' }] },
-  { id: 'budget', items: [{ id: 'pay' }, { id: 'living', soon: true }, { id: 'subs' }, { id: 'saving', soon: true }, { id: 'invest', soon: true }] },
+  { id: 'budget', items: [{ id: 'pay' }, { id: 'living', soon: true }, { id: 'spend' }, { id: 'saving', soon: true }, { id: 'invest', soon: true }] },
   { id: 'manage', items: [{ id: 'events' }, { id: 'pending' }, { id: 'history' }] },
   { id: 'ai', items: [{ id: 'statements', soon: true }, { id: 'assistant', soon: true }] },
 ]
@@ -54,11 +55,15 @@ const isAdmin = computed(() => me.value?.role === 'admin')
 /** The admin page shows for admins only; the server refuses everyone else anyway. */
 const lower = computed(() => ['settings', ...(isAdmin.value ? ['admin'] : [])])
 
-// Hash routes: #home, #subs, …, #settings/<tab>. #account is kept as an alias of the
+// Hash routes: #home, #spend/<tab>, …, #settings/<tab>. #account is kept as an alias of the
 // login & security tab, because external-login linking returns to /#account (spec 007 S-12).
+// #subs is kept too (spec 011 S-1): it shows the 지출 page on its 구독 tab and the address stays as typed.
+const SPEND_TABS = ['general', 'inst', 'subs']
 const read = () => {
   const [head = '', sub = ''] = location.hash.slice(1).split('?')[0]!.split('/')
   if (head === 'account') return { page: 'settings', sub: 'security' }
+  if (head === 'subs') return { page: 'spend', sub: 'subs' }
+  if (head === 'spend') return { page: 'spend', sub: SPEND_TABS.includes(sub) ? sub : 'general' }
   return PAGES[head] ? { page: head, sub } : { page: 'home', sub: '' }
 }
 const route = ref(read())
@@ -69,14 +74,13 @@ const onHash = () => {
 onMounted(() => window.addEventListener('hashchange', onHash))
 onBeforeUnmount(() => window.removeEventListener('hashchange', onHash))
 
-const activeSubs = computed(() => store.subscriptions.filter((s) => s.status === 'active').length)
-
 // ── Header bar (spec 010 S-4): where you are (the overview: its month and phase), search and
 // notifications as drawn (not there yet → `Soon`). No light/dark switch: the theme is chosen in Settings (D-10).
-const GROUP_OF: Record<string, MessageKey> = { subs: 'shell.groupBudget', pay: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
+const GROUP_OF: Record<string, MessageKey> = { spend: 'shell.groupBudget', pay: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
 const crumbPage = computed(() => (route.value.page === 'settings'
   ? t(`settings.tabs.${['general', 'theme', 'ai', 'security'].includes(route.value.sub) ? route.value.sub : 'general'}` as MessageKey)
   : label(route.value.page)))
+const spendTab = computed(() => t(`spending.tabs.${route.value.sub}` as MessageKey))
 const phase = computed(() => phaseAt(store.phases, view.ym))
 const soonName = (what: string) => `${what} (${t('common.soon')})`
 const logout = () => authClient.signOut()
@@ -85,10 +89,10 @@ const REPO = 'https://github.com/bluenyang/allot'
 
 // ── Phone: the bottom bar and the "더보기" sheet (spec 010 S-4). The pending page has a place on the
 // bar only while something waits there (spec 009 A-7); the budget slot opens the pay split, and
-// stays current on the subscriptions page too.
+// stays current on the spending page too.
 const bottom = computed(() => [
   { id: 'home', href: '#home', icon: 'home', label: t('shell.tabs.home'), on: route.value.page === 'home' },
-  { id: 'budget', href: '#pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'subs'].includes(route.value.page) },
+  { id: 'budget', href: '#pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'spend'].includes(route.value.page) },
   { id: 'events', href: '#events', icon: 'events', label: t('shell.tabs.events'), on: route.value.page === 'events' },
   ...(store.pendingProposals ? [{ id: 'pending', href: '#pending', icon: 'pending', label: t('shell.tabs.pending'), on: route.value.page === 'pending', badge: store.pendingProposals }] : []),
 ])
@@ -153,7 +157,6 @@ const onGripKey = (e: KeyboardEvent) => {
             <Soon v-if="it.soon" tag="div" class="ni" :title="sideFolded ? soonName(label(it.id)) : undefined"><Icon :name="it.id" /><span class="grow lbl">{{ label(it.id) }}</span></Soon>
             <a v-else class="ni" :href="'#' + it.id" :aria-current="route.page === it.id ? 'true' : 'false'" :title="sideFolded ? label(it.id) : undefined">
               <Icon :name="it.id" /><span class="grow lbl">{{ label(it.id) }}</span>
-              <span v-if="it.id === 'subs'" class="ncount" :aria-label="t('shell.activeSubs', { n: activeSubs })">{{ activeSubs }}</span>
               <span v-if="it.id === 'pending' && store.pendingProposals" class="ncount badge" :aria-label="t('shell.pendingN', { n: store.pendingProposals })">{{ store.pendingProposals }}</span>
             </a>
           </template>
@@ -194,6 +197,7 @@ const onGripKey = (e: KeyboardEvent) => {
         </div>
         <nav v-else class="crumbs" :aria-label="t('shell.here')">
           <template v-if="route.page === 'settings'"><b>{{ label('settings') }}</b><span aria-hidden="true">/</span><span>{{ crumbPage }}</span></template>
+          <template v-else-if="route.page === 'spend'"><span>{{ t(GROUP_OF.spend!) }}</span><span aria-hidden="true">/</span><b>{{ crumbPage }}</b><span aria-hidden="true">/</span><span>{{ spendTab }}</span></template>
           <template v-else><span>{{ t(GROUP_OF[route.page]!) }}</span><span aria-hidden="true">/</span><b>{{ crumbPage }}</b></template>
         </nav>
         <span class="sp"></span>
@@ -205,7 +209,7 @@ const onGripKey = (e: KeyboardEvent) => {
       <Toast v-if="toast.message" :message="toast.message" :action-label="toast.actionLabel || undefined" :error="toast.error" :dismissible="toast.error" @action="toastAction" @dismiss="hideToast" />
       <main class="main">
         <p v-if="status.error" class="save-err" role="alert">{{ status.error }} <button type="button" @click="status.error = ''">{{ t('common.close') }}</button></p>
-        <KeepAlive><component :is="PAGES[route.page]!.comp" :key="route.page" v-bind="route.page === 'settings' ? { sub: route.sub } : {}" /></KeepAlive>
+        <KeepAlive><component :is="PAGES[route.page]!.comp" :key="route.page" v-bind="route.page === 'settings' || route.page === 'spend' ? { sub: route.sub } : {}" /></KeepAlive>
       </main>
       <footer class="foot-bar">
         <div class="fl"><b>Allot</b><span class="mono">v{{ version }}</span><span aria-hidden="true">·</span><span>{{ t('shell.footerTagline') }}</span></div>

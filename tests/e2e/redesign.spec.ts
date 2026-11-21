@@ -235,7 +235,7 @@ test.describe('(V-9 a) phone width', () => {
       await expect(page.locator('header.ph h1')).toHaveText(title)
     }
     const sheet = page.getByRole('dialog', { name: '더보기' })
-    for (const [label, title] of [['구독', '구독'], ['변경 내역', '변경 내역'], ['설정', '설정']] as const) {
+    for (const [label, title] of [['지출', '지출'], ['변경 내역', '변경 내역'], ['설정', '설정']] as const) {
       await bar.getByRole('button', { name: '더보기' }).click()
       await sheet.getByRole('link', { name: label }).click()
       await expect(page.locator('header.ph h1')).toHaveText(title)
@@ -390,7 +390,7 @@ test.describe('(V-8, V-9) shell', () => {
     await page.goto('/#home')
     const side = page.locator('aside.side')
     await expect(side.locator('.glabel')).toHaveText(['개요', '예산', '관리', 'AI'])
-    await expect(side.getByRole('link')).toContainText(['현황', '월급 분배', '구독', '일정', '대기 중인 변경', '변경 내역', '설정'])
+    await expect(side.getByRole('link')).toContainText(['현황', '월급 분배', '지출', '일정', '대기 중인 변경', '변경 내역', '설정'])
     await expect(side.getByRole('link', { name: '개발' })).toHaveCount(0)
     page.on('request', (req) => { if (req.url().includes('/api/')) calls.push(req.url()) })
     const before = page.url()
@@ -462,7 +462,7 @@ test.describe('(V-8, V-9) shell', () => {
     const sheet = page.getByRole('dialog', { name: '더보기' })
     await expect(sheet).toBeVisible()
     for (const name of ['생활', '저축', '투자', '명세서 분석', 'AI 어시스턴트']) await expect(sheet.getByRole('button', { name: new RegExp(name) })).toHaveAttribute('aria-disabled', 'true')
-    for (const name of ['구독', '변경 내역', '설정']) await expect(sheet.getByRole('link', { name })).toBeVisible()
+    for (const name of ['지출', '변경 내역', '설정']) await expect(sheet.getByRole('link', { name })).toBeVisible()
     await expect(sheet.getByRole('button', { name: '로그아웃' })).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(sheet).toBeHidden()
@@ -615,17 +615,17 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
     const kept = await page.evaluate(() => Number(localStorage.getItem('allot.side.width')))
     expect(kept, 'the width at the moment of folding is kept').toBeGreaterThan(open)
     await expect(page.getByRole('button', { name: '사이드바 펼치기' })).toHaveAttribute('aria-expanded', 'false')
-    const subs = page.locator('aside.side').getByRole('link', { name: '구독' })
+    const subs = page.locator('aside.side').getByRole('link', { name: '지출' })
     await expect(subs.locator('.lbl')).toHaveCSS('clip-path', 'inset(50%)')
     await expect(page.locator('aside.side .glabel').first()).toBeHidden()
     await subs.click()
-    await expect(page.locator('header.ph h1')).toHaveText('구독')
+    await expect(page.locator('header.ph h1')).toHaveText('지출')
     await page.reload()
     await page.locator('aside.side').waitFor()
     expect(await sideW(page), 'still folded after a reload').toBe(64)
     await page.getByRole('button', { name: '사이드바 펼치기' }).click()
     expect(await sideW(page), 'the width it had').toBe(kept)
-    await expect(subs).toContainText('구독')
+    await expect(subs).toContainText('지출')
   })
 
   test('(d) a visible handle on the sidebar edge; dragging it changes nothing else on the page, light and dark', async ({ page }) => {

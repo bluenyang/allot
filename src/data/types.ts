@@ -149,3 +149,40 @@ export interface RemainderSplit {
   code: string
   ratio: number // 0~1
 }
+
+// ---------- one-off spending (spec 011 S-2) ----------
+/** How a spending is paid: all at once, in card installments, or split by the user. 0.1.6 adds 'buffer'. */
+export type SpendHow = 'lump' | 'installment' | 'split'
+/** Where the money comes from: the card (billed on the billing day), the salary account, or the subscription account. */
+export type PayBy = 'card' | 'salary' | 'subs'
+/** A round is still to pay, paid, or merged into another round by an early payoff. */
+export type RoundState = 'left' | 'paid' | 'merged'
+/** The gap between the rounds of a split spending. */
+export type SpendInterval = 'monthly' | 'biweekly' | 'custom'
+
+export interface SpendingRound {
+  no: number
+  date: string // YYYY-MM-DD
+  amount: number // KRW, whole won
+  state: RoundState
+  edited: boolean
+}
+
+export interface Spending {
+  id: string
+  name: string
+  note?: string
+  category: string
+  bought: string // YYYY-MM-DD
+  amount: number
+  currency: Currency
+  fxRate: number | null // the rate used for a USD amount
+  fxBuffer: number | null // the buffer % used with it; both fixed when the spending is saved (S-3)
+  how: SpendHow
+  payBy: PayBy
+  count: number
+  fee: number // KRW, 0 = interest free
+  interval: SpendInterval | null // split only
+  cancelled: boolean
+  rounds: SpendingRound[]
+}

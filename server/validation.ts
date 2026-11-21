@@ -2,6 +2,7 @@
 // Messages are keys of server/messages.ts (server/body.ts picks the language per request).
 import { z } from 'zod'
 import { ruleProblem } from '../src/lib/holidays'
+import { ROUND_MAX, roundsProblem } from '../src/lib/spending-rules'
 import { m, type MsgKey } from './messages'
 
 /** A real calendar date (rejects 2031-02-30), YYYY-MM-DD. */
@@ -133,6 +134,60 @@ export const target = z.object({
   name: text.min(1, 'nameReq'),
   kind: z.enum(['living', 'subscriptions', 'fixed', 'remainder']),
   note: optText,
+})
+
+// ── One-off spending (spec 011 S-2, S-4, S-6) ──
+export const spendHow = z.enum(['lump', 'installment', 'split'])
+export const payBy = z.enum(['card', 'salary', 'subs'])
+export const spendInterval = z.enum(['monthly', 'biweekly', 'custom'])
+export const roundState = z.enum(['left', 'paid', 'merged'])
+
+const spendingRound = z.object({
+  no: z.number().int().min(1).max(120),
+  date,
+  amount: won,
+  state: roundState,
+  edited: z.boolean(),
+}).strict()
+
+/** Up to 60 rounds, plus those an early payoff adds (each payoff merges at least one round and adds one). */
+export const MAX_ROUNDS = 120
+
+/** A value that is exactly its own 2-decimal rounding (3.46, 1380.25), so what the numeric(_,2) column stores is what was typed. */
+export const twoDecimals = (n: number | null) => n === null || Math.round(n * 100) / 100 === n
+
+export const spending = z.object({
+  name: text.min(1, 'nameReq'),
+  note: optText,
+  category: text.min(1, 'nameReq').max(40),
+  bought: date,
+  amount: z.number().min(0).max(9_999_999_999.99, 'amountTooBig'),
+  currency,
+  fxRate: z.number().positive().max(999_999.99).nullable(),
+  fxBuffer: z.number().min(0).max(100).nullable().default(null),
+  how: spendHow,
+  payBy,
+  count: z.number().int().min(1).max(60),
+  fee: won,
+  interval: spendInterval.nullable(),
+  cancelled: z.boolean(),
+  rounds: z.array(spendingRound).min(1).max(MAX_ROUNDS),
+}).strict().superRefine((x, ctx) => {
+  const bad = (path: string, message: MsgKey) => ctx.addIssue({ code: 'custom', path: [path], message })
+  if (x.currency === 'USD' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
+  // the columns are numeric(8,2) and numeric(5,2): what is stored must be what the rounds were worked out with
+  if (!twoDecimals(x.fxRate)) bad('fxRate', 'spendFxDecimals')
+  if (!twoDecimals(x.fxBuffer)) bad('fxBuffer', 'spendFxDecimals')
+  if (x.currency === 'USD' ? x.fxBuffer === null : x.fxBuffer !== null) bad('fxBuffer', 'spendFx')
+  if (x.currency === 'KRW' && !Number.isInteger(x.amount)) bad('amount', 'spendKrwWhole')
+  // Only a card installment carries a fee; only a split an interval.
+  if (x.fee !== 0 && !(x.how === 'installment' && x.payBy === 'card')) bad('fee', 'spendHow')
+  if ((x.how === 'split') !== (x.interval !== null)) bad('interval', 'spendHow')
+  // A KRW amount and its fee are one total that must fit a round (the same bound as the rounds' sum).
+  if (x.currency === 'KRW' && x.amount + x.fee > ROUND_MAX) bad('amount', 'amountTooBig')
+  // The count, the numbering and the sums of the rounds: one rule, also checked after a revert (src/lib/spending-rules.ts).
+  const problem = roundsProblem(x)
+  if (problem) bad(problem, problem === 'count' ? 'spendHow' : 'spendRounds')
 })
 
 // ── Admin (spec 006 S-3) ──

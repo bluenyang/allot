@@ -446,7 +446,7 @@ test.describe('shell', () => {
     await page.goto('/#home')
     const side = page.locator('aside.side')
     await expect(side.locator('.glabel')).toHaveText(['Overview', 'Budget', 'Manage', 'AI'])
-    await expect(side.getByRole('link')).toContainText(['Overview', 'Pay split', 'Subscriptions', 'Schedule', 'Pending changes', 'Change history', 'Settings'])
+    await expect(side.getByRole('link')).toContainText(['Overview', 'Pay split', 'Spending', 'Schedule', 'Pending changes', 'Change history', 'Settings'])
     const calls: string[] = []
     page.on('request', (req) => { if (req.url().includes('/api/')) calls.push(req.url()) })
     const before = page.url()
@@ -471,7 +471,7 @@ test.describe('shell', () => {
         await expect(heading(page)).toHaveText(title)
       }
       const more = page.getByRole('dialog', { name: 'More' })
-      for (const [label, title] of [['Subscriptions', 'Subscriptions'], ['Change history', 'Change history'], ['Settings', 'Settings']] as const) {
+      for (const [label, title] of [['Spending', 'Spending'], ['Change history', 'Change history'], ['Settings', 'Settings']] as const) {
         await bar.getByRole('button', { name: 'More' }).click()
         await more.getByRole('link', { name: label }).click()
         await expect(heading(page)).toHaveText(title)

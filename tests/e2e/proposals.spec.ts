@@ -4,10 +4,10 @@
 // markers it adds are removed and every proposal it made is rejected afterwards.
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { MARK, choose, sheet } from './helpers'
-import { CHECK, KEY_NAME, SUB, makeKey, propose, type Proposal } from './proposal-helpers'
+import { CHECK, KEY_NAME, SPEND, SPEND_AMOUNT, SUB, makeKey, propose, proposeSpending, type Proposal } from './proposal-helpers'
 
 const state = async (request: APIRequestContext) => (await (await request.get('/api/state')).json()) as {
-  subscriptions: { id: string; name: string }[]; checks: { id: string; text: string }[]
+  subscriptions: { id: string; name: string }[]; checks: { id: string; text: string }[]; spendings: { id: string; name: string }[]
 }
 
 test.afterEach(async ({ page, request }) => {
@@ -22,6 +22,7 @@ test.afterEach(async ({ page, request }) => {
   const s = await state(request)
   for (const x of s.subscriptions.filter((x) => x.name.startsWith(MARK))) await request.delete(`/api/subscriptions/${x.id}`)
   for (const x of s.checks.filter((x) => x.text.startsWith(MARK))) await request.delete(`/api/checks/${x.id}`)
+  for (const x of s.spendings.filter((x) => x.name.startsWith(MARK))) await request.delete(`/api/spendings/${x.id}`)
 })
 
 test('pending: the list, the badge and the preview; confirming applies it and the history says which key', async ({ page, request, baseURL }) => {
@@ -92,6 +93,73 @@ test('pending: an applied AI change set is reverted from 변경 내역 (the hist
   await page.getByRole('form', { name: '이 변경을 되돌릴까요?' }).getByRole('button', { name: '되돌리기', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: /되돌렸어요/ })).toBeVisible()
   expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(false)
+})
+
+// spec 011 V-9: an AI's one-off spending proposal is confirmed on the screen and reverted in the history.
+test('pending: an AI spending proposal shows the month numbers, confirming it adds the spending and moves the month card, 변경 내역 reverts it', async ({ page, request, baseURL }) => {
+  const digits = (x: string) => Number(x.replace(/[^\d]/g, ''))
+  const card0 = () => page.getByRole('region', { name: /지출 반영/ })
+  const outflow = async () => digits(await card0().locator('.ms-g > div').nth(0).locator('b.num').first().innerText())
+  const spendNames = async () => (await state(request)).spendings.filter((x) => x.name === SPEND)
+  expect(await spendNames()).toHaveLength(0)
+  await page.goto('/#spend/general')
+  await expect(card0()).toBeVisible()
+  const out0 = await outflow()
+
+  const key = await makeKey(request, 'ui')
+  const made = await proposeSpending(baseURL!, key)
+  expect(made.confirm).toBe('ui')
+  // the preview of the tool: this month's remainder falls by the amount, the transfer stays
+  const months = (made.preview as { months: { month: string; transferKrw: { before: number; after: number }; remainderKrw: { before: number; after: number } }[] }).months
+  const m0 = months[0]!
+  expect(m0.remainderKrw.before - m0.remainderKrw.after).toBe(SPEND_AMOUNT)
+  expect(m0.transferKrw.after).toBe(m0.transferKrw.before)
+  expect(await spendNames(), 'proposing writes nothing').toHaveLength(0)
+
+  await page.goto('/#pending')
+  const pcard = page.locator(`[data-proposal="${made.proposalId as string}"]`)
+  await expect(pcard).toBeVisible()
+  await expect(pcard.locator('.tt b')).toHaveText(`${MARK} spending note`)
+  await expect(pcard.locator('.pill', { hasText: '확인 대기' })).toBeVisible()
+  // the rows: the spending and its round, with the name
+  await expect(pcard).toContainText(SPEND)
+  await expect(pcard.locator('.chg')).toHaveCount(2)
+  // the month numbers: the first month box shows this month's remainder before and after
+  const box = pcard.locator('.mbox').first()
+  await expect(box).toBeVisible()
+  const fmt = (n: number) => n.toLocaleString('ko-KR')
+  await expect(box.locator('.mh .num').first()).toContainText(String(Number(m0.month.slice(5))))
+  const moved = box.locator('.mr:not(.same)')
+  await expect(moved.first(), 'a distribution row moves').toBeVisible()
+  await expect(box.locator('.mh b.num'), 'the remainder target moves by the amount').toContainText(fmt(SPEND_AMOUNT))
+  await expect(box.locator('.mr').first().locator('.num.old')).toContainText(fmt(m0.transferKrw.before))
+  await expect(box.locator('.mr').first().locator('.num.new')).toContainText(fmt(m0.transferKrw.after))
+
+  await pcard.getByRole('button', { name: '확인하고 적용' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '제안을 적용했어요' })).toBeVisible()
+  await expect(pcard.locator('.pill', { hasText: '적용됨' })).toBeVisible()
+  const got = await spendNames()
+  expect(got).toHaveLength(1)
+
+  // the spending is on 지출 › 일반 and the month card moved by the amount
+  await page.goto('/#spend/general')
+  await expect(card0()).toBeVisible()
+  await expect(page.getByText(SPEND).first()).toBeVisible()
+  expect(await outflow(), 'the month card: the remainder line grew by the spending').toBe(out0 + SPEND_AMOUNT)
+
+  // 변경 내역: the AI change set names the key; revert it through the screen
+  await page.goto('/#history')
+  const list = page.getByRole('list', { name: '변경 목록' })
+  const first = list.getByRole('listitem').filter({ hasText: `AI · ${KEY_NAME}` }).first()
+  await expect(first).toContainText(SPEND)
+  await first.getByRole('button', { name: '되돌리기', exact: true }).click()
+  await page.getByRole('form', { name: '이 변경을 되돌릴까요?' }).getByRole('button', { name: '되돌리기', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: /되돌렸어요/ })).toBeVisible()
+  expect(await spendNames(), 'the spending is gone (API)').toHaveLength(0)
+  await page.goto('/#spend/general')
+  await expect(card0()).toBeVisible()
+  await expect(page.getByText(SPEND)).toHaveCount(0)
+  expect(await outflow(), 'the month card is back').toBe(out0)
 })
 
 test('pending: the toast Undo works before the proposal list has refreshed (the apply answer carries the change set)', async ({ page, request, baseURL }) => {

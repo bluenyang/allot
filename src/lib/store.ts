@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import type {
-  Account, AllocationTarget, CheckItem, Debt, HolidaySet, Living, Phase, PlanChange, PlanEvent, Preferences, RemainderSplit, Settings, Subscription,
+  Account, AllocationTarget, CheckItem, Debt, HolidaySet, Living, Phase, PlanChange, PlanEvent, Preferences, RemainderSplit, Settings, Spending, Subscription,
 } from '../data/types'
 import { ApiError, api } from './api'
 import { t } from '../i18n'
@@ -23,6 +23,7 @@ export interface State {
   remainderSplit: RemainderSplit[]
   preferences: Preferences
   holidaySets: HolidaySet[]
+  spendings: Spending[]
   /** Proposals from an AI key that wait for the user (the sidebar badge; spec 009). */
   pendingProposals: number
 }
@@ -31,7 +32,7 @@ const empty = (): State => ({
   settings: { ...DEFAULT_SETTINGS },
   living: { ...DEFAULT_LIVING },
   preferences: { ...DEFAULT_PREFERENCES },
-  targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [], pendingProposals: 0,
+  targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [], spendings: [], pendingProposals: 0,
 })
 
 export const store = reactive<State>(empty())
@@ -92,6 +93,7 @@ export const RESOURCES = {
   remainderSplit: '/api/remainder-split',
   targets: '/api/targets',
   holidaySets: '/api/holiday-sets',
+  spendings: '/api/spendings',
 } as const
 export type ListKey = keyof typeof RESOURCES
 
@@ -155,11 +157,13 @@ export const upsertSub = (s: Subscription) => saveItem('subscriptions', s)
 export const removeSub = (id: string) => deleteItem('subscriptions', id)
 export const upsertChange = (c: PlanChange) => saveItem('planChanges', c)
 export const removeChange = (id: string) => deleteItem('planChanges', id)
+export const upsertSpending = (s: Spending) => saveItem('spendings', s)
+export const removeSpending = (id: string) => deleteItem('spendings', id)
 
 /** Everything the app holds, for the JSON view in the 개발 tab. */
 export function exportJson(): string {
-  const { settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, preferences, holidaySets } = store
-  return JSON.stringify({ settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, preferences, holidaySets }, null, 2)
+  const { settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, preferences, holidaySets, spendings } = store
+  return JSON.stringify({ settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
 }
 
 export const subName = (id: string) => store.subscriptions.find((s) => s.id === id)?.name ?? id
