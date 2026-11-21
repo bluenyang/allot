@@ -166,7 +166,8 @@ test('(S-5) two subscription-account spendings with the same name count as two i
 
 test('(review 3) the 구독 tab keeps its view and filter across a tab switch and Back', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await go(page, 'subs')
+  await page.goto('/#spend/subs')
+  await page.getByRole('tablist').first().waitFor()
   await page.getByRole('tab', { name: /^목록/ }).click()
   await page.getByRole('button', { name: /^전체/ }).click()
   await page.getByRole('tab', { name: /^변경 일정/ }).click()
