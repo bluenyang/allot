@@ -78,6 +78,7 @@ const col = (table: PgTable, k: string) => (table as unknown as Record<string, P
  */
 export function keyOf(table: PgTable, row: Row): RowKey {
   if (table === t.phaseAmount) return { phaseId: String(row.phaseId), targetId: String(row.targetId) }
+  if (table === t.spendingRound) return { spendingId: String(row.spendingId), no: String(row.no) }
   if (table === t.settings || table === t.living || table === t.preference) return {}
   return { id: String(row.id) }
 }
@@ -156,6 +157,7 @@ const CHILDREN = new Map<PgTable, [OwnedTable, PgColumn][]>([
   [t.subscription, [[t.planChange, t.planChange.subId]]],
   [t.phase, [[t.phaseAmount, t.phaseAmount.phaseId]]],
   [t.allocationTarget, [[t.phaseAmount, t.phaseAmount.targetId]]],
+  [t.spending, [[t.spendingRound, t.spendingRound.spendingId]]],
 ])
 
 export const childrenOf = (table: PgTable) => CHILDREN.get(table) ?? []

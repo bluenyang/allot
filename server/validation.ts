@@ -135,6 +135,54 @@ export const target = z.object({
   note: optText,
 })
 
+// ── One-off spending (spec 011 S-2, S-4, S-6) ──
+export const spendHow = z.enum(['lump', 'installment', 'split'])
+export const payBy = z.enum(['card', 'salary', 'subs'])
+export const spendInterval = z.enum(['monthly', 'biweekly', 'custom'])
+export const roundState = z.enum(['left', 'paid', 'merged'])
+
+const spendingRound = z.object({
+  no: z.number().int().min(1).max(120),
+  date,
+  amount: won,
+  state: roundState,
+  edited: z.boolean(),
+}).strict()
+
+/** Up to 60 rounds, plus those an early payoff adds (each payoff merges at least one round and adds one). */
+export const MAX_ROUNDS = 120
+
+export const spending = z.object({
+  name: text.min(1, 'nameReq'),
+  note: optText,
+  category: text.min(1, 'nameReq').max(40),
+  bought: date,
+  amount: z.number().min(0).max(9_999_999_999.99, 'amountTooBig'),
+  currency,
+  fxRate: z.number().positive().max(999_999.99).nullable(),
+  how: spendHow,
+  payBy,
+  count: z.number().int().min(1).max(60),
+  fee: won,
+  interval: spendInterval.nullable(),
+  cancelled: z.boolean(),
+  rounds: z.array(spendingRound).min(1).max(MAX_ROUNDS),
+}).strict().superRefine((x, ctx) => {
+  const bad = (path: string, message: MsgKey) => ctx.addIssue({ code: 'custom', path: [path], message })
+  if (x.currency === 'USD' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
+  if (x.currency === 'KRW' && !Number.isInteger(x.amount)) bad('amount', 'spendKrwWhole')
+  // lump: one round; installment and split: 2 or more. Only a card installment carries a fee; only a split an interval.
+  if (x.how === 'lump' ? x.count !== 1 : x.count < 2) bad('count', 'spendHow')
+  if (x.fee !== 0 && !(x.how === 'installment' && x.payBy === 'card')) bad('fee', 'spendHow')
+  if ((x.how === 'split') !== (x.interval !== null)) bad('interval', 'spendHow')
+  // Rounds are numbered 1.. in order. An early payoff merges the rounds left and adds one: at most one more round per merged round.
+  if (x.rounds.some((r, i) => r.no !== i + 1)) bad('rounds', 'spendRounds')
+  const merged = x.rounds.filter((r) => r.state === 'merged').length
+  const extra = x.rounds.length - x.count
+  if (extra < 0 || extra > merged) bad('rounds', 'spendRounds')
+  if (x.how === 'lump' && (x.rounds.length !== 1 || merged !== 0)) bad('rounds', 'spendRounds')
+})
+
 // ── Admin (spec 006 S-3) ──
 const ruleList = (item: z.ZodString) => z.array(item).max(200)
 const domain = z.string().trim().toLowerCase().regex(/^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$/, 'domainFormat')

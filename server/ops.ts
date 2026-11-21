@@ -97,6 +97,31 @@ async function writeAmounts(q: Db, rec: Recorder, uid: string, phaseId: string, 
   return { amounts: want }
 }
 
+/**
+ * Replace a spending's rounds with the given ones: only what differs is written (and logged).
+ * A round is a row of its spending alone, so the spending's own lock (`data`) is all it needs.
+ */
+async function writeRounds(q: Db, rec: Recorder, uid: string, spendingId: string, rounds: z.infer<typeof v.spending>['rounds']) {
+  const sr = t.spendingRound
+  const have = await q.select().from(sr).where(and(eq(sr.userId, uid), eq(sr.spendingId, spendingId)))
+  const want = new Map(rounds.map((r) => [r.no, r]))
+  for (const old of have) {
+    const key = { spendingId, no: String(old.no) }
+    const next = want.get(old.no)
+    if (!next) await deleteLogged(q, rec, sr, uid, key)
+    else {
+      const [written] = await q.update(sr).set({ date: next.date, amount: next.amount, state: next.state, edited: next.edited }).where(whereKey(sr, uid, key)).returning()
+      await rec.record(sr, key, 'update', old, written as Row)
+    }
+  }
+  for (const r of rounds) {
+    if (have.some((h) => h.no === r.no)) continue
+    const [written] = await q.insert(sr).values({ ...r, userId: uid, spendingId }).returning()
+    await rec.record(sr, { spendingId, no: String(r.no) }, 'insert', null, written as Row)
+  }
+  return { rounds: [...rounds].sort((a, b) => a.no - b.no).map(({ no, date, amount, state, edited }) => ({ no, date, amount, state, edited })) }
+}
+
 // ── Resources ──
 interface ListResource {
   kind: 'list'
@@ -155,6 +180,11 @@ export const RESOURCES = {
   debts: list(t.debt, v.debt),
   'remainder-split': list(t.remainderSplit, v.remainderSplit),
   'holiday-sets': list(t.holidaySet, v.holidaySet),
+  spendings: list(t.spending, v.spending, {
+    optional: ['note'],
+    toRow: ({ rounds: _r, ...x }) => ({ ...x, note: x.note || null }),
+    afterWrite: (q, rec, uid, id, x) => writeRounds(q, rec, uid, id, x.rounds),
+  }),
   targets: list(t.allocationTarget, v.target, {
     optional: ['note'],
     lock: true,

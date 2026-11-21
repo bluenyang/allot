@@ -35,6 +35,16 @@ async function signIn() {
 }
 
 const MARK = 'V8-marker'
+// A card installment over 3 months with a fee; rounds as the screen would write them (spec 011 S-2).
+const spend = {
+  name: MARK, note: 'n', category: '가전', bought: '2090-01-10', amount: 300_000, currency: 'KRW', fxRate: null,
+  how: 'installment', payBy: 'card', count: 3, fee: 3_000, interval: null, cancelled: false,
+  rounds: [
+    { no: 1, date: '2090-02-16', amount: 101_000, state: 'left', edited: false },
+    { no: 2, date: '2090-03-16', amount: 101_000, state: 'left', edited: false },
+    { no: 3, date: '2090-04-16', amount: 101_000, state: 'left', edited: false },
+  ],
+}
 const sub = { name: MARK, category: 'tool', plan: 'p', amount: 1.5, currency: 'USD', vat: 10, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false, note: 'n' }
 
 if (phase === 'create') {
@@ -93,6 +103,35 @@ if (phase === 'create') {
   ids.check = await created('/api/checks', { text: MARK, done: false }, { done: true })
   ids.account = await created('/api/accounts', { name: MARK, role: '', inflow: '', outflow: '' }, { role: 'r' })
   ids.debt = await created('/api/debts', { name: MARK, principal: 1, rate: '', method: '', plan: '' }, { principal: 2 })
+  // Spendings with rounds: the rounds come back with the spending, are replaced as a whole, and a revert restores them.
+  ids.spend = await created('/api/spendings', spend, { rounds: spend.rounds.map((r) => (r.no === 2 ? { ...r, amount: 100_500, edited: true } : r)) })
+  const sp = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === ids.spend)
+  ok(sp?.rounds?.length === 3 && sp.rounds[1].amount === 100_500 && sp.rounds[1].edited === true && sp.rounds.every((r, i) => r.no === i + 1), 'spending rounds replaced by PUT, sorted by no')
+  const putSet = (await api('GET', '/api/changes?limit=1')).json?.[0]
+  const rvSp = await api('POST', `/api/changes/${putSet?.id}/revert`)
+  const spBack = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === ids.spend)
+  ok(rvSp.status === 200 && spBack?.rounds?.[1]?.amount === 101_000 && spBack.rounds[1].edited === false, `revert of a spending PUT restores its rounds → ${rvSp.status}`)
+  const spAgain = await api('PUT', `/api/spendings/${ids.spend}`, { ...spend, rounds: spend.rounds.map((r) => (r.no === 2 ? { ...r, amount: 100_500, edited: true } : r)) })
+  ok(spAgain.status === 200 && spAgain.json.rounds[1].amount === 100_500, `spending PUT again after the revert → ${spAgain.status}`)
+  // Rules (spec 011 S-2, S-4): each of these is refused.
+  const spendBad = {
+    'USD without a rate': { ...spend, currency: 'USD', fxRate: null },
+    'KRW with a rate': { ...spend, fxRate: 1380 },
+    'lump with 2 rounds': { ...spend, how: 'lump', count: 1, fee: 0, rounds: spend.rounds.slice(0, 2) },
+    'fee on a salary installment': { ...spend, payBy: 'salary' },
+    'interval on an installment': { ...spend, interval: 'monthly' },
+    'split without an interval': { ...spend, how: 'split', payBy: 'salary', fee: 0 },
+    'rounds not numbered from 1': { ...spend, rounds: spend.rounds.map((r) => ({ ...r, no: r.no + 1 })) },
+    'fewer rounds than the count': { ...spend, rounds: spend.rounds.slice(0, 2) },
+    'a negative round': { ...spend, rounds: spend.rounds.map((r) => (r.no === 1 ? { ...r, amount: -1 } : r)) },
+    'a date that does not exist': { ...spend, rounds: spend.rounds.map((r) => (r.no === 1 ? { ...r, date: '2090-02-30' } : r)) },
+    'how buffer': { ...spend, how: 'buffer' },
+    'no rounds': { ...spend, rounds: [] },
+  }
+  for (const [why, body] of Object.entries(spendBad)) {
+    const r = await api('POST', '/api/spendings', body)
+    ok(r.status === 400, `POST spending with ${why} → ${r.status} (want 400)`)
+  }
   ids.split = await created('/api/remainder-split', { name: MARK, code: 'X', ratio: 0 }, { ratio: 0.5 })
 
   // Target rules (spec 003 S-1). The seeded data must have one of each non-fixed kind;
@@ -184,8 +223,10 @@ if (phase === 'verify' || phase === 'cleanup') {
     ok(find('accounts', ids.account)?.role === 'r', 'account persisted')
     ok(find('debts', ids.debt)?.principal === 2, 'debt persisted')
     ok(find('remainderSplit', ids.split)?.ratio === 0.5, 'remainder split persisted')
+    const sp = find('spendings', ids.spend)
+    ok(sp?.rounds?.length === 3 && sp.rounds[1].amount === 100_500 && sp.rounds[1].edited === true && sp.rounds[2].date === '2090-04-16' && sp.fee === 3_000 && sp.how === 'installment', 'spending with its rounds persisted')
   } else {
-    for (const [path, id] of [['/api/plan-changes', ids.chg], ['/api/subscriptions', ids.sub], ['/api/phases', ids.phase], ['/api/events', ids.event], ['/api/checks', ids.check], ['/api/accounts', ids.account], ['/api/debts', ids.debt], ['/api/remainder-split', ids.split], ['/api/targets', ids.target], ['/api/phases', ids.racePhase]]) {
+    for (const [path, id] of [['/api/plan-changes', ids.chg], ['/api/subscriptions', ids.sub], ['/api/phases', ids.phase], ['/api/events', ids.event], ['/api/checks', ids.check], ['/api/accounts', ids.account], ['/api/debts', ids.debt], ['/api/remainder-split', ids.split], ['/api/targets', ids.target], ['/api/phases', ids.racePhase], ['/api/spendings', ids.spend]]) {
       if (!id) continue
       const d = await api('DELETE', `${path}/${id}`)
       ok(d.status === 204, `DELETE ${path}/:id → ${d.status}`)

@@ -14,6 +14,10 @@ export const cycle = pgEnum('cycle', ['monthly', 'yearly'])
 export const subStatus = pgEnum('sub_status', ['active', 'cancelled', 'company'])
 export const payPath = pgEnum('pay_path', ['direct', 'google', 'apple', 'telecom'])
 export const category = pgEnum('category', ['ai', 'telecom', 'content', 'tool', 'insurance', 'life'])
+export const spendHow = pgEnum('spend_how', ['lump', 'installment', 'split'])
+export const payBy = pgEnum('pay_by', ['card', 'salary', 'subs'])
+export const spendInterval = pgEnum('spend_interval', ['monthly', 'biweekly', 'custom'])
+export const roundState = pgEnum('round_state', ['left', 'paid', 'merged'])
 export const eventState = pgEnum('event_state', ['done', 'doing', 'todo'])
 /** living: sum of living costs · subscriptions: needed subscription transfer · fixed: per-phase amount · remainder: the rest */
 export const allocationKind = pgEnum('allocation_kind', ['living', 'subscriptions', 'fixed', 'remainder'])
@@ -184,6 +188,52 @@ export const debt = pgTable('debt', {
   method: text('method').notNull().default(''),
   plan: text('plan').notNull().default(''),
 }, (t) => [unique('debt_user_id_id').on(t.userId, t.id), userScoped(t.userId)])
+
+/**
+ * One-off spending (spec 011 S-2): one row per purchase, its rounds in `spending_round`.
+ * `amount` is in `currency`; the rounds are always whole KRW. `fx_rate` is the rate used for a USD amount.
+ */
+export const spending = pgTable('spending', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  name: text('name').notNull(),
+  note: text('note'),
+  category: text('category').notNull(),
+  bought: date('bought', { mode: 'string' }).notNull(),
+  amount: numeric('amount', { precision: 12, scale: 2, mode: 'number' }).notNull(),
+  currency: currency('currency').notNull(),
+  fxRate: numeric('fx_rate', { precision: 8, scale: 2, mode: 'number' }),
+  how: spendHow('how').notNull(),
+  payBy: payBy('pay_by').notNull(),
+  count: smallint('count').notNull(),
+  fee: integer('fee').notNull().default(0),
+  interval: spendInterval('interval'),
+  cancelled: boolean('cancelled').notNull().default(false),
+}, (t) => [
+  userScoped(t.userId),
+  unique('spending_user_id_id').on(t.userId, t.id),
+  check('spending_amount_nonneg', sql`${t.amount} >= 0`),
+  check('spending_fee_nonneg', sql`${t.fee} >= 0`),
+  check('spending_count_range', sql`${t.count} between 1 and 60`),
+])
+
+/** A round of a spending: when and how much (KRW) is billed or paid. Written with its spending, never alone. */
+export const spendingRound = pgTable('spending_round', {
+  userId: owner(),
+  spendingId: text('spending_id').notNull(),
+  no: smallint('no').notNull(),
+  date: date('date', { mode: 'string' }).notNull(),
+  amount: integer('amount').notNull(),
+  state: roundState('state').notNull(),
+  edited: boolean('edited').notNull().default(false),
+}, (t) => [
+  userScoped(t.userId),
+  primaryKey({ columns: [t.spendingId, t.no] }),
+  foreignKey({ name: 'spending_round_spending_fk', columns: [t.userId, t.spendingId], foreignColumns: [spending.userId, spending.id] }).onDelete('cascade'),
+  check('spending_round_amount_nonneg', sql`${t.amount} >= 0`),
+  check('spending_round_no_range', sql`${t.no} between 1 and 120`),
+])
 
 /** Where the monthly pay goes. Names are the user's data, never code. */
 export const allocationTarget = pgTable('allocation_target', {

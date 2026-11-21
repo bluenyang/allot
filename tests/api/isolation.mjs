@@ -92,6 +92,21 @@ try {
   ok(t1.status === 200 && t2.status === 200 && back?.done === aCheck.done && aSet?.changes?.[0]?.rowKey?.id === aCheck.id,
     `A toggles its check and back (${t1.status}, ${t2.status}); restored; the first toggle is A's set`)
   if (t2.status === 200 && back?.done === aCheck.done) aRestore = null // only when the value really is back
+  // spec 011 S-9: A's spending (with rounds) is invisible to B and out of its reach.
+  const aSpend = await A('POST', '/api/spendings', { name: MARK, category: 'x', bought: '2090-01-10', amount: 1000, currency: 'KRW', fxRate: null, how: 'lump', payBy: 'salary', count: 1, fee: 0, interval: null, cancelled: false,
+    rounds: [{ no: 1, date: '2090-01-10', amount: 1000, state: 'left', edited: false }] })
+  try {
+    const bSees = (await B('GET', '/api/state')).json
+    ok(aSpend.status === 201 && !JSON.stringify(bSees.spendings).includes(aSpend.json.id), `A creates a spending; B's state has none of it (${aSpend.status})`)
+    const sPut = await B('PUT', `/api/spendings/${aSpend.json.id}`, { name: MARK, category: 'x', bought: '2090-01-10', amount: 1, currency: 'KRW', fxRate: null, how: 'lump', payBy: 'salary', count: 1, fee: 0, interval: null, cancelled: false,
+      rounds: [{ no: 1, date: '2090-01-10', amount: 1, state: 'paid', edited: true }] })
+    const sDel = await B('DELETE', `/api/spendings/${aSpend.json.id}`)
+    ok(sPut.status === 404 && sDel.status === 404, `B PUT/DELETE A's spending → ${sPut.status}/${sDel.status} (want 404/404)`)
+    const aSp = (await A('GET', '/api/state')).json.spendings.find((x) => x.id === aSpend.json.id)
+    ok(aSp?.amount === 1000 && aSp.rounds.length === 1 && aSp.rounds[0].state === 'left', "A's spending and its round are unchanged")
+  } finally {
+    if (aSpend.status === 201) ok((await A('DELETE', `/api/spendings/${aSpend.json.id}`)).status === 204, "A's test spending removed")
+  }
   const aSets = (await A('GET', '/api/changes?limit=200')).json
   const bSets = (await B('GET', '/api/changes?limit=200')).json
   ok(Array.isArray(bSets) && bSets.length >= 2 && bSets.every((x) => !aSets.some((y) => y.id === x.id)), `B lists only its own change sets (${bSets.length})`)
