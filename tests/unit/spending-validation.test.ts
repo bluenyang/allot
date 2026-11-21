@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { issueMessage } from '../../server/messages'
 import { spending } from '../../server/validation'
-import { payOffEarly } from '../../src/lib/calc'
+import { payOffEarly, spendingKrw } from '../../src/lib/calc'
 import { ROUND_MAX, roundsProblem } from '../../src/lib/spending-rules'
 
 const R = (no: number, over: Record<string, unknown> = {}) => ({ no, date: `2090-0${no + 1}-16`, amount: 101_000, state: 'left', edited: false, ...over })
@@ -50,6 +50,12 @@ test('the buffer is fixed with the rate: USD needs it, KRW has none, it stays wi
   no({ ...usd, fxBuffer: 3.456 }, 'fxBuffer')
   ok({ ...usd, fxRate: 1380.25 })
   no({ ...usd, fxRate: 1380.256 }, 'fxRate')
+  // the check is exact: a value that is only close to a 2-decimal one would be stored rounded
+  no({ ...usd, fxRate: 1.000000009 }, 'fxRate')
+  for (const v of [3.46, 1380.25, 0.1, 99.99]) { ok({ ...usd, fxRate: v }); if (v <= 100) ok({ ...usd, fxBuffer: v }) }
+  // so the principal worked out from what is sent is the one the stored columns give (USD 100,000,000 at 1.00, no buffer)
+  assert.equal(spendingKrw(100_000_000, 'USD', { fxRate: 1, fxBuffer: 0 }), 100_000_000)
+  no({ ...usd, amount: 100_000_000, fxRate: 1.000000009, fxBuffer: 0, rounds: [R(1, { amount: 50_000_000 })] }, 'fxRate')
 })
 
 test('refuses a way to pay that does not fit the count, the fee or the interval', () => {

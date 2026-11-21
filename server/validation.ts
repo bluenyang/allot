@@ -153,6 +153,9 @@ const spendingRound = z.object({
 /** Up to 60 rounds, plus those an early payoff adds (each payoff merges at least one round and adds one). */
 export const MAX_ROUNDS = 120
 
+/** A value that is exactly its own 2-decimal rounding (3.46, 1380.25), so what the numeric(_,2) column stores is what was typed. */
+export const twoDecimals = (n: number | null) => n === null || Math.round(n * 100) / 100 === n
+
 export const spending = z.object({
   name: text.min(1, 'nameReq'),
   note: optText,
@@ -173,9 +176,8 @@ export const spending = z.object({
   const bad = (path: string, message: MsgKey) => ctx.addIssue({ code: 'custom', path: [path], message })
   if (x.currency === 'USD' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
   // the columns are numeric(8,2) and numeric(5,2): what is stored must be what the rounds were worked out with
-  const cents = (n: number | null) => n === null || Math.abs(n * 100 - Math.round(n * 100)) < 1e-6
-  if (!cents(x.fxRate)) bad('fxRate', 'spendFxDecimals')
-  if (!cents(x.fxBuffer)) bad('fxBuffer', 'spendFxDecimals')
+  if (!twoDecimals(x.fxRate)) bad('fxRate', 'spendFxDecimals')
+  if (!twoDecimals(x.fxBuffer)) bad('fxBuffer', 'spendFxDecimals')
   if (x.currency === 'USD' ? x.fxBuffer === null : x.fxBuffer !== null) bad('fxBuffer', 'spendFx')
   if (x.currency === 'KRW' && !Number.isInteger(x.amount)) bad('amount', 'spendKrwWhole')
   // Only a card installment carries a fee; only a split an interval.
