@@ -531,6 +531,29 @@ export function spendingIn(spendings: Spending[], ym: string): SpendingMonth {
   return out
 }
 
+export interface SpendDue {
+  date: Date
+  spending: Spending
+  round: SpendingRound
+  krw: number
+  dday: number
+}
+/**
+ * The rounds still to pay (left, not cancelled) from `from` through `from` + `days` (both inclusive, local dates), by date (spec 011 S-8):
+ * what the home's upcoming payments and the schedule calendar show next to the subscription charges.
+ */
+export function upcomingSpendRounds(spendings: Spending[], from: Date, days: number): SpendDue[] {
+  const lo = new Date(from.getFullYear(), from.getMonth(), from.getDate())
+  const end = new Date(from.getFullYear(), from.getMonth(), from.getDate() + days)
+  const out: SpendDue[] = []
+  for (const { spending, round } of liveRounds(spendings)) {
+    if (round.state !== 'left' || !/^\d{4}-\d{2}-\d{2}$/.test(round.date)) continue
+    const d = parseDate(round.date)
+    if (d >= lo && d <= end) out.push({ date: d, spending, round, krw: round.amount, dday: Math.round((d.getTime() - lo.getTime()) / DAY) })
+  }
+  return out.sort((a, b) => a.date.getTime() - b.date.getTime() || a.spending.name.localeCompare(b.spending.name) || a.round.no - b.round.no)
+}
+
 /** What `monthMoney` reads. `spendings` may be missing (none). */
 export interface MonthState {
   settings: Settings

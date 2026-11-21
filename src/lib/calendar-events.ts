@@ -2,16 +2,17 @@
 // Monthly dates after the weekend/holiday shift, subscription payments, scheduled plan changes and
 // the holidays of the sets that are on. Month-only events (PlanEvent.when = YYYY-MM) stay in the
 // timeline tab: putting them on the 1st would claim a date they do not have.
-import { addYm, monthDates, parseDate, upcomingPayments, ymd, ymOf, DAY } from './calc'
+import { addYm, monthDates, parseDate, upcomingPayments, upcomingSpendRounds, ymd, ymOf, DAY } from './calc'
 import { enabledSets, holidaysIn } from './holidays'
 import { fmtMoney } from './display'
 import { store, subName } from './store'
 import type { HolidaySet } from '../data/types'
 import { t, type MessageKey } from '../i18n'
+import { roundSuffix } from './labels'
 import { holidayName } from './holiday-names'
 
-export type CalKind = 'pay' | 'transfer' | 'billing' | 'sub' | 'change' | 'holiday'
-/** `name` and `krw` are set for subscription payments (the agenda shows the amount apart from the name). */
+export type CalKind = 'pay' | 'transfer' | 'billing' | 'sub' | 'spend' | 'change' | 'holiday'
+/** `name` and `krw` are set for subscription payments and spending rounds (the agenda shows the amount apart from the name). */
 export interface CalEvent { date: string; title: string; kind: CalKind; name?: string; krw?: number }
 
 export const kindLabel = (kind: CalKind) => t(`calendar.kind.${kind}` as MessageKey)
@@ -51,9 +52,14 @@ export function calendarEvents(from: string, to: string): CalEvent[] {
   for (const p of upcomingPayments(store.subscriptions, store.planChanges, store.settings, start, days)) {
     out.push({ date: ymd(p.date), title: `${p.sub.name} ${fmtMoney(p.krw)}`, kind: 'sub', name: p.sub.name, krw: p.krw })
   }
+  // A round still to pay of a one-off spending, with its name and "n/N회" (spec 011 S-8).
+  for (const d of upcomingSpendRounds(store.spendings, start, days)) {
+    const name = `${d.spending.name} ${roundSuffix(d.spending, d.round)}`.trim()
+    out.push({ date: ymd(d.date), title: `${name} ${fmtMoney(d.krw)}`, kind: 'spend', name, krw: d.krw })
+  }
   for (const c of store.planChanges) {
     if (c.effective && c.effective >= from && c.effective <= last) out.push({ date: c.effective, title: t('calendar.changeOf', { name: subName(c.subId) }), kind: 'change' })
   }
-  const order: CalKind[] = ['holiday', 'pay', 'transfer', 'billing', 'change', 'sub']
+  const order: CalKind[] = ['holiday', 'pay', 'transfer', 'billing', 'change', 'sub', 'spend']
   return out.sort((a, b) => (a.date === b.date ? order.indexOf(a.kind) - order.indexOf(b.kind) : a.date < b.date ? -1 : 1))
 }

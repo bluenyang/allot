@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  distributionAt, leftoverAfterTransfer, monthMoney, monthlyKrw, num, payOffEarly, planAt, planRounds, spendState, spendingIn, spendingKrw, transferAt,
+  distributionAt, leftoverAfterTransfer, monthMoney, monthlyKrw, num, payOffEarly, planAt, planRounds, spendState, upcomingSpendRounds, spendingIn, spendingKrw, transferAt,
 } from '../../src/lib/calc'
 import type { Distribution, TransferCalc } from '../../src/lib/calc'
 import type { AllocationTarget, Living, Phase, PlanChange, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
@@ -317,4 +317,17 @@ test('monthMoney: without spendings it equals the plain calls; with spendings bo
   // another month is untouched, and `pay` and `phases` pass through
   assert.deepEqual(monthMoney({ ...st, spendings: [sal, card, bySubs] }, '2027-01').dist, distributionAt('2027-01', S.netPay, [], targets, living, subs, [], S))
   assert.equal(monthMoney({ ...st, spendings: [sal] }, '2026-12', { pay: 4_000_000 }).dist.remainder, plainD.remainder + 1_000_000 - 130_000)
+})
+
+// ---------- S-8: the rounds the home and the calendar list ----------
+test('upcomingSpendRounds lists left rounds of spendings that are not cancelled, in the window, by date', () => {
+  const a = spending({ id: 'a', name: 'A', how: 'installment', count: 3, rounds: [round(1, '2026-12-16', 100), { ...round(2, '2027-01-16', 100), state: 'paid' }, round(3, '2027-02-16', 100)] })
+  const b = spending({ id: 'b', name: 'B', how: 'lump', rounds: [round(1, '2026-12-05', 50)] })
+  const c = spending({ id: 'c', name: 'C', cancelled: true, rounds: [round(1, '2026-12-06', 70)] })
+  const m = spending({ id: 'm', name: 'M', how: 'installment', count: 3, rounds: [{ ...round(1, '2026-12-07', 30), state: 'merged' }, round(2, '2026-12-08', 30)] })
+  const from = new Date(2026, 11, 5, 13, 30) // a clock time on the day does not matter
+  const w = upcomingSpendRounds([a, b, c, m], from, 31)
+  assert.deepEqual(w.map((x) => [x.spending.id, x.round.no, x.dday, x.krw]), [['b', 1, 0, 50], ['m', 2, 3, 30], ['a', 1, 11, 100]])
+  assert.deepEqual(upcomingSpendRounds([a, b], from, 0).map((x) => x.spending.id), ['b']) // both ends are inclusive
+  assert.deepEqual(upcomingSpendRounds([a], new Date(2026, 11, 5), 100).map((x) => x.round.no), [1, 3]) // the paid one is not due
 })

@@ -33,7 +33,7 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMq))
 // day moved, a subscription added — must redraw the events of the calendar that is already open.
 const cal = ref<InstanceType<typeof FullCalendar> | null>(null)
 watch(
-  () => [store.settings, store.holidaySets, store.subscriptions, store.planChanges, store.preferences],
+  () => [store.settings, store.holidaySets, store.subscriptions, store.planChanges, store.spendings, store.preferences],
   () => cal.value?.getApi().refetchEvents(),
   { deep: true },
 )
@@ -82,7 +82,7 @@ const options = computed<CalendarOptions>(() => ({
   <div class="cal" :class="{ own }" :aria-label="label ?? t('calendar.region')" role="region">
     <FullCalendar ref="cal" :key="(list ? 'list' : 'grid') + lang + JSON.stringify(sets ?? '')" :options="options">
       <template #eventContent="arg">
-        <span class="evc"><b v-if="list || arg.event.extendedProps.kind === 'holiday' || arg.event.extendedProps.kind === 'sub' || arg.event.extendedProps.kind === 'change'" class="evk" :class="list ? 'ev-' + arg.event.extendedProps.kind : ''">{{ kindLabel(arg.event.extendedProps.kind) }}</b><span class="evt">{{ arg.event.title }}</span></span>
+        <span class="evc"><b v-if="list || arg.event.extendedProps.kind === 'holiday' || arg.event.extendedProps.kind === 'sub' || arg.event.extendedProps.kind === 'spend' || arg.event.extendedProps.kind === 'change'" class="evk" :class="list ? 'ev-' + arg.event.extendedProps.kind : ''">{{ kindLabel(arg.event.extendedProps.kind) }}</b><span class="evt">{{ arg.event.title }}</span></span>
       </template>
     </FullCalendar>
   </div>
@@ -135,6 +135,7 @@ const options = computed<CalendarOptions>(() => ({
 .cal .ev-billing{background:var(--accent-soft) !important;color:var(--accent-text) !important}
 .cal .ev-change{background:var(--surface) !important;color:var(--accent-text) !important;box-shadow:inset 0 0 0 1px var(--accent-line)}
 .cal .ev-sub{background:var(--fill) !important;color:var(--text-2) !important;font-weight:500}
+.cal .ev-spend{background:var(--accent-soft) !important;color:var(--accent-text) !important;font-weight:500}
 .cal .fc-event *{color:inherit !important}
 .cal .evc{display:flex;gap:4px;align-items:baseline;min-width:0;overflow:hidden}
 .cal .evk{flex:none;font-weight:600}
