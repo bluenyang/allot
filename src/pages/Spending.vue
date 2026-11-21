@@ -9,6 +9,7 @@ import PageHeader from '../components/PageHeader.vue'
 import PageLoadError from '../components/PageLoadError.vue'
 import Soon from '../components/Soon.vue'
 import SpendGeneral from '../components/SpendGeneral.vue'
+import SpendEditor from '../components/SpendEditor.vue'
 import SpendInstallments from '../components/SpendInstallments.vue'
 import SubTabs from '../components/SubTabs.vue'
 import Tip from '../components/Tip.vue'
@@ -57,14 +58,17 @@ const month = computed(() => {
 })
 const monthName = Number(ym.slice(5, 7))
 
-// ---------- the 구독 tab: add button, #subs?add and #spend/subs?add ----------
-// "#subs?add" (the record modal's 구독) opens the subscription add editor; the hash goes back to its plain form.
+// ---------- add buttons: "#subs?add", "#spend/subs?add", "#spend/general?add" and "#spend/inst?add" ----------
+// "#subs?add" (the record modal's 구독) opens the subscription add editor; "#spend/general?add" (its 일회성 지출) opens the
+// spending editor; the hash goes back to its plain form each time.
 const adding = ref(false)
+const spendAdd = ref<'general' | 'inst' | null>(null)
 function checkAdd() {
-  const m = /^#(subs|spend\/subs)\?(.*&)?add\b/.exec(location.hash)
+  const m = /^#(subs|spend\/(subs|general|inst))\?(.*&)?add\b/.exec(location.hash)
   if (!m) return
   history.replaceState(null, '', `${location.pathname}${location.search}#${m[1]}`)
-  adding.value = true
+  if (m[2] === 'general' || m[2] === 'inst') spendAdd.value = m[2]
+  else adding.value = true
 }
 onActivated(() => { checkAdd(); window.addEventListener('hashchange', checkAdd) })
 onDeactivated(() => window.removeEventListener('hashchange', checkAdd))
@@ -106,9 +110,7 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
 
     <div class="tabrow">
       <SubTabs class="kinds" :model-value="kind" :tabs="tabs" :label="t('spending.kindsLabel')" @update:model-value="pick" />
-      <!-- W-4: the one-off and installment editors come with W-7; their buttons are drawn and inert until then -->
-      <button v-if="kind === 'subs'" class="btn pri" type="button" @click="adding = true"><Icon name="plus" />{{ addLabel }}</button>
-      <Soon v-else class="btn pri" :aria-label="`${addLabel} (${t('common.soon')})`"><Icon name="plus" />{{ addLabel }}</Soon>
+      <button class="btn pri" type="button" @click="kind === 'subs' ? (adding = true) : (spendAdd = kind)"><Icon name="plus" />{{ addLabel }}</button>
     </div>
 
     <!-- kept alive: leaving the tab deactivates the page (its editors close, as when leaving the page), coming back finds its view and filters -->
@@ -117,6 +119,7 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
     </KeepAlive>
     <SpendGeneral v-if="kind === 'general'" />
     <SpendInstallments v-else-if="kind === 'inst'" />
+    <SpendEditor v-if="spendAdd" :initial="null" :start="spendAdd" @close="spendAdd = null" />
   </section>
 </template>
 

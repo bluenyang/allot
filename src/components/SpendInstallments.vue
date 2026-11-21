@@ -11,13 +11,13 @@ import PayOffDialog from './PayOffDialog.vue'
 import RoundEditor from './RoundEditor.vue'
 import Seg from './Seg.vue'
 import Select from './Select.vue'
-import Soon from './Soon.vue'
+import SpendEditor from './SpendEditor.vue'
 
 // 할부 tab (spec 011 S-4, S-6, S-7): the installment and split spendings as a list with the one picked shown
 // beside it (stacked on a phone), three summary cards and the rounds table. Every number is worked out here
 // from the store through calc.ts: the month sums by `spendingIn`, the principal by `spendingKrw`. A change to a
 // round, an early payoff and a cancel are each one `upsertSpending` of the whole spending (its rounds travel in
-// the body); the editors are RoundEditor and PayOffDialog. The whole-spending editor is W-7 (the edit button is `Soon`).
+// the body); the editors are RoundEditor and PayOffDialog. The whole-spending editor is SpendEditor (W-7).
 const ym = ymOf(today())
 const mon = (d: string) => monthShort(Number(d.slice(5, 7)))
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
@@ -172,6 +172,7 @@ const diffText = computed(() => {
 })
 
 // ---------- editors: a round, an early payoff, a cancel ----------
+const editing = ref<Spending | null>(null)
 const roundNo = ref<number | null>(null)
 const paying = ref(false)
 const asking = ref(false)
@@ -261,7 +262,7 @@ const pickItem = (id: string) => { picked.value = id; error.value = '' }
               <small class="hint">{{ d.sub }}</small>
             </div>
             <div class="id-a">
-              <Soon class="btn sm" :pill="false" :aria-label="`${t('common.editLabel', { name: d.name })} (${t('common.soon')})`">{{ t('common.edit') }}</Soon>
+              <button class="btn sm" type="button" :aria-label="t('common.editLabel', { name: d.name })" @click="editing = d.s">{{ t('common.edit') }}</button>
               <button v-if="d.leftN && !d.s.cancelled" class="btn sm" type="button" @click="paying = true">{{ t('spending.inst.payoff') }}</button>
               <button v-if="!d.s.cancelled" class="btn sm ghost cx" type="button" @click="asking = true">{{ t('spending.inst.cancel') }}</button>
               <button v-else class="btn sm" type="button" :disabled="busy" @click="setCancelled(false)">{{ t('spending.inst.resume') }}</button>
@@ -305,6 +306,7 @@ const pickItem = (id: string) => { picked.value = id; error.value = '' }
       </div>
     </section>
 
+    <SpendEditor v-if="editing" :initial="editing" @close="editing = null" />
     <RoundEditor v-if="roundNo !== null && d" :spending="d.s" :no="roundNo" @close="roundNo = null" />
     <PayOffDialog v-if="paying && d" :spending="d.s" @close="paying = false" />
     <ConfirmDialog

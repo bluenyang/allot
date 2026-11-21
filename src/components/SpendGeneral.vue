@@ -8,16 +8,17 @@ import { num, spendState, spendingIn, today, ymOf, ymd, type SpendStateName } fr
 import type { PayBy, Spending } from '../data/types'
 import Seg from './Seg.vue'
 import Select from './Select.vue'
-import Soon from './Soon.vue'
+import SpendEditor from './SpendEditor.vue'
 
 // 일반 tab (spec 011 S-6, S-7): the lump-sum spendings as a table (a card list on the phone), three summary
 // cards, filters. Everything shown is worked out here from the store through calc.ts: the state by `spendState`,
-// the month sums by `spendingIn`. The edit button is drawn and inert until the editor (W-7).
+// the month sums by `spendingIn`. The edit button opens SpendEditor (W-7).
 const now = today()
 const nowYmd = ymd(now)
 const ym = ymOf(now)
 const OFF = new Set<string>() // `spendState` reads the holiday set only when a spending has no live round; a lump always has one
 
+const editing = ref<Spending | null>(null)
 const general = computed(() => store.spendings.filter((s) => s.how === 'lump'))
 const round = (s: Spending) => s.rounds.find((r) => r.state !== 'merged') ?? s.rounds[0]
 const krw = (s: Spending) => s.rounds.filter((r) => r.state !== 'merged').reduce((a, r) => a + r.amount, 0)
@@ -186,7 +187,7 @@ const share = (v: number, total: number) => (total ? (v / total) * 100 : 0)
               <td class="cell2">{{ r.pay }}</td>
               <td><span class="blk">{{ r.month }}</span><small class="hint">{{ r.where }}</small></td>
               <td class="c"><span class="pill" :class="PILL[r.st]">{{ t(`spending.gen.state.${r.st}` as 'spending.gen.state.paid') }}</span></td>
-              <td class="n"><Soon class="btn sm ghost" :pill="false" :aria-label="`${t('common.editLabel', { name: r.s.name })} (${t('common.soon')})`">{{ t('common.edit') }}</Soon></td>
+              <td class="n"><button class="btn sm ghost" type="button" :aria-label="t('common.editLabel', { name: r.s.name })" @click="editing = r.s">{{ t('common.edit') }}</button></td>
             </tr>
           </tbody>
         </table>
@@ -196,13 +197,14 @@ const share = (v: number, total: number) => (total ? (v / total) * 100 : 0)
         <li v-for="r in shown" :key="r.s.id" class="mcard" :class="{ off: r.st === 'cancelled' }">
           <div class="m1"><span class="m-name"><b>{{ r.s.name }}</b> <small class="hint">{{ r.s.category }}</small></span><b class="num m-amt">{{ fmtMoney(r.krw) }}</b></div>
           <div class="m2"><span>{{ r.pay }} · {{ r.month }}</span><span class="pill" :class="PILL[r.st]">{{ t(`spending.gen.state.${r.st}` as 'spending.gen.state.paid') }}</span></div>
-          <div class="m3"><span class="mono hint">{{ fmtDate(r.s.bought) }} · {{ r.orig }}</span><Soon class="btn sm" :pill="false" :aria-label="`${t('common.editLabel', { name: r.s.name })} (${t('common.soon')})`">{{ t('common.edit') }}</Soon></div>
+          <div class="m3"><span class="mono hint">{{ fmtDate(r.s.bought) }} · {{ r.orig }}</span><button class="btn sm" type="button" :aria-label="t('common.editLabel', { name: r.s.name })" @click="editing = r.s">{{ t('common.edit') }}</button></div>
         </li>
       </ul>
 
       <div v-if="!shown.length" class="empty"><b>{{ t('spending.emptyTitle') }}</b><span class="hint">{{ t('spending.emptyGeneral') }}</span></div>
       <p class="foot">{{ t('spending.gen.footA', { day: store.settings.billingDay }) }}<a class="lnkbtn" href="#spend/inst">{{ t('spending.tabs.inst') }}</a>{{ t('spending.gen.footB') }}</p>
     </section>
+    <SpendEditor v-if="editing" :initial="editing" @close="editing = null" />
   </section>
 </template>
 

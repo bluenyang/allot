@@ -3,7 +3,7 @@
 // the 구독 tab. Every spending or subscription made here carries the test mark and is removed by id in `finally`,
 // then checked to be gone.
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { MARK as RUN, choose, fillDate, go, optionTexts, readDate, saveSheet, sheet } from './helpers'
+import { MARK as RUN, choose, deleteInSheet, fillDate, go, optionTexts, readDate, saveSheet, sheet } from './helpers'
 
 const MARK = `${RUN}-sp`
 
@@ -67,12 +67,12 @@ test('(S-1) the menu is 지출 with the receipt icon; three tabs with their own 
   const tabs = page.getByRole('tablist', { name: '지출 종류' })
   await expect(tabs.getByRole('tab')).toHaveText([/^일반\s*\d+$/, /^할부\s*\d+$/, /^구독\s*\d+$/])
   await expect(tabs.getByRole('tab', { name: /^일반/ })).toHaveAttribute('aria-selected', 'true')
-  // the add button follows the tab; 일반 and 할부 are drawn and inert until their editor comes (W-7)
-  await expect(page.getByRole('button', { name: '지출 추가 (준비 중)' })).toHaveAttribute('aria-disabled', 'true')
+  // the add button follows the tab and opens its editor (W-7)
+  await expect(page.getByRole('button', { name: '지출 추가', exact: true })).toBeEnabled()
   await tabs.getByRole('tab', { name: /^할부/ }).click()
   await expect(page).toHaveURL(/#spend\/inst$/)
   await expect(page.locator('nav.crumbs')).toContainText('예산/지출/할부')
-  await expect(page.getByRole('button', { name: '할부 추가 (준비 중)' })).toHaveAttribute('aria-disabled', 'true')
+  await expect(page.getByRole('button', { name: '할부 추가', exact: true })).toBeEnabled()
   await tabs.getByRole('tab', { name: /^구독/ }).click()
   await expect(page).toHaveURL(/#spend\/subs$/)
   await expect(page.locator('nav.crumbs')).toContainText('예산/지출/구독')
@@ -286,8 +286,8 @@ test('(S-6, S-7) the 일반 tab: rows, states, 반영 text, filters, counts and 
     expect(k1.k3n - k0.k3n).toBe(4)
     await expect(gCards(page).nth(2)).toContainText('취소 제외')
     await expect(gCards(page).nth(2).locator('.klg')).toContainText('카드')
-    // the edit button is inert until the editor (W-7)
-    await expect(page.getByRole('button', { name: `${names.bill} 수정 (준비 중)` })).toHaveAttribute('aria-disabled', 'true')
+    // the edit button opens the editor (W-7)
+    await expect(page.getByRole('button', { name: `${names.bill} 수정` })).toBeEnabled()
     // the note under the list names the billing day and links to the 할부 tab
     await expect(page.locator('.foot')).toContainText(`카드는 청구일(매달 ${billingDay}일)이 속한 달이에요`)
     await page.locator('.foot').getByRole('link', { name: '할부' }).click()
@@ -418,7 +418,7 @@ test('(S-10) the page in English: title, tabs, the card and the add button', asy
     const tabs = page.getByRole('tablist', { name: 'Kinds of spending' })
     await expect(tabs.getByRole('tab')).toHaveText([/^One-off\s*\d+$/, /^Installments\s*\d+$/, /^Subscriptions\s*\d+$/])
     await expect(page.getByRole('region', { name: /^Spending in \d{4}\. \d{2}$/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Add spending/ })).toHaveAttribute('aria-disabled', 'true')
+    await expect(page.getByRole('button', { name: 'Add spending', exact: true })).toBeEnabled()
     await tabs.getByRole('tab', { name: /^Subscriptions/ }).click()
     await expect(page.getByRole('button', { name: 'Add subscription' })).toBeEnabled()
   } finally {
@@ -597,8 +597,8 @@ test('(S-4, S-6, S-7, V-6) the 할부 tab: list, filters, detail numbers, rounds
     await expect(page.getByText('수수료 ₩35,000을 6회에 나눠 더했어요.')).toBeVisible()
     await expect(page.getByText('끝전 ₩20은 마지막 회차가 받아요.')).toBeVisible()
     await expect(page.locator('.diff')).toHaveCount(0)
-    // 수정 (the whole-spending editor) comes with W-7
-    await expect(page.getByRole('button', { name: `${nA} 수정 (준비 중)` })).toHaveAttribute('aria-disabled', 'true')
+    // 수정 opens the whole-spending editor (W-7)
+    await expect(page.getByRole('button', { name: `${nA} 수정` })).toBeEnabled()
 
     // edit round 1: 220,830 → 200,000 shows 고침 and the difference, and the month card moves
     await page.getByRole('button', { name: '1회차 수정' }).click()
@@ -745,5 +745,488 @@ test('(S-10) the 할부 tab in English', async ({ page, request }) => {
     })
   } finally {
     await api(request, 'PUT', '/api/preferences', prefs)
+  }
+})
+
+// ---------- W-7: the three-step editor (spec 011 S-2, S-3, S-4, S-6, S-8; V-6, V-7) ----------
+const EDM = `${RUN}-ed`
+type FullSpend = {
+  id: string; name: string; note: string; category: string; bought: string; amount: number; currency: string; fxRate: number | null
+  how: string; payBy: string; count: number; fee: number; interval: string | null; cancelled: boolean; rounds: R[]
+}
+type Cfg = { billingDay: number; dayShift: string; fxRate: number; fxBuffer: number }
+const cfg = async (request: APIRequestContext) => ((await state(request)) as unknown as { settings: Cfg }).settings
+const mineEd = async (request: APIRequestContext) => ((await state(request)) as unknown as { spendings: FullSpend[] }).spendings.filter((s) => s.name.startsWith(EDM))
+const byName = async (request: APIRequestContext, n: string) => (await mineEd(request)).find((s) => s.name === `${EDM}-${n}`)!
+/** Remove what the editor tests made, by id, and say it is gone. */
+async function cleanEd(request: APIRequestContext) {
+  for (const s of await mineEd(request)) await api(request, 'DELETE', `/api/spendings/${s.id}`)
+  expect(await mineEd(request), 'the editor tests leave no spending').toHaveLength(0)
+}
+const grp = (s: ReturnType<typeof sheet>, name: string) => s.getByRole('group', { name, exact: true })
+const next = (s: ReturnType<typeof sheet>) => s.getByRole('button', { name: '다음', exact: true }).click()
+const stepsOf = (s: ReturnType<typeof sheet>) => s.locator('ol.stp li:not(.cn) .nm')
+async function openAdd(page: Page, tab: 'general' | 'inst') {
+  await page.goto(`/#spend/${tab}`)
+  await expect(card(page)).toBeVisible()
+  await page.getByRole('button', { name: tab === 'general' ? '지출 추가' : '할부 추가', exact: true }).click()
+  const s = sheet(page, tab === 'general' ? '지출 추가' : '할부 추가')
+  await expect(s).toBeVisible()
+  return s
+}
+async function fillBought(s: ReturnType<typeof sheet>, name: string, amount: string, date?: string) {
+  await s.getByLabel('내용', { exact: true }).fill(name)
+  await s.getByLabel('금액', { exact: true }).fill(amount)
+  if (date) await fillDate(grp(s, '결제일'), date)
+}
+const sepDigits = (t: string) => Number(t.replace(/[^\d]/g, ''))
+const ymdAdd = (d: string, n: number) => new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10) + n)).toISOString().slice(0, 10)
+
+test('(S-2, S-4, W-7) 지출 추가: a card lump sum is billed on the billing day of the next month; the steps, the rounds and the saved values', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const c = await cfg(request)
+  const name = `${EDM}-lump`
+  try {
+    const s = await openAdd(page, 'general')
+    await expect(stepsOf(s)).toHaveText(['무엇을 샀나요', '내는 방식', '회차 확인'])
+    await expect(s.locator('ol.stp li[aria-current="step"]')).toContainText('무엇을 샀나요')
+    // a name and an amount are needed to go on, and the editor says which
+    await next(s)
+    await expect(s.getByRole('alert')).toContainText('내용을 적어 주세요')
+    await fillBought(s, name, '159000', '2031-03-10')
+    await expect(s.getByRole('radio', { name: '생활' })).toHaveAttribute('aria-checked', 'true')
+    await s.getByRole('radio', { name: '가전' }).click()
+    await next(s)
+    await expect(s.locator('ol.stp li[aria-current="step"]')).toContainText('내는 방식')
+    await expect(grp(s, '내는 방식').getByRole('button', { name: '일시불', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(s.getByLabel('결제 수단', { exact: true })).toContainText(`카드 · 매달 ${c.billingDay}일 청구`)
+    const first = await readDate(grp(s, '청구일'))
+    expect(first.slice(0, 7), 'the card is billed the month after the purchase').toBe('2031-04')
+    if (c.dayShift === 'none') expect(first.slice(8)).toBe(String(c.billingDay).padStart(2, '0'))
+    await next(s)
+    await expect(s.getByTestId('sp-plan')).toContainText('한 번 · ₩159,000')
+    await expect(s.locator('.rl li')).toHaveCount(1)
+    await expect(s.locator('.rl li').first()).toContainText(first)
+    await expect(s.getByText('4월 나머지에서 빠지고 일반에 들어가요')).toBeVisible()
+    await expect(s.getByText('3/3 · 저장하면 변경 내역에 남아요')).toBeVisible()
+    await saveSheet(page, '지출 추가')
+    const got = await byName(request, 'lump')
+    expect(got).toMatchObject({ name, category: '가전', bought: '2031-03-10', amount: 159_000, currency: 'KRW', fxRate: null, how: 'lump', payBy: 'card', count: 1, fee: 0, interval: null, cancelled: false })
+    expect(got.rounds).toEqual([{ no: 1, date: first, amount: 159_000, state: 'left', edited: false }])
+    // it is in the list of the 일반 tab
+    await expect(page.getByRole('button', { name: `${name} 수정` })).toBeEnabled()
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(S-4, W-7) 할부 추가: a card installment with a fee shows 6 rounds with the odd 20 won on the last, and saves them', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const c = await cfg(request)
+  try {
+    const s = await openAdd(page, 'inst')
+    await fillBought(s, `${EDM}-fee`, '1290000', '2031-03-10')
+    await next(s)
+    await expect(grp(s, '내는 방식').getByRole('button', { name: '카드 할부', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(grp(s, '할부 개월').getByRole('button', { name: '6개월', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(s.getByLabel('결제 수단', { exact: true })).toBeDisabled() // an installment is always on the card
+    await expect(s.getByLabel('수수료 합계 (₩)')).toHaveCount(0)
+    await grp(s, '이자').getByRole('button', { name: '유이자', exact: true }).click()
+    await s.getByLabel('수수료 합계 (₩)').fill('35000')
+    await next(s)
+    await expect(s.getByTestId('sp-plan')).toContainText('6개월')
+    await expect(s.getByTestId('sp-plan')).toContainText('수수료 ₩35,000 포함 ₩1,325,000')
+    await expect(s.getByTestId('sp-plan')).toContainText('회당 ₩220,830')
+    await expect(s.locator('.rl li')).toHaveCount(6)
+    await expect(s.locator('.rl li').last()).toContainText('₩220,850')
+    await expect(s.getByText('끝전 ₩20은 마지막 회차가 받아요.').first()).toBeVisible()
+    await expect(s.getByText('회차마다 그 달 나머지에서 빠지고 할부에 들어가요')).toBeVisible()
+    await saveSheet(page, '할부 추가')
+    const got = await byName(request, 'fee')
+    expect(got).toMatchObject({ how: 'installment', payBy: 'card', count: 6, fee: 35_000, amount: 1_290_000, interval: null, fxRate: null })
+    expect(got.rounds.map((r) => r.amount)).toEqual([220_830, 220_830, 220_830, 220_830, 220_830, 220_850])
+    expect(got.rounds.every((r) => r.state === 'left' && !r.edited)).toBe(true)
+    expect(got.rounds[0]!.date.slice(0, 7)).toBe('2031-04')
+    if (c.dayShift === 'none') expect(got.rounds.map((r) => r.date.slice(8))).toEqual(Array(6).fill(String(c.billingDay).padStart(2, '0')))
+    await expect(page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(`${EDM}-fee`) })).toBeVisible()
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(S-4, W-7) 나눠 내기: every 2 weeks from a date, and "날짜 직접 정하기" with one date input per round', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  try {
+    // every two weeks, three times, paid from the salary account
+    let s = await openAdd(page, 'inst')
+    await fillBought(s, `${EDM}-bi`, '900000', '2031-03-10')
+    await next(s)
+    await grp(s, '내는 방식').getByRole('button', { name: '나눠 내기', exact: true }).click()
+    await expect(grp(s, '나눠 낼 횟수').getByRole('button', { name: '3회', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(grp(s, '이자')).toHaveCount(0) // a split payment has no fee
+    await choose(s.getByLabel('간격', { exact: true }), { label: '2주마다' })
+    await choose(s.getByLabel('결제 수단', { exact: true }), { label: '급여 통장' })
+    await expect(grp(s, '1회차 날짜')).toBeVisible()
+    await fillDate(grp(s, '1회차 날짜'), '2031-03-10')
+    await next(s)
+    await expect(s.getByTestId('sp-plan')).toContainText('3회')
+    await expect(s.locator('.rl li')).toHaveText([/2031-03-10.*₩300,000/, /2031-03-24.*₩300,000/, /2031-04-07.*₩300,000/])
+    await expect(s.getByText('회차마다 그 달 나머지에서 빠지고 할부에 들어가요')).toBeVisible()
+    await saveSheet(page, '할부 추가')
+    const bi = await byName(request, 'bi')
+    expect(bi).toMatchObject({ how: 'split', payBy: 'salary', count: 3, fee: 0, interval: 'biweekly' })
+    expect(bi.rounds.map((r) => [r.date, r.amount])).toEqual([['2031-03-10', 300_000], ['2031-03-24', 300_000], ['2031-04-07', 300_000]])
+
+    // the user picks the date of each of four rounds; a fee is not asked
+    s = await openAdd(page, 'inst')
+    await fillBought(s, `${EDM}-cu`, '100000', '2031-03-10')
+    await next(s)
+    await grp(s, '내는 방식').getByRole('button', { name: '나눠 내기', exact: true }).click()
+    await grp(s, '나눠 낼 횟수').getByRole('button', { name: '4회', exact: true }).click()
+    await choose(s.getByLabel('간격', { exact: true }), { label: '날짜 직접 정하기' })
+    await expect(s.getByRole('group', { name: /^\d회차 날짜$/ })).toHaveCount(4)
+    const picks = ['2031-05-02', '2031-05-20', '2031-07-01', '2031-12-24']
+    for (const [i, d] of picks.entries()) await fillDate(grp(s, `${i + 1}회차 날짜`), d)
+    await next(s)
+    await expect(s.locator('.rl li')).toHaveText(picks.map((d) => new RegExp(`${d}.*₩25,000`)))
+    await saveSheet(page, '할부 추가')
+    const cu = await byName(request, 'cu')
+    expect(cu).toMatchObject({ how: 'split', count: 4, interval: 'custom' })
+    expect(cu.rounds.map((r) => r.date)).toEqual(picks)
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(S-3, V-6, W-7) USD from the subscription account: KRW at the rate with the buffer, kept with its rate; the month card and the transfer move', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const c = await cfg(request)
+  const krw = Math.round(49 * c.fxRate * (1 + c.fxBuffer / 100))
+  await page.goto('/#spend/general')
+  await expect(card(page)).toBeVisible()
+  const before = await big(page, 1)
+  try {
+    const s = await openAdd(page, 'general')
+    await s.getByLabel('내용', { exact: true }).fill(`${EDM}-usd`)
+    await s.getByRole('button', { name: 'USD', exact: true }).click()
+    await s.getByLabel('금액', { exact: true }).fill('49')
+    await expect(s.getByTestId('sp-fx')).toContainText(`₩${c.fxRate.toLocaleString('en-US')}`)
+    await expect(s.getByTestId('sp-fx')).toContainText(`버퍼 ${c.fxBuffer}%`)
+    expect(sepDigits(await s.getByTestId('sp-krw').innerText())).toBe(krw)
+    await s.getByRole('radio', { name: '기타 · 직접 입력' }).click()
+    await s.getByLabel('분류 직접 입력').fill('교육')
+    await next(s)
+    await choose(s.getByLabel('결제 수단', { exact: true }), { label: '구독 통장' })
+    await next(s)
+    await expect(s.getByTestId('sp-plan')).toContainText(`₩${krw.toLocaleString('en-US')}`)
+    await expect(s.getByText(/월 구독 이체에 더해지고 일반에 들어가요/)).toBeVisible()
+    await saveSheet(page, '지출 추가')
+    const got = await byName(request, 'usd')
+    expect(got).toMatchObject({ currency: 'USD', amount: 49, fxRate: c.fxRate, how: 'lump', payBy: 'subs', category: '교육' })
+    expect(got.rounds).toHaveLength(1)
+    expect(got.rounds[0]!.amount).toBe(krw)
+    // the round is on the day of the purchase (today): this month's card adds it to the subscription transfer
+    expect(got.rounds[0]!.date).toBe(todayKst())
+    await page.reload()
+    await expect(card(page)).toBeVisible()
+    expect(await big(page, 1) - before, 'the subscription transfer gets the KRW amount').toBe(krw)
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(S-7, W-7) 버퍼 사용 cannot be chosen', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const s = await openAdd(page, 'general')
+  await s.getByLabel('내용', { exact: true }).fill(`${EDM}-buf`)
+  await s.getByLabel('금액', { exact: true }).fill('1000')
+  await next(s)
+  const how = grp(s, '내는 방식')
+  const buf = how.getByRole('button', { name: '버퍼 사용', exact: true })
+  await expect(buf).toBeDisabled()
+  await buf.click({ force: true })
+  await expect(how.getByRole('button', { name: '일시불', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(s.getByText('버퍼 사용은 준비 중이에요.')).toBeVisible()
+  await s.getByRole('button', { name: '취소', exact: true }).click()
+  await expect(s).toBeHidden()
+})
+
+test('(S-4, S-6, W-7) 수정: no change keeps the rounds as they were, edited flags and paid marks included; a change asks before the rounds are worked out again', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const name = `${EDM}-re`
+  const ym = ymAdd(thisYm(), 1)
+  const original: R[] = [
+    { no: 1, date: `${ym}-16`, amount: 100_000, state: 'paid', edited: false },
+    { no: 2, date: `${ymAdd(ym, 1)}-20`, amount: 110_000, state: 'left', edited: true },
+    { no: 3, date: `${ymAdd(ym, 2)}-16`, amount: 90_000, state: 'left', edited: false },
+  ]
+  try {
+    const made = await api(request, 'POST', '/api/spendings', instBody(name, { how: 'installment', payBy: 'card', amount: 300_000, count: 3, rounds: original }))
+    expect(made.status).toBe(201)
+    await page.goto('/#spend/inst')
+    await listItem(page, name).click()
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    const s = sheet(page, `할부 수정 · ${name}`)
+    await expect(s).toBeVisible()
+    await expect(s.getByLabel('내용', { exact: true })).toHaveValue(name)
+    await expect(s.getByLabel('금액', { exact: true })).toHaveValue('300,000')
+    await next(s)
+    await expect(grp(s, '할부 개월').getByRole('button', { name: '3개월', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(grp(s, '이자').getByRole('button', { name: '무이자', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(readDate(grp(s, '첫 청구일'))).resolves.toBe(original[0]!.date)
+    await next(s)
+    // the stored rounds are shown as they are, without a warning
+    await expect(s.locator('.rl li')).toHaveCount(3)
+    await expect(s.locator('.rl li').nth(1)).toContainText('고침')
+    await expect(s.locator('.rl li').nth(0)).toContainText('냄')
+    await expect(s.locator('.rl li').nth(1)).toContainText('₩110,000')
+    await expect(s.getByTestId('sp-replan')).toHaveCount(0)
+    await s.getByRole('button', { name: '+ 메모 추가' }).click()
+    await s.getByLabel('메모').fill('고친 메모')
+    await saveSheet(page, `할부 수정 · ${name}`)
+    let got = await byName(request, 're')
+    expect(got.note).toBe('고친 메모')
+    expect(got.rounds, 'the rounds are exactly as they were').toEqual(original)
+
+    // 6 months instead of 3: the editor warns, and asks again on save; "취소" there saves nothing
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    const e = sheet(page, `할부 수정 · ${name}`)
+    await expect(e).toBeVisible()
+    await next(e)
+    await grp(e, '할부 개월').getByRole('button', { name: '6개월', exact: true }).click()
+    await next(e)
+    await expect(e.locator('.rl li')).toHaveCount(6)
+    await expect(e.getByTestId('sp-replan')).toContainText('고친 회차 1개는 계산한 값으로 돌아가요')
+    await expect(e.getByTestId('sp-replan')).toContainText('냄으로 표시한 회차 1개는 같은 회차 번호에 냄으로 남아요')
+    await e.getByRole('button', { name: '저장', exact: true }).click()
+    const ask = page.getByRole('alertdialog')
+    await expect(ask).toContainText('회차를 다시 계산할까요?')
+    await ask.getByRole('button', { name: '취소', exact: true }).click()
+    await expect(ask).toBeHidden()
+    await expect(e).toBeVisible()
+    expect((await byName(request, 're')).rounds, 'nothing was saved').toEqual(original)
+    await e.getByRole('button', { name: '저장', exact: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '다시 계산하고 저장', exact: true }).click()
+    await expect(e).toBeHidden()
+    got = await byName(request, 're')
+    expect(got.count).toBe(6)
+    expect(got.rounds.map((r) => r.amount)).toEqual(Array(6).fill(50_000))
+    expect(got.rounds.map((r) => r.state)).toEqual(['paid', 'left', 'left', 'left', 'left', 'left'])
+    expect(got.rounds.every((r) => !r.edited)).toBe(true)
+    expect(got.rounds[0]!.date).toBe(original[0]!.date) // the first date is kept
+    expect(got.rounds.map((r) => r.date.slice(0, 7))).toEqual([0, 1, 2, 3, 4, 5].map((k) => ymAdd(ym, k)))
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(S-6, W-7) 일반 수정: mark the single round 냄, then delete inside the editor after a confirmation', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const name = `${EDM}-gen`
+  try {
+    expect((await api(request, 'POST', '/api/spendings', { ...lump(name, 55_000, 'salary') })).status).toBe(201)
+    await page.goto('/#spend/general')
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    const s = sheet(page, `지출 수정 · ${name}`)
+    await expect(s).toBeVisible()
+    await next(s); await next(s)
+    await expect(grp(s, '상태').getByRole('button', { name: '남음', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await grp(s, '상태').getByRole('button', { name: '냄', exact: true }).click()
+    await saveSheet(page, `지출 수정 · ${name}`)
+    const got = await byName(request, 'gen')
+    expect(got.rounds).toHaveLength(1)
+    expect(got.rounds[0]).toMatchObject({ state: 'paid', amount: 55_000, edited: false })
+    await expect(page.locator('table.gen-t tbody tr').filter({ hasText: name })).toContainText('냄')
+
+    // cancel the confirmation: still there; confirm: gone
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    const e = sheet(page, `지출 수정 · ${name}`)
+    await next(e); await next(e)
+    await e.getByRole('button', { name: '삭제', exact: true }).click()
+    const ask = page.getByRole('alertdialog')
+    await expect(ask).toContainText(`${name}을(를) 삭제할까요?`)
+    await ask.getByRole('button', { name: '취소', exact: true }).click()
+    await expect(ask).toBeHidden()
+    expect(await mineEd(request)).toHaveLength(1)
+    await deleteInSheet(page, `지출 수정 · ${name}`)
+    expect(await mineEd(request), 'the spending and its rounds are gone').toHaveLength(0)
+    await expect(page.getByRole('button', { name: `${name} 수정` })).toHaveCount(0)
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(S-4, W-7) the server says no: the editor stays open with the reason and nothing is saved', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  try {
+    const s = await openAdd(page, 'general')
+    await fillBought(s, `${EDM}-big`, '2147483648') // KRW 2,147,483,648 does not fit a round
+    await next(s); await next(s)
+    await s.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(s.getByRole('alert')).toBeVisible()
+    await expect(s).toBeVisible()
+    expect(await mineEd(request)).toHaveLength(0)
+    await s.getByRole('button', { name: '취소', exact: true }).click()
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(S-8, W-7) 기록 추가 › 일회성 지출 › 다음 opens the three-step editor on the 일반 tab; the round is in the upcoming payments and on the calendar', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const today = todayKst()
+  const name = `${EDM}-home`
+  const nameS = `${EDM}-hs`
+  try {
+    // a split with its first round today, 3 payments: "1/3회"
+    const rs: R[] = [0, 1, 2].map((k) => ({ no: k + 1, date: k === 0 ? today : `${ymAdd(today.slice(0, 7), k)}-28`, amount: 40_000, state: 'left', edited: false }))
+    expect((await api(request, 'POST', '/api/spendings', instBody(nameS, { how: 'split', payBy: 'salary', amount: 120_000, count: 3, rounds: rs }))).status).toBe(201)
+    await go(page, 'home')
+    await page.getByRole('button', { name: '기록 추가', exact: true }).click()
+    const m = sheet(page, '기록 추가')
+    await expect(m.getByRole('radio')).toHaveText([/^확인할 것/, /^일정/, /^구독/, /^일회성 지출/])
+    await m.getByRole('radio', { name: /^일회성 지출/ }).click()
+    await expect(m.getByRole('button', { name: '다음', exact: true })).toBeEnabled()
+    await m.getByRole('button', { name: '다음', exact: true }).click()
+    await expect(page).toHaveURL(/#spend\/general$/)
+    const s = sheet(page, '지출 추가')
+    await expect(s).toBeVisible()
+    await expect(stepsOf(s)).toHaveCount(3)
+    await fillBought(s, name, '77000') // bought today, paid from the salary account below
+    await next(s)
+    await choose(s.getByLabel('결제 수단', { exact: true }), { label: '급여 통장' })
+    await next(s)
+    await saveSheet(page, '지출 추가')
+    const got = await byName(request, 'home')
+    expect(got.rounds[0]).toMatchObject({ date: today, amount: 77_000, state: 'left' })
+
+    // the home's upcoming payments: the name, "n/N회" for a split and nothing for a lump sum
+    await go(page, 'home')
+    const pays = page.locator('ul.pays')
+    await expect(pays.locator('li').filter({ hasText: name })).toContainText('₩77,000')
+    await expect(pays.locator('li').filter({ hasText: name })).toContainText('일회성 지출')
+    await expect(pays.locator('li').filter({ hasText: nameS })).toContainText('1/3회')
+    await expect(pays.locator('li').filter({ hasText: nameS })).toContainText('₩40,000')
+    await expect(pays.locator('li').filter({ hasText: nameS })).not.toContainText('2/3회')
+    // the calendar tab: the same label on the day
+    await page.goto('/#events')
+    const day = page.locator('.agenda li[data-kind="spend"]')
+    await expect(day.filter({ hasText: name })).toContainText('₩77,000')
+    await expect(day.filter({ hasText: `${nameS} 1/3회` })).toContainText('₩40,000')
+    await expect(day.filter({ hasText: `${nameS} 2/3회` })).toHaveCount(0) // next month's round is on next month's page
+    // a round marked paid and a cancelled spending leave both places
+    await api(request, 'PUT', `/api/spendings/${got.id}`, { ...got, id: undefined, cancelled: true })
+    await page.goto('/#home')
+    await page.reload()
+    await page.getByRole('tablist').first().waitFor()
+    await expect(pays.locator('li').filter({ hasText: name })).toHaveCount(0)
+    await expect(pays.locator('li').filter({ hasText: nameS })).toHaveCount(1)
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(V-6 preservation) 기록 추가 still saves 확인할 것 and 일정 (with a month range) and still goes on to the subscription editor', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const text = `${EDM}-todo`
+  const title = `${EDM}-ev`
+  type Mini = { checks: { id: string; text: string; done: boolean }[]; events: { id: string; when: string; kind: string; title: string; state: string }[] }
+  const st = async () => (await state(request)) as unknown as Mini
+  try {
+    await go(page, 'home')
+    await page.getByRole('button', { name: '기록 추가', exact: true }).click()
+    const m = sheet(page, '기록 추가')
+    // 확인할 것 is the first kind and saves its text with done = false
+    await m.getByLabel('내용', { exact: true }).fill(text)
+    await saveSheet(page, '기록 추가')
+    const todo = (await st()).checks.find((c) => c.text === text)
+    expect(todo, '확인할 것 saved').toMatchObject({ text, done: false })
+    // 일정: the 시기 is text, a month range stays a month range, the 종류 defaults to what it was
+    await page.getByRole('button', { name: '기록 추가', exact: true }).click()
+    await m.getByRole('radio', { name: /^일정/ }).click()
+    await m.getByLabel('제목').fill(title)
+    await m.getByLabel('날짜 또는 월').fill('2027-01~02')
+    await saveSheet(page, '기록 추가')
+    const ev = (await st()).events.find((e) => e.title === title)
+    expect(ev, '일정 saved').toMatchObject({ when: '2027-01~02', kind: '저축', state: 'todo' })
+    // 구독 goes on to the subscription editor, as before
+    await page.getByRole('button', { name: '기록 추가', exact: true }).click()
+    await m.getByRole('radio', { name: /^구독/ }).click()
+    await expect(m.getByRole('button', { name: '다음', exact: true })).toBeVisible()
+    await m.getByRole('button', { name: '다음', exact: true }).click()
+    await expect(page).toHaveURL(/#subs$/)
+    await expect(sheet(page, '구독 추가')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(sheet(page, '구독 추가')).toBeHidden()
+  } finally {
+    const now = await st()
+    for (const c of now.checks.filter((x) => x.text === text)) await api(request, 'DELETE', `/api/checks/${c.id}`)
+    for (const e of now.events.filter((x) => x.title === title)) await api(request, 'DELETE', `/api/events/${e.id}`)
+    const after = await st()
+    expect(after.checks.filter((x) => x.text === text)).toHaveLength(0)
+    expect(after.events.filter((x) => x.title === title)).toHaveLength(0)
+  }
+})
+
+test('(V-7, W-7) the editor at 390px: every step fits, no sideways scroll', async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const fits = async (label: string) => {
+    const w = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth <= document.documentElement.clientWidth, body: [...document.querySelectorAll<HTMLElement>('.modal .body, .modal')].every((e) => e.scrollWidth <= e.clientWidth + 1) }))
+    expect(w, `${label}: no sideways scroll`).toEqual({ doc: true, body: true })
+  }
+  try {
+    const s = await openAdd(page, 'inst')
+    await expect(s).toBeVisible()
+    await s.getByLabel('내용', { exact: true }).fill(`${EDM}-a-very-long-name-that-has-to-wrap-onto-more-than-one-line-on-a-phone`)
+    await s.getByRole('button', { name: 'USD', exact: true }).click()
+    await s.getByLabel('금액', { exact: true }).fill('1234.5')
+    await s.getByRole('radio', { name: '기타 · 직접 입력' }).click()
+    await fits('step 1 (USD, other category)')
+    await next(s)
+    await grp(s, '이자').getByRole('button', { name: '유이자', exact: true }).click()
+    await grp(s, '할부 개월').getByRole('button', { name: '직접', exact: true }).click()
+    await fits('step 2 (installment, fee, custom count)')
+    await grp(s, '내는 방식').getByRole('button', { name: '나눠 내기', exact: true }).click()
+    await grp(s, '나눠 낼 횟수').getByRole('button', { name: '4회', exact: true }).click()
+    await choose(s.getByLabel('간격', { exact: true }), { label: '날짜 직접 정하기' })
+    await fits('step 2 (split, a date for each round)')
+    await next(s)
+    await expect(s.locator('.rl li')).toHaveCount(4)
+    await fits('step 3')
+    await s.getByRole('button', { name: '취소', exact: true }).click()
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(S-10, W-7) the editor in English', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const prefs = (await state(request)).preferences
+  expect((await api(request, 'PUT', '/api/preferences', { ...prefs, language: 'en' })).status).toBe(200)
+  try {
+    await page.goto('/#spend/general')
+    await page.getByRole('button', { name: 'Add spending', exact: true }).click()
+    const s = sheet(page, 'Add spending')
+    await expect(s).toBeVisible()
+    await expect(stepsOf(s)).toHaveText(['What you bought', 'How you pay', 'Check the rounds'])
+    await expect(s.getByLabel('What for', { exact: true })).toBeVisible()
+    await expect(s.getByRole('radio', { name: 'Appliance' })).toBeVisible()
+    await s.getByLabel('What for', { exact: true }).fill(`${EDM}-en`)
+    await s.getByLabel('Amount', { exact: true }).fill('12000')
+    await s.getByRole('button', { name: 'Next', exact: true }).click()
+    await expect(grp(s, 'How you pay').getByRole('button')).toHaveText(['Lump sum', 'Card installment', 'Split payment', 'Use buffer'])
+    await expect(s.getByText('Use buffer is coming soon.')).toBeVisible()
+    await s.getByRole('button', { name: 'Next', exact: true }).click()
+    await expect(s.getByText('3/3 · Saved to the change history')).toBeVisible()
+    await expect(s.getByText(/Comes off the remainder of month \d+ and goes to One-off/)).toBeVisible()
+    await s.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(s).toBeHidden()
+    expect((await byName(request, 'en')).category).toBe('Living') // a category is saved in the words shown
+    await page.getByRole('button', { name: `Edit ${EDM}-en` }).click()
+    await expect(sheet(page, `Edit spending · ${EDM}-en`)).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  } finally {
+    await api(request, 'PUT', '/api/preferences', prefs)
+    await cleanEd(request)
   }
 })
