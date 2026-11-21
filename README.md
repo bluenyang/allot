@@ -24,7 +24,7 @@ docker compose -f docker/compose.dev.yaml exec api pnpm db:admin  # 관리자 �
 - `pnpm db:admin`은 데이터 파일 없이 관리자 계정만 만든다(새로 클론했을 때). 새 계정은 기본 설정과 빈 목록으로 시작한다.
 - 관리자 이메일을 바꾸려면 `pnpm db:seed --replace-admin <예전 이메일>`(또는 `db:admin`) — 그 계정의 데이터와 변경 내역을 새 계정으로 옮긴 뒤 예전 계정과 그 세션을 지운다. 다른 계정은 건드리지 않는다.
 - web 컨테이너에는 프론트 파일(`index.html`, `vite.config.ts`, `tsconfig.json`, `src/`)만 마운트한다. Vite는 LAN의 누구에게나 root 아래 파일을 보여 주기 때문이다.
-- 개발과 테스트는 이 스택 하나로 한다. `docker/compose.yaml`은 운영 예시다(아래).
+- 개발은 이 스택으로 한다. E2E·API 검사는 데이터를 만들고 지우므로, 실제로 쓰는 데이터가 든 스택이 아니라 버려도 되는 스택(새 DB)에서 돌린다. `docker/compose.yaml`은 운영 예시다(아래).
 
 ## 운영 배포 (이미지)
 
@@ -182,13 +182,15 @@ pnpm e2e           # Playwright E2E (스택이 떠 있어야 함, 아래)
 
 ## 테스트
 
+E2E와 `tests/api/*`는 계정 데이터를 만들고 바꾸고 지운다. 실제 데이터가 있는 서버가 아니라 버려도 되는 시험 서버에서 돌린다 — 실제로 쓰는 스택과 다른 DB로 띄운 인스턴스(예: 이 저장소의 관리자는 `docker build -t allot:test .`로 만든 이미지를 별도 DB와 함께 :15174에 띄운다).
+
 ```bash
-docker compose -f docker/compose.dev.yaml up -d --build -V --wait
-docker compose -f docker/compose.dev.yaml exec api pnpm db:seed
-pnpm test:unit
-BASE=http://<IP>:15173 ADMIN_EMAIL=... ADMIN_PASSWORD=... pnpm e2e              # UI: 모든 항목 추가·수정·삭제·새로고침
-BASE=... ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/crud.mjs create      # API: create → (api 재시작) → verify → cleanup
+pnpm test:unit                                                                   # DB 없이
+BASE=http://<시험 서버> ADMIN_EMAIL=... ADMIN_PASSWORD=... pnpm e2e            # UI: 모든 항목 추가·수정·삭제·새로고침
+BASE=http://<시험 서버> ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/crud.mjs create   # API: create → (api 재시작) → verify → cleanup
 ```
+
+처음 써 보는 로컬 스택(데이터 없음)이라면 그 스택이 곧 시험 서버다: `docker compose -f docker/compose.dev.yaml up -d --build -V --wait` 뒤 `docker compose -f docker/compose.dev.yaml exec api pnpm db:seed`로 계정을 만들고 `BASE=http://<IP>:15173`으로 돌린다. 실제 데이터를 넣은 뒤에는 그 스택에 돌리지 않는다.
 
 - `tests/e2e/auth.spec.ts`는 Dex로 승인 대기 흐름을 확인하므로 `DEX_CLIENT_SECRET`도 env로 준다. 관리 API로 OIDC 설정을 바꾸고 계정을 만들고 지우므로 테스트 DB에서 돌린다.
 - `tests/e2e/redesign.spec.ts`는 표시 설정·테마·공휴일 세트·날짜 조정을 바꿨다가 되돌리고, 테마 확인용 계정을 하나 만들었다 지운다. 외부 요청 0건과 휴대폰 폭(390)도 확인한다.
