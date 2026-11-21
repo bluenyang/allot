@@ -25,7 +25,7 @@ import { PH, parseShell } from './shell-words.mjs'
 // Detection is safe by default: every command line is read as text (any reading that spells a PR
 // operation), exactly as before. The one exemption is a whole line of plain data commands
 // (scripts/shell-words.mjs parses it): echo, printf, grep, cat, head, tail, wc, `git commit -m`,
-// `codex exec < file`, read-only `gh`, with no env assignment, wrapper or unlisted option, joined
+// read-only `gh`, with no env assignment, wrapper or unlisted option, joined
 // only by ; && || | and newlines. One other command anywhere puts the whole line back under the text
 // rules. Input the parser cannot handle (too large or nested) is refused.
 //
@@ -110,7 +110,7 @@ function ghSafe(rest) {
 
 /** A plain data command: no env assignment, no wrapper, no option outside the small lists. */
 function isPlainData(seg) {
-  const { args, hasIn } = stripRedirs(seg.words)
+  const { args } = stripRedirs(seg.words)
   if (args.length === 0 || args[0].includes(PH)) return false
   const prog = args[0]
   const rest = args.slice(1)
@@ -125,10 +125,6 @@ function isPlainData(seg) {
       if (GIT_COMMIT_VALUED.has(x)) { if (opts[++i] === undefined) return false } else if (!GIT_COMMIT_BARE.has(x)) return false
     }
     return true
-  }
-  if (prog === 'codex') {
-    if (rest[0] !== 'exec' || !hasIn) return false
-    return rest.slice(1).every((x, i, a) => x === '-' || x.startsWith('-') || (i > 0 && a[i - 1].startsWith('-')))
   }
   if (prog === 'gh') return ghSafe(rest)
   return false
@@ -149,7 +145,7 @@ const MAX_INPUT = 100000
 
 /**
  * Candidate check on the raw hook input. A line of plain data commands (echo, printf, grep, cat,
- * head, tail, wc, `git commit -m`, `codex exec < file`, read-only `gh`) is not a candidate: the PR
+ * head, tail, wc, `git commit -m`, read-only `gh`) is not a candidate: the PR
  * words in its quoted arguments and here-documents are data. Every other line is read with the text
  * rules below, exactly as before: any reading of the text that spells a PR operation.
  * Fails closed: input too large or too nested for the parser is a candidate.

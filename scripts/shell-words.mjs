@@ -26,12 +26,14 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
 
   const skipBraces = () => {
     i += 2
-    for (let depth = 1; i < n && depth > 0; i++) {
+    let depth = 1
+    for (; i < n && depth > 0; i++) {
       if (s[i] === '$' && s[i + 1] === '(') { i += 2; run(')'); i-- } // a substitution inside ${...} still runs
       else if (s[i] === '`') { i++; run('`'); i-- }
       else if (s[i] === '{') depth++
       else if (s[i] === '}') depth--
     }
+    if (depth > 0) throw new Error('malformed: unterminated ${')
   }
 
   // substitutions in an unquoted here-document body still run; the rest of the body is data
@@ -72,7 +74,7 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
         if (d === '$' && /[A-Za-z_0-9@*#?!$-]/.test(s[i + 1] ?? '')) { mark(); i++; continue }
         add(d); i++
       }
-      if (end !== null && i >= n) out.weird = true // unterminated quote
+      if (end !== null && i >= n) throw new Error("malformed: unterminated quote")
       i++
     }
 
@@ -84,12 +86,13 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
       if (c === "'") {
         const j = s.indexOf("'", i + 1)
         add('')
-        if (j < 0) { out.weird = true; add(s.slice(i + 1)); i = n } else { add(s.slice(i + 1, j)); i = j + 1 }
+        if (j < 0) { throw new Error("malformed: unterminated quote"); add(s.slice(i + 1)); i = n } else { add(s.slice(i + 1, j)); i = j + 1 }
       } else if (c === '"') {
         i++; dq()
       } else if (c === '$' && s[i + 1] === "'") {
         i += 2; mark(); getSeg().ansi = true
         while (i < n && s[i] !== "'") i += s[i] === '\\' ? 2 : 1
+        if (i >= n) throw new Error("malformed: unterminated $'")
         i++
       } else if (c === '$' && s[i + 1] === '"') {
         i += 2; mark(); getSeg().ansi = true; dq()
@@ -159,7 +162,7 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
         add(c); i++
       }
     }
-    if (closer) out.weird = true // a substitution that never closes
+    if (closer) throw new Error("malformed: unterminated substitution")
     endSeg()
   }
 

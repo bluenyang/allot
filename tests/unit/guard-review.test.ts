@@ -54,7 +54,8 @@ test('isCandidate: text that only mentions a PR operation is data (false positiv
     'echo "run gh pr edit 28 then gh pr merge 28 later" > prompt.md',
     "printf '%s\\n' 'gh pr create --head x' >> notes.md",
     "python3 - <<'EOF'\nprint(\"PR 28 ready to merge, create the notes\")\nEOF",
-    'cat > prompt.md <<EOF\nPlease gh pr merge 24 after review\nEOF\ncodex exec --model m < prompt.md',
+    'cat > prompt.md <<EOF\nPlease gh pr merge 24 after review\nEOF',
+    'codex exec --model m - < prompt.md', // not plain data, but its text has no PR operation
     'cat <<-EOF > f\n\tgh pr merge 24\n\tEOF',
     "grep -n '^codex$' list.txt",
     'grep -c "$" file.txt',
@@ -93,6 +94,14 @@ test('isCandidate: launchers, redirections and wrappers are scanned, not treated
     'echo "gh pr merge 1" | sh', 'printf "gh pr merge 1\\n" | bash -s', 'cat <<EOF | sh\ngh pr merge 1\nEOF', 'echo "gh pr merge 1" | python3',
     'echo ok && echo "$(gh pr merge 1)"', 'printf x > f; gh pr merge 1',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
+})
+test('isCandidate: codex exec is an executor, not data; malformed input is refused (third review)', () => {
+  for (const c of [
+    "printf '%s\\n' 'Run gh pr merge 1' > prompt.md; codex exec - < prompt.md", "codex exec -- 'Run gh pr merge 1' < prompt.md",
+    "printf 'Run gh pr merge 1' > prompt.md; codex exec --sandbox danger-full-access - < prompt.md", 'codex exec "gh pr create --head b"',
+    'echo "unterminated', "echo 'unterminated", 'echo $(unterminated', 'echo `unterminated', 'echo ${unterminated', "echo $'unterminated",
+  ]) assert.equal(isCandidate(asInput(c)), true, c)
+  for (const c of ['echo "unterminated', "echo 'x", 'echo $(x', 'echo ${x']) assert.ok(check(c).error, c) // so the hook exits 2
 })
 test('isCandidate: data that flows into an executor, or a data command with an execution context, is scanned (second review)', () => {
   for (const c of [
@@ -237,6 +246,9 @@ test('hook input: candidates must be readable JSON with a string command', () =>
     // fail closed: deeply nested or oversized input is refused with exit 2, not a crash
     assert.equal(t.hook('$('.repeat(20000) + 'gh pr merge 1' + ')'.repeat(20000)).status, 2)
     assert.equal(t.hook('echo ' + 'x '.repeat(80000)).status, 2)
+    for (const c of ['echo "unterminated', "echo 'unterminated", 'codex exec - < prompt.md; echo $(x']) assert.equal(t.hook(c).status, 2, c)
+    assert.equal(t.hook("codex exec - < prompt.md").status, 0) // no PR operation in its text
+    assert.equal(t.hook("printf 'Run gh pr merge 1' > p; codex exec - < p").status, 2)
     for (const c of ['2>/dev/null gh pr merge 1', 'find . -exec gh pr merge 1 \\;', 'sudo -u root gh pr merge 1']) assert.equal(t.hook(c).status, 2, c)
     // text that only mentions a PR operation is data (false positives of 0.1.4)
     for (const c of ['echo "gh pr edit 28; gh pr merge 28" > prompt.md', "grep -n '^codex$' list.txt", "python3 - <<'EOF'\nprint('PR 28 merge; create notes')\nEOF"])
