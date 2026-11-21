@@ -37,6 +37,7 @@ const ko = {
   changeChild: '이후에 연결된 항목이 생겨서 되돌릴 수 없어요.',
   revertOverlap: "되돌리면 '{a}' 구간과 '{b}' 구간이 겹쳐요.",
   revertAmounts: '되돌리면 고정 대상이 아닌 곳에 구간 금액이 생겨요.',
+  revertSpending: '되돌리면 "{name}"의 회차가 회차 수와 맞지 않게 돼요.',
   // proposals from an AI key (spec 009)
   proposalNotFound: '제안을 찾을 수 없어요.',
   proposalNotPending: '이미 처리된 제안이에요.',
@@ -175,6 +176,7 @@ const en: Record<MsgKey, string> = {
   changeChild: 'Something was linked to it afterwards, so this cannot be reverted.',
   revertOverlap: "Reverting would make the '{a}' and '{b}' phases overlap.",
   revertAmounts: 'Reverting would leave a phase amount on a target that is not fixed.',
+  revertSpending: 'Reverting would leave the rounds of "{name}" not matching its count.',
   // proposals from an AI key (spec 009)
   proposalNotFound: 'Proposal not found.',
   proposalNotPending: 'This proposal has already been handled.',

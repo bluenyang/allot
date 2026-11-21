@@ -2,6 +2,7 @@
 // Messages are keys of server/messages.ts (server/body.ts picks the language per request).
 import { z } from 'zod'
 import { ruleProblem } from '../src/lib/holidays'
+import { ROUND_MAX, roundsProblem } from '../src/lib/spending-rules'
 import { m, type MsgKey } from './messages'
 
 /** A real calendar date (rejects 2031-02-30), YYYY-MM-DD. */
@@ -171,16 +172,14 @@ export const spending = z.object({
   const bad = (path: string, message: MsgKey) => ctx.addIssue({ code: 'custom', path: [path], message })
   if (x.currency === 'USD' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
   if (x.currency === 'KRW' && !Number.isInteger(x.amount)) bad('amount', 'spendKrwWhole')
-  // lump: one round; installment and split: 2 or more. Only a card installment carries a fee; only a split an interval.
-  if (x.how === 'lump' ? x.count !== 1 : x.count < 2) bad('count', 'spendHow')
+  // Only a card installment carries a fee; only a split an interval.
   if (x.fee !== 0 && !(x.how === 'installment' && x.payBy === 'card')) bad('fee', 'spendHow')
   if ((x.how === 'split') !== (x.interval !== null)) bad('interval', 'spendHow')
-  // Rounds are numbered 1.. in order. An early payoff merges the rounds left and adds one: at most one more round per merged round.
-  if (x.rounds.some((r, i) => r.no !== i + 1)) bad('rounds', 'spendRounds')
-  const merged = x.rounds.filter((r) => r.state === 'merged').length
-  const extra = x.rounds.length - x.count
-  if (extra < 0 || extra > merged) bad('rounds', 'spendRounds')
-  if (x.how === 'lump' && (x.rounds.length !== 1 || merged !== 0)) bad('rounds', 'spendRounds')
+  // A KRW amount and its fee are one total that must fit a round (the same bound as the rounds' sum).
+  if (x.currency === 'KRW' && x.amount + x.fee > ROUND_MAX) bad('amount', 'amountTooBig')
+  // The count, the numbering and the sums of the rounds: one rule, also checked after a revert (src/lib/spending-rules.ts).
+  const problem = roundsProblem(x)
+  if (problem) bad(problem, problem === 'count' ? 'spendHow' : 'spendRounds')
 })
 
 // ── Admin (spec 006 S-3) ──

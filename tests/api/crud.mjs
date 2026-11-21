@@ -113,6 +113,20 @@ if (phase === 'create') {
   ok(rvSp.status === 200 && spBack?.rounds?.[1]?.amount === 101_000 && spBack.rounds[1].edited === false, `revert of a spending PUT restores its rounds → ${rvSp.status}`)
   const spAgain = await api('PUT', `/api/spendings/${ids.spend}`, { ...spend, rounds: spend.rounds.map((r) => (r.no === 2 ? { ...r, amount: 100_500, edited: true } : r)) })
   ok(spAgain.status === 200 && spAgain.json.rounds[1].amount === 100_500, `spending PUT again after the revert → ${spAgain.status}`)
+  // Review 1 (P2): a revert that would leave rounds not matching the count is refused, and nothing changes.
+  const own = await api('POST', '/api/spendings', { ...spend, fee: 0, payBy: 'salary', name: `${MARK}-rv` })
+  const ownPath = `/api/spendings/${own.json?.id}`
+  const paidOff = [{ ...spend.rounds[0], state: 'paid' }, { ...spend.rounds[1], state: 'merged' }, { ...spend.rounds[2], state: 'merged' }, { no: 4, date: '2090-05-16', amount: 202_000, state: 'left', edited: false }]
+  const offPut = await api('PUT', ownPath, { ...spend, fee: 0, payBy: 'salary', name: `${MARK}-rv`, rounds: paidOff })
+  const offSet = (await api('GET', '/api/changes?limit=1')).json?.[0]
+  const countPut = await api('PUT', ownPath, { ...spend, fee: 0, payBy: 'salary', name: `${MARK}-rv`, count: 4, rounds: paidOff })
+  const beforeRv = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === own.json?.id)
+  const rvBad = await api('POST', `/api/changes/${offSet?.id}/revert`)
+  const afterRv = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === own.json?.id)
+  ok(own.status === 201 && offPut.status === 200 && countPut.status === 200 && rvBad.status === 400 && JSON.stringify(afterRv) === JSON.stringify(beforeRv) && afterRv?.count === 4 && afterRv.rounds.length === 4,
+    `revert of a payoff after the count changed is refused, data unchanged (${own.status}, ${offPut.status}, ${countPut.status}, ${rvBad.status})`)
+  ok((await api('POST', '/api/spendings', { ...spend, fee: 0, payBy: 'salary', name: `${MARK}-big`, amount: 3_000_000_000, rounds: spend.rounds.map((r) => ({ ...r, amount: 1_000_000_000 })) })).status === 400, 'POST spending whose rounds add up past 2147483647 → 400')
+  if (own.status === 201) ok((await api('DELETE', ownPath)).status === 204, 'DELETE the revert test spending')
   // Rules (spec 011 S-2, S-4): each of these is refused.
   const spendBad = {
     'USD without a rate': { ...spend, currency: 'USD', fxRate: null },

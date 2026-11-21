@@ -478,6 +478,7 @@ export function planRounds(input: SpendInput, s: Settings, off: ReadonlySet<stri
 export function payOffEarly(rounds: SpendingRound[], date: string, amount?: number): SpendingRound[] {
   const left = rounds.filter((r) => r.state === 'left')
   if (!left.length) return rounds.map((r) => ({ ...r }))
+  // The rounds still to count add up to at most ROUND_MAX (server rule), so the sum fits one round; an `amount` the user types is checked by the server.
   const sum = left.reduce((a, r) => a + r.amount, 0)
   const no = Math.max(...rounds.map((r) => r.no)) + 1
   return [

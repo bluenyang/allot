@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { issueMessage } from '../../server/messages'
 import { spending } from '../../server/validation'
+import { payOffEarly } from '../../src/lib/calc'
+import { ROUND_MAX, roundsProblem } from '../../src/lib/spending-rules'
 
 const R = (no: number, over: Record<string, unknown> = {}) => ({ no, date: `2090-0${no + 1}-16`, amount: 101_000, state: 'left', edited: false, ...over })
 const card = {
@@ -77,6 +79,30 @@ test('refuses a bad amount, count, fee, bought date and an empty name', () => {
   no({ ...card, bought: '2090-13-01' })
   no({ ...card, name: '  ' })
   no({ ...card, category: '' })
+})
+
+test('rounds of one spending add up to at most 2,147,483,647 (merged rounds do not count)', () => {
+  no({ ...card, count: 3, fee: 0, payBy: 'salary', rounds: [R(1, { amount: 1_000_000_000 }), R(2, { amount: 1_000_000_000 }), R(3, { amount: 1_000_000_000 })] }, 'rounds')
+  ok({ ...card, fee: 0, payBy: 'salary', rounds: [R(1, { amount: ROUND_MAX }), R(2, { state: 'merged', amount: ROUND_MAX }), R(3, { state: 'merged', amount: ROUND_MAX })] })
+})
+
+test('a KRW amount plus its fee must fit one round', () => {
+  no({ ...card, amount: ROUND_MAX, fee: 1 }, 'amount')
+})
+
+test('roundsProblem is the one rule: a revert that leaves count 4 with 3 rounds breaks it', () => {
+  const rounds = [R(1, { state: 'paid' }), R(2, { state: 'left' }), R(3, { state: 'left' })] as { no: number; amount: number; state: 'left' | 'paid' | 'merged' }[]
+  assert.equal(roundsProblem({ how: 'installment', count: 3, rounds }), null)
+  assert.equal(roundsProblem({ how: 'installment', count: 4, rounds }), 'rounds')
+  assert.equal(roundsProblem({ how: 'lump', count: 2, rounds }), 'count')
+})
+
+test('an early payoff of a maximal spending is one saveable round', () => {
+  const x = { ...card, fee: 0, payBy: 'salary', rounds: [R(1, { amount: 1_000_000_000 }), R(2, { amount: 1_000_000_000 }), R(3, { amount: 147_483_647 })] }
+  ok(x)
+  const off = payOffEarly(x.rounds as never, '2090-05-16')
+  assert.equal(off.at(-1)!.amount, ROUND_MAX)
+  ok({ ...x, rounds: off })
 })
 
 test('every message of a refusal is worded in both languages', () => {

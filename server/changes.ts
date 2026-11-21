@@ -10,6 +10,7 @@ import { hasIdentity, OWNED, type OwnedTable } from './db/owned'
 import * as t from './db/schema'
 import { lockFor } from './db/scope'
 import { m, MsgError, type Msg } from './messages'
+import { roundsProblem } from '../src/lib/spending-rules'
 
 export type RowKey = Record<string, string>
 type Row = Record<string, unknown>
@@ -184,6 +185,16 @@ async function checkRules(q: Db, uid: string) {
     const fixed = await q.select({ id: t.allocationTarget.id }).from(t.allocationTarget)
       .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), eq(t.allocationTarget.kind, 'fixed')))
     if (fixed.length !== ids.length) throw new RuleBroken(m('revertAmounts'))
+  }
+  // Spendings: the same rule a save keeps for the rounds against count and how (src/lib/spending-rules.ts).
+  const spendings = await q.select().from(t.spending).where(eq(t.spending.userId, uid))
+  if (spendings.length) {
+    const rounds = await q.select().from(t.spendingRound).where(eq(t.spendingRound.userId, uid)).orderBy(t.spendingRound.no)
+    for (const s of spendings) {
+      if (roundsProblem({ how: s.how, count: s.count, rounds: rounds.filter((r) => r.spendingId === s.id) })) {
+        throw new RuleBroken(m('revertSpending', { name: s.name }))
+      }
+    }
   }
 }
 
