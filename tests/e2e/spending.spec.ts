@@ -1066,7 +1066,7 @@ test('(S-4, W-7) the server says no: the editor stays open with the reason and n
     await expect(s.getByRole('alert')).toBeVisible()
     await expect(s).toBeVisible()
     expect(await mineEd(request)).toHaveLength(0)
-    await s.getByRole('button', { name: '취소', exact: true }).click()
+    await s.getByRole('contentinfo').getByRole('button', { name: '취소', exact: true }).click() // not the 취소 of the 상태 control
   } finally {
     await cleanEd(request)
   }
