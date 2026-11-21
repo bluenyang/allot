@@ -306,12 +306,20 @@ if (phase === 'verify' || phase === 'cleanup') {
         ok(r.status === 200 && r.json.to === null, `restore open phase ${p.label} → ${r.status}`)
       } catch (e) { ok(false, `restore open phase ${p.label} threw: ${e?.message ?? e}`) }
     }
-    const again = await api('GET', '/api/state')
-    const left = Object.values(again.json).flatMap((v) => (Array.isArray(v) ? v : [])).filter((x) => JSON.stringify(x).includes(MARK))
-    ok(left.length === 0, `no marker rows left (${left.length})`)
-    const s = await api('PUT', '/api/settings', ids.settings)
-    const l = await api('PUT', '/api/living', ids.living)
-    ok(s.status === 200 && l.status === 200, 'settings/living restored')
+    // Every remaining step on its own (review 21): one that throws never skips the next.
+    try {
+      const again = await api('GET', '/api/state')
+      const left = Object.values(again.json ?? {}).flatMap((v) => (Array.isArray(v) ? v : [])).filter((x) => JSON.stringify(x).includes(MARK))
+      ok(again.status === 200 && left.length === 0, `no marker rows left (${again.status}, ${left.length})`)
+    } catch (e) { ok(false, `marker check threw: ${e?.message ?? e}`) }
+    try {
+      const s = await api('PUT', '/api/settings', ids.settings)
+      ok(s.status === 200, `settings restored → ${s.status}`)
+    } catch (e) { ok(false, `settings restore threw: ${e?.message ?? e}`) }
+    try {
+      const l = await api('PUT', '/api/living', ids.living)
+      ok(l.status === 200, `living restored → ${l.status}`)
+    } catch (e) { ok(false, `living restore threw: ${e?.message ?? e}`) }
   }
 }
 } catch (e) {
