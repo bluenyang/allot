@@ -113,7 +113,7 @@ summary_for_user: |
 - [x] W-1 계산: 타입, `spendingKrw`·`planRounds`·`payOffEarly`·`spendingIn`·`spendState`, `transferAt`·`distributionAt`·`leftoverAfterTransfer`의 반영 인자, 단위 테스트(V-2·V-3). 화면 변화 없음. (1282e2b)
 - [x] W-2 저장과 API: 스키마·마이그레이션(RLS), zod, ops 리소스, 변경 묶음 자식, readState·store, crud 검사(V-4·V-5). (6718a94)
 - [x] W-3 반영 연결: `monthMoney`와 모든 호출 자리, 월급 분배 근거 줄, 구독 이체액 계산 줄(V-3 화면 숫자). (e334214)
-- [ ] W-4 지출 메뉴: 메뉴 이름·아이콘, `#spend` 주소와 `#subs` 연결, 탭 3개, 구독 탭 이동(내용 그대로), 반영 카드, 캔버스 대조표 `delta.md`(V-6의 구독 보존 E2E).
+- [x] W-4 지출 메뉴: 메뉴 이름·아이콘, `#spend` 주소와 `#subs` 연결, 탭 3개, 구독 탭 이동(내용 그대로), 반영 카드, 캔버스 대조표 `delta.md`(V-6의 구독 보존 E2E). (943f87c, f96f345, 35964f0)
 - [ ] W-5 일반 탭: 목록·거르기·KPI·휴대폰 카드·빈 상태.
 - [ ] W-6 할부 탭: 목록·상세·회차 표·KPI, 회차 수정 창, 중도 완납, 취소.
 - [ ] W-7 3단계 창: 추가·수정·삭제, 방식 4개(버퍼 사용 Soon), USD 환산, 수수료, 간격, 회차 확인, 다시 계산 경고. 기록 추가 연결, 홈·일정 회차.
@@ -166,6 +166,10 @@ summary_for_user: |
 - A-3 (2026-11-21, W-3) `distributionAt`에 마지막 인자 `spendSubs = 0`을 더함: 구독 통장 지출이 이체액을 올리면 분배의 구독 행과 나머지도 같이 움직여야 하는데 W-1의 `spendRemainder`만으로는 구독 행이 그대로였음. 기본값 0이라 지금 호출 결과는 같음. `monthMoney`가 `spendSubs`와 `spendRemainder`를 같이 넘김 · e334214
 - A-4 (2026-11-21, W-2, review 1) 되돌린 뒤 모든 지출을 저장 때와 같은 규칙(`roundsProblem`, `src/lib/spending-rules.ts`: 방식·회차 수·번호·합침)으로 다시 검사하고 어기면 되돌리기를 거부함(`RuleBroken` → 400). 지출 하나를 중도 완납한 뒤 회차 수만 바꾸고 완납을 되돌리면 회차와 `count`가 어긋난 지출이 남았음. 같은 함수를 zod와 `checkRules`가 씀 · 478090c
 - A-5 (2026-11-21, W-2, review 1) 합침이 아닌 회차의 합은 2,147,483,647 이하이고(`ROUND_MAX`), 원화 금액+수수료도 그 안에 들어야 함. 지출 금액은 99.9억까지 받지만 회차 열은 integer라 중도 완납 한 회차가 저장되지 못할 수 있었음. 새 표의 규칙이라 예전 입력을 거부하지 않음. USD는 서버가 버퍼 값을 몰라 회차 합으로만 막음 · 478090c
+- A-6 (2026-11-21, W-4) `#subs`는 주소를 `#spend/subs`로 바꾸지 않고 지출 쪽 구독 탭을 그대로 보여 주고, `#subs?add`는 예전처럼 구독 추가 창을 연 뒤 `#subs`로 돌아감. `#spend/subs?add`도 같고 `#spend/subs`로 돌아감. spec S-1은 "`#subs`는 `#spend/subs`로"였는데, 기존 구독 E2E(`#subs$` 주소 확인, 뒤로 가기)를 고치지 않고 그대로 통과시켜 보존 증거로 쓰려는 PM 결정 · 943f87c
+- A-7 (2026-11-21, W-4) 기록 추가 창의 구독은 계속 `#subs?add`로 보냄(새 주소 `#spend/subs?add`도 열리지만 쓰지 않음). `edit.spec.ts`가 그 뒤 주소를 `#subs$`로 확인하기 때문 · 943f87c
+- A-8 (2026-11-21, W-4) `Subscriptions.vue`에 `embedded`(머리글을 지출 페이지가 그림)와 `adding`(추가 창 열기 요청) prop을 더하고 `#subs?add` 처리(`checkAdd`)를 `Spending.vue`로 옮김. 구독 탭은 지출 페이지 안에서 나중에 마운트돼 `onActivated`가 다시 불리지 않기 때문. 목록·창·계산은 그대로 · 943f87c
+- A-9 (2026-11-21, W-4) 사이드바 구독 항목의 "활성 n개" 개수 표시를 뺌(캔버스의 지출 항목에는 개수가 없음). 메뉴 이름 `shell.pages.subs`는 `spend`로 바뀌고 `tests/unit/i18n.test.ts`의 키 목록이 따라감 · 943f87c
 
 ## 우려
 - 회차가 반영되는 달은 날짜의 달력 달이다. 급여일(예: 25일) 전후로 나누지 않는다. 캔버스 표기 "12/16 청구 · 12월 나머지"를 따랐다. 급여일 기준으로 나누려면 spec을 바꿔야 한다.
