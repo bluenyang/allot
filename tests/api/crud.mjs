@@ -80,7 +80,9 @@ const spend = {
 }
 const sub = { name: MARK, category: 'tool', plan: 'p', amount: 1.5, currency: 'USD', vat: 10, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false, note: 'n' }
 
-armed = true
+// create and verify stop at the first failed check; cleanup tries every step (a leftover is the worse outcome)
+// and still exits non-zero when any step failed.
+armed = phase !== 'cleanup'
 try {
 if (phase === 'create') {
   const anon = await api('GET', '/api/state')
@@ -291,14 +293,18 @@ if (phase === 'verify' || phase === 'cleanup') {
   } else {
     for (const [path, id] of [['/api/plan-changes', ids.chg], ['/api/subscriptions', ids.sub], ['/api/phases', ids.phase], ['/api/events', ids.event], ['/api/checks', ids.check], ['/api/accounts', ids.account], ['/api/debts', ids.debt], ['/api/remainder-split', ids.split], ['/api/targets', ids.target], ['/api/phases', ids.racePhase], ['/api/spendings', ids.spend]]) {
       if (!id) continue
-      const d = await api('DELETE', `${path}/${id}`)
-      ok(d.status === 204, `DELETE ${path}/:id → ${d.status}`)
+      try {
+        const d = await api('DELETE', `${path}/${id}`)
+        ok(d.status === 204, `DELETE ${path}/:id → ${d.status}`)
+      } catch (e) { ok(false, `DELETE ${path}/:id threw: ${e?.message ?? e}`) }
     }
     // after the marker phase is gone, so the restored open phase does not overlap it
     for (const p of ids.openPhases ?? []) {
       const { id, ...rest } = p
-      const r = await api('PUT', `/api/phases/${id}`, rest)
-      ok(r.status === 200 && r.json.to === null, `restore open phase ${p.label} → ${r.status}`)
+      try {
+        const r = await api('PUT', `/api/phases/${id}`, rest)
+        ok(r.status === 200 && r.json.to === null, `restore open phase ${p.label} → ${r.status}`)
+      } catch (e) { ok(false, `restore open phase ${p.label} threw: ${e?.message ?? e}`) }
     }
     const again = await api('GET', '/api/state')
     const left = Object.values(again.json).flatMap((v) => (Array.isArray(v) ? v : [])).filter((x) => JSON.stringify(x).includes(MARK))

@@ -34,6 +34,12 @@ function client() {
     return { status: res.status, json }
   }
 }
+const created = [] // [path, id]: everything B creates, removed in `finally`
+const track = (path, r) => { if (r.status === 201 && r.json?.id) created.push([path, r.json.id]); return r }
+let aRestore = null
+let aOrig = null // A's three rows as they were, put back in `finally` when a check found them changed
+const LISTS = ['subscriptions', 'planChanges', 'phases', 'events', 'checks', 'accounts', 'debts', 'targets', 'remainderSplit']
+const isState = (j) => !!j && LISTS.every((k) => Array.isArray(j[k]))
 const A = client()
 const B = client()
 const sa = await A('POST', '/api/auth/sign-in/email', { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })
@@ -41,18 +47,20 @@ const sb = await B('POST', '/api/auth/sign-in/email', { email: process.env.B_EMA
 ok(sa.status === 200 && sb.status === 200, `sign-in A ${sa.status}, B ${sb.status}`)
 if (failed) process.exit(1)
 
+// From here every write sits behind the first failed check: it stops the run, `finally` puts back what it can.
+armed = true
+try {
 const aState = (await A('GET', '/api/state')).json
 const aSub = aState.subscriptions[0]
 const aCheck = aState.checks[0]
 const aTarget = aState.targets.find((t) => t.kind === 'fixed')
 const aPhase = aState.phases[0]
 ok(!!aSub && !!aCheck && !!aTarget && !!aPhase, 'A has a subscription, a check, a fixed target and a phase (needed below)')
+aOrig = [['subscriptions', aSub], ['checks', aCheck], ['targets', aTarget]]
 
 // B sees nothing of A
 const bState = await B('GET', '/api/state')
 const aIds = [aSub.id, aCheck.id, aTarget.id, aPhase.id]
-const LISTS = ['subscriptions', 'planChanges', 'phases', 'events', 'checks', 'accounts', 'debts', 'targets', 'remainderSplit']
-const isState = (j) => !!j && LISTS.every((k) => Array.isArray(j[k]))
 // spec 006 S-7: a new account gets the defaults (200) instead of 0.1.1's 409; never any of A's rows.
 ok(bState.status === 200 && isState(bState.json) && !aIds.some((id) => JSON.stringify(bState.json).includes(id)),
   `B GET /api/state → ${bState.status} (want 200 without any of A's rows)`)
@@ -64,8 +72,9 @@ for (const [path, body] of [
   [`/api/targets/${aTarget.id}`, { name: MARK, kind: 'fixed' }],
 ]) {
   const put = await B('PUT', path, body)
+  ok(put.status === 404, `B PUT ${path.split('/').slice(0, 3).join('/')}/<A's id> → ${put.status} (want 404)`) // no DELETE after a PUT that got through
   const del = await B('DELETE', path)
-  ok(put.status === 404 && del.status === 404, `B PUT/DELETE ${path.split('/').slice(0, 3).join('/')}/<A's id> → ${put.status}/${del.status} (want 404/404)`)
+  ok(del.status === 404, `B DELETE ${path.split('/').slice(0, 3).join('/')}/<A's id> → ${del.status} (want 404)`)
 }
 const aAfter = (await A('GET', '/api/state')).json
 ok(JSON.stringify(aAfter) === JSON.stringify(aState), "A's data is unchanged")
@@ -75,12 +84,6 @@ const bSettings = await B('PUT', '/api/settings', { netPay: 1, fxRate: 1, fxBuff
 const bLiving = await B('PUT', '/api/living', { food: 0, transit: 0, allowance: 0 })
 ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings and living → ${bSettings.status}, ${bLiving.status}`)
 
-// Everything B creates is tracked and removed in `finally`, also when a check throws.
-const created = [] // [path, id]
-const track = (path, r) => { if (r.status === 201 && r.json?.id) created.push([path, r.json.id]); return r }
-let aRestore = null
-armed = true
-try {
   // B cannot point at A's rows
   const pc = track('/api/plan-changes', await B('POST', '/api/plan-changes', { subId: aSub.id, effective: null, to: { amount: 1 }, note: MARK }))
   ok(pc.status === 400, `B plan change on A's subscription → ${pc.status} (want 400)`)
@@ -138,6 +141,18 @@ try {
     await step(`DELETE ${path}`, async () => {
       const d = await B('DELETE', `${path}/${id}`)
       ok(d.status === 204, `cleanup DELETE ${path}/<id> → ${d.status}`)
+    })
+  }
+  if (aOrig) {
+    await step("restore A's rows when a check changed them", async () => {
+      const now = (await A('GET', '/api/state')).json
+      for (const [list, row] of aOrig) {
+        const cur = now?.[list]?.find((x) => x.id === row.id)
+        if (JSON.stringify(cur) === JSON.stringify(row)) continue
+        const { id, ...body } = row
+        const r = cur ? await A('PUT', `/api/${list === 'checks' ? 'checks' : list}/${id}`, body) : { status: 'row is gone' }
+        ok(r.status === 200, `cleanup: A's ${list} row put back → ${r.status}`)
+      }
     })
   }
   if (aRestore) {

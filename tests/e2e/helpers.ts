@@ -29,9 +29,13 @@ export async function deleteInSheet(page: Page, title: string | RegExp) {
   const s = sheet(page, title)
   await s.getByRole('button', { name: '삭제' }).click()
   const ask = page.getByRole('alertdialog')
+  // Never trust "the sheet is hidden" alone: while a confirmation (a modal) is open the sheet is out of the accessibility
+  // tree, so a role query reports it hidden before anything was deleted. SpendEditor keeps its own confirmation open
+  // until the DELETE is answered; EditSheet's closes before it emits the delete. For every caller the DELETE response is
+  // what says the item is gone, so wait for it, then for the question and the sheet to go.
+  const deleted = page.waitForResponse((r) => r.request().method() === 'DELETE' && new URL(r.url()).pathname.startsWith('/api/'))
   await ask.getByRole('button', { name: '삭제', exact: true }).click()
-  // The sheet leaves the accessibility tree as soon as the confirmation (a modal) is open, so "hidden" alone
-  // does not mean it closed: wait for the question to go away, which happens after the DELETE has been answered.
+  expect((await deleted).ok()).toBe(true)
   await expect(ask).toBeHidden()
   await expect(s).toBeHidden()
 }
