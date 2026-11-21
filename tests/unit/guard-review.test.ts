@@ -47,6 +47,81 @@ test('check: quoting variants never pass as an allowed form', () => {
   assert.equal(check("gh pr me''rge 24").kind, 'merge') // the shell runs merge: goes through the review check
   assert.equal(check('gh pr "merge" 24').kind, 'merge')
 })
+const asInput = (command: string) => JSON.stringify({ tool_name: 'Bash', tool_input: { command } })
+
+test('isCandidate: text that only mentions a PR operation is data (false positives of 0.1.4)', () => {
+  for (const c of [
+    'echo "run gh pr edit 28 then gh pr merge 28 later" > prompt.md',
+    "printf '%s\\n' 'gh pr create --head x' >> notes.md",
+    "python3 - <<'EOF'\nprint(\"PR 28 ready to merge, create the notes\")\nEOF",
+    'cat > prompt.md <<EOF\nPlease gh pr merge 24 after review\nEOF',
+    'codex exec --model m - < prompt.md', // not plain data, but its text has no PR operation
+    'cat <<-EOF > f\n\tgh pr merge 24\n\tEOF',
+    "grep -n '^codex$' list.txt",
+    'grep -c "$" file.txt',
+    'git commit -m "docs: explain gh pr merge and gh pr create flow"',
+    'echo hi # gh pr merge 24',
+    'gh pr comment 24 --body "ready to merge, then gh pr create the next one"',
+    'gh pr view 24 --json state --jq ".state"',
+    'echo $(gh pr view 24 --json state) "merge"',
+  ]) assert.equal(isCandidate(asInput(c)), false, c)
+})
+test('isCandidate: command words are found behind separators, wrappers, substitutions and shells', () => {
+  for (const c of [
+    'git push x && gh pr merge 24', 'echo x; gh pr create --head x', 'echo x | gh pr merge 24', 'echo x\ngh pr merge 24',
+    '(gh pr merge 24)', 'if true; then gh pr merge 24; fi', 'for n in 1 2; do gh pr merge $n; done', 'x=1 gh pr merge 24',
+    '/usr/bin/gh pr merge 24', 'env GH_REPO=o/r gh pr merge 24', 'command gh pr merge 24', 'sudo -u x gh pr create --head b',
+    'xargs -I{} gh pr merge {}', 'timeout 5 gh pr merge 24', 'gh -R o/r pr merge 24', 'gh --repo o/r pr create --head b', 'gh pr -R o/r merge 24',
+    'sh -c "gh pr merge 24"', "bash -c 'git push x && gh pr merge 24'", 'eval "gh pr merge 24"', 'eval gh pr merge 24', 'env bash -c "gh pr merge 24"',
+    "bash <<'EOF'\ngh pr merge 24\nEOF", 'bash <<< "gh pr merge 24"', 'cat <<EOF\n$(gh pr merge 24)\nEOF',
+    'echo "$(gh pr merge 24)"', 'echo `gh pr merge 24`', 'echo "${x:-$(gh pr create --head b)}"',
+    'gh pr review 24', 'gh pr update-branch 24', 'gh api -X PUT repos/o/r/pulls/24/merge', 'gh api repos/o/r/pulls', 'gh api repos/o/r/pulls/24/merge -X PUT',
+    'gh pr ${x}ge 24', 'gh pr $(echo merge) 24', "gh pr $'\\155erge' 24", 'gh $x pr merge 24','"gh" "pr" "merge" 24',
+    'gh\npr\nmerge 24', 'g\\\nh pr merge 24',
+  ]) assert.equal(isCandidate(asInput(c)), true, c)
+})
+test('isCandidate: launchers, redirections and wrappers are scanned, not treated as data (review of 0.1.4 guards)', () => {
+  for (const c of [
+    '2>/dev/null gh pr merge 1', '2> /dev/null gh pr merge 1', '>/dev/null 2>&1 gh pr merge 1', '< /dev/null gh pr create --head b', '>&2 gh pr merge 1',
+    'find . -exec gh pr merge 1 \\;', 'find . -name x -exec gh pr create --head b {} +', 'pnpm exec gh pr merge 1', 'npx gh pr merge 1',
+    "script -qc 'gh pr merge 1' /dev/null", "git -c alias.x='!gh pr merge 1' x", 'git -c alias.x="!gh pr merge 1" x',
+    `python3 -c 'import os; os.system("gh pr merge 1")'`, "node -e 'require(\"child_process\").execSync(\"gh pr merge 1\")'",
+    "perl -e 'system(\"gh pr merge 1\")'", "ruby -e 'system(\"gh pr merge 1\")'",
+    "python3 - <<'EOF'\nimport os\nos.system('gh pr merge 1')\nEOF", "node <<'EOF'\nrequire('child_process').execSync('gh pr merge 1')\nEOF",
+    'sudo -u root gh pr merge 1', 'env -u X gh pr merge 1', 'env -i PATH=/usr/bin gh pr merge 1', 'xargs -I X gh pr merge X', 'timeout 5 gh pr merge 1', 'nice -n 5 gh pr merge 1',
+    'ssh host gh pr merge 1', 'docker exec c gh pr merge 1', 'watch -n1 gh pr merge 1', 'time gh pr merge 1', 'nohup gh pr merge 1 &',
+    'echo x | sh -c "gh pr merge 1"', 'bash -lc "gh pr merge 1"', 'zsh -c "gh pr create --head b"', 'source <(echo "gh pr merge 1")',
+    'echo "gh pr merge 1" | sh', 'printf "gh pr merge 1\\n" | bash -s', 'cat <<EOF | sh\ngh pr merge 1\nEOF', 'echo "gh pr merge 1" | python3',
+    'echo ok && echo "$(gh pr merge 1)"', 'printf x > f; gh pr merge 1',
+  ]) assert.equal(isCandidate(asInput(c)), true, c)
+})
+test('isCandidate: codex exec is an executor, not data; malformed input is refused (third review)', () => {
+  for (const c of [
+    "printf '%s\\n' 'Run gh pr merge 1' > prompt.md; codex exec - < prompt.md", "codex exec -- 'Run gh pr merge 1' < prompt.md",
+    "printf 'Run gh pr merge 1' > prompt.md; codex exec --sandbox danger-full-access - < prompt.md", 'codex exec "gh pr create --head b"',
+    'echo "unterminated', "echo 'unterminated", 'echo $(unterminated', 'echo `unterminated', 'echo ${unterminated', "echo $'unterminated",
+  ]) assert.equal(isCandidate(asInput(c)), true, c)
+  for (const c of ['echo "unterminated', "echo 'x", 'echo $(x', 'echo ${x']) assert.ok(check(c).error, c) // so the hook exits 2
+})
+test('isCandidate: data that flows into an executor, or a data command with an execution context, is scanned (second review)', () => {
+  for (const c of [
+    "echo 'gh pr merge 1' | awk '{system($0)}'", 'echo gh pr | xargs -I{} {} merge 1', "printf 'gh pr merge 1' | tee f; chmod +x f; ./f",
+    "echo 'gh pr merge 1' > f; env sh f", "echo 'gh pr merge 1' > f; sudo -u root sh f", "echo 'gh pr merge 1' | xargs -I{} sh -c {}", "echo 'gh pr merge 1' | xargs sh",
+    "printf 'gh pr merge 1' > x; rg --pre sh x f", "GIT_EDITOR='gh pr merge 1' git commit", "GIT_SEQUENCE_EDITOR='gh pr merge 1' git commit -m x", "PAGER='gh pr merge 1' git commit -m x",
+    "GH_EDITOR='gh pr merge 1' gh pr edit 1", "GH_BROWSER='gh pr merge 1' gh pr view 1 --web", "GH_PAGER='gh pr merge 1' gh pr view 1", "GIT_EDITOR='gh pr merge 1' git commit -m x",
+    'echo "gh pr merge 1" | bash', 'echo "gh pr merge 1" | sh', 'echo "gh pr merge 1" | perl -e \'system(<>)\'', "echo 'gh pr merge 1' > f; env bash f", 'echo "gh pr merge 1" > f; bash f',
+    'echo x; (echo "gh pr merge 1")', 'echo "gh pr merge 1" &', 'echo "gh pr merge 1" |& sh', 'git commit -c HEAD -m "gh pr merge 1"', 'git -c core.editor="gh pr merge 1" commit -m x',
+    'git commit --template "gh pr merge 1" -m x', 'gh pr view 1 --web "gh pr merge 1"', 'gh pr edit 1 -F f "gh pr merge 1"', 'cat -x "gh pr merge 1"', 'echo "gh pr merge 1" && rg -z --pre sh x f',
+  ]) assert.equal(isCandidate(asInput(c)), true, c)
+})
+test('isCandidate: fails closed on input the parser cannot take', () => {
+  const deep = '$('.repeat(20000) + 'gh pr merge 1' + ')'.repeat(20000)
+  assert.equal(isCandidate(asInput(deep)), true)
+  assert.equal(isCandidate(asInput('echo ' + 'x '.repeat(60000))), true) // over the size limit
+})
+test('check: a refused-by-form command stays refused when a harmless mention precedes it', () => {
+  assert.ok(check('echo "gh pr view" && gh pr merge 24').error)
+})
 test('tokenize: quotes and escapes', () => {
   assert.deepEqual(tokenize(`a 'b c' "d \\" e" f\\ g ''`), ['a', 'b c', 'd " e', 'f g', ''])
   assert.equal(tokenize('a "b'), null)
@@ -168,6 +243,17 @@ test('hook input: candidates must be readable JSON with a string command', () =>
     for (const c of ['g\\\nh pr merge 24', 'gh p\\\nr merge 24', 'gh pr mer\\\nge 24', 'gh pr crea\\\nte --head x'])
       assert.equal(t.hook(c).status, 2, JSON.stringify(c))
     for (const c of ['gh pr comment 24 --body-file f', "printf '%s\\n' x"]) assert.equal(t.hook(c).status, 0, c)
+    // fail closed: deeply nested or oversized input is refused with exit 2, not a crash
+    assert.equal(t.hook('$('.repeat(20000) + 'gh pr merge 1' + ')'.repeat(20000)).status, 2)
+    assert.equal(t.hook('echo ' + 'x '.repeat(80000)).status, 2)
+    for (const c of ['echo "unterminated', "echo 'unterminated", 'codex exec - < prompt.md; echo $(x']) assert.equal(t.hook(c).status, 2, c)
+    assert.equal(t.hook("codex exec - < prompt.md").status, 0) // no PR operation in its text
+    assert.equal(t.hook("printf 'Run gh pr merge 1' > p; codex exec - < p").status, 2)
+    for (const c of ['2>/dev/null gh pr merge 1', 'find . -exec gh pr merge 1 \\;', 'sudo -u root gh pr merge 1']) assert.equal(t.hook(c).status, 2, c)
+    // text that only mentions a PR operation is data (false positives of 0.1.4)
+    for (const c of ['echo "gh pr edit 28; gh pr merge 28" > prompt.md', "grep -n '^codex$' list.txt", "python3 - <<'EOF'\nprint('PR 28 merge; create notes')\nEOF"])
+      assert.equal(t.hook(c).status, 0, c)
+    for (const c of ['echo x && gh pr merge 24', 'sh -c "gh pr merge 24"', 'env GH_REPO=o/r gh pr create --head b']) assert.equal(t.hook(c).status, 2, c)
     // a Bash call without a string command is refused; a command-less non-Bash input is not
     assert.equal(raw('{"tool_name":"Bash","tool_input":{}}'), 2)
     assert.equal(raw('{"tool_name":"Bash","tool_input":{"command":5}}'), 2)
