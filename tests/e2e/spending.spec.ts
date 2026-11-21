@@ -1,9 +1,9 @@
-// spec 011 W-4 (V-6 shell and preservation part, V-7 phone width): the 지출 menu, its three tabs and addresses,
+// spec 011 W-4 and W-5 (V-6 shell and preservation part, the 일반 tab, V-7 phone width): the 지출 menu, its three tabs and addresses,
 // the month's reflection card, and what the subscription editor of 0.1.4 accepted, saved and read back on
 // the 구독 tab. Every spending or subscription made here carries the test mark and is removed by id in `finally`,
 // then checked to be gone.
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { MARK as RUN, choose, fillDate, go, readDate, saveSheet, sheet } from './helpers'
+import { MARK as RUN, choose, fillDate, go, optionTexts, readDate, saveSheet, sheet } from './helpers'
 
 const MARK = `${RUN}-sp`
 
@@ -15,7 +15,7 @@ async function api(request: APIRequestContext, method: 'GET' | 'POST' | 'PUT' | 
 type Sub = { id: string; name: string; amount: number; currency: string; vat: number; status: string; cycle: string; plan: string; note?: string }
 type Change = { id: string; subId: string; effective: string | null; to: Record<string, unknown>; note: string }
 type Spend = { id: string; name: string }
-type State = { subscriptions: Sub[]; planChanges: Change[]; spendings: Spend[]; preferences: Record<string, unknown> }
+type State = { subscriptions: Sub[]; planChanges: Change[]; spendings: Spend[]; preferences: Record<string, unknown>; settings: { billingDay: number } }
 const state = async (request: APIRequestContext) => (await api(request, 'GET', '/api/state')).json as State
 
 /** This month in Korea (the page's own "today"). */
@@ -162,6 +162,187 @@ test('(S-5) two subscription-account spendings with the same name count as two i
     await page.reload()
     await expect(col(page, 1)).toContainText(`${MARK}-dup 외 1건`)
   })
+})
+
+// ---------- the 일반 tab (W-5, S-6, S-7) ----------
+const kstDay = (plus = 0) => {
+  const d = new Date(`${new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).slice(0, 10)}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + plus)
+  return d.toISOString().slice(0, 10)
+}
+interface G { key: string; cat: string; bought: string; amount: number; currency?: 'KRW' | 'USD'; payBy: 'card' | 'salary' | 'subs'; date: string; krw: number; state?: 'left' | 'paid'; cancelled?: boolean; note?: string; suffix?: string }
+const gBody = (name: string, g: G) => ({
+  name, note: g.note ?? '', category: g.cat, bought: g.bought, amount: g.amount, currency: g.currency ?? 'KRW', fxRate: g.currency === 'USD' ? 1380 : null,
+  how: 'lump', payBy: g.payBy, count: 1, fee: 0, interval: null, cancelled: g.cancelled ?? false,
+  rounds: [{ no: 1, date: g.date, amount: g.krw, state: g.state ?? 'left', edited: false }],
+})
+const mdOf = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
+const monthOf = (d: string) => `${Number(d.slice(5, 7))}월`
+const GCAT = `${MARK}-cat`
+/** Five lump spendings: a card billed later (bought before today), a card bought after today, a paid salary one, a subscription-account USD one, a cancelled one. */
+const gSet = (): Record<string, G> => ({
+  bill: { key: 'bill', cat: GCAT, bought: kstDay(-3), amount: 159_000, payBy: 'card', date: kstDay(20), krw: 159_000, note: 'bill-note', suffix: `-${'가나다라마바사'.repeat(6)}` },
+  plan: { key: 'plan', cat: '생활', bought: kstDay(3), amount: 248_000, payBy: 'card', date: kstDay(30), krw: 248_000 },
+  paid: { key: 'paid', cat: '경조사', bought: kstDay(-1), amount: 100_000, payBy: 'salary', date: kstDay(-1), krw: 100_000, state: 'paid' },
+  usd: { key: 'usd', cat: '도구', bought: kstDay(0), amount: 49.5, currency: 'USD', payBy: 'subs', date: kstDay(0), krw: 70_000 },
+  off: { key: 'off', cat: '여가', bought: kstDay(-10), amount: 132_000, payBy: 'salary', date: kstDay(-10), krw: 132_000, cancelled: true },
+})
+const gRow = (page: Page, name: string) => page.locator('table.gen-t tbody tr', { hasText: name })
+const gCards = (page: Page) => page.locator('.kcard')
+const readK = async (page: Page) => ({
+  k1: digits(await gCards(page).nth(0).locator('.k2 b').innerText()),
+  k1n: digits(await gCards(page).nth(0).locator('.k1 .hint').innerText()),
+  k2: digits(await gCards(page).nth(1).locator('.k2 b').innerText()),
+  k2n: digits(await gCards(page).nth(1).locator('.k1 .hint').innerText()),
+  k3: digits(await gCards(page).nth(2).locator('.k2 b').innerText()),
+  k3n: digits(await gCards(page).nth(2).locator('.k1 .hint').innerText()),
+})
+const segCounts = async (page: Page, labels: string[]) => Promise.all(labels.map(async (l) => digits(await page.getByRole('group', { name: '상태로 거르기' }).getByRole('button', { name: new RegExp(`^${l}`) }).innerText())))
+
+test('(S-6, S-7) the 일반 tab: rows, states, 반영 text, filters, counts and the three cards come from the saved spendings', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const set = gSet()
+  const names = Object.fromEntries(Object.values(set).map((g) => [g.key, `${MARK}-g${g.key}${g.suffix ?? ''}`]))
+  const bodies = Object.values(set).map((g) => gBody(names[g.key]!, g))
+  const ym = thisYm()
+  await page.goto('/#spend/general')
+  await expect(gCards(page)).toHaveCount(3)
+  const k0 = await readK(page)
+  const labels = ['전체', '예정', '냄', '취소']
+  const c0 = await segCounts(page, labels)
+  const billingDay = (await state(request)).settings.billingDay
+  await withSpendings(request, bodies as unknown as ReturnType<typeof lump>[], async () => {
+    await page.reload()
+    await expect(gCards(page)).toHaveCount(3)
+    // sorted by payment date; the rows carry their state, their month and the reason, their amounts
+    const order = await page.locator('table.gen-t tbody tr').evaluateAll((trs, m) => trs.map((t) => t.querySelector('b.nm')?.textContent ?? '').filter((x) => x.startsWith(m)), `${MARK}-g`)
+    expect(order, 'by payment date').toEqual(['off', 'bill', 'paid', 'usd', 'plan'].map((k) => names[k]))
+    const cells = async (k: string) => (await gRow(page, names[k]!).locator('td').allInnerTexts()).map((x) => x.replace(/\s+/g, ' ').trim())
+    const bill = await cells('bill')
+    expect(bill[0]).toContain('bill-note')
+    expect(bill[1]).toBe(GCAT)
+    expect(bill[3]).toBe('KRW 159,000')
+    expect(digits(bill[4]!)).toBe(159_000)
+    expect(bill[5]).toBe('카드 · 일시불')
+    expect(bill[6]).toContain(monthOf(set.bill!.date))
+    expect(bill[6]).toContain(`${mdOf(set.bill!.date)} 청구 · 나머지에서`)
+    expect(bill[7]).toBe('청구 예정')
+    expect((await cells('plan'))[7], 'a card bought after today is only planned').toBe('예정')
+    expect((await cells('plan'))[6]).toContain(`${mdOf(set.plan!.date)} 청구 · 나머지에서`)
+    const paid = await cells('paid')
+    expect(paid[5]).toBe('급여 통장')
+    expect(paid[6]).toContain(monthOf(set.paid!.date))
+    expect(paid[6]).toContain('나머지에서')
+    expect(paid[7]).toBe('냄')
+    const usd = await cells('usd')
+    expect(usd[3]).toBe('USD 49.50')
+    expect(digits(usd[4]!)).toBe(70_000)
+    expect(usd[5]).toBe('구독 통장')
+    expect(usd[6]).toContain('구독 이체에')
+    expect(usd[7]).toBe('예정')
+    const off = await cells('off')
+    expect(off[6]).toContain('반영 안 함')
+    expect(off[6]).toMatch(/—/)
+    expect(off[7]).toBe('취소')
+    // the filters: counts move by what was added; a pick shows only its rows
+    const c1 = await segCounts(page, labels)
+    expect(c1.map((n, i) => n - c0[i]!), '전체 · 예정 · 냄 · 취소').toEqual([5, 3, 1, 1])
+    const seg = page.getByRole('group', { name: '상태로 거르기' })
+    const mine = (k: string) => gRow(page, names[k]!)
+    await seg.getByRole('button', { name: /^예정/ }).click()
+    await expect(mine('bill')).toBeVisible(); await expect(mine('plan')).toBeVisible(); await expect(mine('usd')).toBeVisible()
+    await expect(mine('paid')).toHaveCount(0); await expect(mine('off')).toHaveCount(0)
+    await seg.getByRole('button', { name: /^냄/ }).click()
+    await expect(mine('paid')).toBeVisible(); await expect(mine('bill')).toHaveCount(0)
+    await seg.getByRole('button', { name: /^취소/ }).click()
+    await expect(mine('off')).toBeVisible(); await expect(mine('paid')).toHaveCount(0)
+    await seg.getByRole('button', { name: /^전체/ }).click()
+    await choose(page.getByLabel('결제 수단', { exact: true }), { label: '구독 통장' })
+    await expect(mine('usd')).toBeVisible(); await expect(mine('bill')).toHaveCount(0); await expect(mine('paid')).toHaveCount(0)
+    await choose(page.getByLabel('결제 수단', { exact: true }), { label: '카드' })
+    await expect(mine('bill')).toBeVisible(); await expect(mine('plan')).toBeVisible(); await expect(mine('usd')).toHaveCount(0)
+    await choose(page.getByLabel('결제 수단', { exact: true }), { label: '결제 수단 전체' })
+    // the category list holds the categories that occur; one pick leaves that category's rows, and the count line follows
+    expect(await optionTexts(page.getByLabel('분류', { exact: true }))).toEqual(expect.arrayContaining(['분류 전체', GCAT, '경조사', '도구', '여가']))
+    await choose(page.getByLabel('분류', { exact: true }), { label: GCAT })
+    await expect(mine('bill')).toBeVisible(); await expect(mine('plan')).toHaveCount(0)
+    await expect(page.getByText(/^1건 · 결제일 순$/)).toBeVisible()
+    // nothing left for the pick: the empty state of the canvas
+    await seg.getByRole('button', { name: /^취소/ }).click()
+    await expect(page.getByText('이 상태의 지출이 없어요')).toBeVisible()
+    await expect(page.getByText(/^0건 · 결제일 순$/)).toBeVisible()
+    await seg.getByRole('button', { name: /^전체/ }).click()
+    await choose(page.getByLabel('분류', { exact: true }), { label: '분류 전체' })
+    // the cards: each moves by what the saved spendings put on it (the month of the round decides)
+    const k1 = await readK(page)
+    const inMonth = Object.values(set).filter((g) => !g.cancelled && g.date.slice(0, 7) === ym)
+    const later = Object.values(set).filter((g) => !g.cancelled && g.state !== 'paid' && g.date.slice(0, 7) > ym)
+    const sum = (l: G[]) => l.reduce((a, g) => a + g.krw, 0)
+    expect(k1.k1 - k0.k1, 'this month').toBe(sum(inMonth))
+    expect(k1.k1n - k0.k1n).toBe(inMonth.length)
+    expect(k1.k2 - k0.k2, 'upcoming: not paid, a later month').toBe(sum(later))
+    expect(k1.k2n - k0.k2n).toBe(later.length)
+    expect(k1.k3 - k0.k3, 'by method: all but the cancelled').toBe(sum(Object.values(set).filter((g) => !g.cancelled)))
+    expect(k1.k3n - k0.k3n).toBe(4)
+    await expect(gCards(page).nth(2)).toContainText('취소 제외')
+    await expect(gCards(page).nth(2).locator('.klg')).toContainText('카드')
+    // the edit button is inert until the editor (W-7)
+    await expect(page.getByRole('button', { name: `${names.bill} 수정 (준비 중)` })).toHaveAttribute('aria-disabled', 'true')
+    // the note under the list names the billing day and links to the 할부 tab
+    await expect(page.locator('.foot')).toContainText(`카드는 청구일(매달 ${billingDay}일)이 속한 달이에요`)
+    await page.locator('.foot').getByRole('link', { name: '할부' }).click()
+    await expect(page).toHaveURL(/#spend\/inst$/)
+  })
+  await page.goto('/#spend/general')
+  await page.reload()
+  expect(await readK(page), 'the cards are what they were').toEqual(k0)
+})
+
+test('(S-7, V-7) the 일반 tab on the phone: a card list, the three cards stacked, no sideways scroll', async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const set = gSet()
+  const names = Object.fromEntries(Object.values(set).map((g) => [g.key, `${MARK}-g${g.key}${g.suffix ?? ''}`]))
+  await withSpendings(request, Object.values(set).map((g) => gBody(names[g.key]!, g)) as unknown as ReturnType<typeof lump>[], async () => {
+    await page.goto('/#spend/general')
+    await expect(gCards(page)).toHaveCount(3)
+    await expect(page.locator('table.gen-t')).toBeHidden()
+    const li = page.locator('.mlist .mcard', { hasText: names.bill })
+    await expect(li).toBeVisible()
+    await expect(li).toContainText('청구 예정')
+    await expect(li).toContainText('카드 · 일시불')
+    await expect(li).toContainText('KRW 159,000')
+    await expect(page.locator('.mlist .mcard', { hasText: names.off })).toContainText('취소')
+    const w = await page.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }))
+    expect(w.s, `scrollWidth ${w.s} > clientWidth ${w.c}`).toBeLessThanOrEqual(w.c)
+    const boxes = await gCards(page).evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => [Math.round(r.left), Math.round(r.right)]))
+    expect(new Set(boxes.map((b) => b[0])).size, 'one column').toBe(1)
+  })
+})
+
+test('(S-10) the 일반 tab in English: filters, columns, states, the reason and the note', async ({ page, request }) => {
+  const prefs = (await state(request)).preferences
+  expect((await api(request, 'PUT', '/api/preferences', { ...prefs, language: 'en' })).status).toBe(200)
+  const set = gSet()
+  const names = Object.fromEntries(Object.values(set).map((g) => [g.key, `${MARK}-g${g.key}${g.suffix ?? ''}`]))
+  try {
+    await withSpendings(request, [set.bill!, set.off!].map((g) => gBody(names[g.key]!, g)) as unknown as ReturnType<typeof lump>[], async () => {
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await page.goto('/#spend/general')
+      const seg = page.getByRole('group', { name: 'Filter by status' })
+      await expect(seg.getByRole('button')).toHaveText([/^All\s*\d+$/, /^Planned\s*\d+$/, /^Paid\s*\d+$/, /^Cancelled\s*\d+$/])
+      await expect(page.locator('table.gen-t thead th')).toHaveText(['Item', 'Category', 'Paid on', 'Amount', 'In KRW', 'Payment method', 'Counted', 'Status', 'Edit'])
+      const bill = gRow(page, names.bill!)
+      await expect(bill).toContainText('Billing due')
+      await expect(bill).toContainText('Card · lump sum')
+      await expect(bill).toContainText(`Billed ${mdOf(set.bill!.date)} · from remainder`)
+      await expect(gRow(page, names.off!)).toContainText('Not counted')
+      await expect(page.getByText(/^\d+ items · by payment date$/)).toBeVisible()
+      await expect(page.locator('.foot')).toContainText('of each month')
+      await expect(page.locator('.foot').getByRole('link', { name: 'Installments' })).toBeVisible()
+    })
+  } finally {
+    await api(request, 'PUT', '/api/preferences', prefs)
+  }
 })
 
 test('(review 3) the 구독 tab keeps its view and filter across a tab switch and Back', async ({ page }) => {
