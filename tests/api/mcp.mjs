@@ -261,10 +261,12 @@ async function isolationMode() {
   const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }], ['list_spendings', {}]]
   for (const [me, other] of [['A', 'B'], ['B', 'A']]) {
     const out = {}
+    const outD = {}
     for (const [name, args] of calls) {
       const t = await tool(users[me].key, name, args)
       ok(!failedCall(t) && !!t.data, `${me}'s key: ${name} → ${t.status}${t.error ? ' ' + JSON.stringify(t.error) : ''}`)
       out[name] = t.text
+      outD[name] = t.data
     }
     const all = Object.values(out).join('\n')
     ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the seven answers`)
@@ -277,8 +279,8 @@ async function isolationMode() {
     ok(out.list_subscriptions.includes(`${m}-sub`) && out.list_plan_changes.includes(`${m}-change`) && out.get_allocation.includes(`${m}-target`)
       && out.get_allocation.includes(`${m}-account`) && out.get_allocation.includes(`${m}-debt`) && out.get_schedule.includes(`${m}-event`) && out.get_schedule.includes(`${m}-check`),
       `${me}'s key: ${me}'s own marked data is in the answers`)
-    const mine = JSON.parse(out.list_spendings).spendings.filter((x) => x.name.startsWith('ISO'))
-    ok(mine.length === 1 && mine[0].name === `${m}-spend` && mine[0].rounds.length === 2 && JSON.parse(out.get_overview).spendingRounds.some((r) => r.name === `${m}-spend`) && out.get_schedule.includes(`${m}-spend`),
+    const mine = outD.list_spendings.spendings.filter((x) => x.name.startsWith('ISO'))
+    ok(mine.length === 1 && mine[0].name === `${m}-spend` && mine[0].rounds.length === 2 && outD.get_overview.spendingRounds.some((r) => r.name === `${m}-spend`) && out.get_schedule.includes(`${m}-spend`),
       `${me}'s key: list_spendings, get_overview and get_schedule show ${me}'s own spending and its rounds, and no other ISO one`)
     ok(!out.list_spendings.includes(users[other].marker) && !out.get_overview.includes(users[other].marker) && !out.get_schedule.includes(users[other].marker), `${me}'s key: ${other}'s spending is in none of the three`)
     ok(out.list_changes.includes('subscription') || out.list_changes.includes(`${m}-sub`), `${me}'s key: list_changes shows ${me}'s own changes`)
