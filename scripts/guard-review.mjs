@@ -17,10 +17,13 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { PH, baseName, parseShell } from './shell-words.mjs'
 
 // Threat model: this hook stops the agent's own accidental or habitual PR create/merge without a
 // review mark, including shell-quoting variants. It is not a sandbox against deliberate obfuscation
 // (decoding a payload and piping it to a shell); AGENTS.md's red lines already forbid that.
+// Detection looks at command words (scripts/shell-words.mjs splits the command into simple
+// commands): quoted text, heredoc bodies and comments are data, not PR operations.
 //
 // Allowlist: a command that looks like a PR operation is allowed only in one canonical form,
 // standing alone; everything else is refused with the forms to use.
@@ -30,9 +33,12 @@ export const FORMS = [
   '(each flag as its own token with its value as the next token; the command stands alone: no ; && || | & newline ` $ < >, no env assignment, plain `gh`)',
 ].join('\n  ')
 
-const SAFE_PR = 'view|checks|list|diff|status|edit|close|comment|ready|reopen'
+const SAFE_PR = new Set(['view', 'checks', 'list', 'diff', 'status', 'edit', 'close', 'comment', 'ready', 'reopen'])
+
+// Legacy text reading, used only for hook input that is not JSON with a string command (so there
+// are no command words to look at): any reading of the text that spells a PR operation.
 // `gh pr` followed by anything but a literal safe subcommand (so `gh pr ${x}ge`, `gh pr $(echo merge)`)
-const UNKNOWN_PR = new RegExp(`\\bgh\\s+pr\\s+(?!(?:${SAFE_PR})(?=$|[\\s"'}\\],\\\;&|)]))`)
+const UNKNOWN_PR = new RegExp(`\\bgh\\s+pr\\s+(?!(?:${[...SAFE_PR].join('|')})(?=$|[\\s"'}\\],\\\;&|)]))`)
 const looksLikePr = (t) =>
   (/\bgh\b/.test(t) && /\bpr\b/.test(t) && /\b(create|merge)\b/.test(t)) ||
   (/\bgh\b/.test(t) && /\bapi\b/.test(t) && /\b(pulls|merge)\b/.test(t)) ||
@@ -42,17 +48,76 @@ const decodeEscapes = (t) =>
   t.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
     .replace(/\\([tnr/bf"\\])/g, (_, c) => ({ t: '\t', n: '\n', r: '\r', b: '\b', f: '\f' })[c] ?? c)
 
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'busybox', 'eval', 'source', '.'])
+const WRAPPERS = new Set(['env', 'sudo', 'doas', 'xargs', 'timeout', 'nice', 'ionice', 'nohup', 'time', 'command', 'exec', 'builtin', 'stdbuf', 'setsid', 'watch', 'flock'])
+const LEADERS = new Set(['{', '}', '!', 'if', 'then', 'do', 'else', 'elif', 'while', 'until'])
+const GH_VALUE_FLAGS = new Set(['-R', '--repo', '-H', '--hostname'])
+
+/** After `gh`: is this `gh pr <not a safe subcommand>` or `gh api` touching pulls or merge? */
+function ghCandidate(rest) {
+  const nextNonFlag = (from) => {
+    let j = from
+    while (j < rest.length) {
+      if (GH_VALUE_FLAGS.has(rest[j])) { j += 2; continue }
+      if (rest[j].startsWith('-')) { j++; continue }
+      return j
+    }
+    return -1
+  }
+  const a = nextNonFlag(0)
+  if (a < 0) return false
+  if (rest[a].includes(PH)) return true // the subcommand is only known at run time
+  if (rest[a] === 'api') return rest.slice(a + 1).some((x) => x.includes(PH) || /\b(pulls|merge)\b/.test(x))
+  if (rest[a] !== 'pr') return false
+  const b = nextNonFlag(a + 1)
+  if (b < 0) return false
+  return rest[b].includes(PH) || !SAFE_PR.has(rest[b])
+}
+
+function segmentCandidate(seg, depth) {
+  const w = seg.words
+  let k = 0
+  while (k < w.length && (/^[A-Za-z_]\w*=/.test(w[k]) || LEADERS.has(w[k]))) k++
+  if (k >= w.length) return false
+  let prog = baseName(w[k])
+  // env/sudo/xargs/... run the next program: look through them to the gh or shell they start
+  for (let guard = 0; WRAPPERS.has(prog) && guard < 4; guard++) {
+    const j = w.findIndex((x, idx) => idx > k && (baseName(x) === 'gh' || SHELLS.has(baseName(x)) || WRAPPERS.has(baseName(x))))
+    if (j < 0) {
+      return depth < 4 && w.slice(k + 1).some((x) => /\s/.test(x) && isCommandCandidate(x, depth + 1))
+    }
+    k = j
+    prog = baseName(w[k])
+  }
+  if (prog === 'gh') return ghCandidate(w.slice(k + 1))
+  if (w[k].includes(PH)) return w.slice(k + 1, k + 4).some((x) => x === 'pr' || x === 'api') // `$GH pr merge`
+  if (SHELLS.has(prog) && depth < 4) {
+    const args = w.slice(k + 1)
+    return args.some((x) => isCommandCandidate(x, depth + 1)) ||
+      (prog === 'eval' && isCommandCandidate(args.join(' '), depth + 1)) ||
+      seg.heredocs.some((b) => isCommandCandidate(b, depth + 1))
+  }
+  return false
+}
+
+/** True when a command word (not quoted data, not a heredoc body) starts a PR operation. */
+function isCommandCandidate(command, depth = 0) {
+  return [false, true].some((nlSpace) => parseShell(command, { nlSpace }).some((seg) => segmentCandidate(seg, depth)))
+}
+
 /**
- * Candidate check on the raw hook input. It is a candidate when any reading of the text looks like
- * a PR operation: backslashes as spaces or removed, JSON escapes decoded or not, quotes removed.
+ * Candidate check on the raw hook input. A candidate is a simple command whose program is `gh`
+ * (also behind env/sudo/command/xargs..., or inside `sh -c`, `eval` or a script fed to a shell)
+ * followed by `pr` and anything but a safe subcommand, or by `api` and pulls/merge. Text that only
+ * mentions those words (echo, printf, heredoc bodies, quoted arguments, comments) is data.
+ * Input that is not JSON with a string command has no command words: it is read as text, as before.
  */
 export function isCandidate(raw) {
   const text = String(raw ?? '')
+  let command
+  try { command = JSON.parse(text)?.tool_input?.command } catch { /* not JSON */ }
+  if (typeof command === 'string') return isCommandCandidate(command)
   const views = [text, decodeEscapes(text)]
-  try {
-    const c = JSON.parse(text)?.tool_input?.command
-    if (typeof c === 'string') views.push(c)
-  } catch { /* raw views only */ }
   // shell line continuations (backslash-newline) vanish before the shell splits words: join them first
   for (const v of [...views]) views.push(v.replace(/\\\r?\n/g, ''))
   // ANSI-C / locale quoting ($'..', $"..") can spell any word: always a candidate
@@ -184,6 +249,9 @@ function selfTest() {
     'gh pr merge feat', 'GH_REPO=o/r gh pr merge 24', 'gh pr merge 24; gh pr merge 25', 'gh pr merge "24']) t(`block ${c}`, okc(c), false)
   t('candidates', ['gh pr mer\\ge 24', 'gh api --raw-field=t=x repos/o/r/pulls', '"gh" "pr" "merge"'].map(isCandidate), [true, true, true])
   t('not candidates', ['git push -u origin x', 'gh pr view 24', 'gh pr checks 24', 'gh pr edit 24 --body-file f', 'gh pr close 22', 'git commit -F msg.txt'].map(isCandidate), [false, false, false, false, false, false])
+  const cand = (c) => isCandidate(JSON.stringify({ tool_name: 'Bash', tool_input: { command: c } }))
+  t('mentions are data', ['echo "gh pr merge 24" > prompt.md', "grep -n '^codex$' f", "python3 - <<'EOF'\nPR 28 merge, gh pr create\nEOF"].map(cand), [false, false, false])
+  t('command words are candidates', ['git push x && gh pr merge 24', 'sh -c "gh pr merge 24"', 'env GH_REPO=o/r gh pr create --head b', "gh pr $'\\155erge' 24"].map(cand), [true, true, true, true])
   t('equal allows', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'aaa', recorded: 'aaa' }), null)
   t('different blocks', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'bbb', recorded: 'aaa' }) !== null, true)
   t('collision-free path', recordFile('/p', 'feat/a') !== recordFile('/p', 'feat__a'), true)

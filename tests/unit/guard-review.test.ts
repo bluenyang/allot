@@ -47,6 +47,41 @@ test('check: quoting variants never pass as an allowed form', () => {
   assert.equal(check("gh pr me''rge 24").kind, 'merge') // the shell runs merge: goes through the review check
   assert.equal(check('gh pr "merge" 24').kind, 'merge')
 })
+const asInput = (command: string) => JSON.stringify({ tool_name: 'Bash', tool_input: { command } })
+
+test('isCandidate: text that only mentions a PR operation is data (false positives of 0.1.4)', () => {
+  for (const c of [
+    'echo "run gh pr edit 28 then gh pr merge 28 later" > prompt.md',
+    "printf '%s\\n' 'gh pr create --head x' >> notes.md",
+    "python3 - <<'EOF'\nprint(\"PR 28 ready to merge; gh pr create next\")\nEOF",
+    'cat > prompt.md <<EOF\nPlease gh pr merge 24 after review\nEOF\ncodex exec --model m < prompt.md',
+    'cat <<-EOF > f\n\tgh pr merge 24\n\tEOF',
+    "grep -n '^codex$' list.txt",
+    'grep -c "$" file.txt',
+    'git commit -m "docs: explain gh pr merge and gh pr create flow"',
+    'echo hi # gh pr merge 24',
+    'gh pr comment 24 --body "ready to merge, then gh pr create the next one"',
+    'gh pr view 24 --json state --jq ".state"',
+    'echo $(gh pr view 24 --json state) "merge"',
+  ]) assert.equal(isCandidate(asInput(c)), false, c)
+})
+test('isCandidate: command words are found behind separators, wrappers, substitutions and shells', () => {
+  for (const c of [
+    'git push x && gh pr merge 24', 'echo x; gh pr create --head x', 'echo x | gh pr merge 24', 'echo x\ngh pr merge 24',
+    '(gh pr merge 24)', 'if true; then gh pr merge 24; fi', 'for n in 1 2; do gh pr merge $n; done', 'x=1 gh pr merge 24',
+    '/usr/bin/gh pr merge 24', 'env GH_REPO=o/r gh pr merge 24', 'command gh pr merge 24', 'sudo -u x gh pr create --head b',
+    'xargs -I{} gh pr merge {}', 'timeout 5 gh pr merge 24', 'gh -R o/r pr merge 24', 'gh --repo o/r pr create --head b', 'gh pr -R o/r merge 24',
+    'sh -c "gh pr merge 24"', "bash -c 'git push x && gh pr merge 24'", 'eval "gh pr merge 24"', 'eval gh pr merge 24', 'env bash -c "gh pr merge 24"',
+    "bash <<'EOF'\ngh pr merge 24\nEOF", 'bash <<< "gh pr merge 24"', 'cat <<EOF\n$(gh pr merge 24)\nEOF',
+    'echo "$(gh pr merge 24)"', 'echo `gh pr merge 24`', 'echo "${x:-$(gh pr create --head b)}"',
+    'gh pr review 24', 'gh pr update-branch 24', 'gh api -X PUT repos/o/r/pulls/24/merge', 'gh api repos/o/r/pulls', 'gh api repos/o/r/pulls/24/merge -X PUT',
+    'gh pr ${x}ge 24', 'gh pr $(echo merge) 24', "gh pr $'\\155erge' 24", 'gh $x pr merge 24', '$GH pr merge 24', '"gh" "pr" "merge" 24',
+    'gh\npr\nmerge 24', 'g\\\nh pr merge 24',
+  ]) assert.equal(isCandidate(asInput(c)), true, c)
+})
+test('check: a refused-by-form command stays refused when a harmless mention precedes it', () => {
+  assert.ok(check('echo "gh pr view" && gh pr merge 24').error)
+})
 test('tokenize: quotes and escapes', () => {
   assert.deepEqual(tokenize(`a 'b c' "d \\" e" f\\ g ''`), ['a', 'b c', 'd " e', 'f g', ''])
   assert.equal(tokenize('a "b'), null)
@@ -168,6 +203,10 @@ test('hook input: candidates must be readable JSON with a string command', () =>
     for (const c of ['g\\\nh pr merge 24', 'gh p\\\nr merge 24', 'gh pr mer\\\nge 24', 'gh pr crea\\\nte --head x'])
       assert.equal(t.hook(c).status, 2, JSON.stringify(c))
     for (const c of ['gh pr comment 24 --body-file f', "printf '%s\\n' x"]) assert.equal(t.hook(c).status, 0, c)
+    // text that only mentions a PR operation is data (false positives of 0.1.4)
+    for (const c of ['echo "gh pr edit 28; gh pr merge 28" > prompt.md', "grep -n '^codex$' list.txt", "python3 - <<'EOF'\nprint('PR 28 merge; gh pr create')\nEOF"])
+      assert.equal(t.hook(c).status, 0, c)
+    for (const c of ['echo x && gh pr merge 24', 'sh -c "gh pr merge 24"', 'env GH_REPO=o/r gh pr create --head b']) assert.equal(t.hook(c).status, 2, c)
     // a Bash call without a string command is refused; a command-less non-Bash input is not
     assert.equal(raw('{"tool_name":"Bash","tool_input":{}}'), 2)
     assert.equal(raw('{"tool_name":"Bash","tool_input":{"command":5}}'), 2)
