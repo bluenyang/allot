@@ -15,7 +15,7 @@ import { manText, monthLong, monthShort, weekdayShort } from '../lib/format'
 import { t, lang } from '../i18n'
 import { offDays } from '../lib/holidays-lazy'
 import {
-  addYm, clusterDots, distributionAt, leftoverAfterTransfer, monthDates, parseDate, paysAfter31, splitRemainder, today, transferAt, unallocated, upcomingPayments, ymOf, ymRange,
+  addYm, clusterDots, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, ymOf, ymRange,
 } from '../lib/calc'
 import {
   canUndo, changed, decide, fieldName, listFor, loadProposals, money, proposals, proposalTitle, rowFields, rowLabel, rowTitle, shown, summary, tableName, undo, when, worded,
@@ -33,8 +33,10 @@ const ym = computed(() => view.ym)
 const year = computed(() => Number(view.ym.slice(0, 4)))
 const month = computed(() => Number(view.ym.slice(5, 7)))
 
-const dist = computed(() => distributionAt(ym.value, store.settings.netPay, store.phases, store.targets, store.living, store.subscriptions, store.planChanges, store.settings))
-const xfer = computed(() => transferAt(store.subscriptions, store.planChanges, store.settings, ym.value))
+// The month's real money: one-off spendings are in the transfer and the remainder (spec 011 S-5).
+const monthNow = computed(() => monthMoney(store, ym.value))
+const dist = computed(() => monthNow.value.dist)
+const xfer = computed(() => monthNow.value.transfer)
 const pays = computed(() => upcomingPayments(store.subscriptions, store.planChanges, store.settings, now, 31))
 const paysSum = computed(() => pays.value.reduce((a, p) => a + p.krw, 0))
 const later = computed(() => paysAfter31(store.subscriptions, store.planChanges, store.settings, now))
@@ -64,12 +66,12 @@ const note = (x: { shifted: 'before' | 'after' | null; unresolved?: true }) =>
   x.unresolved ? ` (${t('calendar.noBizDay')})` : x.shifted === 'before' ? ` (${t('calendar.before')})` : x.shifted === 'after' ? ` (${t('calendar.after')})` : ''
 
 // "이체 후 남는 금액" (D-9): this transfer minus the payments until the next transfer.
-const left = computed(() => leftoverAfterTransfer(store, ym.value, off.value))
+const left = computed(() => leftoverAfterTransfer(store, ym.value, off.value, store.spendings))
 const leftPct = computed(() => (left.value.transfer > 0 ? Math.min(100, (left.value.paid / left.value.transfer) * 100) : left.value.paid > 0 ? 100 : 0))
 
 // Six months ahead: subscription monthly total with scheduled plan changes.
 const trend = computed(() => ymRange(ym.value, 6).map((m) => {
-  const t = transferAt(store.subscriptions, store.planChanges, store.settings, m)
+  const t = monthMoney(store, m).transfer
   return { ym: m, v: t.monthlySum + t.yearlyMonthly }
 }))
 const trendMax = computed(() => Math.max(1, ...trend.value.map((x) => x.v)))
@@ -102,8 +104,9 @@ const tabs = computed(() => [
 ])
 
 function changeDelta(id: string, eff: string) {
-  const before = transferAt(store.subscriptions, store.planChanges.filter((c) => c.id !== id), store.settings, eff.slice(0, 7))
-  const after = transferAt(store.subscriptions, store.planChanges, store.settings, eff.slice(0, 7))
+  // Same month's spendings on both sides: only the monthly sums are compared here, and they do not carry spendings.
+  const before = monthMoney({ ...store, planChanges: store.planChanges.filter((c) => c.id !== id) }, eff.slice(0, 7)).transfer
+  const after = monthMoney(store, eff.slice(0, 7)).transfer
   return (after.monthlySum + after.yearlyMonthly) - (before.monthlySum + before.yearlyMonthly)
 }
 const signed = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + fmtMoney(Math.abs(n))

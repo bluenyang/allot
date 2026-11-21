@@ -145,3 +145,23 @@ test('schedule: months, plan events inside their range, check items, no holidays
   // the dates of a month with the shift: pay day 25 → after weekends and holidays
   assert.match(s.months[0]!.dates.pay.date, /^2026-11-\d\d$/)
 })
+
+test('overview: one-off spendings are in the transfer and the remainder, with their own fields', () => {
+  const sp = (id: string, payBy: 'salary' | 'subs', date: string, amount: number) => ({
+    id, name: id, category: 'etc', bought: date, amount, currency: 'KRW' as const, fxRate: null, how: 'lump' as const, payBy, count: 1, fee: 0, interval: null, cancelled: false,
+    rounds: [{ no: 1, date, amount, state: 'left' as const, edited: false }],
+  })
+  const withSpend: Data = { ...data, spendings: [sp('x', 'salary', '2026-12-10', 100_000), sp('y', 'subs', '2026-12-12', 50_000)] }
+  const base = overview(data, '2026-12')
+  const o = overview(withSpend, '2026-12')
+  assert.equal(base.distribution.spendingKrw, 0)
+  assert.equal(o.distribution.spendingKrw, 100_000)
+  assert.equal(o.subscriptionTransfer.spendingKrw, 50_000)
+  const x = transferAt(data.subscriptions, data.planChanges, data.settings, '2026-12', 50_000)
+  assert.equal(o.subscriptionTransfer.transferKrw, x.transfer)
+  assert.equal(o.subscriptionTransfer.neededKrw, x.needed)
+  assert.equal(o.distribution.remainderKrw, base.distribution.remainderKrw - 100_000 - (x.transfer - base.subscriptionTransfer.transferKrw))
+  assert.equal(o.distribution.rows.reduce((a, r) => a + r.amountKrw, 0), data.settings.netPay - 100_000)
+  // another month is the same as without spendings
+  assert.deepEqual(overview(withSpend, '2027-02'), overview(data, '2027-02'))
+})

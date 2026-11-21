@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  distributionAt, leftoverAfterTransfer, monthlyKrw, num, payOffEarly, planAt, planRounds, spendState, spendingIn, spendingKrw, transferAt,
+  distributionAt, leftoverAfterTransfer, monthMoney, monthlyKrw, num, payOffEarly, planAt, planRounds, spendState, spendingIn, spendingKrw, transferAt,
 } from '../../src/lib/calc'
 import type { Distribution, TransferCalc } from '../../src/lib/calc'
 import type { AllocationTarget, Living, Phase, PlanChange, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
@@ -287,4 +287,34 @@ test('V-3 (c): the remainder target gets spendRemainder less', () => {
   assert.equal(b.rows.find((r) => r.key === 'liv')!.amount, a.rows.find((r) => r.key === 'liv')!.amount)
   assert.equal(b.subscriptions, a.subscriptions)
   assert.equal(num(b.remainder), '2,210,000')
+})
+
+// ---------- W-3: monthMoney ----------
+test('monthMoney: without spendings it equals the plain calls; with spendings both halves move', () => {
+  const targets: AllocationTarget[] = [{ id: 'liv', name: 'L', kind: 'living' }, { id: 'sub', name: 'S', kind: 'subscriptions' }, { id: 'rem', name: 'R', kind: 'remainder' }]
+  const living: Living = { food: 300_000, transit: 50_000, allowance: 150_000 }
+  const subs = [sub('a', 100_000), sub('b', 55_400)]
+  const st = { settings: S, phases: [] as Phase[], targets, living, subscriptions: subs, planChanges: [] as PlanChange[] }
+  const plainT = transferAt(subs, [], S, '2026-12')
+  const plainD = distributionAt('2026-12', S.netPay, [], targets, living, subs, [], S)
+  for (const spendings of [undefined, []]) {
+    const m = monthMoney({ ...st, spendings }, '2026-12')
+    assert.deepEqual(m.transfer, plainT)
+    assert.deepEqual(m.dist, plainD)
+    assert.equal(m.spend.items.length, 0)
+  }
+  const sal = spending({ payBy: 'salary', how: 'lump', rounds: [round(1, '2026-12-10', 130_000)] })
+  const card = spending({ payBy: 'card', how: 'installment', rounds: [round(1, '2026-12-16', 70_000)] })
+  const bySubs = spending({ payBy: 'subs', how: 'lump', rounds: [round(1, '2026-12-20', 67_620)] })
+  const m = monthMoney({ ...st, spendings: [sal, card, bySubs] }, '2026-12')
+  assert.equal(m.transfer.transfer, 230_000)
+  assert.equal(m.spend.general, 130_000)
+  assert.equal(m.spend.installment, 70_000)
+  // the subscription row follows the transfer; the remainder loses the transfer's rise and the salary/card rounds
+  assert.equal(m.dist.subscriptions, 230_000)
+  assert.equal(m.dist.remainder, plainD.remainder - (230_000 - 160_000) - 200_000)
+  assert.equal(m.dist.rows.reduce((a, r) => a + r.amount, 0) + 200_000, S.netPay)
+  // another month is untouched, and `pay` and `phases` pass through
+  assert.deepEqual(monthMoney({ ...st, spendings: [sal, card, bySubs] }, '2027-01').dist, distributionAt('2027-01', S.netPay, [], targets, living, subs, [], S))
+  assert.equal(monthMoney({ ...st, spendings: [sal] }, '2026-12', { pay: 4_000_000 }).dist.remainder, plainD.remainder + 1_000_000 - 130_000)
 })

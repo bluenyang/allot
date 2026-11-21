@@ -12,7 +12,7 @@ import { useEditor } from '../lib/useEditor'
 import { store } from '../lib/store'
 import { cycleLabel, statusLabel } from '../lib/labels'
 import { fmtMoney } from '../lib/display'
-import { addYm, monthlyKrw, num, planAt, today, transferAt, ymOf } from '../lib/calc'
+import { addYm, monthlyKrw, monthMoney, num, planAt, today, ymOf } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
 import Select from './Select.vue'
 import DateInput from './DateInput.vue'
@@ -97,8 +97,9 @@ const pv = computed(() => {
   return {
     before: mo(planAt(s, others.value, month.value)),
     after: mo(planAt(s, withDraft, month.value)),
-    xa: transferAt(store.subscriptions, others.value, store.settings, month.value).transfer,
-    xb: transferAt(store.subscriptions, withDraft, store.settings, month.value).transfer,
+    // Both sides carry the month's one-off spendings, so the difference stays the plan change's own.
+    xa: monthMoney({ ...store, planChanges: others.value }, month.value).transfer.transfer,
+    xb: monthMoney({ ...store, planChanges: withDraft }, month.value).transfer.transfer,
   }
 })
 const delta = (n: number) => (Math.abs(n) < 1 ? '' : ` (${n > 0 ? '+' : '−'}${fmtMoney(Math.abs(n))})`)

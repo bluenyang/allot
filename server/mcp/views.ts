@@ -3,12 +3,12 @@
 // so the AI and the screen see the same numbers. No database here: the unit tests run without one.
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
-  addYm, changesIn, chargeKrw, distributionAt, monthDates, monthlyKrw, nextPayment, parseDate, planAt, splitRemainder,
+  addYm, changesIn, chargeKrw, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate, planAt, splitRemainder,
   transferAt, unallocated, upcomingPayments, ymd, ymOf, type MonthDate,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 import type {
-  Account, AllocationTarget, CheckItem, Debt, HolidaySet, Living, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, SubStatus, Subscription,
+  Account, AllocationTarget, CheckItem, Debt, HolidaySet, Living, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Spending, SubStatus, Subscription,
 } from '../../src/data/types'
 
 /** The part of GET /api/state the tools read. */
@@ -25,6 +25,8 @@ export interface Data {
   debts: Debt[]
   remainderSplit: RemainderSplit[]
   holidaySets: HolidaySet[]
+  /** one-off spendings with their rounds (spec 011); absent = none */
+  spendings?: Spending[]
 }
 
 const krw = (n: number) => Math.round(n)
@@ -72,8 +74,8 @@ function monthlyDelta(d: Data, c: PlanChange): number | null {
 
 export function overview(d: Data, ym: string) {
   const off = offDays(d, ym, ym)
-  const dist = distributionAt(ym, d.settings.netPay, d.phases, d.targets, d.living, d.subscriptions, d.planChanges, d.settings)
-  const xfer = transferAt(d.subscriptions, d.planChanges, d.settings, ym)
+  // One-off spendings are in the month's transfer and remainder (spec 011 S-5).
+  const { dist, transfer: xfer, spend } = monthMoney(d, ym)
   const split = dist.remainderTarget ? splitRemainder(dist.remainder, d.remainderSplit) : []
   return {
     month: ym,
@@ -86,12 +88,16 @@ export function overview(d: Data, ym: string) {
       fxBufferKrw: krw(xfer.buffer),
       neededKrw: xfer.needed,
       transferKrw: xfer.transfer,
+      /** one-off spendings paid from the subscription account that month, included in neededKrw */
+      spendingKrw: krw(spend.subs),
       items: xfer.items.map((i) => ({ subscriptionId: i.sub.id, name: i.sub.name, monthlyKrw: krw(i.monthly) })),
     },
     distribution: {
       phase: dist.phase ? { id: dist.phase.id, label: dist.phase.label, name: dist.phase.name, from: dist.phase.from, to: dist.phase.to } : null,
       rows: dist.rows.map((r) => ({ targetId: r.key, name: r.name, kind: r.kind, amountKrw: krw(r.amount) })),
       remainderKrw: krw(dist.remainder),
+      /** one-off spendings (salary, card) taken off the remainder that month, included in remainderKrw */
+      spendingKrw: krw(spend.remainder),
       /** What stays in the pay account when no target takes the remainder (0 when one does); negative = short. */
       unallocatedKrw: krw(unallocated(dist)),
       livingKrw: dist.living,

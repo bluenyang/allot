@@ -393,10 +393,11 @@ export function distributionAt(
   changes: PlanChange[],
   s: Settings,
   spendRemainder = 0,
+  spendSubs = 0,
 ): Distribution {
   const phase = phaseAt(phases, ym)
   const livingSum = living.food + living.transit + living.allowance
-  const subsTransfer = transferAt(subs, changes, s, ym).transfer
+  const subsTransfer = transferAt(subs, changes, s, ym, spendSubs).transfer
   const amountOf = (t: AllocationTarget) =>
     t.kind === 'living' ? livingSum
     : t.kind === 'subscriptions' ? subsTransfer
@@ -527,6 +528,34 @@ export function spendingIn(spendings: Spending[], ym: string): SpendingMonth {
     }
   }
   return out
+}
+
+/** What `monthMoney` reads. `spendings` may be missing (none). */
+export interface MonthState {
+  settings: Settings
+  phases: Phase[]
+  targets: AllocationTarget[]
+  living: Living
+  subscriptions: Subscription[]
+  planChanges: PlanChange[]
+  spendings?: Spending[]
+}
+
+/**
+ * The month's real money in one call (spec 011 S-5): the subscription transfer with the month's
+ * subscription-account spendings, the distribution with the same and with the salary/card spendings
+ * off the remainder, and the spendings themselves. Every screen and tool that shows the user's month
+ * goes through here so no half is forgotten. `pay` and `phases` are for what-if screens; a what-if
+ * passes the same spendings to both of its sides.
+ */
+export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; phases?: Phase[] } = {}) {
+  const spend = spendingIn(state.spendings ?? [], ym)
+  const transfer = transferAt(state.subscriptions, state.planChanges, state.settings, ym, spend.subs)
+  const dist = distributionAt(
+    ym, opt.pay ?? state.settings.netPay, opt.phases ?? state.phases, state.targets, state.living,
+    state.subscriptions, state.planChanges, state.settings, spend.remainder, spend.subs,
+  )
+  return { transfer, dist, spend }
 }
 
 export type SpendStateName = 'cancelled' | 'paid' | 'billing' | 'planned'
