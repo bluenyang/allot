@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 — 2026-11-22
+
+Same code as 0.1.5-rc.1, checked on the test server (spec 011 V-10). 0.1.5 brings one-off spending and the Spending menu; see the 0.1.5-rc.1 entry.
+
 ## 0.1.5-rc.1 — 2026-11-22
 
 One-off spending, and the Subscriptions menu becomes Spending. Intent 011 (`.agents/intent/011_one-off-spending/`). The database gains two tables and one column (migrations 0025 to 0027).
