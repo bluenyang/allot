@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  distributionAt, leftoverAfterTransfer, monthMoney, monthlyKrw, num, payOffEarly, planAt, planRounds, spendState, upcomingSpendRounds, spendingIn, spendingKrw, transferAt,
+  distributionAt, leftoverAfterTransfer, monthMoney, monthlyKrw, num, payOffEarly, planAt, planRounds, replan, spendState, upcomingSpendRounds, spendingIn, spendingKrw, transferAt,
 } from '../../src/lib/calc'
 import type { Distribution, TransferCalc } from '../../src/lib/calc'
 import type { AllocationTarget, Living, Phase, PlanChange, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
@@ -331,3 +331,48 @@ test('upcomingSpendRounds lists left rounds of spendings that are not cancelled,
   assert.deepEqual(upcomingSpendRounds([a, b], from, 0).map((x) => x.spending.id), ['b']) // both ends are inclusive
   assert.deepEqual(upcomingSpendRounds([a], new Date(2026, 11, 5), 100).map((x) => x.round.no), [1, 3]) // the paid one is not due
 })
+
+// ---------- replan: the one rule of the editor's warning and its save (A-40) ----------
+{
+  const R = (no: number, state: SpendingRound['state'] = 'left', edited = false): SpendingRound => ({ no, date: `2027-0${Math.min(no, 9)}-16`, amount: 100, state, edited })
+  const fresh = (n: number) => Array.from({ length: n }, (_, i) => R(i + 1))
+  const states = (r: SpendingRound[]) => r.map((x) => x.state[0]).join('')
+  type Case = {
+    name: string; old: SpendingRound[]; n: number; to: 'lump' | 'installment' | 'split'; lump?: 'left' | 'paid' | 'cancelled'
+    states: string; kept: number; dropped: number; edited?: number; merged?: number; def?: 'left' | 'paid'
+  }
+  const cases: Case[] = [
+    { name: 'installment, count up, paid at the first', old: [R(1, 'paid'), R(2), R(3)], n: 6, to: 'installment', states: 'plllll', kept: 1, dropped: 0 },
+    { name: 'installment, count up, paid in the middle', old: [R(1), R(2, 'paid'), R(3)], n: 5, to: 'installment', states: 'lplll', kept: 1, dropped: 0 },
+    { name: 'installment, count down, paid at the last round is removed', old: [R(1), R(2), R(3), R(4), R(5), R(6, 'paid')], n: 3, to: 'split', states: 'lll', kept: 0, dropped: 1 },
+    { name: 'split, count down, paid first and last', old: [R(1, 'paid'), R(2), R(3, 'paid')], n: 2, to: 'split', states: 'pl', kept: 1, dropped: 1 },
+    { name: 'a paid early-payoff round above the new count is removed', old: [R(1, 'merged'), R(2, 'merged'), R(3, 'merged'), R(4, 'paid')], n: 3, to: 'installment', states: 'lll', kept: 0, dropped: 1, merged: 3 },
+    { name: 'a paid early-payoff round under the new count keeps its number', old: [R(1, 'paid'), R(2, 'merged'), R(3, 'paid')], n: 4, to: 'installment', states: 'plpl', kept: 2, dropped: 0, merged: 1 },
+    { name: 'edited rounds are dropped, a paid edited one stays paid', old: [R(1, 'paid', true), R(2, 'left', true), R(3)], n: 3, to: 'installment', states: 'pll', kept: 1, dropped: 0, edited: 2 },
+    { name: 'installment to lump, none paid', old: [R(1), R(2), R(3)], n: 1, to: 'lump', states: 'l', kept: 0, dropped: 0 },
+    { name: 'installment to lump, some paid: left, the marks are dropped', old: [R(1, 'paid'), R(2), R(3)], n: 1, to: 'lump', lump: 'left', states: 'l', kept: 0, dropped: 1 },
+    { name: 'installment to lump, every counted round paid: paid by default', old: [R(1, 'paid'), R(2, 'paid'), R(3, 'merged')], n: 1, to: 'lump', states: 'p', kept: 2, dropped: 0, def: 'paid', merged: 1 },
+    { name: 'split to lump, chosen paid although not all were', old: [R(1, 'paid'), R(2)], n: 1, to: 'lump', lump: 'paid', states: 'p', kept: 1, dropped: 0, def: 'left' },
+    { name: 'lump to installment, a paid lump keeps round 1', old: [R(1, 'paid')], n: 6, to: 'installment', states: 'plllll', kept: 1, dropped: 0, def: 'paid' },
+    { name: 'lump to split, a left lump', old: [R(1)], n: 3, to: 'split', states: 'lll', kept: 0, dropped: 0 },
+    { name: 'lump to lump: the chosen state, nothing counted as lost', old: [R(1, 'paid')], n: 1, to: 'lump', lump: 'left', states: 'l', kept: 0, dropped: 0, def: 'paid' },
+    { name: 'lump to lump, paid again', old: [R(1, 'paid')], n: 1, to: 'lump', lump: 'paid', states: 'p', kept: 0, dropped: 0, def: 'paid' },
+    { name: 'a cancelled lump stays left', old: [R(1)], n: 1, to: 'lump', lump: 'cancelled', states: 'l', kept: 0, dropped: 0 },
+    { name: 'a cancelled lump that was paid is left', old: [R(1, 'paid')], n: 1, to: 'lump', lump: 'cancelled', states: 'l', kept: 0, dropped: 0 },
+  ]
+  for (const c of cases) {
+    test(`replan: ${c.name}`, () => {
+      const out = replan(c.old, fresh(c.n), c.to, c.lump)
+      assert.equal(states(out.rounds), c.states)
+      assert.equal(out.rounds.length, c.n)
+      assert.ok(out.rounds.every((r) => !r.edited && r.date === `2027-0${Math.min(r.no, 9)}-16`), 'the new rounds are the calculated ones')
+      assert.equal(out.keptPaid, c.kept)
+      assert.equal(out.droppedPaid, c.dropped)
+      assert.equal(out.droppedEdited, c.edited ?? 0)
+      assert.equal(out.droppedMerged, c.merged ?? 0)
+      if (c.def) assert.equal(out.lumpDefault, c.def)
+      // what is paid after is what was kept: the warning counts and the saved rounds cannot differ
+      assert.equal(out.rounds.filter((r) => r.state === 'paid').length, c.to === 'lump' ? (c.states === 'p' ? 1 : 0) : out.keptPaid)
+    })
+  }
+}

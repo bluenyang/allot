@@ -531,6 +531,51 @@ export function spendingIn(spendings: Spending[], ym: string): SpendingMonth {
   return out
 }
 
+export interface Replan {
+  /** the new rounds with the states that carry over */
+  rounds: SpendingRound[]
+  /** old paid rounds whose paid mark stays on the round with the same number */
+  keptPaid: number
+  /** old paid rounds that have no round with their number any more, or whose mark a lump sum does not keep */
+  droppedPaid: number
+  /** edited rounds (not merged): their date and amount go back to the calculated ones */
+  droppedEdited: number
+  /** rounds an early payoff merged: they are gone */
+  droppedMerged: number
+  /** a lump sum made of these rounds: paid only if every round that still counted was paid (spec 011 A-22, A-38, A-39) */
+  lumpDefault: 'left' | 'paid'
+}
+/**
+ * What happens to a spending's stored rounds when its rounds are worked out again (`next`, from planRounds): the one rule the editor
+ * shows in its warning and saves, so the two cannot differ.
+ * - a new round is paid when the old round with the same number was paid (a merged round is not);
+ * - an old paid round whose number is gone, a payoff round above the new count included, is dropped;
+ * - every edited and every merged round is dropped (the new rounds are the calculated ones);
+ * - a lump sum is one round: `lump` says its state (paid, or left / cancelled = left, A-38); without it, `lumpDefault`.
+ *   A lump sum worked out again as a lump sum (one old round) keeps whatever `lump` says and counts nothing as dropped.
+ */
+export function replan(old: SpendingRound[], next: SpendingRound[], toHow: SpendHow, lump?: 'left' | 'paid' | 'cancelled'): Replan {
+  const counted = old.filter((r) => r.state !== 'merged')
+  const lumpDefault = counted.length > 0 && counted.every((r) => r.state === 'paid') ? 'paid' : 'left'
+  const oldPaid = old.filter((r) => r.state === 'paid')
+  const droppedEdited = old.filter((r) => r.edited && r.state !== 'merged').length
+  const droppedMerged = old.length - counted.length
+  if (toHow === 'lump') {
+    const state = (lump ?? lumpDefault) === 'paid' ? 'paid' : 'left'
+    const again = old.length === 1 // a lump sum that is a lump sum again: the user's state is a choice, not a loss
+    return {
+      rounds: next.map((r) => ({ ...r, state, edited: false })),
+      keptPaid: again || state !== 'paid' ? 0 : oldPaid.length,
+      droppedPaid: again || state === 'paid' ? 0 : oldPaid.length,
+      droppedEdited, droppedMerged, lumpDefault,
+    }
+  }
+  const keep = new Set(oldPaid.map((r) => r.no))
+  const rounds = next.map((r) => ({ ...r, state: keep.has(r.no) ? ('paid' as const) : ('left' as const), edited: false }))
+  const keptPaid = rounds.filter((r) => r.state === 'paid').length
+  return { rounds, keptPaid, droppedPaid: oldPaid.length - keptPaid, droppedEdited, droppedMerged, lumpDefault }
+}
+
 export interface SpendDue {
   date: Date
   spending: Spending

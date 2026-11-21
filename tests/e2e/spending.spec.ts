@@ -1435,7 +1435,8 @@ test('(S-4, A-39, review 15, W-7) an installment with a paid round made a lump s
     await next(s)
     await grp(s, '내는 방식').getByRole('button', { name: '일시불', exact: true }).click()
     await next(s)
-    await expect(s.getByTestId('sp-replan')).toContainText('냄으로 표시한 회차 1개가 있어요')
+    await expect(s.getByTestId('sp-replan')).toContainText('냄으로 표시한 회차 1개는 새 회차에 같은 번호가 없어서 표시가 없어져요')
+    await expect(s.getByTestId('sp-replan')).toContainText('일시불은 남은 회차를 모두 냈을 때만 냄이에요')
     await expect(grp(s, '상태').getByRole('button', { name: '남음', exact: true })).toHaveAttribute('aria-pressed', 'true') // not every round was paid
     await s.getByRole('button', { name: '저장', exact: true }).click()
     const ask = page.getByRole('alertdialog')
@@ -1484,6 +1485,39 @@ test('(S-4, A-39, review 15, W-7) an installment with a paid round made a lump s
     const back = await byName(request, 'tl')
     expect(back).toMatchObject({ how: 'installment', count: 6 })
     expect(back.rounds.map((r) => r.state)).toEqual(['paid', 'left', 'left', 'left', 'left', 'left'])
+  } finally {
+    await cleanEd(request)
+  }
+})
+
+test('(S-4, A-40, review 16, W-7) six rounds with the last paid made a 3-payment split: the warning says the paid round is removed, and it is', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const name = `${EDM}-63`
+  const ym = ymAdd(thisYm(), 1)
+  const orig: R[] = [0, 1, 2, 3, 4, 5].map((k) => ({ no: k + 1, date: `${ymAdd(ym, k)}-16`, amount: 50_000, state: k === 5 ? 'paid' : 'left', edited: false }))
+  try {
+    expect((await api(request, 'POST', '/api/spendings', instBody(name, { how: 'installment', payBy: 'card', amount: 300_000, count: 6, rounds: orig }))).status).toBe(201)
+    await page.goto('/#spend/inst')
+    await listItem(page, name).click()
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    const s = sheet(page, `할부 수정 · ${name}`)
+    await next(s)
+    await grp(s, '내는 방식').getByRole('button', { name: '나눠 내기', exact: true }).click()
+    await grp(s, '나눠 낼 횟수').getByRole('button', { name: '3회', exact: true }).click()
+    await choose(s.getByLabel('결제 수단', { exact: true }), { label: '급여 통장' })
+    await next(s)
+    const w = s.getByTestId('sp-replan')
+    await expect(w).toContainText('냄으로 표시한 회차 1개는 새 회차에 같은 번호가 없어서 표시가 없어져요')
+    await expect(w).not.toContainText('같은 회차 번호에 냄으로 남아요')
+    await expect(s.locator('.rl li')).toHaveCount(3)
+    await s.getByRole('button', { name: '저장', exact: true }).click()
+    const ask = page.getByRole('alertdialog')
+    await expect(ask).toContainText('새 회차에 같은 번호가 없어서')
+    await ask.getByRole('button', { name: '다시 계산하고 저장', exact: true }).click()
+    await expect(s).toBeHidden()
+    const got = await byName(request, '63')
+    expect(got).toMatchObject({ how: 'split', count: 3 })
+    expect(got.rounds.map((r) => [r.no, r.state])).toEqual([[1, 'left'], [2, 'left'], [3, 'left']])
   } finally {
     await cleanEd(request)
   }

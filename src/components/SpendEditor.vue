@@ -15,7 +15,7 @@ import MoneyInput from './MoneyInput.vue'
 import Select from './Select.vue'
 import Seg from './Seg.vue'
 import Tip from './Tip.vue'
-import { addYm, monthDay, num, planRounds, spendingKrw, today, ymd } from '../lib/calc'
+import { addYm, monthDay, num, planRounds, replan as doReplan, spendingKrw, today, ymd } from '../lib/calc'
 import { fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { store } from '../lib/store'
@@ -102,8 +102,7 @@ watch(how, (h) => {
   if (h !== 'installment') { feeOn.value = false; fee.value = '' }
   // an installment or split made a lump sum: it is paid when every round that still counted was paid, else left (A-39); the control can change it
   if (h === 'lump' && I && I.how !== 'lump') {
-    const live = I.rounds.filter((r) => r.state !== 'merged')
-    lumpState.value = live.length && live.every((r) => r.state === 'paid') ? 'paid' : 'left'
+    lumpState.value = doReplan(I.rounds, [], 'lump').lumpDefault
   }
 })
 
@@ -170,25 +169,27 @@ watch([customRound, countN, countOk, first], () => {
   const base = planOf({ interval: 'monthly' }).map((r) => r.date)
   customDates.value = Array.from({ length: n }, (_, i) => customDates.value[i] || base[i] || '')
 }, { immediate: true })
-/** What a new calculation would throw away of the stored rounds (A-22). */
-const losing = computed(() => {
+/** What the new calculation does with the stored rounds: one rule (`replan`, calc.ts) for the warning and for what is saved. */
+const outcome = computed(() => {
   if (!I || !replan.value) return null
-  const edited = I.rounds.filter((r) => r.edited && r.state !== 'merged').length
-  const merged = I.rounds.filter((r) => r.state === 'merged').length
-  const paid = I.how === 'lump' && how.value === 'lump' ? 0 : I.rounds.filter((r) => r.state === 'paid').length
-  return edited || merged || paid ? { edited, merged, paid } : null
+  return doReplan(I.rounds, planned.value, how.value, lumpState.value)
 })
+const losing = computed(() => {
+  const o = outcome.value
+  return o && (o.keptPaid || o.droppedPaid || o.droppedEdited || o.droppedMerged) ? o : null
+})
+/** a lump sum made of an installment or split that had paid rounds: say how its state follows from them */
+const lumpNote = computed(() => !!I && I.rounds.length > 1 && how.value === 'lump' && I.rounds.some((r) => r.state === 'paid'))
 
 // ---------- step 3: what will be saved ----------
 interface Row { no: number; date: string; amount: number; tag: '' | 'edited' | 'merged' | 'paid' }
 const rows = computed<Row[]>(() => {
   if (!replan.value && I) {
-    return [...I.rounds].sort((a, b) => a.no - b.no).map((r) => ({ no: r.no, date: r.date, amount: r.amount, tag: r.state === 'merged' ? 'merged' : r.state === 'paid' && !isLumpEdit() ? 'paid' : r.edited ? 'edited' : '' }))
+    return [...I.rounds].sort((a, b) => a.no - b.no).map((r) => ({ no: r.no, date: r.date, amount: r.amount, tag: r.state === 'merged' ? 'merged' : r.state === 'paid' && how.value !== 'lump' ? 'paid' : r.edited ? 'edited' : '' }))
   }
-  return planned.value.map((r) => ({ no: r.no, date: r.date, amount: r.amount, tag: keepPaid(r.no) ? 'paid' : '' }))
+  const out = I ? outcome.value!.rounds : planned.value.map((r) => ({ ...r, state: how.value === 'lump' && lumpState.value === 'paid' ? ('paid' as const) : r.state }))
+  return out.map((r) => ({ no: r.no, date: r.date, amount: r.amount, tag: r.state === 'paid' ? 'paid' : '' }))
 })
-const isLumpEdit = () => how.value === 'lump'
-const keepPaid = (no: number) => !!I && how.value !== 'lump' && I.rounds.some((r) => r.no === no && r.state === 'paid')
 const live = computed(() => rows.value.filter((r) => r.tag !== 'merged'))
 const total = computed(() => live.value.reduce((a, r) => a + r.amount, 0))
 const md = (d: string) => (DATE.test(d) ? `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}` : '—')
@@ -267,7 +268,7 @@ function validate(x: Spending): string | null {
     x.rounds = I.rounds.map((r) => ({ ...r }))
     if (how.value === 'lump') { const r = x.rounds.find((q) => q.state !== 'merged'); if (r) r.state = lumpState.value === 'paid' ? 'paid' : 'left' }
   } else {
-    x.rounds = planned.value.map((r) => ({ ...r, state: how.value === 'lump' ? (lumpState.value === 'paid' ? 'paid' : 'left') : keepPaid(r.no) ? 'paid' : 'left' }))
+    x.rounds = I ? outcome.value!.rounds : doReplan([], planned.value, how.value, lumpState.value).rounds
   }
   return null
 }
@@ -394,9 +395,11 @@ async function confirmDelete() { await remove() }
         <div v-if="losing" class="callout warn" data-testid="sp-replan">
           <span class="lbl">{{ t('spending.ed.replanLabel') }}</span>
           <p>{{ t('spending.ed.replanText') }}
-            <template v-if="losing.edited"> {{ t('spending.ed.replanEdited', { n: losing.edited }) }}</template>
-            <template v-if="losing.merged"> {{ t('spending.ed.replanMerged') }}</template>
-            <template v-if="losing.paid"> {{ t(how === 'lump' ? 'spending.ed.replanPaidLump' : 'spending.ed.replanPaid', { n: losing.paid }) }}</template>
+            <template v-if="losing.droppedEdited"> {{ t('spending.ed.replanEdited', { n: losing.droppedEdited }) }}</template>
+            <template v-if="losing.droppedMerged"> {{ t('spending.ed.replanMerged') }}</template>
+            <template v-if="losing.keptPaid"> {{ t('spending.ed.replanKept', { n: losing.keptPaid }) }}</template>
+            <template v-if="losing.droppedPaid"> {{ t('spending.ed.replanDropped', { n: losing.droppedPaid }) }}</template>
+            <template v-if="lumpNote"> {{ t('spending.ed.replanLump') }}</template>
           </p>
         </div>
         <div v-if="memoOpen" class="field">
@@ -428,9 +431,11 @@ async function confirmDelete() { await remove() }
 
   <ConfirmDialog v-if="askRe && edit" :title="t('spending.ed.replanTitle')" :confirm-label="t('spending.ed.replanConfirm')" :busy="busy" @confirm="confirmReplan" @cancel="askRe = false">
     <p>{{ t('spending.ed.replanText') }}</p>
-    <p v-if="losing?.edited">{{ t('spending.ed.replanEdited', { n: losing.edited }) }}</p>
-    <p v-if="losing?.merged">{{ t('spending.ed.replanMerged') }}</p>
-    <p v-if="losing?.paid">{{ t(how === 'lump' ? 'spending.ed.replanPaidLump' : 'spending.ed.replanPaid', { n: losing.paid }) }}</p>
+    <p v-if="losing?.droppedEdited">{{ t('spending.ed.replanEdited', { n: losing.droppedEdited }) }}</p>
+    <p v-if="losing?.droppedMerged">{{ t('spending.ed.replanMerged') }}</p>
+    <p v-if="losing?.keptPaid">{{ t('spending.ed.replanKept', { n: losing.keptPaid }) }}</p>
+    <p v-if="losing?.droppedPaid">{{ t('spending.ed.replanDropped', { n: losing.droppedPaid }) }}</p>
+    <p v-if="lumpNote">{{ t('spending.ed.replanLump') }}</p>
   </ConfirmDialog>
 </template>
 
