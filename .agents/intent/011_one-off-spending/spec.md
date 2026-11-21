@@ -111,7 +111,7 @@ summary_for_user: |
 
 ## 작업 단위
 - [x] W-1 계산: 타입, `spendingKrw`·`planRounds`·`payOffEarly`·`spendingIn`·`spendState`, `transferAt`·`distributionAt`·`leftoverAfterTransfer`의 반영 인자, 단위 테스트(V-2·V-3). 화면 변화 없음. (1282e2b)
-- [ ] W-2 저장과 API: 스키마·마이그레이션(RLS), zod, ops 리소스, 변경 묶음 자식, readState·store, crud 검사(V-4·V-5).
+- [x] W-2 저장과 API: 스키마·마이그레이션(RLS), zod, ops 리소스, 변경 묶음 자식, readState·store, crud 검사(V-4·V-5). (6718a94)
 - [ ] W-3 반영 연결: `monthMoney`와 모든 호출 자리, 월급 분배 근거 줄, 구독 이체액 계산 줄(V-3 화면 숫자).
 - [ ] W-4 지출 메뉴: 메뉴 이름·아이콘, `#spend` 주소와 `#subs` 연결, 탭 3개, 구독 탭 이동(내용 그대로), 반영 카드, 캔버스 대조표 `delta.md`(V-6의 구독 보존 E2E).
 - [ ] W-5 일반 탭: 목록·거르기·KPI·휴대폰 카드·빈 상태.
@@ -161,7 +161,8 @@ summary_for_user: |
 - V-11 캔버스 대조: `delta.md`의 항목마다 상태(같음 / 다름-사유 / 범위 밖)가 있다. 사유 없는 "다름"은 실패다. 사용자가 :15173에서 확인한다.
 
 ## 조정 기록
-—
+- A-1 (2026-11-21, W-2) 회차 수 규칙을 "회차 수 − count가 0 이상, merged 회차 수 이하"로 구현하고 최대를 120개로 함(spec 문구는 `count` + merged 수 + 중도 완납 1, 1~60개). 중도 완납은 남은 회차를 merged로 두고 새 회차를 하나 더하므로 count 60의 지출은 61개가 되고 완납을 거듭하면 더 늘어, 1~60개로는 정상 저장이 거부됨 · 6718a94
+- A-2 (2026-11-21, W-2) 방식별 회차 수: 일시불은 count 1·회차 1개(합침 없음), 할부·나눠 내기는 count 2~60(S-4의 "직접 입력 2~60"). `spending_round`의 기본 키는 (spending_id, no)이고 변경 기록의 키는 `{spendingId, no}`(phase_amount와 같은 방식) · 6718a94
 
 ## 우려
 - 회차가 반영되는 달은 날짜의 달력 달이다. 급여일(예: 25일) 전후로 나누지 않는다. 캔버스 표기 "12/16 청구 · 12월 나머지"를 따랐다. 급여일 기준으로 나누려면 spec을 바꿔야 한다.
