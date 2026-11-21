@@ -132,12 +132,16 @@ test('(S-5) the reflection card: a salary-account one-off comes off the remainde
   })
 })
 
-test('(S-5) a negative remainder says 모자라요, keeps other amounts, and links to the pay split', async ({ page, request }) => {
+test('(S-5) a negative remainder says 모자라요, keeps other amounts, and links to the pay split; without the spending the month is as before', async ({ page, request }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#spend/general')
+  await expect(card(page)).toBeVisible()
+  const rem0 = await big(page, 2) // the month without our spending (it may already be short on a used test account)
   await withSpendings(request, [lump(`${MARK}-over`, 900_000_000, 'salary')], async () => {
-    await page.goto('/#spend/general')
+    await page.reload()
     const rem = col(page, 2)
     await expect(rem.locator('b.num')).toContainText('−₩')
+    expect(await big(page, 2)).toBe(rem0 - 900_000_000)
     await expect(rem.getByText('모자라요')).toBeVisible()
     await expect(rem).toContainText('다른 금액은 자동으로 바꾸지 않아요')
     const link = rem.getByRole('link', { name: '월급 분배에서 조정 →' })
@@ -145,10 +149,10 @@ test('(S-5) a negative remainder says 모자라요, keeps other amounts, and lin
     await link.click()
     await expect(page).toHaveURL(/#pay$/)
   })
-  // gone again (after a reload: the page's data is the server's): no shortage on the card
+  // gone again (after a reload: the page's data is the server's): the remainder is what it was
   await page.goto('/#spend/general')
   await page.reload()
-  await expect(col(page, 2).getByText('모자라요')).toHaveCount(0)
+  expect(await big(page, 2)).toBe(rem0)
 })
 
 test('(V-7) no sideways scroll at 390px on the three tabs, with a spending and its long name', async ({ page, request }) => {
