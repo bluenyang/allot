@@ -118,7 +118,7 @@ summary_for_user: |
 - [x] W-6 할부 탭: 목록·상세·회차 표·KPI, 회차 수정 창, 중도 완납, 취소. (9f3a03d)
 - [x] W-7 3단계 창: 추가·수정·삭제, 방식 4개(버퍼 사용 Soon), USD 환산, 수수료, 간격, 회차 확인, 다시 계산 경고. 기록 추가 연결, 홈·일정 회차. (c09e0eb, c3f3741)
 - [x] W-8 MCP: `list_spendings`, 읽기 도구 반영, AI 쓰기 대상(V-9). (d8346c3)
-- [ ] W-9 문서: CHANGELOG, README, `DESIGN.md`, `docs/ROADMAP.md`.
+- [x] W-9 문서: CHANGELOG, README, `DESIGN.md`, `docs/ROADMAP.md` (상태 줄은 그대로: 0.1.5는 아직 출시 전). (7580093)
 - 화면 단위(W-4~W-7)마다 ko·en 문구와 그 단위의 E2E를 같이 넣는다.
 
 ## 검증 기준
