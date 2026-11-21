@@ -654,10 +654,11 @@ async function writeMode() {
   ok(await spCount() === 1 && await roundCount() === 2 && !!wSpendSet?.id, "W's spending has two rounds and a change set")
   const text9 = async (k, name, args) => (await tool(k, name, args)).text
   for (const [who, key, own, foreign] of [['W', kChat.key, 'iso-w-spend', 'iso-x-spend'], ['X', kX.key, 'iso-x-spend', 'iso-w-spend']]) {
-    const [l, o, sc] = [await text9(key, 'list_spendings', {}), await text9(key, 'get_overview', { month: ymNow }), await text9(key, 'get_schedule', { from: ymNow, months: 2 })]
+    const lT = await tool(key, 'list_spendings', {})
+    const [l, o, sc] = [lT.text, await text9(key, 'get_overview', { month: ymNow }), await text9(key, 'get_schedule', { from: ymNow, months: 2 })]
     ok(l.includes(own) && o.includes(own) && sc.includes(own), `${who}'s key sees its own spending in list_spendings, get_overview and get_schedule`)
     ok(!l.includes(foreign) && !o.includes(foreign) && !sc.includes(foreign), `${who}'s key sees none of ${foreign === 'iso-x-spend' ? "X's" : "W's"} spending or rounds`)
-    ok(JSON.parse(l).spendings.length === 1 && JSON.parse(l).spendings[0].rounds.length === 2, `${who}'s key: exactly one spending with its two rounds`)
+    ok(lT.data?.spendings?.length === 1 && lT.data.spendings[0].rounds.length === 2, `${who}'s key: exactly one spending with its two rounds`)
   }
   const xProp0 = (await X('GET', '/api/proposals')).json.length
   const wProp0 = await proposalCount(wId)
