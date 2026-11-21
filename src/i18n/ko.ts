@@ -537,6 +537,7 @@ export const ko = {
       replanEdited: '고친 회차 {n}개는 계산한 값으로 돌아가요.',
       replanMerged: '중도 완납으로 합친 회차는 없어져요.',
       replanPaid: '냄으로 표시한 회차 {n}개는 같은 회차 번호에 냄으로 남아요.',
+      replanPaidLump: '냄으로 표시한 회차 {n}개가 있어요. 일시불은 남은 회차를 모두 냈을 때만 냄이 되고, 아니면 남음이에요. 3단계 상태 칸에서 바꿀 수 있어요.',
       deleteSpend: '지출 삭제',
       deleteSpendText: '목록에서 사라지고 회차도 함께 지워져요.',
       deleteTitle: '{name}을(를) 삭제할까요?',

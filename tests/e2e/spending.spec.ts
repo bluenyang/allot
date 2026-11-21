@@ -1416,3 +1416,75 @@ test('(S-5, S-6, A-38, review 14, W-7) cancelling a paid lump means refunded: th
     await cleanEd(request)
   }
 })
+
+test('(S-4, A-39, review 15, W-7) an installment with a paid round made a lump sum asks first; cancelling the question saves nothing; confirming follows the rule', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const name = `${EDM}-tl`
+  const ym = ymAdd(thisYm(), 1)
+  const orig: R[] = [
+    { no: 1, date: `${ym}-16`, amount: 100_000, state: 'paid', edited: false },
+    { no: 2, date: `${ymAdd(ym, 1)}-16`, amount: 100_000, state: 'left', edited: false },
+    { no: 3, date: `${ymAdd(ym, 2)}-16`, amount: 100_000, state: 'left', edited: false },
+  ]
+  try {
+    expect((await api(request, 'POST', '/api/spendings', instBody(name, { how: 'installment', payBy: 'card', amount: 300_000, count: 3, rounds: orig }))).status).toBe(201)
+    await page.goto('/#spend/inst')
+    await listItem(page, name).click()
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    const s = sheet(page, `할부 수정 · ${name}`)
+    await next(s)
+    await grp(s, '내는 방식').getByRole('button', { name: '일시불', exact: true }).click()
+    await next(s)
+    await expect(s.getByTestId('sp-replan')).toContainText('냄으로 표시한 회차 1개가 있어요')
+    await expect(grp(s, '상태').getByRole('button', { name: '남음', exact: true })).toHaveAttribute('aria-pressed', 'true') // not every round was paid
+    await s.getByRole('button', { name: '저장', exact: true }).click()
+    const ask = page.getByRole('alertdialog')
+    await expect(ask).toContainText('회차를 다시 계산할까요?')
+    await ask.getByRole('button', { name: '취소', exact: true }).click()
+    await expect(s).toBeVisible()
+    const kept = await byName(request, 'tl')
+    expect(kept.how).toBe('installment')
+    expect(kept.rounds).toEqual(orig)
+    await s.getByRole('button', { name: '저장', exact: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '다시 계산하고 저장', exact: true }).click()
+    await expect(s).toBeHidden()
+    const lumped = await byName(request, 'tl')
+    expect(lumped).toMatchObject({ how: 'lump', count: 1, cancelled: false })
+    expect(lumped.rounds).toHaveLength(1)
+    expect(lumped.rounds[0]).toMatchObject({ amount: 300_000, state: 'left', edited: false })
+
+    // every round paid → the lump sum is paid
+    const all = orig.map((r) => ({ ...r, state: 'paid' as const }))
+    expect((await api(request, 'PUT', `/api/spendings/${lumped.id}`, { ...instBody(name, { how: 'installment', payBy: 'card', amount: 300_000, count: 3, rounds: all }) })).status).toBe(200)
+    await page.reload()
+    await seg(page).getByRole('button', { name: /^전체/ }).click() // all paid is 완료, not 진행 중
+    await listItem(page, name).click()
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    const e = sheet(page, `할부 수정 · ${name}`)
+    await next(e)
+    await grp(e, '내는 방식').getByRole('button', { name: '일시불', exact: true }).click()
+    await next(e)
+    await expect(grp(e, '상태').getByRole('button', { name: '냄', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await e.getByRole('button', { name: '저장', exact: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '다시 계산하고 저장', exact: true }).click()
+    await expect(e).toBeHidden()
+    expect((await byName(request, 'tl')).rounds[0]).toMatchObject({ state: 'paid', amount: 300_000 })
+
+    // the other way: a paid lump sum made a 6-month installment keeps its round 1 paid, after asking
+    await page.goto('/#spend/general')
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    const g = sheet(page, `지출 수정 · ${name}`)
+    await next(g)
+    await grp(g, '내는 방식').getByRole('button', { name: '카드 할부', exact: true }).click()
+    await next(g)
+    await expect(g.getByTestId('sp-replan')).toContainText('냄으로 표시한 회차 1개는 같은 회차 번호에 냄으로 남아요')
+    await g.getByRole('button', { name: '저장', exact: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '다시 계산하고 저장', exact: true }).click()
+    await expect(g).toBeHidden()
+    const back = await byName(request, 'tl')
+    expect(back).toMatchObject({ how: 'installment', count: 6 })
+    expect(back.rounds.map((r) => r.state)).toEqual(['paid', 'left', 'left', 'left', 'left', 'left'])
+  } finally {
+    await cleanEd(request)
+  }
+})

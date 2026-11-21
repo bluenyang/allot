@@ -100,6 +100,11 @@ watch(how, (h) => {
   countCustom.value = ''
   if (h === 'installment') payBy.value = 'card'
   if (h !== 'installment') { feeOn.value = false; fee.value = '' }
+  // an installment or split made a lump sum: it is paid when every round that still counted was paid, else left (A-39); the control can change it
+  if (h === 'lump' && I && I.how !== 'lump') {
+    const live = I.rounds.filter((r) => r.state !== 'merged')
+    lumpState.value = live.length && live.every((r) => r.state === 'paid') ? 'paid' : 'left'
+  }
 })
 
 // ---------- the principal, the dates, the plan ----------
@@ -170,7 +175,7 @@ const losing = computed(() => {
   if (!I || !replan.value) return null
   const edited = I.rounds.filter((r) => r.edited && r.state !== 'merged').length
   const merged = I.rounds.filter((r) => r.state === 'merged').length
-  const paid = I.how === 'lump' || how.value === 'lump' ? 0 : I.rounds.filter((r) => r.state === 'paid').length
+  const paid = I.how === 'lump' && how.value === 'lump' ? 0 : I.rounds.filter((r) => r.state === 'paid').length
   return edited || merged || paid ? { edited, merged, paid } : null
 })
 
@@ -183,7 +188,7 @@ const rows = computed<Row[]>(() => {
   return planned.value.map((r) => ({ no: r.no, date: r.date, amount: r.amount, tag: keepPaid(r.no) ? 'paid' : '' }))
 })
 const isLumpEdit = () => how.value === 'lump'
-const keepPaid = (no: number) => !!I && I.how !== 'lump' && how.value !== 'lump' && I.rounds.some((r) => r.no === no && r.state === 'paid')
+const keepPaid = (no: number) => !!I && how.value !== 'lump' && I.rounds.some((r) => r.no === no && r.state === 'paid')
 const live = computed(() => rows.value.filter((r) => r.tag !== 'merged'))
 const total = computed(() => live.value.reduce((a, r) => a + r.amount, 0))
 const md = (d: string) => (DATE.test(d) ? `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}` : '—')
@@ -391,7 +396,7 @@ async function confirmDelete() { await remove() }
           <p>{{ t('spending.ed.replanText') }}
             <template v-if="losing.edited"> {{ t('spending.ed.replanEdited', { n: losing.edited }) }}</template>
             <template v-if="losing.merged"> {{ t('spending.ed.replanMerged') }}</template>
-            <template v-if="losing.paid"> {{ t('spending.ed.replanPaid', { n: losing.paid }) }}</template>
+            <template v-if="losing.paid"> {{ t(how === 'lump' ? 'spending.ed.replanPaidLump' : 'spending.ed.replanPaid', { n: losing.paid }) }}</template>
           </p>
         </div>
         <div v-if="memoOpen" class="field">
@@ -425,7 +430,7 @@ async function confirmDelete() { await remove() }
     <p>{{ t('spending.ed.replanText') }}</p>
     <p v-if="losing?.edited">{{ t('spending.ed.replanEdited', { n: losing.edited }) }}</p>
     <p v-if="losing?.merged">{{ t('spending.ed.replanMerged') }}</p>
-    <p v-if="losing?.paid">{{ t('spending.ed.replanPaid', { n: losing.paid }) }}</p>
+    <p v-if="losing?.paid">{{ t(how === 'lump' ? 'spending.ed.replanPaidLump' : 'spending.ed.replanPaid', { n: losing.paid }) }}</p>
   </ConfirmDialog>
 </template>
 

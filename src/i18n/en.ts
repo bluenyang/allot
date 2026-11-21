@@ -537,6 +537,7 @@ export const en = {
       replanEdited: '{n} edited rounds go back to the calculated values.',
       replanMerged: 'Rounds merged by an early payoff are removed.',
       replanPaid: '{n} rounds marked paid stay paid under the same round number.',
+      replanPaidLump: '{n} rounds are marked paid. A lump sum is paid only if every round that still counted was paid, otherwise it is left. You can change it with the status control on step 3.',
       deleteSpend: 'Delete spending',
       deleteSpendText: 'It disappears from the list, with its rounds.',
       deleteTitle: 'Delete {name}?',
