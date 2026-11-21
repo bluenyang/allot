@@ -34,34 +34,41 @@ function isPlainDocker(words) {
 }
 
 /**
- * The text the compose rules read: the command as simple commands, each as its words, with the `-f X`
- * of plain docker commands removed. Everything else stays as text, so a compose command is found
- * wherever it is written (behind redirections, sudo, sh -c, find -exec, ...). On any parser error
- * or limit the raw command is read, which can only refuse more.
+ * The texts the compose rules read. By default the whole command, as written (so a compose command
+ * is found wherever it is: behind sudo, redirections, sh -c, find -exec, ...).
+ * The one exemption: a line whose every simple command is a plain `docker` / `docker-compose`
+ * command (no env assignment, wrapper or here-document, joined only by ; && || | and newlines) is
+ * read command by command, with the `-f X` of docker commands that are not compose removed.
+ * Throws on input the parser cannot take.
  */
 function composeTexts(cmd) {
-  try {
-    if (cmd.length > MAX_INPUT) return [cmd]
-    return parseShell(cmd).map((seg) => {
-      let w = seg.words
-      if (isPlainDocker(w)) w = w.filter((x, i) => !(x === '-f' || w[i - 1] === '-f'))
-      const d = w.indexOf('docker')
-      if (d >= 0 && w.slice(0, d).every((x) => ASSIGN.test(x))) { // `docker --context x compose ...` reads as `docker compose ...`
-        let j = d + 1
-        while (j < w.length && w[j].startsWith('-')) j += DOCKER_VALUE_FLAGS.has(w[j]) ? 2 : 1
-        if (w[j] === 'compose') w = [...w.slice(0, d + 1), ...w.slice(j)]
-      }
-      return [w.join(' '), ...seg.heredocs].join('\n').replaceAll(PH, '$')
-    })
-  } catch {
-    return [cmd]
-  }
+  if (cmd.length > MAX_INPUT) throw new Error('command too large')
+  const segs = parseShell(cmd)
+  const dockerOnly = !segs.weird && segs.length > 0 &&
+    segs.every((s) => (s.words[0] === 'docker' || s.words[0] === 'docker-compose') && s.heredocs.length === 0)
+  if (!dockerOnly) return [cmd]
+  return segs.map((seg) => {
+    let w = seg.words
+    if (isPlainDocker(w)) w = w.filter((x, i) => !(x === '-f' || w[i - 1] === '-f'))
+    if (w[0] === 'docker') { // `docker --context x compose ...` reads as `docker compose ...`
+      let j = 1
+      while (j < w.length && w[j].startsWith('-')) j += DOCKER_VALUE_FLAGS.has(w[j]) ? 2 : 1
+      if (w[j] === 'compose') w = ['docker', ...w.slice(j)]
+    }
+    return w.join(' ').replaceAll(PH, '$')
+  })
 }
 
 /** Returns the reason a command is refused, or null. */
 export function refuse(command) {
   const raw = String(command ?? '')
-  for (const cmd of composeTexts(raw)) { // each simple command on its own
+  let texts
+  try {
+    texts = composeTexts(raw)
+  } catch {
+    return 'The command is too large or too deeply nested to check. Split it into simple commands.'
+  }
+  for (const cmd of texts) {
   if (/\bdocker[ -]compose\b/.test(cmd)) {
     // `config` prints env_file values unless told not to resolve them
     if (/\bconfig\b/.test(cmd) && !/--no-env-resolution\b/.test(cmd)) {

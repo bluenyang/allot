@@ -57,6 +57,12 @@ test('every compose variant keeps its old refusal, wherever it is written', () =
     '(docker compose up -d)',
     'echo "$(docker compose up -d)"',
     'docker rm -f c docker compose -f docker/compose.yaml up -d',
+    // a line with any execution context besides plain docker commands is read as a whole, as before
+    'docker inspect -f x c && sudo docker compose -f docker/compose.dev.yaml up -d',
+    'docker rm -f c; sh -c "docker compose -f docker/compose.yaml up"',
+    'GIT=1 docker rm -f c; docker compose up -d',
+    'docker rm -f c &\ndocker compose up -d',
+    'docker rm -f c | xargs docker compose up -d',
   ]) assert.equal(refused(c), true, c)
 })
 
