@@ -22,11 +22,12 @@ import { PH, parseShell } from './shell-words.mjs'
 // Threat model: this hook stops the agent's own accidental or habitual PR create/merge without a
 // review mark, including shell-quoting variants. It is not a sandbox against deliberate obfuscation
 // (decoding a payload and piping it to a shell); AGENTS.md's red lines already forbid that.
-// Detection is safe by default: scripts/shell-words.mjs splits the command into simple commands and
-// each one is read as text, except a small allowlist of data contexts (echo, printf, grep, cat,
-// `git commit`, `codex exec < file`, read-only `gh`) whose quoted arguments and heredocs are ignored.
-// Anything that can run a command given as text (shells, interpreters, find -exec, xargs, env, sudo,
-// pnpm exec ...) is scanned. Input the parser cannot handle (too large or nested) is refused.
+// Detection is safe by default: every command line is read as text (any reading that spells a PR
+// operation), exactly as before. The one exemption is a whole line of plain data commands
+// (scripts/shell-words.mjs parses it): echo, printf, grep, cat, head, tail, wc, `git commit -m`,
+// `codex exec < file`, read-only `gh`, with no env assignment, wrapper or unlisted option, joined
+// only by ; && || | and newlines. One other command anywhere puts the whole line back under the text
+// rules. Input the parser cannot handle (too large or nested) is refused.
 //
 // Allowlist: a command that looks like a PR operation is allowed only in one canonical form,
 // standing alone; everything else is refused with the forms to use.
@@ -52,12 +53,6 @@ const decodeEscapes = (t) =>
     .replace(/\\([tnr/bf"\\])/g, (_, c) => ({ t: '\t', n: '\n', r: '\r', b: '\b', f: '\f' })[c] ?? c)
 
 const GH_VALUE_FLAGS = new Set(['-R', '--repo', '-H', '--hostname'])
-const ASSIGN = /^[A-Za-z_]\w*=/
-const LEADERS = new Set(['{', '}', '!', 'if', 'then', 'do', 'else', 'elif', 'while', 'until'])
-// Programs whose arguments are data: they print, search or read files and never run an argument.
-// Everything else (shells, interpreters, find -exec, xargs, env, sudo, pnpm exec, script, git -c ...)
-// can run a command given as text, so its whole text is scanned with the text rules above.
-const DATA_PROGS = new Set(['echo', 'printf', 'grep', 'egrep', 'fgrep', 'rg', 'cat', 'head', 'tail', 'wc'])
 const REDIR = /^\d*(?:>>?|<|<>|>\||>&|&>)/
 const REDIR_ONLY = /^\d*(?:>>?|<|<>|>\||>&|&>)$/
 
@@ -74,6 +69,25 @@ function stripRedirs(words) {
   return { args, hasIn }
 }
 
+// Plain data commands: they print, search or read files and run nothing. Options are limited to a
+// small list per program; any other option makes the command "not plain" (so its line is scanned).
+const PLAIN_OPTIONS = {
+  echo: /^-[neE]+$/,
+  printf: /^--$/,
+  cat: /^-[nAbEsTv]+$/,
+  head: /^-(?:[qv]|n|c|\d+)$/,
+  tail: /^-(?:[qvf]|n|c|\d+)$/,
+  wc: /^-[lwcmL]+$/,
+  grep: /^(?:-[a-zA-Z]+|--(?:ignore-case|invert-match|line-number|count|files-with-matches|files-without-match|word-regexp|line-regexp|regexp|extended-regexp|fixed-strings|no-messages|quiet|recursive|include|exclude|no-filename|with-filename|only-matching|max-count|context|after-context|before-context|null)(?:=.*)?)$/,
+}
+PLAIN_OPTIONS.egrep = PLAIN_OPTIONS.grep
+PLAIN_OPTIONS.fgrep = PLAIN_OPTIONS.grep
+const GREP_PROGRAMS = new Set(['grep', 'egrep', 'fgrep'])
+// grep options that name a file of patterns or take a value: harmless, but `-f` reads a file only
+const GIT_COMMIT_BARE = new Set(['-q', '-a', '-s', '-am', '-qm', '--amend', '--no-edit', '--allow-empty'])
+const GIT_COMMIT_VALUED = new Set(['-m', '-F', '--message', '--file'])
+const GH_BANNED = new Set(['--web', '-w', '-F', '--body-file', '--editor', '-e'])
+
 /** `gh` words (after gh): a subcommand that only reads or edits, never creates or merges. */
 function ghSafe(rest) {
   const nextNonFlag = (from) => {
@@ -85,6 +99,7 @@ function ghSafe(rest) {
     }
     return -1
   }
+  if (rest.some((x) => GH_BANNED.has(x) || /^--(?:web|body-file|editor)=/.test(x))) return false
   const a = nextNonFlag(0)
   if (a < 0 || rest[a].includes(PH)) return false
   if (rest[a] === 'run' || rest[a] === 'issue') return true
@@ -93,62 +108,63 @@ function ghSafe(rest) {
   return b >= 0 && !rest[b].includes(PH) && SAFE_PR.has(rest[b])
 }
 
-/** A segment whose program is a proven data context: its arguments and here-documents are ignored. */
-function isData(seg) {
+/** A plain data command: no env assignment, no wrapper, no option outside the small lists. */
+function isPlainData(seg) {
   const { args, hasIn } = stripRedirs(seg.words)
-  let k = 0
-  while (k < args.length && (ASSIGN.test(args[k]) || LEADERS.has(args[k]))) k++
-  if (k >= args.length || args[k].includes(PH)) return false
-  const prog = args[k]
-  if (DATA_PROGS.has(prog)) return true
-  if (prog === 'git') return args[k + 1] === 'commit'
-  if (prog === 'codex') return args[k + 1] === 'exec' && hasIn
-  if (prog === 'gh') return ghSafe(args.slice(k + 1))
+  if (args.length === 0 || args[0].includes(PH)) return false
+  const prog = args[0]
+  const rest = args.slice(1)
+  if (PLAIN_OPTIONS[prog]) {
+    return rest.every((x) => !x.startsWith('-') || x === '-' || PLAIN_OPTIONS[prog].test(x))
+  }
+  if (prog === 'git') {
+    if (rest[0] !== 'commit') return false
+    const opts = rest.slice(1)
+    for (let i = 0; i < opts.length; i++) {
+      const x = opts[i]
+      if (GIT_COMMIT_VALUED.has(x)) { if (opts[++i] === undefined) return false } else if (!GIT_COMMIT_BARE.has(x)) return false
+    }
+    return true
+  }
+  if (prog === 'codex') {
+    if (rest[0] !== 'exec' || !hasIn) return false
+    return rest.slice(1).every((x, i, a) => x === '-' || x.startsWith('-') || (i > 0 && a[i - 1].startsWith('-')))
+  }
+  if (prog === 'gh') return ghSafe(rest)
   return false
 }
 
-// A command line that also runs a shell or interpreter may feed it the text of an echo or cat
-// (`echo "..." | sh`, `source <(echo "...")`): nothing in such a line is treated as data.
-const EXECUTORS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'busybox', 'eval', 'source', '.', 'python', 'python3', 'node', 'perl', 'ruby', 'php', 'lua'])
-const runsExecutor = (seg) => {
-  const { args } = stripRedirs(seg.words)
-  let k = 0
-  while (k < args.length && (ASSIGN.test(args[k]) || LEADERS.has(args[k]))) k++
-  return k < args.length && EXECUTORS.has(args[k].split('/').pop())
-}
-
-function segmentCandidate(seg, noData) {
-  if (!noData && isData(seg)) return false
-  if (seg.ansi) return true // $'..' / $".." can spell any word
-  const text = [seg.words.join(' '), ...seg.heredocs].join('\n')
-  return looksLikePr(text.replace(/\\/g, ' ').replace(/['"]/g, '')) || looksLikePr(text.replace(/[\\'"]/g, ''))
-}
-
 /**
- * Text rules on every simple command except the proven data contexts. A command is read as
- * commands (not as one text) so that `echo "gh pr merge"` is data while `find . -exec gh pr merge 1 \;`,
- * `python -c '...'`, `sudo -u x gh ...` and `2>/dev/null gh ...` are scanned as before.
+ * True when the whole line is plain data commands: every simple command is plain (see isPlainData),
+ * joined only by ; && || | and newlines (pipes thus only between plain commands), with redirections to
+ * files and here-documents only into those commands. A subshell, process substitution, background
+ * `&`, unterminated quote or any other command anywhere keeps the line out.
  */
-function isCommandCandidate(command) {
-  return [false, true].some((nlSpace) => {
-    const segs = parseShell(command, { nlSpace })
-    const noData = segs.some(runsExecutor)
-    return segs.some((seg) => segmentCandidate(seg, noData))
-  })
+function isPlainLine(command) {
+  const segs = parseShell(command)
+  return !segs.weird && segs.length > 0 && segs.every(isPlainData)
 }
 
+const MAX_INPUT = 100000
+
 /**
- * Candidate check on the raw hook input. Fails closed: input the parser cannot handle (too nested,
- * too large) is a candidate. Input that is not JSON with a string command is read as text, as before.
+ * Candidate check on the raw hook input. A line of plain data commands (echo, printf, grep, cat,
+ * head, tail, wc, `git commit -m`, `codex exec < file`, read-only `gh`) is not a candidate: the PR
+ * words in its quoted arguments and here-documents are data. Every other line is read with the text
+ * rules below, exactly as before: any reading of the text that spells a PR operation.
+ * Fails closed: input too large or too nested for the parser is a candidate.
  */
 export function isCandidate(raw) {
   const text = String(raw ?? '')
   try {
     if (text.length > MAX_INPUT) return true
-    let command
-    try { command = JSON.parse(text)?.tool_input?.command } catch { /* not JSON */ }
-    if (typeof command === 'string') return isCommandCandidate(command)
     const views = [text, decodeEscapes(text)]
+    let c
+    try { c = JSON.parse(text)?.tool_input?.command } catch { /* not JSON: raw views only */ }
+    if (typeof c === 'string') {
+      if (isPlainLine(c)) return false
+      views.push(c)
+    }
     // shell line continuations (backslash-newline) vanish before the shell splits words: join them first
     for (const v of [...views]) views.push(v.replace(/\\\r?\n/g, ''))
     // ANSI-C / locale quoting ($'..', $"..") can spell any word: always a candidate
@@ -157,8 +173,6 @@ export function isCandidate(raw) {
     return true
   }
 }
-
-const MAX_INPUT = 100000
 
 /** Small POSIX-shell-word tokenizer. Returns an array of words, or null (unbalanced/unsupported). */
 export function tokenize(cmd) {

@@ -94,6 +94,17 @@ test('isCandidate: launchers, redirections and wrappers are scanned, not treated
     'echo ok && echo "$(gh pr merge 1)"', 'printf x > f; gh pr merge 1',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
 })
+test('isCandidate: data that flows into an executor, or a data command with an execution context, is scanned (second review)', () => {
+  for (const c of [
+    "echo 'gh pr merge 1' | awk '{system($0)}'", 'echo gh pr | xargs -I{} {} merge 1', "printf 'gh pr merge 1' | tee f; chmod +x f; ./f",
+    "echo 'gh pr merge 1' > f; env sh f", "echo 'gh pr merge 1' > f; sudo -u root sh f", "echo 'gh pr merge 1' | xargs -I{} sh -c {}", "echo 'gh pr merge 1' | xargs sh",
+    "printf 'gh pr merge 1' > x; rg --pre sh x f", "GIT_EDITOR='gh pr merge 1' git commit", "GIT_SEQUENCE_EDITOR='gh pr merge 1' git commit -m x", "PAGER='gh pr merge 1' git commit -m x",
+    "GH_EDITOR='gh pr merge 1' gh pr edit 1", "GH_BROWSER='gh pr merge 1' gh pr view 1 --web", "GH_PAGER='gh pr merge 1' gh pr view 1", "GIT_EDITOR='gh pr merge 1' git commit -m x",
+    'echo "gh pr merge 1" | bash', 'echo "gh pr merge 1" | sh', 'echo "gh pr merge 1" | perl -e \'system(<>)\'', "echo 'gh pr merge 1' > f; env bash f", 'echo "gh pr merge 1" > f; bash f',
+    'echo x; (echo "gh pr merge 1")', 'echo "gh pr merge 1" &', 'echo "gh pr merge 1" |& sh', 'git commit -c HEAD -m "gh pr merge 1"', 'git -c core.editor="gh pr merge 1" commit -m x',
+    'git commit --template "gh pr merge 1" -m x', 'gh pr view 1 --web "gh pr merge 1"', 'gh pr edit 1 -F f "gh pr merge 1"', 'cat -x "gh pr merge 1"', 'echo "gh pr merge 1" && rg -z --pre sh x f',
+  ]) assert.equal(isCandidate(asInput(c)), true, c)
+})
 test('isCandidate: fails closed on input the parser cannot take', () => {
   const deep = '$('.repeat(20000) + 'gh pr merge 1' + ')'.repeat(20000)
   assert.equal(isCandidate(asInput(deep)), true)

@@ -35,7 +35,11 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
   }
 
   // substitutions in an unquoted here-document body still run; the rest of the body is data
-  const scanBody = (text) => out.push(...parseShell(text, { nlSpace, body: true }))
+  const scanBody = (text) => {
+    const inner = parseShell(text, { nlSpace, body: true })
+    if (inner.weird) out.weird = true
+    out.push(...inner)
+  }
 
   let nest = 0
   const run = (closer, asBody = false) => { // nesting is limited: deeper input is refused by the callers (they catch the error)
@@ -68,6 +72,7 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
         if (d === '$' && /[A-Za-z_0-9@*#?!$-]/.test(s[i + 1] ?? '')) { mark(); i++; continue }
         add(d); i++
       }
+      if (end !== null && i >= n) out.weird = true // unterminated quote
       i++
     }
 
@@ -79,7 +84,7 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
       if (c === "'") {
         const j = s.indexOf("'", i + 1)
         add('')
-        if (j < 0) { add(s.slice(i + 1)); i = n } else { add(s.slice(i + 1, j)); i = j + 1 }
+        if (j < 0) { out.weird = true; add(s.slice(i + 1)); i = n } else { add(s.slice(i + 1, j)); i = j + 1 }
       } else if (c === '"') {
         i++; dq()
       } else if (c === '$' && s[i + 1] === "'") {
@@ -137,14 +142,24 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
           if (!h.quoted) scanBody(body)
         }
         pending.length = 0
-      } else if (c === ';' || c === '|' || c === '&' || c === '(' || c === ')') {
+      } else if (c === '&' && (s[i - 1] === '>' || s[i + 1] === '>')) {
+        add('&'); i++ // a redirection (2>&1, >&2, &>f), not a separator
+      } else if (c === '(' || c === ')') {
+        out.weird = true // a subshell or process substitution
         endSeg(); i++
+      } else if (c === ';' || c === '|' || c === '&') {
+        // plain separators are ; && || | and newline; a single & (background) and ;; or |& are not
+        const two = s[i + 1]
+        if ((c === '&' && two !== '&') || (c === ';' && two === ';') || (c === '|' && two === '&')) out.weird = true
+        endSeg()
+        i += two === c && c !== ';' ? 2 : 1
       } else if (/\s/.test(c)) {
         endWord(); i++
       } else {
         add(c); i++
       }
     }
+    if (closer) out.weird = true // a substitution that never closes
     endSeg()
   }
 
