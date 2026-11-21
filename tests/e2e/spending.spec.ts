@@ -60,7 +60,7 @@ test('(S-1) the menu is 지출 with the receipt icon; three tabs with their own 
   await expect(side.getByRole('link', { name: '구독' })).toHaveCount(0)
   await expect(link.locator('svg path').first()).toHaveAttribute('d', /^M4 2v20l2-1 2 1/) // the canvas receipt
   await link.click()
-  await expect(page).toHaveURL(/#spend\/general$/)
+  await expect(page).toHaveURL(/#spend$/) // the menu entry is #spend, which is 일반
   await expect(page.locator('header.ph h1')).toHaveText('지출')
   await expect(page.locator('nav.crumbs')).toContainText('예산/지출/일반')
   await expect(link).toHaveAttribute('aria-current', 'true')
@@ -145,8 +145,9 @@ test('(S-5) a negative remainder says 모자라요, keeps other amounts, and lin
     await link.click()
     await expect(page).toHaveURL(/#pay$/)
   })
-  // gone again: no shortage on the card
+  // gone again (after a reload: the page's data is the server's): no shortage on the card
   await page.goto('/#spend/general')
+  await page.reload()
   await expect(col(page, 2).getByText('모자라요')).toHaveCount(0)
 })
 
