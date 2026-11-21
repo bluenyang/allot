@@ -17,7 +17,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PH, baseName, parseShell } from './shell-words.mjs'
+import { LEADERS, PH, SHELLS, WRAPPERS, baseName, parseShell } from './shell-words.mjs'
 
 // Threat model: this hook stops the agent's own accidental or habitual PR create/merge without a
 // review mark, including shell-quoting variants. It is not a sandbox against deliberate obfuscation
@@ -48,9 +48,6 @@ const decodeEscapes = (t) =>
   t.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
     .replace(/\\([tnr/bf"\\])/g, (_, c) => ({ t: '\t', n: '\n', r: '\r', b: '\b', f: '\f' })[c] ?? c)
 
-const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'busybox', 'eval', 'source', '.'])
-const WRAPPERS = new Set(['env', 'sudo', 'doas', 'xargs', 'timeout', 'nice', 'ionice', 'nohup', 'time', 'command', 'exec', 'builtin', 'stdbuf', 'setsid', 'watch', 'flock'])
-const LEADERS = new Set(['{', '}', '!', 'if', 'then', 'do', 'else', 'elif', 'while', 'until'])
 const GH_VALUE_FLAGS = new Set(['-R', '--repo', '-H', '--hostname'])
 
 /** After `gh`: is this `gh pr <not a safe subcommand>` or `gh api` touching pulls or merge? */

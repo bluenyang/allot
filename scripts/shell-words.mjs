@@ -147,5 +147,12 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
   return out
 }
 
+/** Programs that run a command given as text or as the following words. */
+export const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'busybox', 'eval', 'source', '.'])
+/** Programs that run the next program: `env`, `sudo`, `xargs`... */
+export const WRAPPERS = new Set(['env', 'sudo', 'doas', 'xargs', 'timeout', 'nice', 'ionice', 'nohup', 'time', 'command', 'exec', 'builtin', 'stdbuf', 'setsid', 'watch', 'flock'])
+/** Shell keywords that may stand before a command word. */
+export const LEADERS = new Set(['{', '}', '!', 'if', 'then', 'do', 'else', 'elif', 'while', 'until'])
+
 /** Program name of a word: the last path component. */
 export const baseName = (w) => String(w ?? '').split('/').pop()
