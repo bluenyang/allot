@@ -34,7 +34,7 @@ test('English from the settings: menus, titles, html lang, kept after a reload',
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   const nav = page.getByRole('navigation', { name: 'Menu' })
-  for (const name of ['Overview', 'Subscriptions', 'Pay split', 'Schedule', 'Change history']) await expect(nav.getByRole('link', { name })).toBeVisible()
+  for (const name of ['Overview', 'Spending', 'Pay split', 'Schedule', 'Change history']) await expect(nav.getByRole('link', { name })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'General' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign out' }).first()).toBeVisible()
 
@@ -45,7 +45,7 @@ test('English from the settings: menus, titles, html lang, kept after a reload',
   await page.goto('/#history')
   await expect(page.getByRole('heading', { name: 'Change history', exact: true })).toBeVisible()
   await page.goto('/#subs')
-  await expect(page.getByRole('heading', { name: 'Subscriptions', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Spending', exact: true })).toBeVisible()
 
   await openGeneral(page)
   await pickLanguage(page, 'ko')
