@@ -84,6 +84,12 @@ test('env files are still never read', () => {
     assert.equal(refused(c), false, c)
 })
 
+test('malformed input is refused', () => {
+  for (const c of ['echo "unterminated', "echo 'unterminated", 'docker rm -f c "x', 'echo $(x', 'echo `x', 'echo ${x', "echo $'x"])
+    assert.equal(refused(c), true, c)
+  assert.equal(refused('echo "closed" $(echo ok)'), false)
+})
+
 test('deep or oversized input falls back to the raw text rules (never throws)', () => {
   const deep = '$('.repeat(20000) + 'docker compose up -d' + ')'.repeat(20000)
   assert.equal(refused(deep), true)

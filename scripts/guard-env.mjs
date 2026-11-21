@@ -66,7 +66,7 @@ export function refuse(command) {
   try {
     texts = composeTexts(raw)
   } catch {
-    return 'The command is too large or too deeply nested to check. Split it into simple commands.'
+    return 'The command is malformed (unterminated quote or substitution), too large or too deeply nested to check. Fix or split it into simple commands.'
   }
   for (const cmd of texts) {
   if (/\bdocker[ -]compose\b/.test(cmd)) {
