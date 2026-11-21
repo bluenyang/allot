@@ -180,6 +180,33 @@ test('(review 3) the 구독 tab keeps its view and filter across a tab switch an
   await expect(page.getByRole('button', { name: /^전체/ })).toHaveAttribute('aria-pressed', 'true')
 })
 
+// review 4: an editor opened on the 구독 tab closes when the tab is left (Back), and the tab's view and filter are kept.
+for (const [what, view, open, title] of [
+  ['subscription editor', '목록', '구독 추가', '구독 추가'],
+  ['plan-change editor', '변경 일정', '+ 전환 예약', '플랜 전환 예약'],
+] as const) {
+  test(`(review 4) the ${what} closes when the 구독 tab is left with Back; the view and filter are kept`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/#spend/general')
+    await page.getByRole('tablist').first().waitFor()
+    await page.getByRole('tablist', { name: '지출 종류' }).getByRole('tab', { name: /^구독/ }).click()
+    await page.getByRole('tab', { name: /^목록/ }).click()
+    await page.getByRole('button', { name: /^전체/ }).click()
+    await page.getByRole('tab', { name: new RegExp(`^${view}`) }).click()
+    await page.getByRole('button', { name: open, exact: true }).click()
+    await expect(sheet(page, title)).toBeVisible()
+    await page.goBack()
+    await expect(page).toHaveURL(/#spend\/general$/)
+    await expect(sheet(page, title)).toBeHidden()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]')), 'focus is not left in a dialog').toBe(false)
+    await page.getByRole('tablist', { name: '지출 종류' }).getByRole('tab', { name: /^구독/ }).click()
+    await expect(page.getByRole('tab', { name: new RegExp(`^${view}`) })).toHaveAttribute('aria-selected', 'true')
+    await page.getByRole('tab', { name: /^목록/ }).click()
+    await expect(page.getByRole('button', { name: /^전체/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+}
+
 test('(V-7) no sideways scroll at 390px on the three tabs, with a spending and its long name', async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await withSpendings(request, [lump(`${MARK}-long-${'가나다라마바사'.repeat(6)}`, 700_000, 'subs')], async () => {
