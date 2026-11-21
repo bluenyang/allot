@@ -110,7 +110,7 @@ summary_for_user: |
 - `AI_LISTS`에 `spendings`를 넣는다. `tests/api/mcp.mjs`에 읽기와 제안 → 확인 → 되돌리기를 넣는다.
 
 ## 작업 단위
-- [ ] W-1 계산: 타입, `spendingKrw`·`planRounds`·`payOffEarly`·`spendingIn`·`spendState`, `transferAt`·`distributionAt`·`leftoverAfterTransfer`의 반영 인자, 단위 테스트(V-2·V-3). 화면 변화 없음.
+- [x] W-1 계산: 타입, `spendingKrw`·`planRounds`·`payOffEarly`·`spendingIn`·`spendState`, `transferAt`·`distributionAt`·`leftoverAfterTransfer`의 반영 인자, 단위 테스트(V-2·V-3). 화면 변화 없음. (1282e2b)
 - [ ] W-2 저장과 API: 스키마·마이그레이션(RLS), zod, ops 리소스, 변경 묶음 자식, readState·store, crud 검사(V-4·V-5).
 - [ ] W-3 반영 연결: `monthMoney`와 모든 호출 자리, 월급 분배 근거 줄, 구독 이체액 계산 줄(V-3 화면 숫자).
 - [ ] W-4 지출 메뉴: 메뉴 이름·아이콘, `#spend` 주소와 `#subs` 연결, 탭 3개, 구독 탭 이동(내용 그대로), 반영 카드, 캔버스 대조표 `delta.md`(V-6의 구독 보존 E2E).
