@@ -182,15 +182,15 @@ pnpm e2e           # Playwright E2E (스택이 떠 있어야 함, 아래)
 
 ## 테스트
 
-E2E와 `tests/api/*`는 계정 데이터를 만들고 바꾸고 지운다. 실제 데이터가 있는 서버가 아니라 버려도 되는 서버에서 돌린다.
+E2E와 `tests/api/*`는 계정 데이터를 만들고 바꾸고 지운다. 실제 데이터가 있는 서버가 아니라 버려도 되는 시험 서버에서 돌린다 — 실제로 쓰는 스택과 다른 DB로 띄운 인스턴스(예: 이 저장소의 관리자는 `docker build -t allot:test .`로 만든 이미지를 별도 DB와 함께 :15174에 띄운다).
 
 ```bash
-docker compose -f docker/compose.dev.yaml up -d --build -V --wait
-docker compose -f docker/compose.dev.yaml exec api pnpm db:seed
-pnpm test:unit
-BASE=http://<IP>:15173 ADMIN_EMAIL=... ADMIN_PASSWORD=... pnpm e2e              # UI: 모든 항목 추가·수정·삭제·새로고침
-BASE=... ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/crud.mjs create      # API: create → (api 재시작) → verify → cleanup
+pnpm test:unit                                                                   # DB 없이
+BASE=http://<시험 서버> ADMIN_EMAIL=... ADMIN_PASSWORD=... pnpm e2e            # UI: 모든 항목 추가·수정·삭제·새로고침
+BASE=http://<시험 서버> ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/crud.mjs create   # API: create → (api 재시작) → verify → cleanup
 ```
+
+처음 써 보는 로컬 스택(데이터 없음)이라면 그 스택이 곧 시험 서버다: `docker compose -f docker/compose.dev.yaml up -d --build -V --wait` 뒤 `docker compose -f docker/compose.dev.yaml exec api pnpm db:seed`로 계정을 만들고 `BASE=http://<IP>:15173`으로 돌린다. 실제 데이터를 넣은 뒤에는 그 스택에 돌리지 않는다.
 
 - `tests/e2e/auth.spec.ts`는 Dex로 승인 대기 흐름을 확인하므로 `DEX_CLIENT_SECRET`도 env로 준다. 관리 API로 OIDC 설정을 바꾸고 계정을 만들고 지우므로 테스트 DB에서 돌린다.
 - `tests/e2e/redesign.spec.ts`는 표시 설정·테마·공휴일 세트·날짜 조정을 바꿨다가 되돌리고, 테마 확인용 계정을 하나 만들었다 지운다. 외부 요청 0건과 휴대폰 폭(390)도 확인한다.
