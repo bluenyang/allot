@@ -175,6 +175,15 @@ Badge: 12px/600, `--r-badge`, soft ground with matching text. Status badges: ok 
 ### "준비 중" / Soon (`Soon.vue`, `.is-soon`)
 A control or menu item for a planned feature is shown but disabled: `aria-disabled="true"` (not the `disabled` attribute, so it stays focusable), muted text, no hover face, and a small "준비 중" / "Soon" pill (`.soon-pill`). Activating it does nothing. It never takes the selected state and never navigates.
 
+## Spending screens
+
+The menu is **지출** / Spending (Budget group; the old Subscriptions menu). One page, `Spending.vue`, with a page header, a reflection card and `SubTabs` for General, Installments and Subscriptions; the add button changes with the tab. The Subscriptions tab holds the whole former Subscriptions page unchanged. The CSV export button in the page header is a `Soon` item.
+
+- **Reflection card** ("이번 달 지출 반영"): two columns, what comes off the remainder (a two-colour bar split into general and installment) and what is added to the subscription transfer (before → after); a short remainder is shown as "모자라요" with a link to the salary allocation, and no other amount is changed.
+- **General tab** (`SpendGeneral.vue`): three summary figures, a status filter (`Seg`), payment and category `Select` filters, and a `.tbl` table (content, category, date, amount, KRW, payment method, month it counts in, status badge); on a phone each row is a card. An empty filter shows an empty state.
+- **Installments tab** (`SpendInstallments.vue`): three summary figures, a status `Seg`, a payment-method `Select` and a list with a detail panel: totals, progress, the round table (paid, next, left, merged), and the actions edit, early payoff (`PayOffDialog`, 440px `EditSheet`), cancel (`ConfirmDialog`) and resume. A round opens `RoundEditor` (date, amount, left or paid).
+- **Add and edit** (`SpendEditor.vue`): a stepped `EditSheet` with three steps (what was bought, how it is paid, rounds). How it is paid is a `Seg` whose "버퍼 사용" option is disabled, with a hint that it is coming soon; the last step lists the rounds before saving. Changing what the rounds are worked out from asks in a `ConfirmDialog` first. Delete is on the last step when editing and asks in a `ConfirmDialog`.
+
 ## Copy rules
 
 - Every visible string exists in Korean and English (`src/i18n/ko.ts`, `src/i18n/en.ts`); screen code holds no Korean text (`node scripts/check-i18n.mjs`).
