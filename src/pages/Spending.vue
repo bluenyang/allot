@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onActivated, onDeactivated, ref } from 'vue'
+import { computed, defineAsyncComponent, onActivated, onDeactivated, ref, watch } from 'vue'
 import { t } from '../i18n'
 import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
@@ -21,6 +21,8 @@ const props = defineProps<{ sub?: string }>()
 const KINDS = ['general', 'inst', 'subs'] as const
 type Kind = (typeof KINDS)[number]
 const kind = computed<Kind>(() => (KINDS.includes(props.sub as Kind) ? (props.sub as Kind) : 'general'))
+const subsOpened = ref(kind.value === 'subs')
+watch(kind, (k) => { if (k === 'subs') subsOpened.value = true })
 const pick = (id: string) => { location.hash = `#spend/${id}` }
 
 const general = computed(() => store.spendings.filter((s) => s.how === 'lump'))
@@ -37,8 +39,10 @@ const month = computed(() => {
   const now = monthMoney(store, ym)
   const none = monthMoney({ ...store, spendings: [] }, ym) // the same month without any one-off spending
   const items = now.spend.items.filter((i) => i.spending.payBy === 'subs')
-  const names = [...new Set(items.map((i) => i.spending.name))]
-  const first = items[0]?.spending
+  // one entry per spending (by id): two spendings with the same name are two items
+  const list = [...new Map(items.map((i) => [i.spending.id, i.spending])).values()]
+  const names = list.map((x) => x.name)
+  const first = list[0]
   const itemText = !names.length ? ''
     : names.length === 1 ? t('spending.itemOne', { name: names[0]! }) + (first && first.currency === 'USD' ? t('spending.itemUsd', { amount: first.amount.toFixed(2) }) : '')
     : t('spending.itemMany', { name: names[0]!, n: names.length - 1 })
@@ -107,9 +111,10 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
       <Soon v-else class="btn pri" :aria-label="`${addLabel} (${t('common.soon')})`"><Icon name="plus" />{{ addLabel }}</Soon>
     </div>
 
-    <Subscriptions v-if="kind === 'subs'" embedded :adding="adding" @added="adding = false" />
+    <!-- kept mounted once opened (v-show), so its view, month and filters survive a tab switch as the page did under App's KeepAlive -->
+    <Subscriptions v-if="subsOpened" v-show="kind === 'subs'" embedded :adding="adding" @added="adding = false" />
     <!-- Placeholder until W-5 (일반) and W-6 (할부): the saved items as plain lines, or the empty state of the canvas -->
-    <section v-else class="card">
+    <section v-if="kind !== 'subs'" class="card">
       <div v-if="!(kind === 'general' ? general : inst).length" class="empty"><b>{{ t('spending.emptyTitle') }}</b><span class="hint">{{ kind === 'general' ? t('spending.emptyGeneral') : t('spending.emptyInst') }}</span></div>
       <ul v-else class="plain">
         <li v-for="s in (kind === 'general' ? general : inst)" :key="s.id"><b>{{ s.name }}</b><span class="mono hint">{{ fmtDate(s.bought) }}</span><span class="num">{{ fmtMoney(s.rounds.reduce((a, r) => a + (r.state === 'merged' ? 0 : r.amount), 0)) }}</span></li>

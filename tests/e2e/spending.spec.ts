@@ -155,6 +155,30 @@ test('(S-5) a negative remainder says 모자라요, keeps other amounts, and lin
   expect(await big(page, 2)).toBe(rem0)
 })
 
+test('(S-5) two subscription-account spendings with the same name count as two items', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await withSpendings(request, [lump(`${MARK}-dup`, 11_000, 'subs'), lump(`${MARK}-dup`, 22_000, 'subs')], async () => {
+    await page.goto('/#spend/general')
+    await page.reload()
+    await expect(col(page, 1)).toContainText(`${MARK}-dup 외 1건`)
+  })
+})
+
+test('(review 3) the 구독 tab keeps its view and filter across a tab switch and Back', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await go(page, 'subs')
+  await page.getByRole('tab', { name: /^목록/ }).click()
+  await page.getByRole('button', { name: /^전체/ }).click()
+  await page.getByRole('tab', { name: /^변경 일정/ }).click()
+  await page.getByRole('tablist', { name: '지출 종류' }).getByRole('tab', { name: /^일반/ }).click()
+  await expect(page).toHaveURL(/#spend\/general$/)
+  await page.goBack()
+  await expect(page).toHaveURL(/#spend\/subs$/)
+  await expect(page.getByRole('tab', { name: /^변경 일정/ })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tab', { name: /^목록/ }).click()
+  await expect(page.getByRole('button', { name: /^전체/ })).toHaveAttribute('aria-pressed', 'true')
+})
+
 test('(V-7) no sideways scroll at 390px on the three tabs, with a spending and its long name', async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await withSpendings(request, [lump(`${MARK}-long-${'가나다라마바사'.repeat(6)}`, 700_000, 'subs')], async () => {
