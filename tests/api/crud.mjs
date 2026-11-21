@@ -37,7 +37,7 @@ async function signIn() {
 const MARK = 'V8-marker'
 // A card installment over 3 months with a fee; rounds as the screen would write them (spec 011 S-2).
 const spend = {
-  name: MARK, note: 'n', category: '가전', bought: '2090-01-10', amount: 300_000, currency: 'KRW', fxRate: null,
+  name: MARK, note: 'n', category: '가전', bought: '2090-01-10', amount: 300_000, currency: 'KRW', fxRate: null, fxBuffer: null,
   how: 'installment', payBy: 'card', count: 3, fee: 3_000, interval: null, cancelled: false,
   rounds: [
     { no: 1, date: '2090-02-16', amount: 101_000, state: 'left', edited: false },
@@ -128,9 +128,17 @@ if (phase === 'create') {
   ok((await api('POST', '/api/spendings', { ...spend, fee: 0, payBy: 'salary', name: `${MARK}-big`, amount: 3_000_000_000, rounds: spend.rounds.map((r) => ({ ...r, amount: 1_000_000_000 })) })).status === 400, 'POST spending whose rounds add up past 2147483647 → 400')
   if (own.status === 201) ok((await api('DELETE', ownPath)).status === 204, 'DELETE the revert test spending')
   // Rules (spec 011 S-2, S-4): each of these is refused.
+  // the rate and the buffer a USD spending was saved with come back as they were (S-3)
+  const usdBody = { ...spend, name: `${MARK}-usd`, currency: 'USD', amount: 100, fxRate: 1000, fxBuffer: 3.5, fee: 0, payBy: 'salary', how: 'lump', count: 1, rounds: [{ no: 1, date: '2090-02-16', amount: 103_500, state: 'left', edited: false }] }
+  const usdPost = await api('POST', '/api/spendings', usdBody)
+  const usdBack = (await api('GET', '/api/state')).json.spendings.find((x) => x.id === usdPost.json?.id)
+  ok(usdPost.status === 201 && usdBack?.fxRate === 1000 && usdBack?.fxBuffer === 3.5, `USD spending keeps fxRate and fxBuffer → ${usdPost.status} ${usdBack?.fxRate}/${usdBack?.fxBuffer}`)
+  if (usdPost.status === 201) ok((await api('DELETE', `/api/spendings/${usdPost.json.id}`)).status === 204, 'DELETE the USD test spending')
   const spendBad = {
     'USD without a rate': { ...spend, currency: 'USD', fxRate: null },
     'KRW with a rate': { ...spend, fxRate: 1380 },
+    'USD without a buffer': { ...spend, currency: 'USD', fxRate: 1380, fxBuffer: null },
+    'KRW with a buffer': { ...spend, fxBuffer: 3 },
     'lump with 2 rounds': { ...spend, how: 'lump', count: 1, fee: 0, rounds: spend.rounds.slice(0, 2) },
     'fee on a salary installment': { ...spend, payBy: 'salary' },
     'interval on an installment': { ...spend, interval: 'monthly' },

@@ -23,7 +23,7 @@ const thisYm = () => new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' })
 
 /** A one-off spending in this month: lump sum, one round, `left`. */
 const lump = (name: string, amount: number, payBy: 'salary' | 'card' | 'subs') => ({
-  name, note: '', category: '생활', bought: `${thisYm()}-05`, amount, currency: 'KRW', fxRate: null,
+  name, note: '', category: '생활', bought: `${thisYm()}-05`, amount, currency: 'KRW', fxRate: null, fxBuffer: null,
   how: 'lump', payBy, count: 1, fee: 0, interval: null, cancelled: false,
   rounds: [{ no: 1, date: `${thisYm()}-28`, amount, state: 'left', edited: false }],
 })
@@ -172,7 +172,7 @@ const kstDay = (plus = 0) => {
 }
 interface G { key: string; cat: string; bought: string; amount: number; currency?: 'KRW' | 'USD'; payBy: 'card' | 'salary' | 'subs'; date: string; krw: number; state?: 'left' | 'paid'; cancelled?: boolean; note?: string; suffix?: string }
 const gBody = (name: string, g: G) => ({
-  name, note: g.note ?? '', category: g.cat, bought: g.bought, amount: g.amount, currency: g.currency ?? 'KRW', fxRate: g.currency === 'USD' ? 1380 : null,
+  name, note: g.note ?? '', category: g.cat, bought: g.bought, amount: g.amount, currency: g.currency ?? 'KRW', fxRate: g.currency === 'USD' ? 1380 : null, fxBuffer: g.currency === 'USD' ? 3 : null,
   how: 'lump', payBy: g.payBy, count: 1, fee: 0, interval: null, cancelled: g.cancelled ?? false,
   rounds: [{ no: 1, date: g.date, amount: g.krw, state: g.state ?? 'left', edited: false }],
 })
@@ -512,7 +512,7 @@ type Inst = {
 }
 const rounds = (start: string, day: number, amounts: number[], paid = 0): R[] => amounts.map((amount, i) => ({ no: i + 1, date: `${ymAdd(start, i)}-${String(day).padStart(2, '0')}`, amount, state: i < paid ? 'paid' : 'left', edited: false }))
 const instBody = (name: string, o: { how: 'installment' | 'split'; payBy: 'card' | 'salary'; amount: number; fee?: number; count: number; rounds: R[]; interval?: 'monthly' }) => ({
-  name, note: '', category: '가전', bought: `${thisYm()}-05`, amount: o.amount, currency: 'KRW', fxRate: null, how: o.how, payBy: o.payBy, count: o.count,
+  name, note: '', category: '가전', bought: `${thisYm()}-05`, amount: o.amount, currency: 'KRW', fxRate: null, fxBuffer: null, how: o.how, payBy: o.payBy, count: o.count,
   fee: o.fee ?? 0, interval: o.how === 'split' ? (o.interval ?? 'monthly') : null, cancelled: false, rounds: o.rounds,
 })
 const instRows = (page: Page) => page.locator('.rt tbody tr')
@@ -922,7 +922,7 @@ test('(S-3, V-6, W-7) USD from the subscription account: KRW at the rate with th
     await expect(s.getByText(/월 구독 이체에 더해지고 일반에 들어가요/)).toBeVisible()
     await saveSheet(page, '지출 추가')
     const got = await byName(request, 'usd')
-    expect(got).toMatchObject({ currency: 'USD', amount: 49, fxRate: c.fxRate, how: 'lump', payBy: 'subs', category: '교육' })
+    expect(got).toMatchObject({ currency: 'USD', amount: 49, fxRate: c.fxRate, fxBuffer: c.fxBuffer, how: 'lump', payBy: 'subs', category: '교육' })
     expect(got.rounds).toHaveLength(1)
     expect(got.rounds[0]!.amount).toBe(krw)
     // the round is on the day of the purchase (today): this month's card adds it to the subscription transfer
@@ -1229,4 +1229,56 @@ test('(S-10, W-7) the editor in English', async ({ page, request }) => {
     await api(request, 'PUT', '/api/preferences', prefs)
     await cleanEd(request)
   }
+})
+
+test('(review 7, S-3) a USD installment keeps the rate and the buffer it was saved with: a changed buffer moves no total, KPI or difference', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const before = (await state(request)) as unknown as { settings: Record<string, unknown> }
+  const settings = before.settings
+  const n = `${MARK}-usdi`
+  // USD 100 at 1,000 with a 3% buffer is 103,000 over 2 rounds; the fee on a card installment adds 4,000
+  const body = { ...instBody(n, { how: 'installment', payBy: 'card', amount: 100, fee: 4_000, count: 2, rounds: rounds(thisYm(), 28, [53_500, 53_500]) }), currency: 'USD', fxRate: 1000, fxBuffer: 3 }
+  const feeKpi = async () => digits(await kcard(page, 2).locator('.k2 b').innerText())
+  try {
+    await withSpendings(request, [body], async () => {
+      await page.goto('/#spend/inst')
+      await listItem(page, n).click()
+      const totals = async () => ({ total: await kv(page, '총액').innerText(), fee: await feeKpi(), left: await kval(page, 0), sub: await kcard(page, 2).innerText() })
+      expect(digits(await kv(page, '총액').locator('dd').innerText())).toBe(107_000)
+      await expect(kv(page, '총액')).toContainText('원금 ₩103,000 + 수수료 ₩4,000')
+      await expect(page.locator('.diff')).toHaveCount(0)
+      const t0 = await totals()
+      expect((await api(request, 'PUT', '/api/settings', { ...settings, fxBuffer: 9 })).status).toBe(200)
+      await page.reload()
+      await listItem(page, n).click()
+      expect(await totals(), 'the total, the fee card and the left card did not move with the buffer').toEqual(t0)
+      await expect(page.locator('.diff')).toHaveCount(0)
+      // a round marked paid or paid off at the same amount creates no difference either
+      await page.getByRole('button', { name: '1회차 수정' }).click()
+      const e = sheet(page, `회차 수정 · ${n} 1/2회`)
+      await e.getByRole('group', { name: /^상태/ }).getByRole('button', { name: '냄', exact: true }).click()
+      await saveSheet(page, `회차 수정 · ${n} 1/2회`)
+      await expect(page.locator('.diff')).toHaveCount(0)
+      expect(digits(await kv(page, '총액').locator('dd').innerText())).toBe(107_000)
+    })
+  } finally {
+    await api(request, 'PUT', '/api/settings', settings)
+  }
+})
+
+test('(review 7, S-4) the per-round amount is not the odd last round: 1,001 won in 2 rounds is 500 + 501; with the first rounds edited the next plain one is used', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const two = `${MARK}-two`, four = `${MARK}-four`
+  const mk = (name: string, amounts: number[], edited: number[]) => instBody(name, { how: 'split', payBy: 'salary', amount: amounts.reduce((a, b) => a + b, 0), count: amounts.length, rounds: rounds(ymAdd(thisYm(), 1), 25, amounts).map((r, i) => ({ ...r, edited: edited.includes(i) })) })
+  await withSpendings(request, [mk(two, [500, 501], []), mk(four, [900, 900, 500, 501], [0, 1])], async () => {
+    await page.goto('/#spend/inst')
+    await listItem(page, two).click()
+    expect(digits(await kv(page, '회당').locator('dd').innerText())).toBe(500)
+    await expect(kv(page, '회당')).toContainText('마지막 회차 ₩501')
+    // two plain rounds are left (the 3rd and the 4th): the 3rd is the per-round amount, the 4th is the last
+    await listItem(page, four).click()
+    expect(digits(await kv(page, '회당').locator('dd').innerText())).toBe(500)
+    await expect(kv(page, '회당')).toContainText('마지막 회차 ₩501')
+    await expect(kv(page, '회당')).toContainText('고친 회차 2개')
+  })
 })

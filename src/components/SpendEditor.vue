@@ -37,7 +37,7 @@ const storedCustom = I?.interval === 'custom' ? [...I.rounds].filter((r) => r.no
 const feeOf = (how: SpendHow, payBy: PayBy, fee: number) => (how === 'installment' && payBy === 'card' ? fee : 0)
 
 const blank = (): Spending => ({
-  id: '', name: '', note: '', category: '', bought: ymd(today()), amount: 0, currency: 'KRW', fxRate: null,
+  id: '', name: '', note: '', category: '', bought: ymd(today()), amount: 0, currency: 'KRW', fxRate: null, fxBuffer: null,
   how: props.start === 'inst' ? 'installment' : 'lump', payBy: 'card', count: props.start === 'inst' ? 6 : 1, fee: 0, interval: null, cancelled: false, rounds: [],
 })
 const { item: edit, error, busy, open, close, save: saveDraft, remove } = useEditor('spendings', blank, validate)
@@ -104,7 +104,9 @@ watch(how, (h) => {
 // ---------- the principal, the dates, the plan ----------
 const rate = computed(() => (currency.value === 'USD' ? (I?.currency === 'USD' && I.fxRate ? I.fxRate : store.settings.fxRate) : null))
 const amountN = computed(() => (typeof amount.value === 'number' ? amount.value : NaN))
-const principal = computed(() => (Number.isFinite(amountN.value) ? spendingKrw(amountN.value, currency.value, { fxRate: rate.value ?? store.settings.fxRate, fxBuffer: store.settings.fxBuffer }) : 0))
+// the buffer is fixed with the rate when the spending is saved: an edit that keeps the rounds keeps the stored one, a new plan takes today's
+const buffer = computed(() => (currency.value === 'USD' ? (I?.currency === 'USD' && I.fxBuffer !== null && !replan.value ? I.fxBuffer : store.settings.fxBuffer) : null))
+const principal = computed(() => (Number.isFinite(amountN.value) ? spendingKrw(amountN.value, currency.value, { fxRate: rate.value ?? store.settings.fxRate, fxBuffer: buffer.value ?? store.settings.fxBuffer }) : 0))
 const off = computed<ReadonlySet<string>>(() => {
   if ((store.settings.dayShift ?? 'none') === 'none' || !DATE.test(bought.value)) return new Set()
   const n = countOk.value ? countN.value : 1
@@ -118,15 +120,6 @@ const firstManual = ref(!!I) // an edit starts from the stored first date; chang
 const first = computed({ get: () => (firstManual.value ? firstVal.value : defaultFirst.value), set: (v: string) => { firstVal.value = v; firstManual.value = true } })
 watch([bought, how, () => payBy.value === 'card'], () => { firstManual.value = false })
 const firstLabel = computed(() => t(how.value === 'installment' ? 'spending.ed.firstInst' : how.value === 'split' ? 'spending.ed.firstSplit' : payBy.value === 'card' ? 'spending.ed.firstLump' : 'spending.ed.firstPay'))
-
-// one date per round for "날짜 직접 정하기": kept while the count or the first date moves, new ones follow the month rhythm
-watch([customRound, countN, countOk, first], () => {
-  if (!customRound.value || !countOk.value) return
-  const n = countN.value
-  if (customDates.value.length === n) return
-  const base = planOf({ interval: 'monthly' }).map((r) => r.date)
-  customDates.value = Array.from({ length: n }, (_, i) => customDates.value[i] || base[i] || '')
-}, { immediate: true })
 
 function planOf(over: { interval?: SpendInterval } = {}): SpendingRound[] {
   if (!countOk.value || !DATE.test(bought.value)) return []
@@ -159,6 +152,15 @@ const currentKey = computed(() => keyOf({
   first: first.value, dates: customRound.value ? customDates.value : null, card: how.value === 'split' ? 'x' : payBy.value === 'card',
 }))
 const replan = computed(() => !I || currentKey.value !== initialKey)
+
+// one date per round for "날짜 직접 정하기": kept while the count or the first date moves, new ones follow the month rhythm
+watch([customRound, countN, countOk, first], () => {
+  if (!customRound.value || !countOk.value) return
+  const n = countN.value
+  if (customDates.value.length === n) return
+  const base = planOf({ interval: 'monthly' }).map((r) => r.date)
+  customDates.value = Array.from({ length: n }, (_, i) => customDates.value[i] || base[i] || '')
+}, { immediate: true })
 /** What a new calculation would throw away of the stored rounds (A-22). */
 const losing = computed(() => {
   if (!I || !replan.value) return null
@@ -206,7 +208,7 @@ const summary = computed(() => ({
   name: name.value.trim() || '—', date: md(bought.value),
   amt: (currency.value === 'USD' ? `USD ${typeof amount.value === 'number' ? amount.value.toFixed(2) : '—'} · ` : '') + fmtMoney(principal.value),
 }))
-const usdLine = computed(() => t('spending.ed.fxValue', { rate: num(rate.value ?? store.settings.fxRate), buffer: store.settings.fxBuffer }))
+const usdLine = computed(() => t('spending.ed.fxValue', { rate: num(rate.value ?? store.settings.fxRate), buffer: buffer.value ?? store.settings.fxBuffer }))
 
 // ---------- checks, one per step ----------
 function problem(s: number): string | null {
@@ -244,6 +246,7 @@ function validate(x: Spending): string | null {
   x.amount = amount.value as number
   x.currency = currency.value
   x.fxRate = rate.value
+  x.fxBuffer = buffer.value
   x.how = how.value
   x.payBy = payBy.value
   x.count = how.value === 'lump' ? 1 : countN.value

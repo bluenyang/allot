@@ -161,6 +161,7 @@ export const spending = z.object({
   amount: z.number().min(0).max(9_999_999_999.99, 'amountTooBig'),
   currency,
   fxRate: z.number().positive().max(999_999.99).nullable(),
+  fxBuffer: z.number().min(0).max(100).nullable().default(null),
   how: spendHow,
   payBy,
   count: z.number().int().min(1).max(60),
@@ -171,6 +172,7 @@ export const spending = z.object({
 }).strict().superRefine((x, ctx) => {
   const bad = (path: string, message: MsgKey) => ctx.addIssue({ code: 'custom', path: [path], message })
   if (x.currency === 'USD' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
+  if (x.currency === 'USD' ? x.fxBuffer === null : x.fxBuffer !== null) bad('fxBuffer', 'spendFx')
   if (x.currency === 'KRW' && !Number.isInteger(x.amount)) bad('amount', 'spendKrwWhole')
   // Only a card installment carries a fee; only a split an interval.
   if (x.fee !== 0 && !(x.how === 'installment' && x.payBy === 'card')) bad('fee', 'spendHow')

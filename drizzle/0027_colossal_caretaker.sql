@@ -1,0 +1,1 @@
+ALTER TABLE "spending" ADD COLUMN "fx_buffer" numeric(5, 2);

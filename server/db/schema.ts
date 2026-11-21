@@ -191,7 +191,7 @@ export const debt = pgTable('debt', {
 
 /**
  * One-off spending (spec 011 S-2): one row per purchase, its rounds in `spending_round`.
- * `amount` is in `currency`; the rounds are always whole KRW. `fx_rate` is the rate used for a USD amount.
+ * `amount` is in `currency`; the rounds are always whole KRW. `fx_rate` and `fx_buffer` are the rate and the buffer % used for a USD amount (fixed when it is saved, S-3); both null for KRW.
  */
 export const spending = pgTable('spending', {
   userId: owner(),
@@ -204,6 +204,7 @@ export const spending = pgTable('spending', {
   amount: numeric('amount', { precision: 12, scale: 2, mode: 'number' }).notNull(),
   currency: currency('currency').notNull(),
   fxRate: numeric('fx_rate', { precision: 8, scale: 2, mode: 'number' }),
+  fxBuffer: numeric('fx_buffer', { precision: 5, scale: 2, mode: 'number' }),
   how: spendHow('how').notNull(),
   payBy: payBy('pay_by').notNull(),
   count: smallint('count').notNull(),

@@ -118,7 +118,7 @@ test('payOffEarly merges every left round into one sum; paid rounds stay', () =>
 })
 
 function spending(over: Partial<Spending>): Spending {
-  return { id: 'x', name: 'n', category: 'life', bought: '2026-11-18', amount: 0, currency: 'KRW', fxRate: null, how: 'lump', payBy: 'salary', count: 1, fee: 0, interval: null, cancelled: false, rounds: [], ...over }
+  return { id: 'x', name: 'n', category: 'life', bought: '2026-11-18', amount: 0, currency: 'KRW', fxRate: null, fxBuffer: null, how: 'lump', payBy: 'salary', count: 1, fee: 0, interval: null, cancelled: false, rounds: [], ...over }
 }
 const round = (no: number, date: string, amount: number, state: SpendingRound['state'] = 'left'): SpendingRound => ({ no, date, amount, state, edited: false })
 

@@ -25,9 +25,11 @@ const ymText = (d: string) => ymLabel(d.slice(0, 7)).replace('.', '. ')
 const payName = (p: PayBy) => t(`spending.gen.pay.${p}` as 'spending.gen.pay.card')
 
 const inst = computed(() => store.spendings.filter((s) => s.how !== 'lump'))
-/** The total at the time it was bought: the KRW principal plus the fee (only a card installment has one). */
-const totalOf = (s: Spending) =>
-  spendingKrw(s.amount, s.currency, { fxRate: s.fxRate ?? store.settings.fxRate, fxBuffer: store.settings.fxBuffer }) + (s.how === 'installment' && s.payBy === 'card' ? s.fee : 0)
+/** The KRW principal as it was fixed when the spending was saved: its own rate and buffer, never today's settings (S-3). */
+const principalOf = (s: Spending) =>
+  spendingKrw(s.amount, s.currency, { fxRate: s.fxRate ?? store.settings.fxRate, fxBuffer: s.fxBuffer ?? store.settings.fxBuffer })
+/** The total: the principal plus the fee (only a card installment has one). */
+const totalOf = (s: Spending) => principalOf(s) + (s.how === 'installment' && s.payBy === 'card' ? s.fee : 0)
 
 const items = computed(() => inst.value.map((s) => {
   const live = s.rounds.filter((r) => r.state !== 'merged').sort((a, b) => a.no - b.no)
@@ -121,13 +123,15 @@ const d = computed(() => {
   const s = i.s
   const totalSub = s.how === 'split' ? t('spending.inst.totalSplit') : s.fee > 0 ? t('spending.inst.totalFee', { p: fmtMoney(totalOf(s) - s.fee), f: fmtMoney(s.fee) }) : t('spending.inst.totalFree')
   const orig = s.rounds.filter((r) => r.no <= s.count).sort((a, b) => a.no - b.no)
-  const plain = orig.filter((r) => !r.edited)
-  const eachR = plain.length > 1 ? plain[1] : plain[0] ?? orig[0]
+  // the per-round amount is the first round that is neither edited nor the last (the last takes the odd won); with none, the first round
   const lastO = orig[orig.length - 1]
+  const eachR = orig.find((r) => !r.edited && r !== lastO) ?? orig[0]
   const editedN = s.rounds.filter((r) => r.edited && r.state !== 'merged').length
-  const eachSub = editedN ? t('spending.inst.eachEdited', { n: editedN })
-    : lastO && eachR && lastO.amount !== eachR.amount ? t('spending.inst.eachLast', { amount: fmtMoney(lastO.amount) })
-      : t('spending.inst.eachSame', { n: s.count })
+  const lastDiffers = !!lastO && !!eachR && lastO !== eachR && lastO.amount !== eachR.amount
+  const eachSub = [
+    ...(lastDiffers ? [t('spending.inst.eachLast', { amount: fmtMoney(lastO!.amount) })] : []),
+    ...(editedN ? [t('spending.inst.eachEdited', { n: editedN })] : []),
+  ].join(' · ') || t('spending.inst.eachSame', { n: s.count })
   const end = i.last ? ymText(i.last.date) : '—'
   const leftSum = s.cancelled ? 0 : i.leftSum
   const leftSub = s.cancelled && i.left.length ? t('spending.inst.leftCancelled') : i.left.length ? t('spending.inst.leftN', { n: i.left.length, ym: end }) : t('spending.inst.leftDone', { ym: end })

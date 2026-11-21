@@ -177,6 +177,7 @@ export interface Spending {
   amount: number
   currency: Currency
   fxRate: number | null // the rate used for a USD amount
+  fxBuffer: number | null // the buffer % used with it; both fixed when the spending is saved (S-3)
   how: SpendHow
   payBy: PayBy
   count: number

@@ -148,7 +148,7 @@ test('schedule: months, plan events inside their range, check items, no holidays
 
 test('overview: one-off spendings are in the transfer and the remainder, with their own fields', () => {
   const sp = (id: string, payBy: 'salary' | 'subs', date: string, amount: number) => ({
-    id, name: id, category: 'etc', bought: date, amount, currency: 'KRW' as const, fxRate: null, how: 'lump' as const, payBy, count: 1, fee: 0, interval: null, cancelled: false,
+    id, name: id, category: 'etc', bought: date, amount, currency: 'KRW' as const, fxRate: null, fxBuffer: null, how: 'lump' as const, payBy, count: 1, fee: 0, interval: null, cancelled: false,
     rounds: [{ no: 1, date, amount, state: 'left' as const, edited: false }],
   })
   const withSpend: Data = { ...data, spendings: [sp('x', 'salary', '2026-12-10', 100_000), sp('y', 'subs', '2026-12-12', 50_000)] }

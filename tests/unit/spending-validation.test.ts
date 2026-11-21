@@ -9,12 +9,12 @@ import { ROUND_MAX, roundsProblem } from '../../src/lib/spending-rules'
 
 const R = (no: number, over: Record<string, unknown> = {}) => ({ no, date: `2090-0${no + 1}-16`, amount: 101_000, state: 'left', edited: false, ...over })
 const card = {
-  name: 'Fridge', category: 'home', bought: '2090-01-10', amount: 300_000, currency: 'KRW', fxRate: null,
+  name: 'Fridge', category: 'home', bought: '2090-01-10', amount: 300_000, currency: 'KRW', fxRate: null, fxBuffer: null,
   how: 'installment', payBy: 'card', count: 3, fee: 3_000, interval: null, cancelled: false, rounds: [R(1), R(2), R(3)],
 }
 const lump = { ...card, how: 'lump', count: 1, fee: 0, rounds: [R(1)] }
 const split = { ...card, how: 'split', payBy: 'salary', fee: 0, interval: 'biweekly' }
-const usd = { ...lump, amount: 49.5, currency: 'USD', fxRate: 1380 }
+const usd = { ...lump, amount: 49.5, currency: 'USD', fxRate: 1380, fxBuffer: 3 }
 
 const ok = (x: unknown) => assert.equal(spending.safeParse(x).success, true, JSON.stringify(spending.safeParse(x).error?.issues))
 const no = (x: unknown, path?: string) => {
@@ -37,6 +37,15 @@ test('refuses a USD spending without a rate, a KRW one with a rate, a fractional
   no({ ...card, fxRate: 1380 }, 'fxRate')
   no({ ...card, amount: 1000.5 }, 'amount')
   no({ ...usd, fxRate: 0 })
+})
+
+test('the buffer is fixed with the rate: USD needs it, KRW has none, it stays within 0..100', () => {
+  no({ ...usd, fxBuffer: null }, 'fxBuffer')
+  no({ ...card, fxBuffer: 3 }, 'fxBuffer')
+  no({ ...usd, fxBuffer: -1 })
+  no({ ...usd, fxBuffer: 101 })
+  ok({ ...usd, fxBuffer: 0 })
+  ok({ ...usd, fxBuffer: 3.5 })
 })
 
 test('refuses a way to pay that does not fit the count, the fee or the interval', () => {
