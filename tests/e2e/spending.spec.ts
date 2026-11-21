@@ -1,4 +1,4 @@
-// spec 011 W-4 and W-5 (V-6 shell and preservation part, the 일반 tab, V-7 phone width): the 지출 menu, its three tabs and addresses,
+// spec 011 W-4 to W-6 (V-6 shell and preservation part, the 일반 and 할부 tabs, V-7 phone width): the 지출 menu, its three tabs and addresses,
 // the month's reflection card, and what the subscription editor of 0.1.4 accepted, saved and read back on
 // the 구독 tab. Every spending or subscription made here carries the test mark and is removed by id in `finally`,
 // then checked to be gone.
@@ -28,7 +28,7 @@ const lump = (name: string, amount: number, payBy: 'salary' | 'card' | 'subs') =
   rounds: [{ no: 1, date: `${thisYm()}-28`, amount, state: 'left', edited: false }],
 })
 /** Make spendings, run the check, always remove them by id and verify they are gone. */
-async function withSpendings(request: APIRequestContext, bodies: ReturnType<typeof lump>[], run: (ids: string[]) => Promise<void>) {
+async function withSpendings(request: APIRequestContext, bodies: { name: string }[], run: (ids: string[]) => Promise<void>) {
   const ids: string[] = []
   try {
     for (const b of bodies) {
@@ -501,4 +501,249 @@ test.describe('(V-6 preservation) the 구독 tab saves what the 0.1.4 editor sav
     await go(page, 'subs', '변경 일정')
     await expect(page.getByRole('listitem').filter({ hasText: sub.name }).getByText('미반영')).toBeVisible()
   })
+})
+
+// ---------- W-6: the 할부 tab ----------
+const ymAdd = (ym: string, n: number) => { const d = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1 + n, 1)); return d.toISOString().slice(0, 7) }
+const todayKst = () => new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).slice(0, 10)
+type R = { no: number; date: string; amount: number; state: 'left' | 'paid' | 'merged'; edited: boolean }
+type Inst = {
+  id: string; name: string; cancelled: boolean; rounds: R[]
+}
+const rounds = (start: string, day: number, amounts: number[], paid = 0): R[] => amounts.map((amount, i) => ({ no: i + 1, date: `${ymAdd(start, i)}-${String(day).padStart(2, '0')}`, amount, state: i < paid ? 'paid' : 'left', edited: false }))
+const instBody = (name: string, o: { how: 'installment' | 'split'; payBy: 'card' | 'salary'; amount: number; fee?: number; count: number; rounds: R[]; interval?: 'monthly' }) => ({
+  name, note: '', category: '가전', bought: `${thisYm()}-05`, amount: o.amount, currency: 'KRW', fxRate: null, how: o.how, payBy: o.payBy, count: o.count,
+  fee: o.fee ?? 0, interval: o.how === 'split' ? (o.interval ?? 'monthly') : null, cancelled: false, rounds: o.rounds,
+})
+const instRows = (page: Page) => page.locator('.rt tbody tr')
+const kv = (page: Page, name: string) => page.locator('.id-s > div').filter({ has: page.locator('dt', { hasText: new RegExp(`^${name}$`) }) })
+const listItem = (page: Page, name: string) => page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(name) })
+const seg = (page: Page) => page.getByRole('group', { name: '상태로 거르기' })
+const segCount = async (page: Page, name: string) => Number((await seg(page).getByRole('button', { name: new RegExp(`^${name}`) }).locator('.c').innerText()).trim())
+const kcard = (page: Page, i: number) => page.locator('.inst .kcard').nth(i)
+const kval = async (page: Page, i: number) => digits(await kcard(page, i).locator('.k2 b').innerText())
+
+test('(S-4, S-6, S-7, V-6) the 할부 tab: list, filters, detail numbers, rounds table, KPIs; a round edited, marked paid, an early payoff, a cancel and turning it back on', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const ym = thisYm()
+  const nA = `${MARK}-ac`, nB = `${MARK}-nb`, nC = `${MARK}-dt`, nD = `${MARK}-tb`
+  await page.goto('/#spend/inst')
+  await expect(card(page)).toBeVisible()
+  await expect(seg(page)).toBeVisible()
+  const base = { on: await segCount(page, '진행 중'), done: await segCount(page, '완료'), all: await segCount(page, '전체') }
+  const out0 = await big(page, 0)
+  const k = [await kval(page, 0), await kval(page, 1), await kval(page, 2)]
+  const bodies = [
+    // A: card, 6 months with a fee: 1,290,000 + 35,000 → 220,830 × 5, last 220,850; the first round is this month
+    instBody(nA, { how: 'installment', payBy: 'card', amount: 1_290_000, fee: 35_000, count: 6, rounds: rounds(ym, 28, [220_830, 220_830, 220_830, 220_830, 220_830, 220_850]) }),
+    // B: card, 12 months interest free, four rounds paid (the fourth is this month)
+    instBody(nB, { how: 'installment', payBy: 'card', amount: 1_899_000, count: 12, rounds: rounds(ymAdd(ym, -3), 16, Array(12).fill(158_250), 4) }),
+    // C: split in three, salary account, from next month
+    instBody(nC, { how: 'split', payBy: 'salary', amount: 900_000, count: 3, rounds: rounds(ymAdd(ym, 1), 25, [300_000, 300_000, 300_000]) }),
+    // D: all paid
+    instBody(nD, { how: 'installment', payBy: 'card', amount: 549_000, count: 3, rounds: rounds(ymAdd(ym, -5), 16, [183_000, 183_000, 183_000], 3) }),
+  ]
+  await withSpendings(request, bodies, async (ids) => {
+    await page.reload()
+    await expect(seg(page)).toBeVisible()
+    // the filter counts: three in progress, one done
+    expect(await segCount(page, '진행 중')).toBe(base.on + 3)
+    expect(await segCount(page, '완료')).toBe(base.done + 1)
+    expect(await segCount(page, '전체')).toBe(base.all + 4)
+    expect(await big(page, 0), 'the month card: A round 1 + B round 4').toBe(out0 + 220_830 + 158_250)
+    // the three cards: left to pay, this month's rounds, fees
+    expect(await kval(page, 0)).toBe(k[0]! + 1_325_000 + 1_266_000 + 900_000)
+    expect(await kval(page, 1)).toBe(k[1]! + 220_830 + 158_250)
+    expect(await kval(page, 2)).toBe(k[2]! + 35_000)
+    await expect(kcard(page, 1).locator('.kbars span')).toHaveCount(6)
+    await expect(page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(nD) })).toHaveCount(0) // done is not in 진행 중
+
+    // B: interest free, four paid
+    await listItem(page, nB).click()
+    await expect(page.locator('.id-n h2')).toHaveText(nB)
+    await expect(listItem(page, nB)).toContainText('4/12회 냄')
+    await expect(listItem(page, nB)).toContainText('카드 할부 12개월 · 무이자')
+    await expect(listItem(page, nB)).toContainText('매달 청구')
+    expect(digits(await kv(page, '총액').locator('dd').innerText())).toBe(1_899_000)
+    await expect(kv(page, '총액')).toContainText('무이자')
+    expect(digits(await kv(page, '낸 금액').locator('dd').innerText())).toBe(633_000)
+    await expect(kv(page, '낸 금액')).toContainText('4회')
+    expect(digits(await kv(page, '남은 금액').locator('dd').innerText())).toBe(1_266_000)
+    await expect(kv(page, '남은 금액')).toContainText('8회')
+    await expect(instRows(page)).toHaveCount(12)
+    await expect(instRows(page).locator('.pill', { hasText: /^냄$/ })).toHaveCount(4)
+    await expect(instRows(page).locator('.pill', { hasText: /^다음$/ })).toHaveCount(1)
+    await expect(instRows(page).locator('.pill', { hasText: /^남음$/ })).toHaveCount(7)
+
+    // C: split
+    await listItem(page, nC).click()
+    await expect(listItem(page, nC)).toContainText('나눠 내기 3회')
+    await expect(listItem(page, nC)).toContainText('회당')
+    await expect(kv(page, '총액')).toContainText('나눠 내기 · 수수료 없음')
+    expect(digits(await kv(page, '회당').locator('dd').innerText())).toBe(300_000)
+    await expect(instRows(page)).toHaveCount(3)
+
+    // A: the fee and the odd 20 won
+    await listItem(page, nA).click()
+    await expect(page.locator('.id-n h2')).toHaveText(nA)
+    expect(digits(await kv(page, '총액').locator('dd').innerText())).toBe(1_325_000)
+    await expect(kv(page, '총액')).toContainText('원금 ₩1,290,000 + 수수료 ₩35,000')
+    expect(digits(await kv(page, '회당').locator('dd').innerText())).toBe(220_830)
+    await expect(kv(page, '회당')).toContainText('마지막 회차 ₩220,850')
+    await expect(instRows(page)).toHaveCount(6)
+    expect(digits(await instRows(page).nth(5).locator('td').nth(2).innerText())).toBe(220_850)
+    await expect(instRows(page).first().locator('.pill')).toHaveText('다음')
+    await expect(page.locator('.pane .cfoot').first()).toBeVisible()
+    await expect(page.getByText('수수료 ₩35,000을 6회에 나눠 더했어요.')).toBeVisible()
+    await expect(page.getByText('끝전 ₩20은 마지막 회차가 받아요.')).toBeVisible()
+    await expect(page.locator('.diff')).toHaveCount(0)
+    // 수정 (the whole-spending editor) comes with W-7
+    await expect(page.getByRole('button', { name: `${nA} 수정 (준비 중)` })).toHaveAttribute('aria-disabled', 'true')
+
+    // edit round 1: 220,830 → 200,000 shows 고침 and the difference, and the month card moves
+    await page.getByRole('button', { name: '1회차 수정' }).click()
+    const e1 = sheet(page, `회차 수정 · ${nA} 1/6회`)
+    await expect(e1).toBeVisible()
+    await expect(e1.getByText('저장하면 변경 내역에 남아요.')).toBeVisible()
+    await e1.getByLabel('금액 (₩)').fill('200000')
+    await saveSheet(page, `회차 수정 · ${nA} 1/6회`)
+    await expect(instRows(page).first()).toContainText('· 고침')
+    await expect(instRows(page).nth(1)).not.toContainText('· 고침')
+    await expect(page.locator('.diff')).toContainText('총액보다 ₩20,830 적어요')
+    expect(await big(page, 0)).toBe(out0 + 200_000 + 158_250)
+    const got1 = ((await state(request)).spendings as unknown as Inst[]).find((x) => x.id === ids[0])!
+    expect(got1.rounds[0]).toMatchObject({ amount: 200_000, edited: true, state: 'left' })
+
+    // mark round 2 paid: the state alone does not mark it edited
+    await page.getByRole('button', { name: '2회차 수정' }).click()
+    const e2 = sheet(page, `회차 수정 · ${nA} 2/6회`)
+    await e2.getByRole('group', { name: /^상태/ }).getByRole('button', { name: '냄', exact: true }).click()
+    await saveSheet(page, `회차 수정 · ${nA} 2/6회`)
+    await expect(listItem(page, nA)).toContainText('1/6회 냄')
+    await expect(instRows(page).nth(1).locator('.pill')).toHaveText('냄')
+    await expect(instRows(page).nth(1)).not.toContainText('· 고침')
+    const got2 = ((await state(request)).spendings as unknown as Inst[]).find((x) => x.id === ids[0])!
+    expect(got2.rounds[1]).toMatchObject({ amount: 220_830, edited: false, state: 'paid' })
+    expect(digits(await kv(page, '낸 금액').locator('dd').innerText())).toBe(220_830)
+
+    // early payoff: the date is today, the amount the sum left; lower it; five rounds merge and one is added
+    await page.getByRole('button', { name: '중도 완납', exact: true }).click()
+    const po = sheet(page, `중도 완납 · ${nA}`)
+    await expect(po).toBeVisible()
+    expect(await readDate(po.getByRole('group', { name: '완납일' }))).toBe(todayKst())
+    await expect(po.getByLabel('완납 금액 (₩)')).toHaveValue('1,083,340')
+    await po.getByLabel('완납 금액 (₩)').fill('1000000')
+    await saveSheet(page, `중도 완납 · ${nA}`, '완납하기')
+    await expect(instRows(page)).toHaveCount(7)
+    await expect(instRows(page).locator('.pill', { hasText: '중도 완납으로 합침' })).toHaveCount(5)
+    await expect(instRows(page).last()).toContainText('중도 완납')
+    expect(digits(await instRows(page).last().locator('td').nth(2).innerText())).toBe(1_000_000)
+    await expect(page.locator('.diff')).toContainText('총액보다 ₩104,170 적어요')
+    const got3 = ((await state(request)).spendings as unknown as Inst[]).find((x) => x.id === ids[0])!
+    expect(got3.rounds.map((r) => r.state)).toEqual(['merged', 'paid', 'merged', 'merged', 'merged', 'merged', 'left'])
+    expect(got3.rounds[6]).toMatchObject({ no: 7, amount: 1_000_000, date: todayKst(), edited: false })
+    expect(await big(page, 0), 'the merged rounds left the month, the payoff round (today) is in').toBe(out0 + 158_250 + 1_000_000)
+    await expect(page.getByRole('button', { name: '중도 완납', exact: true })).toBeVisible() // one round is still left
+
+    // cancel: asks first; the left round leaves the month and the 진행 중 count
+    const onBefore = await segCount(page, '진행 중')
+    await page.getByRole('button', { name: '취소', exact: true }).click()
+    const ask = page.getByRole('alertdialog')
+    await expect(ask).toContainText(`${nA}을(를) 취소할까요?`)
+    await ask.getByRole('button', { name: '취소하기' }).click()
+    await expect(ask).toBeHidden()
+    expect(await segCount(page, '진행 중')).toBe(onBefore - 1)
+    await seg(page).getByRole('button', { name: /^전체/ }).click()
+    await listItem(page, nA).click()
+    await expect(page.locator('.id-n .pill')).toHaveText('취소')
+    expect(await big(page, 0), 'a cancelled spending keeps only what was paid').toBe(out0 + 158_250)
+    expect(digits(await kv(page, '남은 금액').locator('dd').innerText())).toBe(0)
+    await expect(page.getByRole('button', { name: '중도 완납', exact: true })).toHaveCount(0)
+    // turn it back on with the same button
+    await page.getByRole('button', { name: '다시 켜기' }).click()
+    await expect(page.locator('.id-n .pill')).toHaveText('진행 중')
+    expect(await big(page, 0)).toBe(out0 + 158_250 + 1_000_000)
+    expect(((await state(request)).spendings as unknown as Inst[]).find((x) => x.id === ids[0])!.cancelled).toBe(false)
+
+    // 버퍼 사용 is not selectable (0.1.6)
+    await page.getByRole('combobox', { name: '내는 방식' }).click()
+    await expect(page.getByRole('option', { name: /^버퍼 사용/ })).toHaveAttribute('aria-disabled', 'true')
+    await page.keyboard.press('Escape')
+    // the 카드 할부 / 나눠 내기 filter
+    await choose(page.getByRole('combobox', { name: '내는 방식' }), { label: '나눠 내기' })
+    await expect(listItem(page, nC)).toBeVisible()
+    await expect(page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(nB) })).toHaveCount(0)
+  })
+})
+
+test('(S-4) a round the server refuses keeps its editor open and shows the reason; nothing is saved', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const n = `${MARK}-big`
+  await withSpendings(request, [instBody(n, { how: 'split', payBy: 'salary', amount: 600_000, count: 2, rounds: rounds(ymAdd(thisYm(), 1), 25, [300_000, 300_000]) })], async (ids) => {
+    await page.goto('/#spend/inst')
+    await page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(n) }).click()
+    await page.getByRole('button', { name: '1회차 수정' }).click()
+    const s = sheet(page, `회차 수정 · ${n} 1/2회`)
+    await s.getByLabel('금액 (₩)').fill('2147483647')
+    await s.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(s.getByRole('alert')).toBeVisible()
+    await expect(s).toBeVisible()
+    await s.getByRole('button', { name: '취소', exact: true }).click()
+    await expect(s).toBeHidden()
+    const got = ((await state(request)).spendings as unknown as Inst[]).find((x) => x.id === ids[0])!
+    expect(got.rounds[0]!.amount).toBe(300_000)
+  })
+})
+
+test('(V-7) the 할부 tab and its round editor at 390px: stacked, no sideways scroll', async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const n = `${MARK}-ph-${'가나다라마바사'.repeat(5)}`
+  await withSpendings(request, [instBody(n, { how: 'installment', payBy: 'card', amount: 1_290_000, fee: 35_000, count: 6, rounds: rounds(thisYm(), 28, [220_830, 220_830, 220_830, 220_830, 220_830, 220_850]) })], async () => {
+    await page.goto('/#spend/inst')
+    await expect(card(page)).toBeVisible()
+    await page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(MARK) }).first().click()
+    const fits = async (what: string) => {
+      const w = await page.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }))
+      expect(w.s, `${what}: scrollWidth ${w.s} > clientWidth ${w.c}`).toBeLessThanOrEqual(w.c)
+    }
+    await expect(page.locator('.id-n h2')).toBeVisible()
+    // the list sits above the detail
+    const lb = await page.getByRole('list', { name: '할부 목록' }).boundingBox()
+    const db = await page.locator('.idet').boundingBox()
+    expect(db!.y, 'the detail is below the list').toBeGreaterThanOrEqual(lb!.y + lb!.height - 1)
+    await fits('detail')
+    await page.getByRole('button', { name: '1회차 수정' }).first().click()
+    await expect(page.getByRole('form', { name: /^회차 수정/ })).toBeVisible()
+    await fits('round editor')
+    const box = await page.getByRole('form', { name: /^회차 수정/ }).boundingBox()
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+    await page.getByRole('button', { name: '취소', exact: true }).click()
+    await page.getByRole('button', { name: '중도 완납', exact: true }).click()
+    await expect(page.getByRole('form', { name: /^중도 완납/ })).toBeVisible()
+    await fits('early payoff')
+  })
+})
+
+test('(S-10) the 할부 tab in English', async ({ page, request }) => {
+  const prefs = (await state(request)).preferences
+  expect((await api(request, 'PUT', '/api/preferences', { ...prefs, language: 'en' })).status).toBe(200)
+  const n = `${MARK}-en`
+  try {
+    await withSpendings(request, [instBody(n, { how: 'installment', payBy: 'card', amount: 1_290_000, fee: 35_000, count: 6, rounds: rounds(thisYm(), 28, [220_830, 220_830, 220_830, 220_830, 220_830, 220_850]) })], async () => {
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await page.goto('/#spend/inst')
+      await expect(page.getByRole('group', { name: 'Filter by status' }).getByRole('button')).toHaveText([/^In progress\s*\d+$/, /^Done\s*\d+$/, /^All\s*\d+$/])
+      await page.getByRole('list', { name: 'Installments' }).getByRole('button', { name: new RegExp(n) }).click()
+      await expect(page.locator('.id-n h2')).toHaveText(n)
+      await expect(page.getByRole('button', { name: 'Pay off early', exact: true })).toBeVisible()
+      await expect(page.locator('.rt thead th')).toHaveText(['Round', 'Billing date', 'Amount', 'Counted', 'Status', 'Edit'])
+      await expect(page.locator('.rt tbody tr').first()).toContainText('Next')
+      await expect(page.locator('.id-s')).toContainText('Principal ₩1,290,000 + fee ₩35,000')
+      await page.getByRole('button', { name: 'Edit Round 1' }).click()
+      await expect(page.getByRole('form', { name: `Edit round · ${n} 1/6` })).toBeVisible()
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    })
+  } finally {
+    await api(request, 'PUT', '/api/preferences', prefs)
+  }
 })

@@ -2,19 +2,20 @@
 import { computed, defineAsyncComponent, onActivated, onDeactivated, ref } from 'vue'
 import { t } from '../i18n'
 import { store } from '../lib/store'
-import { fmtDate, fmtMoney } from '../lib/display'
+import { fmtMoney } from '../lib/display'
 import { monthMoney, today, ymLabel, ymOf } from '../lib/calc'
 import Icon from '../components/Icon.vue'
 import PageHeader from '../components/PageHeader.vue'
 import PageLoadError from '../components/PageLoadError.vue'
 import Soon from '../components/Soon.vue'
 import SpendGeneral from '../components/SpendGeneral.vue'
+import SpendInstallments from '../components/SpendInstallments.vue'
 import SubTabs from '../components/SubTabs.vue'
 import Tip from '../components/Tip.vue'
 
 // 지출 (spec 011 S-1, S-5, S-7): one-off spending, installments and subscriptions under one menu. The
 // page owns the title, the month's reflection card, the three tabs and each tab's add button. The 구독 tab
-// is the whole of the old subscriptions page; 일반 and 할부 are W-5 (SpendGeneral) and W-6.
+// is the whole of the old subscriptions page; 일반 and 할부 are SpendGeneral (W-5) and SpendInstallments (W-6).
 // A page loaded on first open; if its code cannot be downloaded, say so and offer a reload.
 const Subscriptions = defineAsyncComponent({ loader: () => import('./Subscriptions.vue'), errorComponent: PageLoadError, delay: 200 })
 
@@ -115,13 +116,7 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
       <Subscriptions v-if="kind === 'subs'" embedded :adding="adding" @added="adding = false" />
     </KeepAlive>
     <SpendGeneral v-if="kind === 'general'" />
-    <!-- Placeholder until W-6 (할부): the saved items as plain lines, or the empty state of the canvas -->
-    <section v-else-if="kind === 'inst'" class="card">
-      <div v-if="!inst.length" class="empty"><b>{{ t('spending.emptyTitle') }}</b><span class="hint">{{ t('spending.emptyInst') }}</span></div>
-      <ul v-else class="plain">
-        <li v-for="s in inst" :key="s.id"><b>{{ s.name }}</b><span class="mono hint">{{ fmtDate(s.bought) }}</span><span class="num">{{ fmtMoney(s.rounds.reduce((a, r) => a + (r.state === 'merged' ? 0 : r.amount), 0)) }}</span></li>
-      </ul>
-    </section>
+    <SpendInstallments v-else-if="kind === 'inst'" />
   </section>
 </template>
 
@@ -147,12 +142,6 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
 .tabrow > .kinds{flex:1 1 auto;min-width:0;margin:0}
 .tabrow :deep(.subtabs){border-bottom:0}
 .tabrow > .btn{flex:none;height:34px}
-.empty{display:flex;flex-direction:column;align-items:center;gap:2px;padding:32px 18px;text-align:center;color:var(--muted)}
-.empty b{color:var(--text)}
-.plain{list-style:none;margin:0;padding:0}
-.plain li{display:flex;align-items:baseline;gap:12px;padding:12px 18px;border-bottom:1px solid var(--divider)}
-.plain li:last-child{border-bottom:0}
-.plain li b{flex:1;min-width:0;overflow-wrap:anywhere}
 @media (max-width:760px){
   .ms-g{grid-template-columns:minmax(0,1fr)}
   .ms-g > div + div{border-left:0;border-top:1px solid var(--divider)}
