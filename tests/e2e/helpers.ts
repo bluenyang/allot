@@ -30,6 +30,9 @@ export async function deleteInSheet(page: Page, title: string | RegExp) {
   await s.getByRole('button', { name: '삭제' }).click()
   const ask = page.getByRole('alertdialog')
   await ask.getByRole('button', { name: '삭제', exact: true }).click()
+  // The sheet leaves the accessibility tree as soon as the confirmation (a modal) is open, so "hidden" alone
+  // does not mean it closed: wait for the question to go away, which happens after the DELETE has been answered.
+  await expect(ask).toBeHidden()
   await expect(s).toBeHidden()
 }
 
