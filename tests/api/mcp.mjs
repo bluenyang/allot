@@ -689,7 +689,7 @@ async function writeMode() {
     const seen = {}
     for (const t of ['mcp_proposal', 'spending', 'spending_round']) {
       seen[t] = (await tx.unsafe(`select count(*)::int as n from ${t} where user_id = $1`, [wId]))[0].n
-      seen[`${t}.all`] = (await tx.unsafe(`select count(*)::int as n from ${t}`))[0].n
+      seen[`${t}.notX`] = (await tx.unsafe(`select count(*)::int as n from ${t} where user_id <> $1`, [xId]))[0].n // every row X can see is X's own
     }
     const upd = { mcp_proposal: (await tx`update mcp_proposal set status = status where user_id = ${wId}`).count, spending: (await tx`update spending set name = name where user_id = ${wId}`).count, spending_round: (await tx`update spending_round set amount = amount where user_id = ${wId}`).count }
     const del = { mcp_proposal: (await tx`delete from mcp_proposal where user_id = ${wId}`).count, spending: (await tx`delete from spending where user_id = ${wId}`).count, spending_round: (await tx`delete from spending_round where user_id = ${wId}`).count }
