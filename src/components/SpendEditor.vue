@@ -65,7 +65,7 @@ const feeOn = ref((I?.fee ?? 0) > 0)
 const fee = ref<number | ''>(I && I.fee > 0 ? I.fee : '')
 const interval = ref<SpendInterval>(I?.interval ?? 'monthly')
 const customDates = ref<string[]>([...storedCustom])
-// a lump sum is 남음, 냄 or 취소 (review 13: the 일반 tab has no other place to cancel one); 취소 keeps its round, which then counts nowhere
+// a lump sum is 남음, 냄 or 취소 (review 13: the 일반 tab has no other place to cancel one); 취소 means refunded or never paid (A-38): cancelled, and its round is left, so it counts nowhere
 const lumpState = ref<'left' | 'paid' | 'cancelled'>(I?.how === 'lump' ? (I.cancelled ? 'cancelled' : I.rounds.find((r) => r.state !== 'merged')?.state === 'paid' ? 'paid' : 'left') : 'left')
 
 const step = ref(0)
@@ -170,7 +170,7 @@ const losing = computed(() => {
   if (!I || !replan.value) return null
   const edited = I.rounds.filter((r) => r.edited && r.state !== 'merged').length
   const merged = I.rounds.filter((r) => r.state === 'merged').length
-  const paid = I.how === 'lump' ? 0 : I.rounds.filter((r) => r.state === 'paid').length
+  const paid = I.how === 'lump' || how.value === 'lump' ? 0 : I.rounds.filter((r) => r.state === 'paid').length
   return edited || merged || paid ? { edited, merged, paid } : null
 })
 
@@ -260,7 +260,7 @@ function validate(x: Spending): string | null {
   x.interval = how.value === 'split' ? interval.value : null
   if (!replan.value && I) {
     x.rounds = I.rounds.map((r) => ({ ...r }))
-    if (how.value === 'lump' && lumpState.value !== 'cancelled') { const r = x.rounds.find((q) => q.state !== 'merged'); if (r) r.state = lumpState.value }
+    if (how.value === 'lump') { const r = x.rounds.find((q) => q.state !== 'merged'); if (r) r.state = lumpState.value === 'paid' ? 'paid' : 'left' }
   } else {
     x.rounds = planned.value.map((r) => ({ ...r, state: how.value === 'lump' ? (lumpState.value === 'paid' ? 'paid' : 'left') : keepPaid(r.no) ? 'paid' : 'left' }))
   }

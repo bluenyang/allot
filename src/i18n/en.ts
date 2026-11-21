@@ -515,7 +515,7 @@ export const en = {
       whereLumpSubs: 'Added to the subscription transfer of month {month} and goes to One-off',
       whereMultiRem: 'Each round comes off that month\'s remainder and goes to Installments',
       whereMultiSubs: 'Each round is added to that month\'s subscription transfer and goes to Installments',
-      stateTip: 'You mark a round paid yourself. Matching with card statements automatically comes later. Cancelling takes it out of this month\'s numbers and keeps the spending.',
+      stateTip: 'You mark a round paid yourself. Matching with card statements automatically comes later. Cancelled means refunded or not paid. It is not counted, and the spending stays in the list.',
       stateCancelled: 'Cancelled',
       tag: { edited: 'Edited', merged: 'Merged', paid: 'Paid' },
       note: 'Note',

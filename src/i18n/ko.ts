@@ -515,7 +515,7 @@ export const ko = {
       whereLumpSubs: '{month}월 구독 이체에 더해지고 일반에 들어가요',
       whereMultiRem: '회차마다 그 달 나머지에서 빠지고 할부에 들어가요',
       whereMultiSubs: '회차마다 그 달 구독 이체에 더해지고 할부에 들어가요',
-      stateTip: '냄 표시는 직접 해요. 카드 명세서와 자동으로 맞추는 기능은 나중에 붙어요. 취소하면 이번 달 계산에서 빠지고 지출은 남아요.',
+      stateTip: '냄 표시는 직접 해요. 카드 명세서와 자동으로 맞추는 기능은 나중에 붙어요. 취소는 환불받았거나 내지 않은 지출이에요. 계산에는 넣지 않고 지출은 목록에 남아요.',
       stateCancelled: '취소',
       tag: { edited: '고침', merged: '합침', paid: '냄' },
       note: '메모',

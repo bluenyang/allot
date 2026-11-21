@@ -1358,3 +1358,61 @@ test('(S-5, S-6, review 13, W-7) a lump sum is cancelled and resumed from its ed
     await cleanEd(request)
   }
 })
+
+test('(S-5, S-6, A-38, review 14, W-7) cancelling a paid lump means refunded: the round is left, it stays so when the amount changes, 냄 counts it again', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const name = `${EDM}-rf`
+  const row = () => page.locator('table.gen-t tbody tr').filter({ hasText: name })
+  const open = async () => {
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    return sheet(page, `지출 수정 · ${name}`)
+  }
+  try {
+    await page.goto('/#spend/general')
+    await expect(card(page)).toBeVisible()
+    const out0 = await big(page, 0)
+    const body = lump(name, 40_000, 'salary')
+    expect((await api(request, 'POST', '/api/spendings', { ...body, rounds: [{ ...body.rounds[0]!, state: 'paid' }] })).status).toBe(201)
+    await page.reload()
+    await expect(card(page)).toBeVisible()
+    expect(await big(page, 0), 'a paid round counts').toBe(out0 + 40_000)
+
+    // 취소: refunded or not paid → cancelled and left, "반영 안 함", out of the month card
+    let s = await open()
+    await next(s); await next(s)
+    await expect(grp(s, '상태').getByRole('button', { name: '냄', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await grp(s, '상태').getByRole('button', { name: '취소', exact: true }).click()
+    await expect(s.getByText('반영 안 함')).toBeVisible()
+    await saveSheet(page, `지출 수정 · ${name}`)
+    let got = await byName(request, 'rf')
+    expect(got.cancelled).toBe(true)
+    expect(got.rounds[0]).toMatchObject({ state: 'left', amount: 40_000 })
+    await expect(row()).toContainText('반영 안 함')
+    expect(await big(page, 0), 'the month card drops it').toBe(out0)
+
+    // a new amount works the rounds out again; no warning about paid rounds; still cancelled and left
+    s = await open()
+    await s.getByLabel('금액', { exact: true }).fill('45000')
+    await next(s); await next(s)
+    await expect(grp(s, '상태').getByRole('button', { name: '취소', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(s.getByTestId('sp-replan')).toHaveCount(0)
+    await saveSheet(page, `지출 수정 · ${name}`)
+    got = await byName(request, 'rf')
+    expect(got.cancelled).toBe(true)
+    expect(got.rounds).toHaveLength(1)
+    expect(got.rounds[0]).toMatchObject({ state: 'left', amount: 45_000 })
+    expect(await big(page, 0)).toBe(out0)
+
+    // 냄: counted again
+    s = await open()
+    await next(s); await next(s)
+    await grp(s, '상태').getByRole('button', { name: '냄', exact: true }).click()
+    await saveSheet(page, `지출 수정 · ${name}`)
+    got = await byName(request, 'rf')
+    expect(got.cancelled).toBe(false)
+    expect(got.rounds[0]).toMatchObject({ state: 'paid', amount: 45_000 })
+    expect(await big(page, 0)).toBe(out0 + 45_000)
+  } finally {
+    await cleanEd(request)
+  }
+})
