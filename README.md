@@ -24,7 +24,7 @@ docker compose -f docker/compose.dev.yaml exec api pnpm db:admin  # 관리자 �
 - `pnpm db:admin`은 데이터 파일 없이 관리자 계정만 만든다(새로 클론했을 때). 새 계정은 기본 설정과 빈 목록으로 시작한다.
 - 관리자 이메일을 바꾸려면 `pnpm db:seed --replace-admin <예전 이메일>`(또는 `db:admin`) — 그 계정의 데이터와 변경 내역을 새 계정으로 옮긴 뒤 예전 계정과 그 세션을 지운다. 다른 계정은 건드리지 않는다.
 - web 컨테이너에는 프론트 파일(`index.html`, `vite.config.ts`, `tsconfig.json`, `src/`)만 마운트한다. Vite는 LAN의 누구에게나 root 아래 파일을 보여 주기 때문이다.
-- 개발과 테스트는 이 스택 하나로 한다. `docker/compose.yaml`은 운영 예시다(아래).
+- 개발은 이 스택으로 한다. E2E·API 검사는 데이터를 만들고 지우므로, 실제로 쓰는 데이터가 든 스택이 아니라 버려도 되는 스택(새 DB)에서 돌린다. `docker/compose.yaml`은 운영 예시다(아래).
 
 ## 운영 배포 (이미지)
 
@@ -181,6 +181,8 @@ pnpm e2e           # Playwright E2E (스택이 떠 있어야 함, 아래)
 ```
 
 ## 테스트
+
+E2E와 `tests/api/*`는 계정 데이터를 만들고 바꾸고 지운다. 실제 데이터가 있는 서버가 아니라 버려도 되는 서버에서 돌린다.
 
 ```bash
 docker compose -f docker/compose.dev.yaml up -d --build -V --wait
