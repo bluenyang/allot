@@ -14,6 +14,7 @@ import { view } from './lib/view'
 import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
 import { t, type MessageKey } from './i18n'
+import { loadSpendingMessages } from './i18n/spending'
 import { phaseTag } from './lib/labels'
 
 // Shell (spec 010 S-4): a grouped sidebar with the user at the bottom, a header bar and a footer on
@@ -26,7 +27,7 @@ interface Page { id: string; comp: unknown }
 const PAGES: Record<string, Page> = {
   // Only the dashboard is in the first chunk; every other page loads when it is first opened (spec 010 V-1, A-24).
   home: { id: 'home', comp: Dashboard },
-  spend: { id: 'spend', comp: lazyPage(() => import('./pages/Spending.vue')) },
+  spend: { id: 'spend', comp: lazyPage(() => loadSpendingMessages().then(() => import('./pages/Spending.vue'))) },
   pay: { id: 'pay', comp: lazyPage(() => import('./pages/Payroll.vue')) },
   events: { id: 'events', comp: lazyPage(() => import('./pages/Timeline.vue')) },
   pending: { id: 'pending', comp: lazyPage(() => import('./pages/Pending.vue')) },
