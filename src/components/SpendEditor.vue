@@ -107,10 +107,13 @@ const amountN = computed(() => (typeof amount.value === 'number' ? amount.value 
 // the buffer is fixed with the rate when the spending is saved: an edit that keeps the rounds keeps the stored one, a new plan takes today's
 const buffer = computed(() => (currency.value === 'USD' ? (I?.currency === 'USD' && I.fxBuffer !== null && !replan.value ? I.fxBuffer : store.settings.fxBuffer) : null))
 const principal = computed(() => (Number.isFinite(amountN.value) ? spendingKrw(amountN.value, currency.value, { fxRate: rate.value ?? store.settings.fxRate, fxBuffer: buffer.value ?? store.settings.fxBuffer }) : 0))
+// Holidays for every month a billing date is worked out in: from the purchase month or the first date the user set, whichever is
+// earlier, to the later of them plus the rounds, with the month before and the months after that a moved date can reach (review 8).
 const off = computed<ReadonlySet<string>>(() => {
   if ((store.settings.dayShift ?? 'none') === 'none' || !DATE.test(bought.value)) return new Set()
   const n = countOk.value ? countN.value : 1
-  return offDays(store.holidaySets, `${addYm(bought.value.slice(0, 7), -1)}-01`, `${addYm(bought.value.slice(0, 7), n + 3)}-01`) ?? new Set()
+  const yms = [bought.value.slice(0, 7), ...(firstManual.value && DATE.test(firstVal.value) ? [firstVal.value.slice(0, 7)] : [])].sort()
+  return offDays(store.holidaySets, `${addYm(yms[0]!, -1)}-01`, `${addYm(yms[yms.length - 1]!, n + 3)}-01`) ?? new Set()
 })
 const cardDay = (ym: string) => monthDay(ym, store.settings.billingDay, store.settings.dayShift ?? 'none', off.value).date
 /** The date the first round gets when the user does not set one: a card is billed the month after, the others pay on the day. */

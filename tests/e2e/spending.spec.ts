@@ -1282,3 +1282,37 @@ test('(review 7, S-4) the per-round amount is not the odd last round: 1,001 won 
     await expect(kv(page, '회당')).toContainText('고친 회차 2개')
   })
 })
+
+test('(S-4, A-25, review 8, W-7) a first date set a year on: the later billing dates still move off a holiday of that year', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const before = (await state(request)).settings as unknown as Record<string, unknown>
+  let setId = ''
+  try {
+    // billing day 16, a billing date on a closed day moves to the next business day, and 2027-12-16 (a Thursday) is a holiday
+    expect((await api(request, 'PUT', '/api/settings', { ...before, billingDay: 16, dayShift: 'after' })).status).toBe(200)
+    const made = await api(request, 'POST', '/api/holiday-sets', { name: `${EDM}-hol`, enabled: true, builtin: null, rules: [{ name: `${EDM}-day`, rdate: ['2027-12-16'] }] })
+    expect(made.status).toBe(201)
+    setId = (made.json as { id: string }).id
+    await page.goto('/#spend/inst')
+    await page.reload()
+    await page.getByRole('button', { name: '할부 추가', exact: true }).click()
+    const s = sheet(page, '할부 추가')
+    await fillBought(s, `${EDM}-hol`, '300000', '2026-11-10')
+    await next(s)
+    await expect(grp(s, '할부 개월').getByRole('button', { name: '3개월', exact: true })).toBeVisible()
+    await grp(s, '할부 개월').getByRole('button', { name: '3개월', exact: true }).click()
+    await fillDate(grp(s, '첫 청구일'), '2027-11-16')
+    await next(s)
+    await expect(s.locator('.rl li')).toHaveCount(3)
+    await expect(s.locator('.rl li').nth(0)).toContainText('2027-11-16')
+    await expect(s.locator('.rl li').nth(1)).toContainText('2027-12-17') // not the 16th, a holiday
+    await saveSheet(page, '할부 추가')
+    const got = await byName(request, 'hol')
+    expect(got.rounds.map((r) => r.date).slice(0, 2)).toEqual(['2027-11-16', '2027-12-17'])
+  } finally {
+    if (setId) await api(request, 'DELETE', `/api/holiday-sets/${setId}`)
+    await api(request, 'PUT', '/api/settings', before)
+    await cleanEd(request)
+    expect(((await api(request, 'GET', '/api/state')).json as { holidaySets: { id: string }[] }).holidaySets.some((h) => h.id === setId), 'the test holiday set is removed').toBe(false)
+  }
+})
