@@ -65,7 +65,8 @@ const feeOn = ref((I?.fee ?? 0) > 0)
 const fee = ref<number | ''>(I && I.fee > 0 ? I.fee : '')
 const interval = ref<SpendInterval>(I?.interval ?? 'monthly')
 const customDates = ref<string[]>([...storedCustom])
-const lumpState = ref<'left' | 'paid'>(I?.how === 'lump' && I.rounds.find((r) => r.state !== 'merged')?.state === 'paid' ? 'paid' : 'left')
+// a lump sum is 남음, 냄 or 취소 (review 13: the 일반 tab has no other place to cancel one); 취소 keeps its round, which then counts nowhere
+const lumpState = ref<'left' | 'paid' | 'cancelled'>(I?.how === 'lump' ? (I.cancelled ? 'cancelled' : I.rounds.find((r) => r.state !== 'merged')?.state === 'paid' ? 'paid' : 'left') : 'left')
 
 const step = ref(0)
 const askDel = ref(false)
@@ -76,7 +77,7 @@ const howOpts = computed(() => [
   { id: 'lump', label: t('spending.ed.howLump') }, { id: 'installment', label: t('spending.ed.howInst') }, { id: 'split', label: t('spending.ed.howSplit') },
   { id: 'buffer', label: t('spending.ed.howBuffer'), disabled: true }, // 0.1.6
 ])
-const stateOpts = computed(() => [{ id: 'left', label: t('spending.inst.round.left') }, { id: 'paid', label: t('spending.inst.round.paid') }])
+const stateOpts = computed(() => [{ id: 'left', label: t('spending.inst.round.left') }, { id: 'paid', label: t('spending.inst.round.paid') }, { id: 'cancelled', label: t('spending.ed.stateCancelled') }])
 const feeOpts = computed(() => [{ id: 'free', label: t('spending.ed.interestFree') }, { id: 'fee', label: t('spending.ed.interestFee') }])
 const intervalOpts = computed(() => (['monthly', 'biweekly', 'custom'] as const).map((v) => ({ value: v, label: t(`spending.ed.interval.${v}` as 'spending.ed.interval.monthly') })))
 const payOpts = computed(() => (how.value === 'installment' ? ['card'] as const : ['card', 'salary', 'subs'] as const).map((v) => ({
@@ -203,6 +204,7 @@ const planHint = computed(() => {
   return (remainder.value > 0 ? t('spending.ed.hintRemainder', { amount: fmtMoney(remainder.value) }) : '') + t('spending.ed.hintMulti')
 })
 const whereLine = computed(() => {
+  if (how.value === 'lump' && lumpState.value === 'cancelled') return t('spending.inst.reflectNone')
   const m = live.value[0]?.date ? Number(live.value[0].date.slice(5, 7)) : 0
   const k = `spending.ed.${multi.value ? 'whereMulti' : 'whereLump'}${payBy.value === 'subs' ? 'Subs' : 'Rem'}` as 'spending.ed.whereLumpRem'
   return t(k, { month: m })
@@ -254,12 +256,13 @@ function validate(x: Spending): string | null {
   x.payBy = payBy.value
   x.count = how.value === 'lump' ? 1 : countN.value
   x.fee = feeEff.value
+  x.cancelled = how.value === 'lump' ? lumpState.value === 'cancelled' : !!I && I.how !== 'lump' && I.cancelled
   x.interval = how.value === 'split' ? interval.value : null
   if (!replan.value && I) {
     x.rounds = I.rounds.map((r) => ({ ...r }))
-    if (how.value === 'lump') { const r = x.rounds.find((q) => q.state !== 'merged'); if (r) r.state = lumpState.value }
+    if (how.value === 'lump' && lumpState.value !== 'cancelled') { const r = x.rounds.find((q) => q.state !== 'merged'); if (r) r.state = lumpState.value }
   } else {
-    x.rounds = planned.value.map((r) => ({ ...r, state: how.value === 'lump' ? lumpState.value : keepPaid(r.no) ? 'paid' : 'left' }))
+    x.rounds = planned.value.map((r) => ({ ...r, state: how.value === 'lump' ? (lumpState.value === 'paid' ? 'paid' : 'left') : keepPaid(r.no) ? 'paid' : 'left' }))
   }
   return null
 }

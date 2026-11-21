@@ -1316,3 +1316,45 @@ test('(S-4, A-25, review 8, W-7) a first date set a year on: the later billing d
     expect(((await api(request, 'GET', '/api/state')).json as { holidaySets: { id: string }[] }).holidaySets.some((h) => h.id === setId), 'the test holiday set is removed').toBe(false)
   }
 })
+
+test('(S-5, S-6, review 13, W-7) a lump sum is cancelled and resumed from its editor: 취소 on the tab, out of the month card and the method card', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const name = `${EDM}-cx`
+  const row = () => page.locator('table.gen-t tbody tr').filter({ hasText: name })
+  const edit = async (pick: '취소' | '남음') => {
+    await page.getByRole('button', { name: `${name} 수정` }).click()
+    const s = sheet(page, `지출 수정 · ${name}`)
+    await next(s); await next(s)
+    await grp(s, '상태').getByRole('button', { name: pick, exact: true }).click()
+    if (pick === '취소') await expect(s.getByText('반영 안 함')).toBeVisible()
+    await saveSheet(page, `지출 수정 · ${name}`)
+  }
+  try {
+    await page.goto('/#spend/general')
+    await expect(card(page)).toBeVisible()
+    const out0 = await big(page, 0)
+    const k0 = digits(await gCards(page).nth(2).locator('.k2 b').innerText())
+    expect((await api(request, 'POST', '/api/spendings', lump(name, 55_000, 'salary'))).status).toBe(201)
+    await page.reload()
+    await expect(card(page)).toBeVisible()
+    expect(await big(page, 0)).toBe(out0 + 55_000)
+    expect(digits(await gCards(page).nth(2).locator('.k2 b').innerText())).toBe(k0 + 55_000)
+
+    await edit('취소')
+    const got = await byName(request, 'cx')
+    expect(got.cancelled).toBe(true)
+    expect(got.rounds).toHaveLength(1)
+    expect(got.rounds[0]).toMatchObject({ amount: 55_000, state: 'left', edited: false })
+    await expect(row()).toContainText('취소')
+    await expect(row()).toContainText('반영 안 함')
+    expect(await big(page, 0), 'the month card drops it').toBe(out0)
+    expect(digits(await gCards(page).nth(2).locator('.k2 b').innerText()), 'the method card leaves it out').toBe(k0)
+
+    await edit('남음')
+    expect((await byName(request, 'cx')).cancelled).toBe(false)
+    await expect(row()).not.toContainText('취소')
+    expect(await big(page, 0)).toBe(out0 + 55_000)
+  } finally {
+    await cleanEd(request)
+  }
+})
