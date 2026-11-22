@@ -192,7 +192,7 @@ summary_for_user: |
 - [x] W-8 (877de52 27e6e56) 목표 도달: 대기 중인 변경 카드와 배지, 멈추기·계속 보내기·다시 보내기, i18n.
 - [x] W-11 (0b6d90e) 카드: 카드 표·창(월급 분배 탭), 지출의 카드 결제일 반영(calc는 W-2에서), i18n. (W-1이 표·자원을, W-2가 계산을 함께 만든다.)
 - [x] W-9 (134c183 (aa7958d)) MCP: 읽기 도구 2개, 쓰기 대상, 도구 설명, `tests/api/mcp.mjs`·`tests/api/proposals.ts` 넓힘.
-- [ ] W-10 시험과 문서: E2E(`tests/e2e/budget.spec.ts` 새로 — 생활·저축·투자·통장·버퍼·목표; 예전 값 비교), API 시험(`tests/api/crud.mjs` 새 자원), CHANGELOG(0.1.7-rc.1), README 기능 목록.
+- [x] W-10 (034a5f8 2a060f5 5a7672a 53bbfab fb7abd6 b0d7b53 560a7e9 fc7cd00 05e9d35 2e5d651) 시험과 문서: E2E(`tests/e2e/budget.spec.ts` 새로 — 생활·저축·투자·통장·버퍼·목표; 예전 값 비교), API 시험(`tests/api/crud.mjs` 새 자원), CHANGELOG(0.1.7-rc.1), README 기능 목록.
 
 ## 검증 기준
 (모든 실행은 `scripts/check-run.sh`, 로그는 `.loctx/reports/0.1.7/`, `pnpm check:logs` 통과가 증거. 시험 서버는 :15174만.)
