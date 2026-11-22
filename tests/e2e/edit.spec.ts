@@ -33,32 +33,37 @@ test('settings: edit, reload, restore', async ({ page }) => {
   await noSaveError(page)
 })
 
-test('living costs: all three fields save, reload, restore', async ({ page }) => {
-  await go(page, 'pay', '통장·생활비·설정')
-  const names = ['식비', '교통비', '용돈']
-  const before: string[] = []
-  for (const n of names) before.push(await page.getByLabel(n, { exact: true }).inputValue())
-  const next = ['333000', '44000', '5500']
-  for (const [i, n] of names.entries()) {
-    const f = page.getByLabel(n, { exact: true })
-    await f.fill(next[i]!)
-    await Promise.all([
-      page.waitForResponse((r) => r.url().endsWith('/api/living') && r.request().method() === 'PUT' && r.ok()),
-      f.blur(),
-    ])
+// spec 013 S-2: the three fields of 0.1.6 are now the three coded items of 생활. The values they took (whole won,
+// 0 and up) are taken by the items' amount field and come back through the state's `living` as before.
+test('living costs: the three moved items take the values the three fields took, save, reload, restore', async ({ page, request }) => {
+  type It = { id: string; name: string; amount: number; code: string | null }
+  const items = async () => ((await (await request.get('/api/state')).json()) as { livingItems: It[]; living: Record<string, number> })
+  const st = await items()
+  const codes = ['food', 'transit', 'allowance'] as const
+  const three = codes.map((c) => st.livingItems.find((x) => x.code === c)!)
+  expect(three.every(Boolean)).toBe(true)
+  const setAmount = async (it: It, v: string) => {
+    await page.getByRole('button', { name: `${it.name} 수정` }).click()
+    const s = sheet(page, `생활비 항목 수정 · ${it.name}`)
+    await s.getByRole('button', { name: '다음', exact: true }).click()
+    await s.locator('#lv-amount').fill(v)
+    await saveSheet(page, `생활비 항목 수정 · ${it.name}`)
   }
-  await reload(page, 'pay', '통장·생활비·설정')
-  for (const [i, n] of names.entries()) await expect(page.getByLabel(n, { exact: true })).toHaveValue(Number(next[i]).toLocaleString('en-US'))
-  for (const [i, n] of names.entries()) {
-    const f = page.getByLabel(n, { exact: true })
-    await f.fill(before[i]!)
-    await Promise.all([
-      page.waitForResponse((r) => r.url().endsWith('/api/living') && r.request().method() === 'PUT'),
-      f.blur(),
-    ])
+  const next = ['333000', '44000', '0']
+  try {
+    await page.goto('/living')
+    for (const [i, it] of three.entries()) await setAmount(it, next[i]!)
+    await page.reload()
+    for (const [i, it] of three.entries()) await expect(page.getByTestId(`item-${it.id}`).locator('b.am')).toHaveText(`₩${Number(next[i]).toLocaleString('en-US')}`)
+    const after = await items()
+    expect(codes.map((c) => after.living[c])).toEqual(next.map(Number))
+    for (const [i, it] of three.entries()) await setAmount(it, String(st.living[codes[i]!]))
+    await page.reload()
+    for (const [i, it] of three.entries()) await expect(page.getByTestId(`item-${it.id}`).locator('b.am')).toHaveText(`₩${st.living[codes[i]!]!.toLocaleString('en-US')}`)
+  } finally {
+    await request.put('/api/living', { data: st.living, headers: { origin: test.info().project.use.baseURL! } })
+    expect((await items()).living).toEqual(st.living)
   }
-  await reload(page, 'pay', '통장·생활비·설정')
-  for (const [i, n] of names.entries()) await expect(page.getByLabel(n, { exact: true })).toHaveValue(before[i]!)
 })
 
 test('accounts: add, edit, delete', async ({ page }) => {
@@ -67,15 +72,19 @@ test('accounts: add, edit, delete', async ({ page }) => {
   await sheet(page, '통장 추가').getByLabel('통장').fill(MARK)
   await sheet(page, '통장 추가').getByLabel('역할').fill('테스트')
   await sheet(page, '통장 추가').getByLabel('들어오는 돈').fill('월급 · 25일')
+  // spec 013 S-5: the editor has two steps (the four old fields on the first); a row opens its detail sheet and
+  // the row's 수정 button the editor (A-7)
+  await sheet(page, '통장 추가').getByRole('button', { name: '다음', exact: true }).click()
   await saveSheet(page, '통장 추가')
   await reload(page, 'pay', '통장·생활비·설정')
-  await page.getByRole('row', { name: new RegExp(MARK) }).click()
+  await page.getByRole('button', { name: `통장 수정 · ${MARK}` }).click()
   await sheet(page, '통장 수정').getByLabel('역할').fill('테스트-수정')
+  await sheet(page, '통장 수정').getByRole('button', { name: '다음', exact: true }).click()
   await saveSheet(page, '통장 수정')
   await reload(page, 'pay', '통장·생활비·설정')
   await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('테스트-수정')
   await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('월급 · 25일')
-  await page.getByRole('row', { name: new RegExp(MARK) }).click()
+  await page.getByRole('button', { name: `통장 수정 · ${MARK}` }).click()
   await deleteInSheet(page, '통장 수정')
   await reload(page, 'pay', '통장·생활비·설정')
   await expect(page.getByRole('row', { name: new RegExp(MARK) })).toHaveCount(0)
