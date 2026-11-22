@@ -9,6 +9,7 @@
 // list of the living items (they are edited in the Living menu).
 // spec 013 (W-5): the accounts table (bank and last digits, this month's transfer in), the warning for targets
 // with no account and its 통장 연결 sheet, the two-step account editor and the account detail sheet.
+// spec 013 (W-11): the cards table under it (paying account, billing day) and the card editor.
 import { t, tl } from '../i18n'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -18,6 +19,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import MoneyInput from '../components/MoneyInput.vue'
 import AccountEditor from '../components/AccountEditor.vue'
 import AccountSheet from '../components/AccountSheet.vue'
+import CardEditor from '../components/CardEditor.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
 import { fmtMoney, fmtMoneyClass } from '../lib/display'
@@ -27,7 +29,7 @@ import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
 import { kindDetail } from '../lib/labels'
 import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, today, ymLabel, ymOf, type AllocRow } from '../lib/calc'
-import type { Account, AllocationKind, AllocationTarget, BudgetGroup, Settings } from '../data/types'
+import type { Account, AllocationKind, Card, AllocationTarget, BudgetGroup, Settings } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
 
@@ -300,6 +302,11 @@ async function saveLink() {
     linkBusy.value = false
   }
 }
+// ---------- cards (S-13) ----------
+/** The card editor: undefined = closed, null = a new card. */
+const cardEdit = ref<Card | null | undefined>(undefined)
+const cardDay = (c: Card) => (c.billingDay ? t('accounts.cards.dayOf', { n: c.billingDay }) : t('accounts.cards.daySettings', { n: store.settings.billingDay }))
+
 function linkNewAccount() {
   linkOpen.value = false
   accEdit.value = null
@@ -482,6 +489,24 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
             <button class="btn sm" type="button" @click="openLink">{{ t('accounts.linkBtn') }}</button>
           </div>
         </section>
+
+        <section class="card" data-testid="cards-table">
+          <div class="card-hd"><h2>{{ t('accounts.cards.title') }}</h2><button class="btn sm" type="button" @click="cardEdit = null">{{ t('accounts.cards.add') }}</button></div>
+          <div v-if="store.cards.length" class="tbl stack">
+            <table>
+              <thead><tr><th scope="col">{{ t('accounts.cards.colName') }}</th><th scope="col">{{ t('accounts.cards.colLast4') }}</th><th scope="col">{{ t('accounts.cards.colAccount') }}</th><th scope="col">{{ t('accounts.cards.colDay') }}</th></tr></thead>
+              <tbody>
+                <tr v-for="c in store.cards" :key="c.id" class="click" tabindex="0" @click="cardEdit = c" @keydown.enter="cardEdit = c">
+                  <td :data-label="t('accounts.cards.colName')"><b>{{ c.name }}</b></td>
+                  <td :data-label="t('accounts.cards.colLast4')" class="num">{{ c.last4 }}</td>
+                  <td :data-label="t('accounts.cards.colAccount')" :class="accountName(c.accountId) ? '' : 'hint'">{{ accountName(c.accountId) ?? t('accounts.cards.noAccount') }}</td>
+                  <td :data-label="t('accounts.cards.colDay')" :class="c.billingDay ? '' : 'hint'">{{ cardDay(c) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="empty hint">{{ t('accounts.cards.empty') }}</p>
+        </section>
       </div>
 
       <div class="colB">
@@ -560,6 +585,7 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
     </EditSheet>
 
     <AccountEditor v-if="accEdit !== undefined" :key="accEdit?.id || 'new'" :initial="accEdit" @close="accEdit = undefined" />
+    <CardEditor v-if="cardEdit !== undefined" :key="cardEdit?.id || 'new'" :initial="cardEdit" @close="cardEdit = undefined" />
     <AccountSheet v-if="accView" :account-id="accView" @close="accView = null" @edit="editFromSheet" />
 
     <EditSheet v-if="linkOpen" :title="t('accounts.link.title')" :desc="t('accounts.link.desc')" :hint="t('accounts.link.foot')" :error="linkErr" :busy="linkBusy" @save="saveLink" @cancel="linkOpen = false">
