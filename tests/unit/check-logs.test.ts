@@ -199,6 +199,19 @@ test('begin works as before for a new log, in a directory that does not exist ye
   assert.equal(again.status, 64)
 })
 
+test('a second begin on the same log in one process is refused and appends nothing to it (tools review round 4)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const log = join(dir, 'double.log')
+  const script = join(dir, 'run.sh')
+  writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin first ${log}\nstep ok /usr/bin/env true\ndone_check\nbegin second ${log}\n`)
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
+  assert.equal(run.status, 64)
+  const text = readFileSync(log, 'utf8')
+  assert.doesNotMatch(text, /second/)
+  assert.match(text, /RESULT first: all steps exit 0\n$/)
+  assert.deepEqual(checkLog(text), [])
+})
+
 test('concurrent begins on the same log name: exactly one wins, the others get 64 and the log stays intact', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
   const log = join(dir, 'race.log')

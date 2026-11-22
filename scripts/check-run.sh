@@ -74,6 +74,9 @@ begin() {
   # at once exactly one wins. The -e test also refuses non-regular paths such as /dev/null.
   if [ -e "$2" ] || [ -L "$2" ] || ! ( set -C; : > "$2" ) 2>/dev/null; then
     _cr_say "check-run: refused, the log '$2' already exists. Pick a new log name; a log is never overwritten." >&2
+    # Nothing more is written to any log on the way out (a second begin in the same process must not
+    # append its RESULT line to the earlier check's log); pending cleanups still run, unlogged.
+    LOG=/dev/null
     exit 64
   fi
   LOG=$2
