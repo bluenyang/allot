@@ -11,7 +11,7 @@ async function api(request: APIRequestContext, method: 'GET' | 'PUT' | 'POST' | 
 }
 const state = async (request: APIRequestContext) => (await api(request, 'GET', '/api/state')).json
 const cssVar = (page: Page, name: string) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim().toUpperCase(), name)
-const ROUTES = ['home', 'subs', 'pay', 'events', 'history', 'settings/general', 'settings/theme', 'settings/security', 'admin', 'dev']
+const ROUTES = ['home', 'spend/subs', 'pay', 'events', 'history', 'settings/general', 'settings/theme', 'settings/security', 'admin', 'dev']
 
 test.describe.configure({ mode: 'serial' })
 
@@ -168,7 +168,7 @@ test('(V-6 e) features that do not exist appear only as disabled "준비 중" en
       copy.querySelectorAll('[aria-disabled="true"]').forEach((e) => e.remove())
       return copy.textContent ?? ''
     })
-    for (const b of banned) expect(text, `#${r}`).not.toContain(b)
+    for (const b of banned) expect(text, `/${r}`).not.toContain(b)
   }
 })
 
@@ -226,7 +226,7 @@ test.describe('(V-9 a) phone width', () => {
       await page.locator('header.ph h1').waitFor()
       await page.waitForTimeout(300)
       const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
-      expect(sw, `#${r} scrollWidth`).toBeLessThanOrEqual(iw)
+      expect(sw, `/${r} scrollWidth`).toBeLessThanOrEqual(iw)
     }
     // spec 010 S-4: the bar reaches 현황, 예산 (월급 분배), 일정; the rest is in the "더보기" sheet
     const bar = page.getByRole('navigation', { name: '메뉴' }).last()
@@ -339,7 +339,7 @@ test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 ap
 test('(V-14 c) every page has the header bar; controls drawn from the design say they are not ready', async ({ page }) => {
   for (const r of ROUTES) {
     await page.goto(`/${r}`)
-    await expect(page.locator('header.topbar'), `#${r}`).toBeVisible()
+    await expect(page.locator('header.topbar'), `/${r}`).toBeVisible()
   }
   const notice = page.getByRole('status').filter({ hasText: '준비 중' })
   await page.goto('/')
