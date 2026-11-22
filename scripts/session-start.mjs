@@ -10,13 +10,13 @@ import { fileURLToPath } from 'node:url'
 const HEADER = "This machine's delegation table (.loctx/delegation.local.md) — it replaces the table in AGENTS.md:"
 const FALLBACK = 'No personal delegation table: follow the Delegation block in AGENTS.md.'
 
-/** The `## Delegation` section of a markdown text: from its heading up to the next `## ` heading. */
+/** The `## Delegation` section of a markdown text: from its heading up to the next heading of level 1 or 2. */
 export function delegationSection(text) {
   const lines = String(text).split('\n')
   const start = lines.findIndex((l) => /^##\s+Delegation\s*$/.test(l))
   if (start < 0) return null
   let end = lines.length
-  for (let i = start + 1; i < lines.length; i++) if (/^##\s/.test(lines[i])) { end = i; break }
+  for (let i = start + 1; i < lines.length; i++) if (/^#{1,2}\s/.test(lines[i])) { end = i; break }
   return lines.slice(start, end).join('\n').trimEnd()
 }
 

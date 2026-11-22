@@ -70,3 +70,19 @@ test('a file with no Delegation section prints the fallback, never the file', ()
     assert.ok(r.stdout.startsWith('No personal delegation table'))
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+test('the section stops at the next heading of level 1 or 2, not at a level 3 one', () => {
+  mkdirSync(scratch, { recursive: true })
+  const dir = mkdtempSync(join(scratch, 'ss-'))
+  try {
+    mkdirSync(join(dir, '.loctx'))
+    const file = join(dir, '.loctx', 'delegation.local.md')
+    writeFileSync(file, '## Delegation\n\nkept\n\n### Sub\n\nalso kept\n\n# Top\n\nSECRET-AFTER-H1\n')
+    const h1 = run(dir)
+    assert.ok(h1.stdout.includes('### Sub\n\nalso kept'), h1.stdout)
+    assert.ok(!h1.stdout.includes('SECRET') && !h1.stdout.includes('# Top'), h1.stdout)
+    writeFileSync(file, '## Delegation\n\nkept\n\n## Next\n\nSECRET-AFTER-H2\n')
+    const h2 = run(dir)
+    assert.ok(h2.stdout.includes('kept') && !h2.stdout.includes('SECRET') && !h2.stdout.includes('## Next'), h2.stdout)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
