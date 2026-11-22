@@ -1,4 +1,6 @@
-// API check for spec 001 V-4, V-5, V-8 and spec 003 V-4: auth, CRUD on every resource, phase overlap, allocation targets.
+// API check for spec 001 V-4, V-5, V-8 and spec 003 V-4: auth, CRUD on every resource, phase overlap, allocation targets;
+// spec 013 V-5: living items, the new account fields, balance records, cards, card and buffer-use spendings, one refused
+// and one accepted value per S-9 limit, the delete rules, and PUT /api/living writing the three coded items.
 //   BASE=http://<host>:15173 ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/crud.mjs [create|verify|cleanup]
 // Phases (each its own process, so a restart of the api can sit between them):
 //   create  — sign in, create/update a marker row in every resource, write the ids to tests/api/.state.json
@@ -198,6 +200,138 @@ if (phase === 'create') {
   }
   ids.split = await created('/api/remainder-split', { name: MARK, code: 'X', ratio: 0 }, { ratio: 0.5 })
 
+  // ── spec 013 V-5: living items, the new account fields, balance records, cards, a card / buffer-use spending ──
+  // Marker rows that stay for verify (the phase above gives them per-phase amounts).
+  ids.livingItem = await created('/api/living-items', { name: `${MARK}-li`, kind: 'k', payMethod: 'm', amount: 1_000, from: '2090-01', note: MARK, amounts: { [ids.phase]: 5_000 } }, { amount: 2_000 })
+  const acc2 = {
+    name: `${MARK}-acc`, role: '', inflow: '', outflow: '', bank: 'b', last4: '0123', kind: 'k', rate: '3.1%', term: '12m', buffer: 100_000, goal: 5_000_000,
+    annualLimit: 20_000_000, group: 'saving', amount: 50_000, ratio: 0.25, from: '2090-01', stopFrom: '2090-06', goalAck: 4_000_000, note: MARK, amounts: { [ids.phase]: 60_000 },
+  }
+  ids.acc2 = await created('/api/accounts', acc2, { buffer: 150_000 })
+  ids.balance = await created('/api/balances', { accountId: ids.acc2, date: '2090-01-05', amount: 1_000_000, note: MARK }, { amount: 1_100_000 })
+  ids.card = await created('/api/cards', { name: `${MARK}-card`, last4: '0123', accountId: ids.acc2, billingDay: 5, note: MARK }, { billingDay: 20 })
+  const lumpCard = { ...spend, name: `${MARK}-cl`, how: 'lump', count: 1, fee: 0, cardId: ids.card, rounds: [{ no: 1, date: '2090-02-20', amount: 300_000, state: 'left', edited: false }] }
+  ids.cardSpend = await created('/api/spendings', lumpCard, { note: 'n2' })
+  const buf = (name, cardId, over = {}) => ({
+    ...spend, name, how: 'buffer', payBy: 'card', count: 3, fee: 0, interval: null, cardId, refillFrom: '2090-02-25',
+    rounds: [1, 2, 3].map((no) => ({ no, date: `2090-0${no + 1}-25`, amount: 100_000, state: 'left', edited: false })), ...over,
+  })
+  ids.bufSpend = await created('/api/spendings', buf(`${MARK}-buf`, ids.card), { refillFrom: '2090-02-26' })
+  const lv = (await api('GET', '/api/state')).json.livingItems.find((x) => x.code === 'food')
+  ok(lv?.amount === 300_001, `PUT /api/living (above) changed the coded food item → ${lv?.amount}`)
+
+  // One refused value and one accepted boundary value per S-9 limit. An accepted row is deleted at once.
+  const refused = async (path, body, why) => {
+    const r = await api('POST', path, body)
+    ok(r.status === 400, `POST ${path} with ${why} → ${r.status} (want 400)`)
+  }
+  const accepted = async (path, body, why, check) => {
+    const r = await api('POST', path, body)
+    ok(r.status === 201 && (!check || check(r.json)), `POST ${path} with ${why} → ${r.status} (want 201)`)
+    if (r.status === 201) ok((await api('DELETE', `${path}/${r.json.id}`)).status === 204, `DELETE that ${path.split('/')[2]} row`)
+  }
+  const li = { name: `${MARK}-lb`, kind: '', payMethod: '', amount: 0, from: null, note: '', amounts: {} }
+  const s41 = 'x'.repeat(41), s40 = 'x'.repeat(40), m201 = 'x'.repeat(201), m200 = 'x'.repeat(200)
+  await refused('/api/living-items', { ...li, name: ' ' }, 'an empty name')
+  await refused('/api/living-items', { ...li, amount: -1 }, 'amount -1')
+  await accepted('/api/living-items', { ...li, amount: 0 }, 'amount 0', (j) => j.amount === 0)
+  await refused('/api/living-items', { ...li, amount: 2_147_483_648 }, 'amount 2^31')
+  await accepted('/api/living-items', { ...li, amount: 2_147_483_647 }, 'amount 2^31-1', (j) => j.amount === 2_147_483_647)
+  await refused('/api/living-items', { ...li, amount: 1.5 }, 'amount 1.5')
+  await refused('/api/living-items', { ...li, from: '2090-13' }, 'from 2090-13')
+  await accepted('/api/living-items', { ...li, from: '2090-12' }, 'from 2090-12', (j) => j.from === '2090-12')
+  await refused('/api/living-items', { ...li, kind: s41 }, 'a kind of 41 characters')
+  await accepted('/api/living-items', { ...li, kind: s40, payMethod: s40 }, 'a kind and a pay method of 40 characters', (j) => j.kind === s40 && j.payMethod === s40)
+  await refused('/api/living-items', { ...li, note: m201 }, 'a note of 201 characters')
+  await accepted('/api/living-items', { ...li, note: m200 }, 'a note of 200 characters', (j) => j.note === m200)
+  const ac = { name: `${MARK}-ab`, role: '', inflow: '', outflow: '' }
+  await accepted('/api/accounts', ac, 'only the four old fields', (j) => j.buffer === 0 && j.goal === null && j.group === null && j.last4 === '')
+  await refused('/api/accounts', { ...ac, last4: '123' }, "last4 '123'")
+  await refused('/api/accounts', { ...ac, last4: '12a4' }, "last4 '12a4'")
+  await accepted('/api/accounts', { ...ac, last4: '0123' }, "last4 '0123'", (j) => j.last4 === '0123')
+  await refused('/api/accounts', { ...ac, buffer: -1 }, 'buffer -1')
+  await accepted('/api/accounts', { ...ac, buffer: 2_147_483_647, goal: 0, annualLimit: 2_147_483_647 }, 'buffer and limit 2^31-1, goal 0', (j) => j.buffer === 2_147_483_647 && j.goal === 0)
+  await refused('/api/accounts', { ...ac, goal: 2_147_483_648 }, 'goal 2^31')
+  await refused('/api/accounts', { ...ac, group: 'saving', ratio: 0.12345 }, 'ratio 0.12345')
+  await refused('/api/accounts', { ...ac, group: 'saving', ratio: 1.0001 }, 'ratio 1.0001')
+  await accepted('/api/accounts', { ...ac, group: 'invest', ratio: 0.1234 }, 'ratio 0.1234', (j) => j.ratio === 0.1234)
+  await accepted('/api/accounts', { ...ac, group: 'invest', ratio: 1 }, 'ratio 1', (j) => j.ratio === 1)
+  await refused('/api/accounts', { ...ac, group: null, amount: 1_000 }, 'a monthly amount without a group')
+  await refused('/api/accounts', { ...ac, group: null, ratio: 0.5 }, 'a ratio without a group')
+  await refused('/api/accounts', { ...ac, group: null, amounts: { [ids.phase]: 1 } }, 'phase amounts without a group')
+  await refused('/api/accounts', { ...ac, from: '2090-1' }, "from '2090-1'")
+  await refused('/api/accounts', { ...ac, stopFrom: '2090-00' }, "stopFrom '2090-00'")
+  await refused('/api/accounts', { ...ac, bank: s41 }, 'a bank of 41 characters')
+  await accepted('/api/accounts', { ...ac, bank: s40, kind: s40, rate: s40, term: s40, note: m200 }, 'bank, kind, rate, term of 40 and a note of 200', (j) => j.bank === s40 && j.term === s40 && j.note === m200)
+  await refused('/api/accounts', { ...ac, note: m201 }, 'a note of 201 characters')
+  const bl = { accountId: ids.acc2, date: '2090-02-28', amount: 0, note: '' }
+  await accepted('/api/balances', bl, 'date 2090-02-28 and amount 0', (j) => j.date === '2090-02-28' && j.amount === 0)
+  await refused('/api/balances', { ...bl, date: '2090-02-30' }, 'date 2090-02-30')
+  await refused('/api/balances', { ...bl, date: '2090-02' }, "date '2090-02'")
+  await refused('/api/balances', { ...bl, amount: -1 }, 'amount -1')
+  await refused('/api/balances', { ...bl, accountId: 'no-such-account' }, 'an account that does not exist')
+  const cd = { name: `${MARK}-cb`, last4: '', accountId: null, billingDay: null, note: '' }
+  await accepted('/api/cards', cd, 'no account and no billing day', (j) => j.accountId === null && j.billingDay === null)
+  await refused('/api/cards', { ...cd, name: '' }, 'an empty name')
+  await refused('/api/cards', { ...cd, last4: '123' }, "last4 '123'")
+  await accepted('/api/cards', { ...cd, last4: '0123' }, "last4 '0123'", (j) => j.last4 === '0123')
+  await refused('/api/cards', { ...cd, billingDay: 0 }, 'billing day 0')
+  await refused('/api/cards', { ...cd, billingDay: 32 }, 'billing day 32')
+  await accepted('/api/cards', { ...cd, billingDay: 31 }, 'billing day 31', (j) => j.billingDay === 31)
+  await refused('/api/cards', { ...cd, accountId: 'no-such-account' }, 'an account that does not exist')
+  // spendings (S-9): a buffer use needs a card that has a paying account, by card, no fee, a refill start
+  const noAcc = await api('POST', '/api/cards', { ...cd, name: `${MARK}-noacc` })
+  ok(noAcc.status === 201, `POST a card without an account → ${noAcc.status}`)
+  await refused('/api/spendings', buf(`${MARK}-b1`, null), 'a buffer use without a card')
+  await refused('/api/spendings', buf(`${MARK}-b2`, noAcc.json?.id), 'a buffer use whose card has no paying account')
+  await refused('/api/spendings', buf(`${MARK}-b3`, ids.card, { payBy: 'salary' }), 'a buffer use paid from the salary account')
+  await refused('/api/spendings', buf(`${MARK}-b4`, ids.card, { fee: 1_000, rounds: buf('', '').rounds.map((r) => (r.no === 3 ? { ...r, amount: 101_000 } : r)) }), 'a buffer use with a fee')
+  await refused('/api/spendings', buf(`${MARK}-b5`, ids.card, { refillFrom: null }), 'a buffer use without a refill start')
+  await refused('/api/spendings', buf(`${MARK}-b6`, ids.card, { count: 61 }), 'a buffer use over 61 months')
+  await accepted('/api/spendings', buf(`${MARK}-b7`, ids.card, { count: 1, rounds: [{ no: 1, date: '2090-02-25', amount: 300_000, state: 'left', edited: false }] }), 'a buffer use over 1 month (A-3)')
+  await refused('/api/spendings', { ...lumpCard, name: `${MARK}-r1`, refillFrom: '2090-02-25' }, 'a refill start on a lump sum')
+  await refused('/api/spendings', { ...lumpCard, name: `${MARK}-r2`, payBy: 'salary' }, 'a card on a salary spending')
+  await accepted('/api/spendings', { ...lumpCard, name: `${MARK}-r3`, cardId: noAcc.json?.id }, 'a card lump sum on a card without an account', (j) => j.cardId === noAcc.json?.id)
+  if (noAcc.status === 201) ok((await api('DELETE', `/api/cards/${noAcc.json.id}`)).status === 204, 'DELETE the card without an account')
+  // the two kinds that exist once per user (S-9)
+  for (const kind of ['saving', 'invest']) {
+    const had = before.json.targets.find((x) => x.kind === kind)
+    let mine = null
+    if (!had) {
+      const c = await api('POST', '/api/targets', { name: `${MARK}-${kind}`, kind, accountId: ids.acc2 })
+      ok(c.status === 201 && c.json?.accountId === ids.acc2, `first '${kind}' target with a linked account → ${c.status} ${c.json?.accountId === ids.acc2 ? '(linked)' : ''}`)
+      if (c.status === 201) mine = c.json.id
+    }
+    const dup = await api('POST', '/api/targets', { name: `${MARK}-${kind}2`, kind })
+    ok(dup.status === 400, `a second '${kind}' target → ${dup.status} (want 400)`)
+    if (mine) ok((await api('DELETE', `/api/targets/${mine}`)).status === 204, `DELETE the '${kind}' target`)
+  }
+  // Delete rules (S-9, S-13): a card or an account a buffer use pays through cannot go; otherwise a card's
+  // spendings lose the card, an account takes its balance records with it and leaves its card and target unlinked.
+  {
+    const tAcc = await api('POST', '/api/accounts', { ...ac, name: `${MARK}-del`, buffer: 500_000 })
+    const tCard = await api('POST', '/api/cards', { ...cd, name: `${MARK}-delc`, accountId: tAcc.json?.id })
+    const tBal = await api('POST', '/api/balances', { accountId: tAcc.json?.id, date: '2090-01-01', amount: 10, note: MARK })
+    const tTgt = await api('POST', '/api/targets', { name: `${MARK}-delt`, kind: 'fixed', accountId: tAcc.json?.id })
+    const tBuf = await api('POST', '/api/spendings', buf(`${MARK}-delb`, tCard.json?.id))
+    const tLump = await api('POST', '/api/spendings', { ...lumpCard, name: `${MARK}-dell`, cardId: tCard.json?.id })
+    ok([tAcc, tCard, tBal, tTgt, tBuf, tLump].every((r) => r.status === 201), `delete-rule rows made (${[tAcc, tCard, tBal, tTgt, tBuf, tLump].map((r) => r.status).join(',')})`)
+    const dCard = await api('DELETE', `/api/cards/${tCard.json.id}`)
+    ok(dCard.status === 400, `DELETE a card a buffer use pays through → ${dCard.status} (want 400) ${dCard.json?.error ?? ''}`)
+    const dAcc = await api('DELETE', `/api/accounts/${tAcc.json.id}`)
+    ok(dAcc.status === 400, `DELETE the account that buffer use pays from → ${dAcc.status} (want 400) ${dAcc.json?.error ?? ''}`)
+    ok((await api('DELETE', `/api/spendings/${tBuf.json.id}`)).status === 204, 'DELETE that buffer use')
+    ok((await api('DELETE', `/api/cards/${tCard.json.id}`)).status === 204, 'then the card can go')
+    const s1 = (await api('GET', '/api/state')).json
+    const l1 = s1.spendings.find((x) => x.id === tLump.json.id)
+    ok(l1 && l1.cardId === null && l1.rounds.length === 1 && l1.rounds[0].date === '2090-02-20', `the card's lump sum keeps its round and has no card (${l1?.cardId})`)
+    ok((await api('DELETE', `/api/accounts/${tAcc.json.id}`)).status === 204, 'then the account can go')
+    const s2 = (await api('GET', '/api/state')).json
+    ok(!s2.balances.some((b) => b.id === tBal.json.id), "the account's balance record went with it")
+    ok(s2.targets.find((x) => x.id === tTgt.json.id)?.accountId === null, 'the target linked to it is unlinked')
+    ok((await api('DELETE', `/api/spendings/${tLump.json.id}`)).status === 204 && (await api('DELETE', `/api/targets/${tTgt.json.id}`)).status === 204, 'delete-rule rows removed')
+  }
+
   // Target rules (spec 003 S-1). The seeded data must have one of each non-fixed kind;
   // if it does not, the rule checks below cannot run, and that is a failure, not a skip.
   const byKind = (k) => before.json.targets.find((t) => t.kind === k)
@@ -290,7 +424,28 @@ if (phase === 'verify' || phase === 'cleanup') {
     ok(find('remainderSplit', ids.split)?.ratio === 0.5, 'remainder split persisted')
     const sp = find('spendings', ids.spend)
     ok(sp?.rounds?.length === 3 && sp.rounds[1].amount === 100_500 && sp.rounds[1].edited === true && sp.rounds[2].date === '2090-04-16' && sp.fee === 3_000 && sp.how === 'installment', 'spending with its rounds persisted')
+    // spec 013 V-5
+    const li = find('livingItems', ids.livingItem)
+    ok(li?.amount === 2_000 && li.kind === 'k' && li.payMethod === 'm' && li.from === '2090-01' && li.code === null && li.note === MARK && li.amounts?.[ids.phase] === 5_000, 'living item with its phase amount persisted')
+    ok(st.livingItems.find((x) => x.code === 'food')?.amount === 300_001, 'the coded food item persisted (PUT /api/living)')
+    const a2 = find('accounts', ids.acc2)
+    const want = { bank: 'b', last4: '0123', kind: 'k', rate: '3.1%', term: '12m', buffer: 150_000, goal: 5_000_000, annualLimit: 20_000_000, group: 'saving', amount: 50_000, ratio: 0.25, from: '2090-01', stopFrom: '2090-06', goalAck: 4_000_000, note: MARK }
+    ok(!!a2 && Object.entries(want).every(([k, v]) => a2[k] === v) && a2.amounts?.[ids.phase] === 60_000, `account with the new fields and its phase amount persisted ${a2 ? '' : '(missing)'}`)
+    const bl = find('balances', ids.balance)
+    ok(bl?.accountId === ids.acc2 && bl.date === '2090-01-05' && bl.amount === 1_100_000 && bl.note === MARK, 'balance record persisted')
+    const cd = find('cards', ids.card)
+    ok(cd?.name === `${MARK}-card` && cd.last4 === '0123' && cd.accountId === ids.acc2 && cd.billingDay === 20 && cd.note === MARK, 'card persisted')
+    ok(find('spendings', ids.cardSpend)?.cardId === ids.card && find('spendings', ids.cardSpend)?.note === 'n2', 'card lump sum with its card persisted')
+    const bs = find('spendings', ids.bufSpend)
+    ok(bs?.how === 'buffer' && bs.payBy === 'card' && bs.cardId === ids.card && bs.refillFrom === '2090-02-26' && bs.fee === 0 && bs.rounds.length === 3 && bs.rounds.every((r) => r.amount === 100_000), 'buffer use persisted')
   } else {
+    for (const [path, id] of [['/api/spendings', ids.bufSpend], ['/api/spendings', ids.cardSpend], ['/api/cards', ids.card], ['/api/balances', ids.balance], ['/api/living-items', ids.livingItem], ['/api/accounts', ids.acc2]]) {
+      if (!id) continue
+      try {
+        const d = await api('DELETE', `${path}/${id}`)
+        ok(d.status === 204, `DELETE ${path}/:id → ${d.status}`)
+      } catch (e) { ok(false, `DELETE ${path}/:id threw: ${e?.message ?? e}`) }
+    }
     for (const [path, id] of [['/api/plan-changes', ids.chg], ['/api/subscriptions', ids.sub], ['/api/phases', ids.phase], ['/api/events', ids.event], ['/api/checks', ids.check], ['/api/accounts', ids.account], ['/api/debts', ids.debt], ['/api/remainder-split', ids.split], ['/api/targets', ids.target], ['/api/phases', ids.racePhase], ['/api/spendings', ids.spend]]) {
       if (!id) continue
       try {
