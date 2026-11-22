@@ -7,6 +7,8 @@
 // spec 013 (W-6): the Savings / Investment totals as target kinds, a linked account per target, phase amount
 // fields for fixed targets and ratio-split Savings / Investment totals, and the living costs as a read-only
 // list of the living items (they are edited in the Living menu).
+// spec 013 (W-5): the accounts table (bank and last digits, this month's transfer in), the warning for targets
+// with no account and its 통장 연결 sheet, the two-step account editor and the account detail sheet.
 import { t, tl } from '../i18n'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -14,16 +16,18 @@ import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import MoneyInput from '../components/MoneyInput.vue'
-import Pill from '../components/Pill.vue'
+import AccountEditor from '../components/AccountEditor.vue'
+import AccountSheet from '../components/AccountSheet.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
 import { fmtMoney, fmtMoneyClass } from '../lib/display'
-import { saveSettings, store } from '../lib/store'
+import { saveItem, saveSettings, sessionScope, store } from '../lib/store'
+import { accountMonthIn, bankLine, unlinkedTargets } from '../lib/accounts'
 import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
 import { kindDetail } from '../lib/labels'
 import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, today, ymLabel, ymOf, type AllocRow } from '../lib/calc'
-import type { AllocationKind, AllocationTarget, BudgetGroup, Settings } from '../data/types'
+import type { Account, AllocationKind, AllocationTarget, BudgetGroup, Settings } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
 
@@ -211,15 +215,22 @@ const accountOpts = computed(() => [{ value: '', label: t('payroll.accountNone')
 const kindOption = (k: AllocationKind) =>
   k !== 'fixed' && store.targets.some((x) => x.kind === k && x.id !== targetEd.item.value?.id) ? t('payroll.kindExists', { kind: kindOf(k) }) : kindOf(k)
 
-const accEd = useEditor('accounts', () => ({ id: '', name: '', role: '', inflow: '', outflow: '' }),
-  (a) => (!a.name.trim() ? t('payroll.needAccountName') : null))
-const ROLE_KEYS = ['roleIn', 'roleFixed', 'roleLiving', 'roleSave', 'roleEtc'] as const
-const roleChips = computed(() => ROLE_KEYS.map((k) => t(`payroll.${k}`)))
+// ---------- accounts (S-5) ----------
+/** The account editor: undefined = closed, null = a new account. */
+const accEdit = ref<Account | null | undefined>(undefined)
+/** The account whose detail sheet is open. */
+const accView = ref<string | null>(null)
+function editFromSheet() {
+  const a = store.accounts.find((x) => x.id === accView.value) ?? null
+  accView.value = null
+  accEdit.value = a
+}
+// The role chips' words (both languages) and the 0.1.6 chip 저축·투자, each with its pill colour; anything else is plain.
+const ROLE_CLS = { roleIn: 'ok', roleFixed: 'warn', roleLiving: 'info', roleSaving: 'ok', roleInvest: 'info', roleSave: 'ok', roleEtc: 'mute' } as const
 /** Pill colour of a stored role: the known words (either language) get one, anything else is plain. */
 function roleCls(role: string) {
-  const at = (l: 'ko' | 'en') => ROLE_KEYS.map((k) => tl(l, `payroll.${k}` as never))
-  const i = at('ko').indexOf(role) >= 0 ? at('ko').indexOf(role) : at('en').indexOf(role)
-  return ['ok', 'warn', 'info', 'ok', 'mute'][i] ?? 'mute'
+  for (const [k, cls] of Object.entries(ROLE_CLS)) if (tl('ko', `payroll.${k}` as never) === role || tl('en', `payroll.${k}` as never) === role) return cls
+  return 'mute'
 }
 
 // ---------- pay settings ----------
@@ -256,6 +267,43 @@ const roundOpts = computed(() => {
 
 // ---------- accounts tab ----------
 const flow = computed(() => dist(now))
+/** This month's money into each account (the 이번 달 column). */
+const accRows = computed(() => store.accounts.map((a) => ({ a, bank: bankLine(a), month: accountMonthIn(a, store, now, flow.value) })))
+const unlinked = computed(() => unlinkedTargets(store.targets, store.accounts))
+
+// 통장 연결: one select per target; saving writes the targets whose account changed.
+const linkOpen = ref(false)
+const linkDraft = ref<Record<string, string>>({})
+const linkErr = ref('')
+const linkBusy = ref(false)
+const linkAmount = (id: string) => flow.value.rows.find((r) => r.key === id)?.amount ?? 0
+const linkOpts = computed(() => [{ value: '', label: t('accounts.link.none') }, ...store.accounts.map((a) => ({ value: a.id, label: a.name }))])
+function openLink() {
+  linkDraft.value = Object.fromEntries(store.targets.map((x) => [x.id, x.accountId ?? '']))
+  linkErr.value = ''
+  linkOpen.value = true
+}
+async function saveLink() {
+  const scope = sessionScope()
+  linkBusy.value = true
+  linkErr.value = ''
+  try {
+    for (const tg of [...store.targets]) {
+      if (!scope.alive()) return
+      const next = linkDraft.value[tg.id] || null
+      if (next !== (tg.accountId ?? null)) await saveItem('targets', { ...tg, accountId: next })
+    }
+    linkOpen.value = false
+  } catch (e) {
+    linkErr.value = (e as Error).message
+  } finally {
+    linkBusy.value = false
+  }
+}
+function linkNewAccount() {
+  linkOpen.value = false
+  accEdit.value = null
+}
 const flowRows = computed(() => flow.value.rows.filter((r) => r.kind !== 'remainder' || r.amount !== 0).map((r) => {
   const tg = store.targets.find((x) => x.id === r.key)
   const acc = accountName(tg?.accountId)
@@ -409,21 +457,30 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
         </section>
 
         <section class="card">
-          <div class="card-hd"><h2>{{ t('payroll.accounts') }}</h2><button class="btn sm" type="button" @click="accEd.open()">{{ t('payroll.addAccountBtn') }}</button></div>
-          <div v-if="store.accounts.length" class="tbl stack">
+          <div class="card-hd"><h2>{{ t('payroll.accounts') }}</h2><button class="btn sm" type="button" @click="accEdit = null">{{ t('payroll.addAccountBtn') }}</button></div>
+          <div v-if="store.accounts.length" class="tbl stack" data-testid="accounts-table">
             <table>
-              <thead><tr><th scope="col">{{ t('payroll.account') }}</th><th scope="col">{{ t('payroll.role') }}</th><th scope="col">{{ t('payroll.inflow') }}</th><th scope="col">{{ t('payroll.outflow') }}</th></tr></thead>
+              <thead><tr>
+                <th scope="col">{{ t('payroll.account') }}</th><th scope="col">{{ t('payroll.role') }}</th><th scope="col">{{ t('payroll.inflow') }}</th><th scope="col">{{ t('payroll.outflow') }}</th>
+                <th scope="col" class="n">{{ t('accounts.colMonth') }}</th><th scope="col" class="n"><span class="sr">{{ t('accounts.colAction') }}</span></th>
+              </tr></thead>
               <tbody>
-                <tr v-for="a in store.accounts" :key="a.id" class="click" tabindex="0" @click="accEd.open(a)" @keydown.enter="accEd.open(a)">
-                  <td :data-label="t('payroll.account')"><b>{{ a.name }}</b></td>
-                  <td :data-label="t('payroll.role')"><span v-if="a.role" class="pill" :class="roleCls(a.role)">{{ a.role }}</span></td>
-                  <td :data-label="t('payroll.inflow')">{{ a.inflow }}</td>
-                  <td :data-label="t('payroll.outflow')">{{ a.outflow }}</td>
+                <tr v-for="x in accRows" :key="x.a.id" class="click" tabindex="0" @click="accView = x.a.id" @keydown.enter.self="accView = x.a.id">
+                  <td :data-label="t('payroll.account')"><b>{{ x.a.name }}</b><span v-if="x.a.stopFrom" class="pill mute stp-p">{{ t('accounts.stopped') }}</span><small v-if="x.bank" class="bank num">{{ x.bank }}</small></td>
+                  <td :data-label="t('payroll.role')"><span v-if="x.a.role" class="pill" :class="roleCls(x.a.role)">{{ x.a.role }}</span></td>
+                  <td :data-label="t('payroll.inflow')">{{ x.a.inflow }}</td>
+                  <td :data-label="t('payroll.outflow')">{{ x.a.outflow }}</td>
+                  <td :data-label="t('accounts.colMonth')" class="n amt">{{ x.month ? fmtMoney(x.month) : '—' }}</td>
+                  <td class="n act"><button class="btn sm ghost link" type="button" :aria-label="t('payroll.editAccount') + ' · ' + x.a.name" @click.stop="accEdit = x.a" @keydown.enter.stop>{{ t('common.edit') }}</button></td>
                 </tr>
               </tbody>
             </table>
           </div>
           <p v-else class="empty hint">{{ t('payroll.noAccounts') }}</p>
+          <div v-if="unlinked.length" class="lnk" data-testid="unlinked-targets">
+            <span>{{ t('accounts.unlinked', { n: unlinked.length, names: unlinked.map((x) => x.name).join(', ') }) }}</span>
+            <button class="btn sm" type="button" @click="openLink">{{ t('accounts.linkBtn') }}</button>
+          </div>
         </section>
       </div>
 
@@ -502,17 +559,15 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
       <div class="field"><label for="rs-ratio">{{ t('payroll.ratioPct') }}</label><MoneyInput id="rs-ratio" v-model="splitPct" decimal prefix="" suffix="%" /></div>
     </EditSheet>
 
-    <EditSheet v-if="accEd.item.value" :key="accEd.item.value.id || 'new'" :title="accEd.item.value.id ? t('payroll.editAccount') : t('payroll.addAccount')" :error="accEd.error.value" :busy="accEd.busy.value"
-      :can-delete="!!accEd.item.value.id" :delete-name="accEd.item.value.name" @save="accEd.save" @cancel="accEd.close" @delete="accEd.remove">
-      <div class="field"><label for="ac-name">{{ t('payroll.account') }} <span class="star" aria-hidden="true">*</span></label><input id="ac-name" v-model="accEd.item.value.name" class="in" autocomplete="off"></div>
-      <div class="field">
-        <label for="ac-role">{{ t('payroll.role') }} <span class="opt">{{ t('common.optional') }}</span></label>
-        <div class="chips" role="group" :aria-label="t('payroll.roleQuick')"><Pill v-for="r in roleChips" :key="r" :selected="accEd.item.value.role === r" @click="accEd.item.value!.role = r">{{ r }}</Pill></div>
-        <input id="ac-role" v-model="accEd.item.value.role" class="in" autocomplete="off">
-        <span class="hint">{{ t('payroll.roleHint') }}</span>
+    <AccountEditor v-if="accEdit !== undefined" :key="accEdit?.id || 'new'" :initial="accEdit" @close="accEdit = undefined" />
+    <AccountSheet v-if="accView" :account-id="accView" @close="accView = null" @edit="editFromSheet" />
+
+    <EditSheet v-if="linkOpen" :title="t('accounts.link.title')" :desc="t('accounts.link.desc')" :hint="t('accounts.link.foot')" :error="linkErr" :busy="linkBusy" @save="saveLink" @cancel="linkOpen = false">
+      <div v-for="tg in store.targets" :key="tg.id" class="field">
+        <label :for="`lk-${tg.id}`"><i class="sw" :style="{ background: allocColor(tg.id) }"></i>{{ tg.name }} <span class="opt">· {{ fmtMoney(linkAmount(tg.id)) }}</span></label>
+        <Select :id="`lk-${tg.id}`" v-model="linkDraft[tg.id]" :options="linkOpts" />
       </div>
-      <div class="field"><label for="ac-in">{{ t('payroll.inflow') }} <span class="opt">{{ t('common.optional') }}</span></label><input id="ac-in" v-model="accEd.item.value.inflow" class="in" autocomplete="off"></div>
-      <div class="field"><label for="ac-out">{{ t('payroll.outflow') }} <span class="opt">{{ t('common.optional') }}</span></label><input id="ac-out" v-model="accEd.item.value.outflow" class="in" autocomplete="off"></div>
+      <button class="btn sm ghost link" type="button" style="justify-self:start" @click="linkNewAccount">{{ t('accounts.link.newAccount') }}</button>
     </EditSheet>
 
     <EditSheet v-if="payDlg" :title="t('payroll.payTitle')" :desc="t('payroll.payDesc')" :save-label="t('payroll.apply')" @save="applyPay" @cancel="payDlg = false">
@@ -598,7 +653,11 @@ tr.click{cursor:pointer}
 .shbar{height:6px;border-radius:2px;background:var(--fill);overflow:hidden}
 .shbar div{height:100%;background:var(--primary)}
 .note{margin:0}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
+.bank{display:block;font-size:12px;color:var(--subtle)}
+.stp-p{margin-left:8px}
+.lnk{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:14px 18px 18px;padding:12px 14px;border:1px dashed var(--border-strong);border-radius:var(--r-card);font-size:13px;color:var(--text-2)}
+.lnk span{flex:1 1 260px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
 .lbl2{font-size:12px;font-weight:600;color:var(--text-2)}
 .ro{display:flex;justify-content:space-between;align-items:center;height:44px;padding:0 12px;border:1px solid var(--border);border-radius:var(--r-ctl);background:var(--surface-2);font-size:14px}
 .ro span{color:var(--text-2)}
