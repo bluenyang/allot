@@ -2,7 +2,7 @@
 // The old forms are those App.vue's read() and Spending.vue's checkAdd accepted before (git show
 // master:src/App.vue, master:src/pages/Spending.vue).
 import { expect, test, type Page } from '@playwright/test'
-import { sheet } from './helpers'
+import { menu, sheet } from './helpers'
 
 const ALL_SUBS = '구독 전체 보기'
 const h1 = (page: Page) => page.locator('header.ph h1')
@@ -133,17 +133,30 @@ test('(S-4) menu, tabs and in-page links go to new addresses; Back and Forward g
   await page.goto('/')
   await page.getByRole('link', { name: ALL_SUBS }).click()
   await expect.poll(() => pathOf(page)).toBe('/spend/subs')
-  // Back and Forward, each starting at the top
-  await page.goto('/spend/subs')
-  await page.goto('/history')
-  await page.evaluate(() => window.scrollTo(0, 400))
+  // Back and Forward inside the app (no page load: the router's own popstate and scrollBehavior), each
+  // starting at the top, as every hash change did — also on a page that was left scrolled (review 2)
+  await page.setViewportSize({ width: 1440, height: 400 }) // short, so the pages can scroll
+  await menu(page, '지출')
+  await tab(page, /^구독/).click()
+  await expect.poll(() => pathOf(page)).toBe('/spend/subs')
+  const scrolled = async () => {
+    await page.evaluate(() => window.scrollTo(0, 300))
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  }
+  await scrolled()
+  await menu(page, '변경 내역')
+  await expect(h1(page)).toHaveText('변경 내역')
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await scrolled()
   await page.goBack()
   await expect.poll(() => pathOf(page)).toBe('/spend/subs')
   await expect(tab(page, /^구독/)).toHaveAttribute('aria-selected', 'true')
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await scrolled()
   await page.goForward()
   await expect.poll(() => pathOf(page)).toBe('/history')
   await expect(h1(page)).toHaveText('변경 내역')
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
 })
 
 test('(S-4) a page keeps its state when you come back; an editor closes when you leave its tab (spec 011 A-13)', async ({ page }) => {
