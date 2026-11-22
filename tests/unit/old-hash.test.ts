@@ -2,7 +2,7 @@
 //   pnpm test:unit
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { fromOldHash } from '../../src/lib/old-hash'
+import { fromOldHash, rawHashOf } from '../../src/lib/old-hash'
 
 const CASES: [string, { path: string; query: Record<string, string | null> } | null][] = [
   ['#', { path: '/', query: {} }],
@@ -47,4 +47,14 @@ const CASES: [string, { path: string; query: Record<string, string | null> } | n
 
 for (const [hash, want] of CASES) {
   test(`fromOldHash(${JSON.stringify(hash)})`, () => assert.deepEqual(fromOldHash(hash), want))
+}
+
+const RAW: [string, string][] = [
+  ['/#subs?add%61', '#subs?add%61'],
+  ['/#settings/ai?x=a%26b', '#settings/ai?x=a%26b'],
+  ['/pay', ''],
+  ['/spend/subs?y=1#settings/ai', '#settings/ai'],
+]
+for (const [fullPath, want] of RAW) {
+  test(`rawHashOf(${JSON.stringify(fullPath)})`, () => assert.equal(rawHashOf(fullPath), want))
 }

@@ -42,3 +42,13 @@ export function fromOldHash(hash: string): NewAddress | null {
   if (PLAIN.includes(head)) return { path: `/${head}`, query }
   return { path: '/', query } // unknown: the overview, as `read()` showed
 }
+
+/**
+ * The raw hash of a navigation, from its full path (`/spend/subs?y=1#settings/ai` → `#settings/ai`).
+ * vue-router keeps the hash raw in `fullPath` for a string location (and for the initial navigation and
+ * popstate, which resolve a string built from `window.location`); only `to.hash` is decoded.
+ */
+export function rawHashOf(fullPath: string): string {
+  const at = fullPath.indexOf('#')
+  return at < 0 ? '' : fullPath.slice(at)
+}

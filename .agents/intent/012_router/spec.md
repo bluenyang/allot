@@ -43,7 +43,7 @@ summary_for_user: |
   - 월급 분배 안의 탭(분배·계좌 등)은 지금처럼 주소에 넣지 않는다.
 - S-2 예전 해시 넘기기 (intent 바라는 결과 2, 에이전트가 정한 것 "클라이언트에서 넘긴다"):
   - 순수 함수 `fromOldHash(hash)`(새 파일 `src/lib/old-hash.ts`)가 해시를 `{ path, query } | null`로 바꾼다. 위 표의 해시면 새 주소, `#app-login…`은 `null`(손대지 않음). 입력은 디코딩하지 않은 해시 그대로이고, 머리와 탭은 그대로 견주며 질의는 한 번만 디코딩한다(예전 `read()`·`checkAdd`가 `location.hash` 원문을 본 것과 같게). 그 밖의 모르는 해시는 현황(`/`)이다(S-1과 같음).
-  - 라우터의 `beforeEach`에서 해시 원문(`window.location.hash`가 이번 이동의 해시일 때, 아니면 `to.hash`)에 이 함수를 쓴다. 처음 열 때, 주소창에서 해시를 바꿀 때(popstate), 앱 안에서 해시로 갈 때가 한곳에서 처리된다. 결과는 replace라 기록이 두 번 남지 않는다.
+  - 라우터의 `beforeEach`에서 해시 원문에 이 함수를 쓴다. 해시 원문은 이번 이동의 전체 경로(`to.fullPath`)에서 첫 `#`부터 떼어 낸다(`rawHashOf`; vue-router는 문자열 주소의 `fullPath`에 해시를 디코딩하지 않고 두고, `to.hash`만 디코딩한다). 처음 열 때, 주소창에서 해시를 바꿀 때(popstate), 앱 안에서 해시로 갈 때가 한곳에서 처리된다. 결과는 replace라 기록이 두 번 남지 않는다.
   - 해시의 질의 `?add`는 새 주소의 질의로 옮긴다(`#subs?add` → `/spend/subs?add`, `#spend/inst?add` → `/spend/inst?add`). 해시 앞 경로의 질의(`/?error=…#account`의 `error`)도 그대로 따라간다. 둘 다 있으면 둘 다 남긴다.
   - 해시는 `/`가 아닌 경로에 붙어 있어도 표에 있으면 넘긴다(주소창에 `#settings/ai`를 쳐도 되게).
 - S-3 질의로 여는 창 (intent 계획 "`?add`처럼 화면을 여는 질의"):
@@ -151,3 +151,4 @@ summary_for_user: |
 - 월급 분배 안의 탭을 주소에 넣기.
 - 모바일 앱의 `#app-login` 주소 바꾸기.
 - 실제 외부 로그인(Dex·GitHub·Google)으로 돌아오기 확인 — 시험 서버에 제공자가 없다.
+- A-17 (2026-11-23, W-1, 리뷰 4 F-5) 라우터가 해시 원문을 `window.location.hash` 추정 대신 `to.fullPath`에서 떼어 내게(`rawHashOf`) · 다른 페이지에서 `router.push('/#subs?add%61')`를 하면 `location.hash`가 아직 앞 페이지의 것이라 디코딩된 `to.hash`로 돌아가, 이미 고친 이중 디코딩이 되살아났음 · 이 커밋
