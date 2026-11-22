@@ -157,6 +157,15 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
   if (rec.id) await q.update(t.changeSet).set({ revertedBy: rec.id }).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id)))
 }
 
+/**
+ * Rows that point at this one without being deleted with it (the API unlinks them on a delete, spec 013 S-9, S-13):
+ * reverting the insert of a row they point at is a conflict, like a child (review 1 F-11).
+ */
+const LINKS = new Map<PgTable, [OwnedTable, PgColumn][]>([
+  [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId]]],
+  [t.card, [[t.spending, t.spending.cardId]]],
+])
+
 /** Tables that are gone; their logged changes cannot be reverted. */
 const GONE = new Set(['living'])
 
@@ -173,7 +182,7 @@ const CHILDREN = new Map<PgTable, [OwnedTable, PgColumn][]>([
 export const childrenOf = (table: PgTable) => CHILDREN.get(table) ?? []
 
 async function hasChildren(q: Db, uid: string, table: PgTable, key: RowKey) {
-  for (const [child, fk] of childrenOf(table)) {
+  for (const [child, fk] of [...childrenOf(table), ...(LINKS.get(table) ?? [])]) {
     const [hit] = await q.select({ n: sql<number>`1` }).from(child as never).where(and(eq(child.userId, uid), eq(fk, key.id!))).limit(1)
     if (hit) return true
   }
