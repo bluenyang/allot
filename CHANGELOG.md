@@ -2,7 +2,7 @@
 
 ## 0.1.6 — 2026-11-23
 
-Released without a release candidate, on the user's instruction ("rc.1 없이 stable"). The stable image will be checked on the test server after the release (spec 012 V-8, pending).
+Released without a release candidate, on the user's instruction ("rc.1 없이 stable"). The stable image `ghcr.io/bluenyang/allot:0.1.6` was checked on the test server after the release (spec 012 V-8): the server's answers for eight addresses (the app pages, the API, `/healthz`, `/api/mcp` and the session check) were recorded, and `tests/e2e/router.spec.ts` passed 42 of 42.
 
 Addresses without `#`. Intent 012 (`.agents/intent/012_router/`). No database or API change.
 
