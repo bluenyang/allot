@@ -86,6 +86,12 @@ test('(S-5) an auth error that comes back to /#account shows on 로그인·보�
   await expect(tab(page, '로그인·보안')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByText('로그인이 중간에 끊겼어요. 다시 해 주세요.')).toBeVisible()
   await expect.poll(() => pathOf(page)).toBe('/settings/security')
+  // review 1 F-1: after another tab and Back, the error is not in the address or on screen again
+  await tab(page, '일반').click()
+  await expect.poll(() => pathOf(page)).toBe('/settings/general')
+  await page.goBack()
+  await expect.poll(() => pathOf(page)).toBe('/settings/security')
+  await expect(page.getByText('로그인이 중간에 끊겼어요. 다시 해 주세요.')).toHaveCount(0)
 })
 
 test('(S-5) #app-login is left alone: the hand-over screen, not the app', async ({ page }) => {

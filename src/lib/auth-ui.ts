@@ -37,14 +37,20 @@ export function authMessage(code: string | null | undefined): string {
   }
 }
 
-/** Read ?error= from the address once, then drop it from the address bar (keeping the router's history.state, spec 012 S-5). */
+/**
+ * Read ?error= from the address once, then drop it from the address bar (spec 012 S-5). The router keeps
+ * its own copy of the address in history.state.current and writes it back on the next navigation, so
+ * that copy is cleaned too, or Back would bring the error back (review 1 F-1).
+ */
 export function takeErrorFromUrl(): string {
   const u = new URL(window.location.href)
   const code = u.searchParams.get('error')
   if (!code) return ''
   u.searchParams.delete('error')
   u.searchParams.delete('error_description')
-  history.replaceState(history.state, '', u.pathname + u.search + u.hash)
+  const clean = u.pathname + u.search + u.hash
+  const state = history.state as Record<string, unknown> | null
+  history.replaceState(state && typeof state.current === 'string' ? { ...state, current: clean } : state, '', clean)
   return authMessage(code)
 }
 
