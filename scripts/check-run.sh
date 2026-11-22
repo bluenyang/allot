@@ -14,6 +14,7 @@
 # itself>" and the terminator "=== end". The first non-zero step stops the run with that code.
 # A step with a '|' in any argument, or whose command is not an external program (a function or
 # builtin loses errexit), is refused (logged, exit=2). A failing runner write ends the run with 70.
+# begin refuses a log file that already exists (exit 64, the file stays byte-identical).
 # A failed cleanup never hides an earlier failure and turns a passing run into exit 1.
 # Verify a log with: pnpm check:logs <log>
 ROOT=$(git rev-parse --show-toplevel) || exit 1
@@ -63,9 +64,16 @@ _cr_run() { # kind name command...
   _cr_say "[$CHECK] $kind $name: exit=$rc"
   return $rc
 }
-# begin <check> <logfile>: start a check's log.
+# begin <check> <logfile>: start a check's log. An existing log is never overwritten (a failed run's
+# original must survive a later run): the runner stops with 64 before anything runs, and the existing
+# file is not touched. Pick a new name.
 begin() {
-  CHECK=$1; LOG=$2
+  CHECK=$1
+  if [ -e "$2" ] || [ -L "$2" ]; then
+    _cr_say "check-run: refused, the log '$2' already exists. Pick a new log name; a log is never overwritten." >&2
+    exit 64
+  fi
+  LOG=$2
   mkdir -p "$(dirname "$LOG")"
   { _cr_say "# check $CHECK, started $(date -Is)"; _cr_say ''; } > "$LOG"
 }

@@ -170,3 +170,31 @@ test('a directory with no .log file fails: nothing checked is not a pass', () =>
   assert.equal(run.status, 1)
   assert.match(run.stdout, /nothing was checked/)
 })
+
+test('begin refuses an existing log, leaves it byte-identical and runs nothing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const log = join(dir, 'taken.log')
+  const original = '# check old\nthe failed original\n'
+  writeFileSync(log, original)
+  const marker = join(dir, 'ran')
+  const script = join(dir, 'run.sh')
+  writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep one /usr/bin/env touch ${marker}\ndone_check\n`)
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
+  assert.equal(run.status, 64)
+  assert.match(run.stderr, /already exists/)
+  assert.equal(readFileSync(log, 'utf8'), original)
+  assert.equal(existsSync(marker), false)
+})
+
+test('begin works as before for a new log, in a directory that does not exist yet', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const log = join(dir, 'sub', 'new.log')
+  const script = join(dir, 'run.sh')
+  writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep one /usr/bin/env true\ndone_check\n`)
+  const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
+  assert.equal(run.status, 0)
+  assert.deepEqual(checkLog(readFileSync(log, 'utf8')), [])
+  // a second run with the same name is refused
+  const again = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
+  assert.equal(again.status, 64)
+})
