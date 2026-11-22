@@ -42,8 +42,8 @@ summary_for_user: |
   - 모르는 경로(`/foo`)는 현황을 보여 주고 주소는 `/`로 replace한다(지금 모르는 해시가 현황인 것과 같다).
   - 월급 분배 안의 탭(분배·계좌 등)은 지금처럼 주소에 넣지 않는다.
 - S-2 예전 해시 넘기기 (intent 바라는 결과 2, 에이전트가 정한 것 "클라이언트에서 넘긴다"):
-  - 순수 함수 `fromOldHash(hash)`(새 파일 `src/lib/old-hash.ts`)가 해시를 `{ path, query } | null`로 바꾼다. 위 표의 해시면 새 주소, `#app-login…`과 그 밖의 해시는 `null`(손대지 않음).
-  - 라우터의 `beforeEach`에서 `to.hash`에 이 함수를 쓴다. 처음 열 때, 주소창에서 해시를 바꿀 때(popstate), 앱 안에서 해시로 갈 때가 한곳에서 처리된다. 결과는 replace라 기록이 두 번 남지 않는다.
+  - 순수 함수 `fromOldHash(hash)`(새 파일 `src/lib/old-hash.ts`)가 해시를 `{ path, query } | null`로 바꾼다. 위 표의 해시면 새 주소, `#app-login…`은 `null`(손대지 않음). 입력은 디코딩하지 않은 해시 그대로이고, 머리와 탭은 그대로 견주며 질의는 한 번만 디코딩한다(예전 `read()`·`checkAdd`가 `location.hash` 원문을 본 것과 같게). 그 밖의 모르는 해시는 현황(`/`)이다(S-1과 같음).
+  - 라우터의 `beforeEach`에서 해시 원문(`window.location.hash`가 이번 이동의 해시일 때, 아니면 `to.hash`)에 이 함수를 쓴다. 처음 열 때, 주소창에서 해시를 바꿀 때(popstate), 앱 안에서 해시로 갈 때가 한곳에서 처리된다. 결과는 replace라 기록이 두 번 남지 않는다.
   - 해시의 질의 `?add`는 새 주소의 질의로 옮긴다(`#subs?add` → `/spend/subs?add`, `#spend/inst?add` → `/spend/inst?add`). 해시 앞 경로의 질의(`/?error=…#account`의 `error`)도 그대로 따라간다. 둘 다 있으면 둘 다 남긴다.
   - 해시는 `/`가 아닌 경로에 붙어 있어도 표에 있으면 넘긴다(주소창에 `#settings/ai`를 쳐도 되게).
 - S-3 질의로 여는 창 (intent 계획 "`?add`처럼 화면을 여는 질의"):
@@ -133,6 +133,7 @@ summary_for_user: |
 - A-10 (2026-11-22, V-6) `/api/없는것`의 기대를 "404 JSON"에서 "master 이미지와 같음"으로 · 쿠키 없이 부르면 API 미들웨어가 먼저 401 JSON을 냄. 0.1.5-rc.1 이미지도 같은 401(`v6-master.log`), 앱 대신 `index.html`이 나가지 않는 것은 같음 · 기록만
 - A-11 (2026-11-23, W-7, 리뷰 2) router.spec의 뒤로/앞으로 시험을 앱 안 이동으로, 스크롤한 페이지에서 · `goto` 두 번 뒤 뒤로 가기는 문서를 넘나들어 라우터의 popstate·`scrollBehavior`를 거치지 않았고, 스크롤하지 않은 쪽을 봐서 늘 통과했음 · 826d17a
 - A-12 (2026-11-23, W-7, 리뷰 2) 늦은 키 응답 시험이 주소가 `/`가 된 뒤에 응답을 풀게 · 기다리던 `header.ph h1`은 설정 화면에도 있어 기다림이 없었음 · a99569f
+- A-13 (2026-11-23, W-1, 리뷰 3 F-1) `fromOldHash`가 디코딩하지 않은 해시를 받게(라우터가 `location.hash` 원문을 넘김), 질의는 한 번만 디코딩, 원문이 예전 `add\b`에 맞으면 `add` 키를 보탬 · vue-router가 해시를 먼저 디코딩해서 `#subs?add%61`이 `adda`가 되어 창이 안 열리고 `#settings/ai?x=a%26b`가 키 둘로 갈렸음(예전 `read()`·`checkAdd`는 원문을 봄) · 이 커밋
 
 ## 우려
 - vue-router의 `history.state`: 앱이 아닌 코드가 `history.replaceState(null, …)`를 부르면 뒤로 가기 스크롤 위치·경고가 생긴다. 지금 두 곳(`Spending.vue` checkAdd, `auth-ui.ts`)뿐이고 W-3·W-4에서 고친다. 새로 생기지 않게 리뷰에서 `replaceState`·`pushState`·`location.hash`를 grep한다.

@@ -2,6 +2,8 @@
 // as the history addresses that replaced them (spec 012 S-1, S-2). Pure: the router calls it on
 // every navigation and replaces the address with the answer.
 //
+// The hash is the raw one (as in `location.hash`, not decoded by the router): head and tab are
+// compared raw, the query is decoded once — as the 0.1.5 `read()` and `checkAdd` did.
 // A hash that is not an old app address — `#app-login?return=…` (the mobile app's sign-in, spec 006
 // S-6) or anything unknown — gives null and is left alone.
 
@@ -18,12 +20,18 @@ function hashQuery(q: string): Record<string, string | null> {
   return out
 }
 
+/** The 0.1.5 trigger for the add editor, on the raw query: `add` at the start or after `&`, not followed by a word character. */
+const RAW_ADD = /(^|&)add\b/
+
 export function fromOldHash(hash: string): NewAddress | null {
   if (!hash.startsWith('#')) return null
   const body = hash.slice(1)
   const at = body.indexOf('?')
   const [head = '', sub = ''] = (at < 0 ? body : body.slice(0, at)).split('/')
-  const query = at < 0 ? {} : hashQuery(body.slice(at + 1))
+  const rawQuery = at < 0 ? '' : body.slice(at + 1)
+  const query = hashQuery(rawQuery)
+  // `#subs?add%61` opened the editor in 0.1.5 (raw test); the decoded key is `adda`, so add the key the page looks for.
+  if (RAW_ADD.test(rawQuery) && !Object.keys(query).some((k) => /^add(?!\w)/.test(k))) query.add = null
   const tab = (tabs: readonly string[]) => (tabs.includes(sub) ? sub : tabs[0]!)
   if (head === '' || head === 'home') return { path: '/', query }
   if (head === 'account') return { path: '/settings/security', query }

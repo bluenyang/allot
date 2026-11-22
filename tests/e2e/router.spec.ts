@@ -62,7 +62,7 @@ test('(S-2) an old hash typed on a new address is replaced too', async ({ page }
 })
 
 for (const [from, title] of [
-  ['/#subs?add', '구독 추가'], ['/#spend/subs?add', '구독 추가'], ['/#spend/subs?x=1&add', '구독 추가'], ['/#subs?add-x', '구독 추가'], ['/#subs?add=1', '구독 추가'],
+  ['/#subs?add', '구독 추가'], ['/#spend/subs?add', '구독 추가'], ['/#spend/subs?x=1&add', '구독 추가'], ['/#subs?add-x', '구독 추가'], ['/#subs?add=1', '구독 추가'], ['/#subs?add%61', '구독 추가'],
   ['/#spend/general?add', '지출 추가'], ['/#spend/inst?add', '할부 추가'],
   ['/spend/subs?add', '구독 추가'], ['/spend/general?add', '지출 추가'], ['/spend/inst?add', '할부 추가'],
 ] as const) {
