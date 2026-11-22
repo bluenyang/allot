@@ -30,7 +30,7 @@ const ko = {
   oneSubscriptions: "'구독 이체액' 대상은 하나만 둘 수 있어요.",
   oneRemainder: "'나머지' 대상은 하나만 둘 수 있어요.",
   // budget core (spec 013)
-  amountsTargetsOnly: '구간 금액은 고정 대상과 비율로 나누는 저축·투자 합계 대상에만 넣을 수 있어요.',
+  amountsTargetsOnly: '구간 금액은 고정 대상과 저축·투자 합계 대상에만 넣을 수 있어요.',
   oneSaving: "'저축 합계' 대상은 하나만 둘 수 있어요.",
   oneInvest: "'투자 합계' 대상은 하나만 둘 수 있어요.",
   last4Format: '끝 4자리는 숫자 4개로 적거나 비워 두세요.',
@@ -183,7 +183,7 @@ const en: Record<MsgKey, string> = {
   oneSubscriptions: "Only one 'Subscription transfer' target is allowed.",
   oneRemainder: "Only one 'Remainder' target is allowed.",
   // budget core (spec 013)
-  amountsTargetsOnly: 'Phase amounts can only be set for fixed targets and for ratio-split Savings or Investment total targets.',
+  amountsTargetsOnly: 'Phase amounts can only be set for fixed targets and for Savings or Investment total targets.',
   oneSaving: "Only one 'Savings total' target is allowed.",
   oneInvest: "Only one 'Investment total' target is allowed.",
   last4Format: 'The last 4 digits must be 4 numbers, or left empty.',
