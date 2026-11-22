@@ -2,7 +2,7 @@
 //   pnpm test:unit
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -243,7 +243,8 @@ test('begin refuses a dangling symlink and /dev/null', () => {
 })
 
 test('--revs prints one line per log: unique revs and the last exit; without it the output is unchanged', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'check-logs-'))
+  mkdirSync(join(root, '.loctx'), { recursive: true })
+  const dir = mkdtempSync(join(root, '.loctx', 'check-logs-'))
   const log = join(dir, 'a.log')
   const step = (rev: string, exit: number) => ['=== step: s', `rev ${rev}`, 'date d', '$ true', '> rev fake', `exit=${exit}`, '=== end', ''].join('\n')
   writeFileSync(log, ['# check t', '', step('aaa', 0), step('aaa', 0), step('bbb+uncommitted', 3), 'RESULT t: fail'].join('\n'))
@@ -254,4 +255,5 @@ test('--revs prints one line per log: unique revs and the last exit; without it 
   assert.equal(plain.stdout, '1 log(s) checked, 0 problem(s)\n')
   assert.equal(withRevs.stdout, `${log} rev=aaa,bbb+uncommitted exit=3\n1 log(s) checked, 0 problem(s)\n`)
   assert.deepEqual(summarize(readFileSync(log, 'utf8')), { revs: ['aaa', 'bbb+uncommitted'], exit: '3' })
+  rmSync(dir, { recursive: true, force: true })
 })

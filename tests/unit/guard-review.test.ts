@@ -162,8 +162,10 @@ test('recordFile: feat/a and feat__a do not collide', () => {
   assert.notEqual(recordFile('/p', 'feat/a'), recordFile('/p', 'feat__a'))
 })
 
-function setup() {
-  const root = mkdtempSync(join(tmpdir(), 'guard-review-'))
+// base: where the scratch repository goes (default: the system temp dir); tests added in retro 0.1.6 pass a folder under the worktree's .loctx/
+function setup(base: string = tmpdir()) {
+  mkdirSync(base, { recursive: true })
+  const root = mkdtempSync(join(base, 'guard-review-'))
   const dir = join(root, 'work')
   const origin = join(root, 'owner1', 'repo.git')
   const env = { ...gitFreeEnv(), CLAUDE_PROJECT_DIR: dir, GUARD_REVIEW_GH: join(root, 'fakegh') }
@@ -313,7 +315,7 @@ test('--mark: branch must exist, sha must be tip or ancestor', () => {
 })
 
 test('--mark: needs a review record with a model line, matching the delegation table when there is one', () => {
-  const t = setup()
+  const t = setup(join(resolve('.'), '.loctx', 'scratch'))
   try {
     const mark = (...a: string[]) => t.sh(t.dir, 'node', [script, '--mark', ...a])
     const head = t.git('rev-parse', 'HEAD')
