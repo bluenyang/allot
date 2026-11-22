@@ -4,6 +4,9 @@
 // (useEditor / the store writers). The phase number is automatic (phaseNumbers); the stored phase
 // `label` is never shown or edited here and is sent back as it was. A remainder target is optional:
 // without one, what is left of the pay stays in the pay account (`unallocated`).
+// spec 013 (W-6): the Savings / Investment totals as target kinds, a linked account per target, phase amount
+// fields for fixed targets and ratio-split Savings / Investment totals, and the living costs as a read-only
+// list of the living items (they are edited in the Living menu).
 import { t, tl } from '../i18n'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -15,12 +18,12 @@ import Pill from '../components/Pill.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
 import { fmtMoney, fmtMoneyClass } from '../lib/display'
-import { saveLiving, saveSettings, store } from '../lib/store'
+import { saveSettings, store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
 import { kindDetail } from '../lib/labels'
-import { addYm, monthMoney, phaseNumbers, splitRemainder, today, ymLabel, ymOf, type AllocRow } from '../lib/calc'
-import type { AllocationKind, Settings } from '../data/types'
+import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, today, ymLabel, ymOf, type AllocRow } from '../lib/calc'
+import type { AllocationKind, AllocationTarget, BudgetGroup, Settings } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
 
@@ -68,10 +71,24 @@ const sim = computed(() => dist(ym.value, pay.value))
 const simSpend = computed(() => { const s = monthMoney(store, ym.value).spend; return s.general + s.installment })
 const remainderTarget = computed(() => store.targets.find((x) => x.kind === 'remainder') ?? null)
 const split = computed(() => (sim.value.remainderTarget ? splitRemainder(sim.value.remainder, store.remainderSplit) : []))
-const livingSum = computed(() => store.living.food + store.living.transit + store.living.allowance)
 const remainderName = computed(() => remainderTarget.value?.name ?? t('payroll.remainder'))
-const livingName = computed(() => store.targets.find((x) => x.kind === 'living')?.name ?? t('payroll.living'))
-const fixedTargets = computed(() => store.targets.filter((x) => x.kind === 'fixed'))
+/** The menu a computed target is split in: its name and page (the "{menu}에서 나누기 →" links). */
+const MENUS: Partial<Record<AllocationKind, { key: 'menuLiving' | 'menuSubs' | 'menuSaving' | 'menuInvest'; to: string }>> = {
+  living: { key: 'menuLiving', to: '/living' },
+  subscriptions: { key: 'menuSubs', to: '/spend/subs' },
+  saving: { key: 'menuSaving', to: '/saving' },
+  invest: { key: 'menuInvest', to: '/invest' },
+}
+const menuOf = (k: AllocationKind) => { const m = MENUS[k]; return m ? { label: t(`payroll.${m.key}`), to: m.to } : null }
+const isGroup = (k: AllocationKind | 'leftover'): k is BudgetGroup => k === 'saving' || k === 'invest'
+/** How a row's amount is worked out when the user left no note (label.allocDetail has the older kinds). */
+const detailOf = (r: Pick<AllocRow, 'detail' | 'kind'>) =>
+  r.detail || (r.kind === 'saving' ? t('payroll.detailSaving') : r.kind === 'invest' ? t('payroll.detailInvest') : kindDetail(r.kind))
+const accountName = (id: string | null | undefined) => (id ? store.accounts.find((a) => a.id === id)?.name ?? null : null)
+/** The phase editor's amount fields: fixed targets, and a Savings / Investment total whose menu splits by ratio (S-3). */
+const amountTargets = computed(() => store.targets.filter((x) => x.kind === 'fixed' || (isGroup(x.kind) && splitOf(x.kind, store.settings) === 'ratio')))
+/** Savings / Investment totals in amount split: no field, their value is the items' sum. */
+const itemSumTargets = computed(() => store.targets.filter((x) => isGroup(x.kind) && splitOf(x.kind, store.settings) === 'amount'))
 const ratioSum = computed(() => Math.round(store.remainderSplit.reduce((a, x) => a + x.ratio, 0) * 100))
 const simPhase = computed(() => {
   const p = sim.value.phase
@@ -80,7 +97,7 @@ const simPhase = computed(() => {
 
 interface SimRow { key: string; name: string; kind: AllocationKind | 'leftover'; amount: number; detail: string; color: string }
 const simRows = computed<SimRow[]>(() => {
-  const rows: SimRow[] = sim.value.rows.map((r: AllocRow) => ({ key: r.key, name: r.name, kind: r.kind, amount: r.amount, detail: r.detail || kindDetail(r.kind), color: allocColor(r.key) }))
+  const rows: SimRow[] = sim.value.rows.map((r: AllocRow) => ({ key: r.key, name: r.name, kind: r.kind, amount: r.amount, detail: detailOf(r), color: allocColor(r.key) }))
   if (!sim.value.remainderTarget) rows.push({ key: '__left', name: t('payroll.leftoverName'), kind: 'leftover', amount: sim.value.remainder, detail: t('payroll.leftoverCalc'), color: LEFT_COLOR })
   return rows
 })
@@ -105,7 +122,20 @@ const viewBody = computed(() => {
   if (!r) return null
   const x = monthMoney(store, ym.value).transfer
   const others = pay.value - sim.value.remainder
-  if (r.kind === 'living') return { formula: t('payroll.fLiving', { food: fmtMoney(store.living.food), transit: fmtMoney(store.living.transit), allowance: fmtMoney(store.living.allowance) }), where: t('payroll.whereLiving'), go: t('payroll.openLiving') }
+  if (r.kind === 'living') {
+    const items = livingAt(store.livingItems, store.phases, ym.value).rows
+    const formula = items.length ? items.map((x) => `${x.item.name} ${fmtMoney(x.amount)}`).join(' + ') : t('payroll.fLivingNone')
+    return { formula, where: t('payroll.whereLiving'), go: t('payroll.openLiving') }
+  }
+  if (isGroup(r.kind)) {
+    const g = groupAt(r.kind, store.accounts, store.phases, store.targets, store.settings, ym.value)
+    const menu = t(r.kind === 'saving' ? 'payroll.menuSaving' : 'payroll.menuInvest')
+    return {
+      formula: g.mode === 'ratio' ? t('payroll.fGroupRatio', { total: fmtMoney(g.total) }) : t('payroll.fGroupAmount', { menu, n: g.rows.length }),
+      where: t('payroll.whereGroup', { menu }),
+      go: t(r.kind === 'saving' ? 'payroll.openSaving' : 'payroll.openInvest'),
+    }
+  }
   if (r.kind === 'subscriptions') {
     const unit = store.settings.subRound
     return { formula: unit > 1 ? t('payroll.fSubs', { needed: fmtMoney(x.needed), unit: fmtMoney(unit) }) : t('payroll.fSubsOff', { needed: fmtMoney(x.needed) }), where: t('payroll.whereSubs'), go: t('payroll.openSubs') }
@@ -116,8 +146,7 @@ const router = useRouter()
 function viewGo() {
   const k = view.value?.kind
   view.value = null
-  if (k === 'living') tab.value = 'accounts'
-  else if (k === 'subscriptions') void router.push('/spend/subs')
+  if (k === 'living' || k === 'subscriptions' || k === 'saving' || k === 'invest') void router.push(MENUS[k]!.to)
   else openPay()
 }
 
@@ -167,10 +196,16 @@ async function saveSplit() {
   await splitEd.save()
 }
 
-const KIND_IDS: AllocationKind[] = ['living', 'subscriptions', 'fixed', 'remainder']
+const KIND_IDS: AllocationKind[] = ['living', 'subscriptions', 'fixed', 'remainder', 'saving', 'invest']
 const kindOf = (k: AllocationKind) => t(`payroll.kind.${k}`)
-const targetEd = useEditor('targets', () => ({ id: '', name: '', kind: 'fixed', note: '' }),
+const targetEd = useEditor('targets', (): AllocationTarget => ({ id: '', name: '', kind: 'fixed', note: '', accountId: null }),
   (x) => (!x.name.trim() ? t('payroll.needName') : null))
+// The linked account: '' in the select is "not linked" (null); a target opened without the key keeps it absent until a pick.
+const targetAccount = computed({
+  get: () => targetEd.item.value?.accountId ?? '',
+  set: (v: string) => { if (targetEd.item.value) targetEd.item.value.accountId = v || null },
+})
+const accountOpts = computed(() => [{ value: '', label: t('payroll.accountNone') }, ...store.accounts.map((a) => ({ value: a.id, label: a.name }))])
 // A kind that only one target can have is marked when another target already has it. The option stays
 // choosable: the server answers with the rule, as it always did.
 const kindOption = (k: AllocationKind) =>
@@ -221,21 +256,17 @@ const roundOpts = computed(() => {
 
 // ---------- accounts tab ----------
 const flow = computed(() => dist(now))
-const flowRows = computed(() => flow.value.rows.filter((r) => r.kind !== 'remainder' || r.amount !== 0))
+const flowRows = computed(() => flow.value.rows.filter((r) => r.kind !== 'remainder' || r.amount !== 0).map((r) => {
+  const tg = store.targets.find((x) => x.id === r.key)
+  const acc = accountName(tg?.accountId)
+  // where it goes: the linked account; else the remainder stays in the pay account, Savings / Investment go to their items
+  const to = acc ?? (r.kind === 'remainder' ? t('payroll.leftoverName') : isGroup(r.kind) ? t('payroll.toItems') : null)
+  return { ...r, detail: detailOf(r), to: to ?? t('payroll.unlinked'), linked: to !== null, menu: menuOf(r.kind) }
+}))
 const flowSent = computed(() => flow.value.rows.filter((r) => r.kind !== 'remainder').reduce((a, r) => a + r.amount, 0))
-const share = (v: number) => (livingSum.value > 0 ? Math.round((v / livingSum.value) * 100) : 0)
-const livingModel = (k: 'food' | 'transit' | 'allowance') => computed({
-  get: () => store.living[k] as number | '',
-  set: (v) => { store.living[k] = v as number },
-})
-const food = livingModel('food')
-const transit = livingModel('transit')
-const allowance = livingModel('allowance')
-const livingRows = computed(() => [
-  { id: 'l-food', label: t('payroll.food'), model: food, v: store.living.food },
-  { id: 'l-tr', label: t('payroll.transit'), model: transit, v: store.living.transit },
-  { id: 'l-al', label: t('payroll.allowance'), model: allowance, v: store.living.allowance },
-])
+// 생활비 구성 (S-2): this month's living items, read-only; they are added and changed in the Living menu.
+const livingNow = computed(() => livingAt(store.livingItems, store.phases, now))
+const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNow.value.sum) * 100) : 0)
 </script>
 
 <template>
@@ -250,11 +281,12 @@ const livingRows = computed(() => [
         <div class="card-hd"><h2>{{ t('payroll.targets') }}</h2><button class="btn sm" type="button" @click="targetEd.open()">{{ t('payroll.addTargetBtn') }}</button></div>
         <div class="tbl stack">
           <table>
-            <thead><tr><th scope="col">{{ t('payroll.name') }}</th><th scope="col">{{ t('payroll.kindLabel') }}</th><th scope="col" class="c-memo">{{ t('payroll.note') }}</th></tr></thead>
+            <thead><tr><th scope="col">{{ t('payroll.name') }}</th><th scope="col">{{ t('payroll.kindLabel') }}</th><th scope="col">{{ t('payroll.colAccount') }}</th><th scope="col" class="c-memo">{{ t('payroll.note') }}</th></tr></thead>
             <tbody>
               <tr v-for="tg in store.targets" :key="tg.id" class="click" tabindex="0" @click="targetEd.open(tg)" @keydown.enter="targetEd.open(tg)">
                 <td :data-label="t('payroll.name')"><span class="tname"><i :style="{ background: allocColor(tg.id) }"></i><b>{{ tg.name }}</b></span></td>
                 <td :data-label="t('payroll.kindLabel')" class="nowrap">{{ kindOf(tg.kind) }}</td>
+                <td :data-label="t('payroll.colAccount')" :class="accountName(tg.accountId) ? '' : 'hint'">{{ accountName(tg.accountId) ?? t('payroll.unlinked') }}</td>
                 <td :data-label="t('payroll.note')" class="hint c-memo">{{ tg.note }}</td>
               </tr>
             </tbody>
@@ -364,7 +396,9 @@ const livingRows = computed(() => [
                   <div v-for="r in flowRows" :key="r.key" class="fcard" :style="{ borderTopColor: allocColor(r.key) }">
                     <b>{{ r.name }}</b>
                     <b class="num fa" :class="fmtMoneyClass(r.amount)">{{ fmtMoney(r.amount) }}</b>
-                    <small>{{ r.detail || kindDetail(r.kind) }}</small>
+                    <small>{{ r.detail }}</small>
+                    <small class="fto" :class="{ off: !r.linked }">→ {{ r.to }}</small>
+                    <RouterLink v-if="r.menu" class="fgo" :to="r.menu.to">{{ t('payroll.splitIn', { menu: r.menu.label }) }}</RouterLink>
                   </div>
                 </div>
                 <div class="fsum"><span>{{ t('payroll.flowSent', { sent: fmtMoney(flowSent) }) }} · {{ flow.remainderTarget ? t('payroll.flowRestOf', { name: flow.remainderTarget.name }) : t('payroll.leftoverName') }}</span><b class="num" :class="fmtMoneyClass(flow.remainder)">{{ fmtMoney(flow.remainder) }}</b></div>
@@ -394,16 +428,15 @@ const livingRows = computed(() => [
       </div>
 
       <div class="colB">
-        <section class="card">
-          <div class="card-hd"><h2>{{ livingName }}</h2><b class="num">{{ fmtMoney(livingSum) }}</b></div>
+        <section class="card" data-testid="living-list">
+          <div class="card-hd"><h2>{{ t('payroll.livingTitle') }}</h2><span class="lv-hd"><b class="num">{{ fmtMoney(livingNow.sum) }}</b><RouterLink class="btn sm" to="/living">{{ t('payroll.livingManage') }}</RouterLink></span></div>
           <div class="fs liv">
-            <div v-for="l in livingRows" :key="l.id" class="field">
-              <label :for="l.id">{{ l.label }}</label>
-              <MoneyInput :id="l.id" v-model="l.model.value" @change="saveLiving()" />
-              <div class="shbar" aria-hidden="true"><div :style="{ width: `${share(Number(l.v) || 0)}%` }"></div></div>
-              <span class="hint num">{{ share(Number(l.v) || 0) }}%</span>
+            <p v-if="!livingNow.rows.length" class="hint note">{{ t('payroll.livingEmpty') }}</p>
+            <div v-for="l in livingNow.rows" :key="l.item.id" class="lv-row">
+              <div class="lv-l"><span>{{ l.item.name }}</span><span class="num"><b>{{ fmtMoney(l.amount) }}</b> <small class="hint">{{ share(l.amount) }}%</small></span></div>
+              <div class="shbar" aria-hidden="true"><div :style="{ width: `${share(l.amount)}%` }"></div></div>
             </div>
-            <p class="hint note">{{ t('payroll.livingNote') }}</p>
+            <i18n-t keypath="payroll.livingFoot" tag="p" class="hint note lv-foot"><template #link><RouterLink to="/living">{{ t('payroll.livingLink') }}</RouterLink></template></i18n-t>
           </div>
         </section>
 
@@ -439,6 +472,9 @@ const livingRows = computed(() => [
       <div class="field"><label for="tg-kind">{{ t('payroll.kindLabel') }}</label>
         <Select id="tg-kind" v-model="targetEd.item.value.kind" :options="KIND_IDS.map((k) => ({ value: k, label: kindOption(k) }))" />
         <span class="hint">{{ t(`payroll.kindHint.${targetEd.item.value.kind}`) }} {{ t('payroll.onePerKind') }}</span></div>
+      <div class="field"><label for="tg-acc">{{ t('payroll.colAccount') }} <span class="opt">{{ t('common.optional') }}</span></label>
+        <Select id="tg-acc" v-model="targetAccount" :options="accountOpts" />
+        <span class="hint">{{ t('payroll.accountHint') }}</span></div>
       <div class="field"><label for="tg-note">{{ t('payroll.note') }} <span class="opt">{{ t('common.optional') }}</span></label><input id="tg-note" v-model="targetEd.item.value.note" class="in" autocomplete="off"></div>
     </EditSheet>
 
@@ -447,10 +483,10 @@ const livingRows = computed(() => [
       <div class="field"><label for="ph-name">{{ t('payroll.name') }} <span class="star" aria-hidden="true">*</span></label><input id="ph-name" v-model="phaseEd.item.value.name" class="in" autocomplete="off" :placeholder="t('payroll.phaseNamePh')"></div>
       <div class="field"><label for="ph-from">{{ t('payroll.startMonth') }}</label><MonthInput id="ph-from" v-model="phaseEd.item.value.from" clearable /></div>
       <div class="field"><label for="ph-to">{{ t('payroll.endMonth') }}</label><MonthInput id="ph-to" v-model="phaseTo" clearable /><span class="hint">{{ t('payroll.endHint') }}</span></div>
-      <template v-if="fixedTargets.length">
-        <div v-for="tg in fixedTargets" :key="tg.id" class="field"><label :for="`ph-amt-${tg.id}`">{{ tg.name }}</label>
-          <MoneyInput :id="`ph-amt-${tg.id}`" :model-value="phaseAmount(tg.id)" @update:model-value="setPhaseAmount(tg.id, $event)" /></div>
-      </template>
+      <div v-for="tg in amountTargets" :key="tg.id" class="field"><label :for="`ph-amt-${tg.id}`">{{ tg.kind === 'fixed' ? tg.name : t('payroll.phaseTotal', { name: tg.name }) }}</label>
+        <MoneyInput :id="`ph-amt-${tg.id}`" :model-value="phaseAmount(tg.id)" @update:model-value="setPhaseAmount(tg.id, $event)" /></div>
+      <div v-for="tg in itemSumTargets" :key="tg.id" class="field"><span class="lbl2">{{ tg.name }}</span>
+        <span class="hint">{{ t('payroll.phaseItemSum') }} · <RouterLink :to="menuOf(tg.kind)!.to">{{ t('payroll.splitIn', { menu: menuOf(tg.kind)!.label }) }}</RouterLink></span></div>
       <div v-if="phasePreview" class="field pv">
         <span class="lbl2">{{ t('payroll.phasePreview', { ym: ymLabel(phasePreview.ym) }) }}</span>
         <div class="abar" role="img" :aria-label="aria(phasePreview.segs)"><span v-for="g in phasePreview.segs" :key="g.key" :style="{ flexGrow: g.amount, background: g.color }"></span></div>
@@ -552,7 +588,13 @@ tr.click{cursor:pointer}
 .fsum{display:flex;justify-content:space-between;gap:12px;margin-top:10px;padding:8px 12px;border-radius:var(--r-card);background:var(--primary-tint);border:1px solid var(--primary-line);font-size:13px}
 .fnote{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--text-2)}
 .fnote span{flex:1 1 260px}
-.liv .field{gap:6px}
+.lv-hd{display:flex;align-items:center;gap:12px}
+.lv-row{display:flex;flex-direction:column;gap:6px}
+.lv-l{display:flex;justify-content:space-between;gap:12px;font-size:13px}
+.lv-foot{padding-top:10px;border-top:1px solid var(--divider)}
+.fto{color:var(--text-2)}
+.fto.off{color:var(--accent-text)}
+.fgo{margin-top:4px;font-size:12px;font-weight:600;text-decoration:none}
 .shbar{height:6px;border-radius:2px;background:var(--fill);overflow:hidden}
 .shbar div{height:100%;background:var(--primary)}
 .note{margin:0}
