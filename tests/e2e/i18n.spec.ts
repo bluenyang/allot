@@ -2,7 +2,7 @@
 // server), the server's messages come in the screen language,
 // and the three English amount units. The shared admin account is put back to "follow the browser".
 // The sign-in screen and sign-out are in 00-i18n-signout.spec.ts (they sign in; the login rate limit is 5 a minute).
-import { choose } from './helpers'
+import { choose, menu } from './helpers'
 import { expect, test, type Page } from '@playwright/test'
 
 const MARK = `i18n-${Date.now().toString(36)}`
@@ -58,16 +58,21 @@ test('지출 › 할부: opened in Korean, then English from the settings, the t
   await page.goto('/spend/inst')
   await expect(page.getByRole('region', { name: '할부 요약' })).toBeVisible()
 
-  await openGeneral(page)
+  // the page stays open: every move below is inside the app (a goto would load the page again)
+  await menu(page, '설정')
+  await expect(page.locator('#g-lang')).toBeVisible()
   await pickLanguage(page, 'en')
-  await page.goto('/spend/inst')
+  await menu(page, 'Spending')
+  await page.getByRole('tab', { name: /^Installments/ }).click()
   await expect(page.getByRole('region', { name: 'Installment summary' })).toBeVisible()
   await expect(page.getByText('In progress', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('region', { name: '할부 요약' })).toHaveCount(0)
 
-  await openGeneral(page)
+  await menu(page, 'Settings')
+  await expect(page.locator('#g-lang')).toBeVisible()
   await pickLanguage(page, 'ko')
-  await page.goto('/spend/inst')
+  await menu(page, '지출')
+  await page.getByRole('tab', { name: /^할부/ }).click()
   await expect(page.getByRole('region', { name: '할부 요약' })).toBeVisible()
 })
 
