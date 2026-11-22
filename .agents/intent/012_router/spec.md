@@ -29,6 +29,7 @@ summary_for_user: |
   화면·저장·KeepAlive 상태 유지·탭 떠날 때 편집기 닫기·지연 로드와 불러오기 실패 안내·스크롤 맨 위·뒤로/앞으로는 지금과 같게 둡니다. 서버는 API가 아닌 경로에 앱을 돌려주는 처리가 이미 있어 단위 테스트로 굳히기만 합니다.
   PM 결정: 첫 화면 JS 증가 한도 +15 kB(gzip, 0.1.5와 같음), 모르는 경로는 현황으로, 탭이 없거나 틀린 `/spend`·`/settings`는 기본 탭 주소로. 버전 표기 밀기(0.1.10→0.1.11 등)도 넣습니다.
   작업 단위 7개(W-1~W-7), 검사 9개(V-1~V-9). 기준 E2E 실패(따로 하기로 함)는 master 이미지로 먼저 재 두고, 그 밖의 실패만 회귀로 봅니다.
+  [2026-11-23 추가] 드문 두 형태는 사용자 결정 "일부 포기"로 더는 넘기지 않습니다: 페이지에서 빈 `#`만 치는 것, 경로 리다이렉트 레코드(`/home`, `/spend`, `/settings`, 모르는 경로)를 거치는 주소의 인코딩된 예전 해시. S-2, A-19 참고.
 ---
 ## 요구 해석
 - S-1 경로 표 (intent 바라는 결과 1; 열린 질문 2 "해시와 같은 이름"):
@@ -72,7 +73,7 @@ summary_for_user: |
   - `takeErrorFromUrl`의 `history.replaceState(null, …)`는 vue-router가 쓰는 `history.state`를 지운다. 상태를 그대로 넘기게(`history.state`) 고친다. 보이는 동작은 같다.
   - 모바일 앱 돌아오기(spec 006 S-6, `#app-login?return=…`, `Root.vue`)는 해시 그대로 둔다. README가 앱과의 약속으로 적어 둔 주소이고, S-2가 `null`을 돌려 손대지 않는다.
 - S-6 서버와 개발 서버 (intent 바라는 결과 4):
-  - `server/app.ts`의 `serveStatic` 뒤 `get('*')` → `index.html`은 이미 있다. 바꾸지 않고, 단위 테스트로 굳힌다: `/settings/ai`·`/spend/subs`는 `index.html`, `/api/없는것`은 JSON 404, `/healthz`는 JSON, `/assets/<있는 파일>`은 그 파일.
+  - `server/app.ts`의 `serveStatic` 뒤 `get('*')` → `index.html`은 이미 있다. 바꾸지 않고, 단위 테스트로 굳힌다: `/settings/ai`·`/spend/subs`는 `index.html`, `/api/*`는 앱(`index.html`)으로 답하지 않고 상태와 본문이 0.1.5 이미지와 같다(`/api/없는것`을 쿠키 없이 부르면 API 미들웨어가 먼저 401 JSON을 냄, A-3·A-10), `/healthz`는 JSON, `/assets/<있는 파일>`은 그 파일.
   - `index.html`과 빌드 결과의 자원 주소는 `/assets/…`(절대)라 깊은 주소에서도 깨지지 않는다. 빌드 결과에 상대 주소가 없음을 V-3에서 본다.
   - Vite 개발 서버는 기본 `appType: 'spa'`로 이미 같은 처리를 한다. 설정은 바꾸지 않고 V-4로 확인한다.
   - `/api/*`(인증 `/api/auth/*`, MCP `/api/mcp` 포함)와 `/healthz`의 응답은 바뀌지 않는다.
@@ -122,7 +123,7 @@ summary_for_user: |
     - 상태 유지: 지출 구독 탭에서 보기를 바꾸고 다른 메뉴에 갔다 오면 보기가 남는다. 구독 수정 창을 연 채 다른 탭으로 가면 창이 닫힌다(A-13).
     - 지연 로드 실패: 지출 화면 코드 요청을 막고(`page.route`) `/spend/general`을 열면 불러오기 실패 안내가 보인다.
   - 실패: 기준 밖의 실패, `router.spec.ts`의 실패나 건너뜀.
-- V-6 서버(:15174, 이 브랜치 이미지): `curl`로 `/spend/general`·`/settings/ai`·`/pay` → 200 `text/html`(같은 `index.html`), `/api/없는것` → 404 JSON, `/healthz` → 200 JSON, `/api/mcp`(키 없음)과 `/api/auth/get-session`(쿠키 없음)의 상태 코드·본문이 master 이미지와 같다. 실패: 하나라도 다르면.
+- V-6 서버(:15174, 이 브랜치 이미지): `curl`로 `/spend/general`·`/settings/ai`·`/pay` → 200 `text/html`(같은 `index.html`), `/api/*`는 앱(`index.html`)이 아니고 상태·본문이 master 이미지와 같다(`/api/없는것`을 쿠키 없이 부르면 401 JSON, A-3·A-10), `/healthz` → 200 JSON, `/api/mcp`(키 없음)과 `/api/auth/get-session`(쿠키 없음)의 상태 코드·본문이 master 이미지와 같다. 실패: 하나라도 다르면.
 - V-7 휴대폰 너비: 390px에서 아래 막대·더보기 시트 링크로 이동하고 가로 스크롤이 없다(`router.spec.ts` 안, `scrollWidth <= clientWidth`). 실패: 넘치거나 이동이 안 되면.
 - V-8 릴리스 서버: rc 이미지를 :15174에 올려 V-6과 `router.spec.ts`를 다시 돌린다. 끝나면 :15174를 내리고 :15173을 이 커밋으로 최신화한다(시험 데이터 없음). 실패: 하나라도 실패하면.
 - V-9 사용자 확인: :15173에서 북마크한 예전 주소와 새 주소로 화면을 열어 본다(사용자). 실패: 사용자가 문제를 말하면.
