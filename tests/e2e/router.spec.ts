@@ -62,14 +62,14 @@ test('(S-2) an old hash typed on a new address is replaced too', async ({ page }
 })
 
 for (const [from, title] of [
-  ['/#subs?add', '구독 추가'], ['/#spend/subs?add', '구독 추가'], ['/#spend/subs?x=1&add', '구독 추가'],
+  ['/#subs?add', '구독 추가'], ['/#spend/subs?add', '구독 추가'], ['/#spend/subs?x=1&add', '구독 추가'], ['/#subs?add-x', '구독 추가'], ['/#subs?add=1', '구독 추가'],
   ['/#spend/general?add', '지출 추가'], ['/#spend/inst?add', '할부 추가'],
   ['/spend/subs?add', '구독 추가'], ['/spend/general?add', '지출 추가'], ['/spend/inst?add', '할부 추가'],
 ] as const) {
   test(`(S-3) ${from} opens ${title}, and add leaves the address`, async ({ page }) => {
     await page.goto(from)
     await expect(sheet(page, title)).toBeVisible()
-    await expect.poll(() => new URL(page.url()).searchParams.has('add')).toBe(false)
+    await expect.poll(() => [...new URL(page.url()).searchParams.keys()].some((k) => /^add(?!\w)/.test(k))).toBe(false)
     expect(new URL(page.url()).pathname).toMatch(/^\/spend\/(general|inst|subs)$/)
   })
 }

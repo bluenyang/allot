@@ -67,9 +67,14 @@ const monthName = Number(ym.slice(5, 7))
 // then taken out of the address, in place (the page stays where it is).
 const adding = ref(false)
 const spendAdd = ref<'general' | 'inst' | null>(null)
+// The key is `add` followed by nothing that is a word character, as the hash form's /[?&]add\b/ took it
+// (`add`, `add=1`, and also `add-x`; review 1 F-4).
+const ADD = /^add(?!\w)/
 function checkAdd() {
-  if (route.meta.page !== 'spend' || !('add' in route.query)) return // kept alive: other pages' addresses are not ours
-  const { add: _add, ...rest } = route.query
+  if (route.meta.page !== 'spend') return // kept alive: other pages' addresses are not ours
+  const key = Object.keys(route.query).find((k) => ADD.test(k))
+  if (key === undefined) return
+  const { [key]: _add, ...rest } = route.query
   void router.replace({ path: route.path, query: rest })
   const tab = String(route.params.tab)
   if (tab === 'general' || tab === 'inst') spendAdd.value = tab
