@@ -22,7 +22,7 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
         <p class="hint">{{ t('shell.groupBudget') }}</p>
         <div class="tiles">
           <Soon tag="div" class="tile" :aria-label="`${t('shell.pages.living')} (${t('common.soon')})`"><span class="ti"><Icon name="living" /></span>{{ t('shell.pages.living') }}</Soon>
-          <a class="tile" href="#spend/subs"><span class="ti"><Icon name="spend" /></span>{{ t('shell.pages.spend') }}</a>
+          <RouterLink class="tile" to="/spend/subs"><span class="ti"><Icon name="spend" /></span>{{ t('shell.pages.spend') }}</RouterLink>
           <Soon tag="div" class="tile" :aria-label="`${t('shell.pages.saving')} (${t('common.soon')})`"><span class="ti"><Icon name="saving" /></span>{{ t('shell.pages.saving') }}</Soon>
           <Soon tag="div" class="tile" :aria-label="`${t('shell.pages.invest')} (${t('common.soon')})`"><span class="ti"><Icon name="invest" /></span>{{ t('shell.pages.invest') }}</Soon>
         </div>
@@ -30,10 +30,10 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
       <Soon v-for="id in ['statements', 'assistant']" :key="id" tag="div" class="sh-row mrow" :aria-label="`${t(`shell.pages.${id}` as MessageKey)} (${t('common.soon')})`">
         <span class="mi"><Icon :name="id" :stroke="1.75" /></span><span class="mx"><b>{{ t(`shell.pages.${id}` as MessageKey) }}</b><small class="hint">{{ t(`shell.moreHints.${id}` as MessageKey) }}</small></span>
       </Soon>
-      <a class="sh-row mrow" href="#pending"><span class="mi"><Icon name="pending" /></span><span class="mx"><b>{{ t('shell.pages.pending') }}</b><small class="hint">{{ t('shell.moreHints.pending') }}</small></span><span v-if="pending" class="pn" :aria-label="t('shell.pendingN', { n: pending })">{{ pending }}</span></a>
-      <a class="sh-row mrow" href="#history"><span class="mi"><Icon name="history" /></span><span class="mx"><b>{{ t('shell.pages.history') }}</b><small class="hint">{{ t('shell.moreHints.history') }}</small></span></a>
-      <a class="sh-row mrow" href="#settings"><span class="mi"><Icon name="settings" /></span><span class="mx"><b>{{ t('shell.pages.settings') }}</b><small class="hint">{{ t('shell.moreHints.settings') }}</small></span></a>
-      <a v-if="admin" class="sh-row mrow" href="#admin"><span class="mi"><Icon name="admin" /></span><span class="mx"><b>{{ t('shell.pages.admin') }}</b><small class="hint">{{ t('shell.moreHints.admin') }}</small></span></a>
+      <RouterLink class="sh-row mrow" to="/pending"><span class="mi"><Icon name="pending" /></span><span class="mx"><b>{{ t('shell.pages.pending') }}</b><small class="hint">{{ t('shell.moreHints.pending') }}</small></span><span v-if="pending" class="pn" :aria-label="t('shell.pendingN', { n: pending })">{{ pending }}</span></RouterLink>
+      <RouterLink class="sh-row mrow" to="/history"><span class="mi"><Icon name="history" /></span><span class="mx"><b>{{ t('shell.pages.history') }}</b><small class="hint">{{ t('shell.moreHints.history') }}</small></span></RouterLink>
+      <RouterLink class="sh-row mrow" to="/settings/general"><span class="mi"><Icon name="settings" /></span><span class="mx"><b>{{ t('shell.pages.settings') }}</b><small class="hint">{{ t('shell.moreHints.settings') }}</small></span></RouterLink>
+      <RouterLink v-if="admin" class="sh-row mrow" to="/admin"><span class="mi"><Icon name="admin" /></span><span class="mx"><b>{{ t('shell.pages.admin') }}</b><small class="hint">{{ t('shell.moreHints.admin') }}</small></span></RouterLink>
       <button class="sh-row mlogout" type="button" @click="emit('logout')"><span class="mi lo"><Icon name="logout" :stroke="1.9" /></span>{{ t('shell.logout') }}</button>
     </div>
   </Sheet>

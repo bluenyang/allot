@@ -51,7 +51,7 @@ function handledNote(p: Proposal): string {
 <template>
   <section class="page-gap">
     <PageHeader :title="t('pending.title')" :desc="t('pending.desc')" class="pend-ph">
-      <a class="btn" href="#settings/ai">{{ t('pending.manageKeys') }}</a>
+      <RouterLink class="btn" to="/settings/ai">{{ t('pending.manageKeys') }}</RouterLink>
     </PageHeader>
     <p v-if="proposals.error" class="save-err" role="alert">{{ proposals.error }} <button type="button" @click="proposals.error = ''">{{ t('common.close') }}</button></p>
 
@@ -132,7 +132,7 @@ function handledNote(p: Proposal): string {
         <template v-else>
           <span class="note small">{{ proposals.decided[p.id] === 'reverted' ? t('pending.noteReverted') : handledNote(p) }}</span>
           <button v-if="canUndo(p)" class="btn sm" type="button" :disabled="!!proposals.busy" @click="undo(p.id)"><Icon name="undo" />{{ t('pending.undo') }}</button>
-          <a v-if="p.status === 'applied'" class="btn sm ghost" href="#history">{{ t('pending.viewHistory') }}</a>
+          <RouterLink v-if="p.status === 'applied'" class="btn sm ghost" to="/history">{{ t('pending.viewHistory') }}</RouterLink>
         </template>
       </footer>
     </article>

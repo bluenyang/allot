@@ -171,7 +171,7 @@ async function revert() {
 <template>
   <section>
     <PageHeader :title="t('history.title')" :desc="t('history.desc')">
-      <a class="btn" href="#pending">{{ t('history.pendingLink') }}</a>
+      <RouterLink class="btn" to="/pending">{{ t('history.pendingLink') }}</RouterLink>
     </PageHeader>
     <p v-if="error" class="save-err" role="alert">{{ error }} <button type="button" @click="error = ''">{{ t('common.close') }}</button></p>
 
