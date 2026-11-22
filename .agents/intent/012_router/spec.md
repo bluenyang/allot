@@ -81,13 +81,13 @@ summary_for_user: |
 - 마이그레이션 없음. API·데이터 변경 없음.
 
 ## 작업 단위
-- [ ] W-1 라우터 기반: `vue-router` 추가(`package.json`·`pnpm-lock.yaml` 같은 커밋), `src/lib/old-hash.ts`+단위 테스트, `src/router.ts`(경로·`beforeEach`). 설치(`main.ts`)는 W-2(A-2). 이 커밋만으로는 앱이 지금처럼 해시로 돈다.
-- [ ] W-2 셸: `App.vue`를 `RouterView`+`KeepAlive`, `RouterLink`로. `beforeEach` 넘기기 연결. S-1·S-2·S-4(셸 부분).
-- [ ] W-3 페이지 안 주소: `Settings.vue`·`Spending.vue`(탭 `router.push`, `?add`를 `route.query`로 S-3)·`Payroll.vue`·`AddRecordModal.vue`·`MoreSheet.vue`와 `href="#…"`가 있는 모든 곳(`Dashboard`·`Pending`·`History`·`SettingsTheme`·`SpendGeneral`·`Account`의 관리 링크)을 `RouterLink`/`router.push`로. S-3·S-4.
-- [ ] W-4 로그인 돌아오기: `Account.vue` 연결 돌아오기 `/settings/security`, `takeErrorFromUrl`이 `history.state`를 지키게. S-5.
-- [ ] W-5 서버 fallback 단위 테스트(`tests/unit/spa-fallback.test.ts`). 서버 코드는 바꾸지 않는다. S-6.
-- [ ] W-6 버전 표기와 문서: S-7, CHANGELOG 0.1.6(Unreleased) 항목, `App.vue`·`Settings.vue` 등의 "hash" 주석 고치기.
-- [ ] W-7 E2E: 기존 E2E 주소를 새 주소로, `tests/e2e/router.spec.ts` 추가(V-5의 보존 목록). AGENTS.md "reshaped input": 바뀌기 전에 받던 주소(`git show master:src/App.vue`의 `read()`·`Spending.vue`의 `checkAdd`)를 모두 E2E에 넣는다.
+- [x] W-1 라우터 기반: `vue-router` 추가(`package.json`·`pnpm-lock.yaml` 같은 커밋), `src/lib/old-hash.ts`+단위 테스트, `src/router.ts`(경로·`beforeEach`). 설치(`main.ts`)는 W-2(A-2). 이 커밋만으로는 앱이 지금처럼 해시로 돈다. (a52a344, 1ad999a)
+- [x] W-2 셸: `App.vue`를 `RouterView`+`KeepAlive`, `RouterLink`로. `beforeEach` 넘기기 연결. S-1·S-2·S-4(셸 부분). (65d637a)
+- [x] W-3 페이지 안 주소: `Settings.vue`·`Spending.vue`(탭 `router.push`, `?add`를 `route.query`로 S-3)·`Payroll.vue`·`AddRecordModal.vue`·`MoreSheet.vue`와 `href="#…"`가 있는 모든 곳(`Dashboard`·`Pending`·`History`·`SettingsTheme`·`SpendGeneral`·`Account`의 관리 링크)을 `RouterLink`/`router.push`로. S-3·S-4. (a04014f, bf1179c)
+- [x] W-4 로그인 돌아오기: `Account.vue` 연결 돌아오기 `/settings/security`, `takeErrorFromUrl`이 `history.state`를 지키게. S-5. (9956d47, b6df260)
+- [x] W-5 서버 fallback 단위 테스트(`tests/unit/spa-fallback.test.ts`). 서버 코드는 바꾸지 않는다. S-6. (8ab244c)
+- [x] W-6 버전 표기와 문서: S-7, CHANGELOG 0.1.6(Unreleased) 항목, `App.vue`·`Settings.vue` 등의 "hash" 주석 고치기. (bdcafc3, a6f1c41, 5e5e8a3)
+- [x] W-7 E2E: 기존 E2E 주소를 새 주소로, `tests/e2e/router.spec.ts` 추가(V-5의 보존 목록). AGENTS.md "reshaped input": 바뀌기 전에 받던 주소(`git show master:src/App.vue`의 `read()`·`Spending.vue`의 `checkAdd`)를 모두 E2E에 넣는다. (a1a95bb, 5bece52, a171204, 87a53e1, 826d17a, a99569f)
 
 ## 검증 기준
 모든 검사는 `scripts/check-run.sh`로 돌리고, 로그는 `.loctx/reports/0.1.6/test/`에 둔다. `pnpm check:logs`를 통과한 로그만 증거로 쓴다. 서버가 필요한 검사는 :15174(`allot-rc`)에서만, 한 번에 한 담당만 한다. 검사 전에 `scripts/test-server/cleanup.mjs`, 필요하면 `seed.mjs`.
@@ -123,6 +123,9 @@ summary_for_user: |
 - A-7 (2026-11-22, V-5) 기준 이미지는 `ghcr.io/bluenyang/allot:0.1.5-rc.1`(로컬에 :0.1.5가 없음, CHANGELOG "Same code as 0.1.5-rc.1"), 테스트는 master 70cf134 worktree. `redesign.spec`은 serial이라 앞 실패 뒤가 안 돌아 그 뒤 시험은 줄 번호로 따로 돌림. 기준 실패: auth:105(Dex), payroll:113, redesign:451(휴대폰 더보기), redesign:479(토요일 색). 건너뜀 3개(Dex)
 - A-8 (2026-11-22, W-7, V-5) 열린 페이지가 다음에 하는 일을 보는 시험은 `page.goto` 대신 사이드바 링크로 앱 안에서 이동(`tests/e2e/helpers.ts` `menu`) · 해시 `goto`는 같은 문서 안의 이동이었고 새 주소 `goto`는 페이지를 새로 불러옴. zz-account-switch:45는 자기 `/api/state` 붙잡기가 첫 로딩을 잡아 멈췄고, api-keys "늦은 응답"(A-21)은 KeepAlive 없이 지나가 아무것도 증명하지 못했음. 뒤이어 `menu`는 이름 앞부분으로 찾고(대기 건수 배지), 늦은 응답 시험은 창이 열린 채라 사이드바 대신 열린 탭에 주소(`#home`)를 넣어 떠남 · a171204, 다음 커밋
 - A-9 (2026-11-22, W-6) api-keys:46이 찾는 문구를 0.1.11로 · W-6에서 화면 문구를 밀 때 빠뜨림. 브랜치 E2E에서 드러남 · 5e5e8a3
+- A-10 (2026-11-22, V-6) `/api/없는것`의 기대를 "404 JSON"에서 "master 이미지와 같음"으로 · 쿠키 없이 부르면 API 미들웨어가 먼저 401 JSON을 냄. 0.1.5-rc.1 이미지도 같은 401(`v6-master.log`), 앱 대신 `index.html`이 나가지 않는 것은 같음 · 기록만
+- A-11 (2026-11-23, W-7, 리뷰 2) router.spec의 뒤로/앞으로 시험을 앱 안 이동으로, 스크롤한 페이지에서 · `goto` 두 번 뒤 뒤로 가기는 문서를 넘나들어 라우터의 popstate·`scrollBehavior`를 거치지 않았고, 스크롤하지 않은 쪽을 봐서 늘 통과했음 · 826d17a
+- A-12 (2026-11-23, W-7, 리뷰 2) 늦은 키 응답 시험이 주소가 `/`가 된 뒤에 응답을 풀게 · 기다리던 `header.ph h1`은 설정 화면에도 있어 기다림이 없었음 · a99569f
 
 ## 우려
 - vue-router의 `history.state`: 앱이 아닌 코드가 `history.replaceState(null, …)`를 부르면 뒤로 가기 스크롤 위치·경고가 생긴다. 지금 두 곳(`Spending.vue` checkAdd, `auth-ui.ts`)뿐이고 W-3·W-4에서 고친다. 새로 생기지 않게 리뷰에서 `replaceState`·`pushState`·`location.hash`를 grep한다.
