@@ -2,7 +2,7 @@
 // 관리 › API 키 switches the "no expiry" policy. Run on the dev stack; it leaves no key behind and
 // puts the policy back. When ALLOT_API_KEY_NO_EXPIRY locks the policy the switch tests are skipped.
 import { expect, request as playwrightRequest, test, type APIRequestContext, type Page } from '@playwright/test'
-import { MARK, saveSheet, sheet } from './helpers'
+import { MARK, menu, saveSheet, sheet } from './helpers'
 import { makeKey, propose } from './proposal-helpers'
 
 const NAME = `${MARK}-key`
@@ -231,11 +231,12 @@ test('keys: an answer that comes after the screen was left does not bring the ke
   })
   await s.getByRole('button', { name: '키 만들기', exact: true }).click()
   await wasSent
-  await page.goto('/') // leave the screen (it is kept alive)
+  await menu(page, '현황') // leave the screen inside the app (it is kept alive)
   await page.locator('header.ph h1').waitFor()
   release()
   await page.waitForTimeout(1500)
-  await page.goto('/settings/ai')
+  await menu(page, '설정')
+  await page.getByRole('tab', { name: 'AI·연동' }).click()
   await expect(page.getByRole('heading', { name: 'API 키', exact: true })).toBeVisible()
   await expect(page.getByLabel('API 키', { exact: true })).toHaveCount(0)
   expect(await page.content()).not.toMatch(/allot_[A-Za-z]{64}/)

@@ -16,6 +16,15 @@ export async function reload(page: Page, hash: Parameters<typeof go>[1], tab?: s
   await go(page, hash, tab)
 }
 
+/**
+ * Go to a menu entry inside the open app, with no page load: the sidebar's link, as a user does. A
+ * `page.goto` to a history address loads the page again (a hash address did not), so a test whose point
+ * is what an already open page does next uses this instead (spec 012 W-7).
+ */
+export async function menu(page: Page, name: string) {
+  await page.locator('aside.side').getByRole('link', { name, exact: true }).click()
+}
+
 export const sheet = (page: Page, title: string | RegExp) => page.getByRole('form', { name: title })
 
 /** Save the open sheet and wait until it has closed (the API answered). */
