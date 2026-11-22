@@ -117,6 +117,10 @@ summary_for_user: |
 - A-1 (2026-11-22, W-1) vue-router 5.5.1 → 4.6.5 · 5.5.1은 파일 기반 라우팅 플러그인용 설치 의존성 16개(패키지 43개)를 가져오고 4.6.5는 `@vue/devtools-api` 하나, 쓰는 API는 같음. 둘 다 `pnpm audit --prod` 취약점 없음. 사용자 "그면 4.6.5 써." · W-1 커밋
 - A-2 (2026-11-22, W-1) 라우터 설치(`main.ts`)를 W-1에서 W-2로 옮김 · 라우터만 설치되고 셸이 아직 해시를 읽으면 catch-all 리다이렉트가 주소를 바꿔 한 커밋 안에서 두 방식이 섞임 · W-1 커밋
 - A-3 (2026-11-22, W-5) 단위 테스트는 `/api/*`가 앱(`index.html`)이 아님만 본다(JSON 404 본문은 아님) · DB 없이 부르면 API 미들웨어가 500을 냄. 404 JSON 본문은 실제 서버의 V-6에서 본다 · W-5 커밋
+- A-4 (2026-11-22, W-4, 리뷰 1 F-1) `takeErrorFromUrl`이 `history.state.current`도 깨끗한 주소로 바꿈 · vue-router가 다음 이동 때 그 값으로 현재 기록을 다시 써서, 뒤로 가면 `?error=`와 오류 문구가 다시 나왔음. E2E 추가 · b6df260
+- A-5 (2026-11-22, W-1, 리뷰 1 F-3) 경로를 대소문자 구분(`sensitive: true`) · vue-router 기본은 구분 안 함이라 `/spend/SUBS`가 일반 탭을 보이면서 구독 추가 창을 나중에 엶. 해시 주소도 구분했음(`#SPEND` → 현황). `/spend/SUBS`는 기본 탭, `/PAY`는 `/`로. **새 제한(이 브랜치에만 있던 대문자 주소를 다른 화면으로 보냄)이라 커밋 전에 물었어야 함 — 사후 확인 요청** · 1ad999a
+- A-6 (2026-11-22, W-3, 리뷰 1 F-4) `?add`를 키 `add` 뒤에 단어 문자가 없는 모든 키로(`add`, `add=1`, `add-x`) · 예전 정규식 `[?&]add\b`가 받던 형태 · bf1179c
+- A-7 (2026-11-22, V-5) 기준 이미지는 `ghcr.io/bluenyang/allot:0.1.5-rc.1`(로컬에 :0.1.5가 없음, CHANGELOG "Same code as 0.1.5-rc.1"), 테스트는 master 70cf134 worktree. `redesign.spec`은 serial이라 앞 실패 뒤가 안 돌아 그 뒤 시험은 줄 번호로 따로 돌림. 기준 실패: auth:105(Dex), payroll:113, redesign:451(휴대폰 더보기), redesign:479(토요일 색). 건너뜀 3개(Dex)
 
 ## 우려
 - vue-router의 `history.state`: 앱이 아닌 코드가 `history.replaceState(null, …)`를 부르면 뒤로 가기 스크롤 위치·경고가 생긴다. 지금 두 곳(`Spending.vue` checkAdd, `auth-ui.ts`)뿐이고 W-3·W-4에서 고친다. 새로 생기지 않게 리뷰에서 `replaceState`·`pushState`·`location.hash`를 grep한다.
