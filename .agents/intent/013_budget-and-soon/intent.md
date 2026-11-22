@@ -2,9 +2,15 @@
 id: "013"
 slug: budget-and-soon
 version: 0.1.7
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-23"
+    words: "intent까지만. spec 부터는 다음 세션에서"
+    rev: 8027f56
+    note: "PM 질문 'intent 013을 승인하실까요? 열린 질문 4개는 PM 제안대로'(보기: 승인(제안대로) / 수정)에 직접 쓴 답. PM은 intent 승인(열린 질문 1~4 PM 제안대로)과 spec 전에 멈춤으로 읽음 — 다음 세션 시작 때 사용자에게 이 해석을 확인한다."
 waivers: []
 supersedes: null
 ---
