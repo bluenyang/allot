@@ -11,7 +11,7 @@ The values are passed by name only (`docker run -e NAME`, `source`); nothing pri
 | Script | What |
 |---|---|
 | `up.sh [image]` | (Re)start `allot-rc` from `allot:test` (built from the working tree) or the given image; waits for `/healthz`. Log: `$LOG_DIR/up-<time>.log` (`UP_LOG=<file>` to choose). |
-| `cleanup.mjs` | Delete rows whose name starts with `E2E-`, `V8-marker`, `V5-marker` or `V4-fixture` from every list of the test account. |
+| `cleanup.mjs` | Delete rows whose name starts with `E2E-`, `V8-marker`, `V5-marker` or `V4-fixture` from every list of the test account. A marker subscription that has a plan change which is not a test row is skipped and reported (exit 1), because deleting a subscription deletes its plan changes. |
 | `seed.mjs` | Create fake data the E2E assume if it is missing (settings, living costs, one target of each kind, a subscription with a plan change, an open phase covering this month, a check item). Names start with `Seed `. Run twice, it changes nothing the second time. |
 | `run.sh <log-name> <command...>` | Load the test account by name, set `BASE`, wait for the login limit (`WAIT`, default 70 s), then run the command through `scripts/check-run.sh` into `$LOG_DIR/<log-name>.log`. |
 
