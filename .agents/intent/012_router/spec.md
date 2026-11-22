@@ -50,6 +50,7 @@ summary_for_user: |
   - 월급 분배 안의 탭(분배·계좌 등)은 지금처럼 주소에 넣지 않는다.
 - S-2 예전 해시 넘기기 (intent 바라는 결과 2, 에이전트가 정한 것 "클라이언트에서 넘긴다"):
   - 순수 함수 `fromOldHash(hash)`(새 파일 `src/lib/old-hash.ts`)가 해시를 `{ path, query } | null`로 바꾼다. 위 표의 해시면 새 주소, `#app-login…`은 `null`(손대지 않음). 입력은 디코딩하지 않은 해시 그대로이고, 머리와 탭은 그대로 견주며 질의는 한 번만 디코딩한다(예전 `read()`·`checkAdd`가 `location.hash` 원문을 본 것과 같게). 그 밖의 모르는 해시는 현황(`/`)이다(S-1과 같음).
+  - 넘기지 않는 두 형태(사용자 결정 "일부 포기", A-19): (1) 페이지에서 빈 `#`만 치는 것, (2) 경로 리다이렉트 레코드(`/home`, `/spend`, `/settings`, 모르는 경로)를 거치는 주소의 인코딩된 예전 해시. `/`의 예전 해시(인코딩 포함)와 주소창에 직접 친 해시는 그대로 넘긴다.
   - 라우터의 `beforeEach`에서 해시 원문에 이 함수를 쓴다. 해시 원문은 이번 이동의 전체 경로(`to.fullPath`)에서 첫 `#`부터 떼어 낸다(`rawHashOf`; vue-router는 문자열 주소의 `fullPath`에 해시를 디코딩하지 않고 두고, `to.hash`만 디코딩한다). 처음 열 때, 주소창에서 해시를 바꿀 때(popstate), 앱 안에서 해시로 갈 때가 한곳에서 처리된다. 결과는 replace라 기록이 두 번 남지 않는다.
   - 해시의 질의 `?add`는 새 주소의 질의로 옮긴다(`#subs?add` → `/spend/subs?add`, `#spend/inst?add` → `/spend/inst?add`). 해시 앞 경로의 질의(`/?error=…#account`의 `error`)도 그대로 따라간다. 둘 다 있으면 둘 다 남긴다.
   - 해시는 `/`가 아닌 경로에 붙어 있어도 표에 있으면 넘긴다(주소창에 `#settings/ai`를 쳐도 되게).
@@ -86,7 +87,7 @@ summary_for_user: |
 - `src/router.ts`: `createRouter({ history: createWebHistory(), routes, scrollBehavior })`. 경로마다 `meta.page`(KeepAlive 키, 메뉴 선택 표시)와 `props`(설정·지출은 `{ sub: params.tab }`). 경로 컴포넌트는 `App.vue`에 있던 `PAGES` 표를 옮긴 것(현황만 첫 묶음, 나머지 `lazyPage`).
   - `/spend/:tab(general|inst|subs)`, `/spend/:rest(.*)*` → `/spend/general`; 설정도 같은 모양.
   - `/home` → `/`, `/:rest(.*)*` → `/`.
-  - `beforeEach`: `const to2 = fromOldHash(to.hash)`; 있으면 `{ path, query: { ...to.query, ...to2.query }, hash: '', replace: true }`.
+  - `beforeEach`: `const to2 = fromOldHash(rawHashOf(to.fullPath))`(`to.fullPath`는 문자열 주소일 때 해시를 디코딩하지 않고 둔다: 처음 열기, popstate, 문자열 push); 있으면 `{ path, query: { ...to.query, ...to2.query }, hash: '', replace: true }`.
 - `src/main.ts`: `createApp(Root).use(i18n).use(router)`. 로그인 화면이 먼저 떠도 라우터는 설치되어 있다(로그인 뒤 같은 주소로 앱이 열림).
 - `App.vue`: `read()`·`route` ref·`hashchange` 대신 `useRoute()`. `route.page`·`route.sub`는 `computed`로 `meta.page`·`params.tab`에서 만든다. 셸의 나머지(빵 부스러기, 아래 막대, 더보기, 접기)는 그 값만 쓰므로 그대로.
 - `fromOldHash`는 `src/lib`의 순수 함수라 단위 테스트한다(V-2). 표는 S-1 그대로, 모르는 탭은 기본 탭.
@@ -144,6 +145,9 @@ summary_for_user: |
 - A-14 (2026-11-23, W-1, 리뷰 3 F-2) 모르는 해시(`#app-login…`과 빈 해시 말고)는 `{ path: '/', query }`로 · 예전 `read()`는 모르는 해시를 어느 페이지에서든 현황으로 보였는데, `null`이라 `/pay`에서 `location.hash = '#nope'`를 해도 월급 분배에 머물렀음 · 이 커밋
 - A-15 (2026-11-23, W-7, 리뷰 3 F-3) i18n.spec의 '지출 › 할부' 시험이 설정·지출을 `goto` 대신 사이드바(`menu`)와 할부 탭 클릭으로 오가게 · `goto('/settings/general')`과 `goto('/spend/inst')`가 페이지를 다시 불러와, 이미 열린 화면에서 언어를 바꿔도 읽히는지(011 V-8)를 더는 보지 못했음 · 이 커밋
 - A-16 (2026-11-23, W-6, 리뷰 3 F-4) `docs/ROADMAP.md` 0.1.7 행의 "명세서 실제 지출은 0.1.7을 기다림"을 0.1.8로 고치고, 2026-11-21에 정할 때는 0.1.7이었다는 말을 덧붙임 · 라우팅 패치가 0.1.6을 가져가며 뒤 패치가 하나씩 밀렸는데 이 행만 자기 자신을 가리켰음(명세서·거래는 0.1.8 행) · 이 커밋
+- A-17 (2026-11-23, W-1, 리뷰 4 F-5) 라우터가 해시 원문을 `window.location.hash` 추정 대신 `to.fullPath`에서 떼어 내게(`rawHashOf`) · 다른 페이지에서 `router.push('/#subs?add%61')`를 하면 `location.hash`가 아직 앞 페이지의 것이라 디코딩된 `to.hash`로 돌아가, 이미 고친 이중 디코딩이 되살아났음 · 이 커밋
+- A-18 (2026-11-23, W-1, 리뷰 4 F-6) 페이지에서 빈 `#`만 친 이동(`href`가 이번 이동의 주소 + `#`)을 빈 예전 해시로 보아 현황으로 · 브라우저가 빈 `#`를 `location.hash === ''`로 줄여 가드가 해시 없음으로 보고 `/pay`에 머물렀는데, 0.1.5의 `read()`는 빈 해시에 현황을 보였음 · dbedb05 — 되돌림(A-19)
+- A-19 (2026-11-23, W-1, 리뷰 4 F-6·리뷰 5 F-7·F-8) 맨 `#` 규칙(A-18)을 되돌리고, 경로 리다이렉트를 거치는 주소(`/home`·`/spend`·`/settings`·모르는 경로)의 인코딩된 예전 해시는 넘기지 않음 · 사용자 결정 "일부 포기"(approvals). 라우터가 가드 앞에서 해시를 고치거나 지움(리다이렉트 레코드는 해시를 디코딩해 다시 만들고, history 초기화와 popstate의 `replaceState`는 끝의 `#`를 떨굼). 고칠 때마다 다른 틈이 열렸음 · dc7f419
 
 ## 우려
 - vue-router의 `history.state`: 앱이 아닌 코드가 `history.replaceState(null, …)`를 부르면 뒤로 가기 스크롤 위치·경고가 생긴다. 지금 두 곳(`Spending.vue` checkAdd, `auth-ui.ts`)뿐이고 W-3·W-4에서 고친다. 새로 생기지 않게 리뷰에서 `replaceState`·`pushState`·`location.hash`를 grep한다.
@@ -157,5 +161,5 @@ summary_for_user: |
 - 화면·기능·API·데이터 변경, 새 메뉴, 페이지 제목(`<title>`) 바꾸기.
 - 월급 분배 안의 탭을 주소에 넣기.
 - 모바일 앱의 `#app-login` 주소 바꾸기.
+- 맨 `#`만 친 이동과, 리다이렉트되는 경로(`/home`, `/spend`, `/settings`, 모르는 경로)의 인코딩된 예전 해시 넘기기(사용자 결정 2026-11-23 "일부 포기", A-19).
 - 실제 외부 로그인(Dex·GitHub·Google)으로 돌아오기 확인 — 시험 서버에 제공자가 없다.
-- A-17 (2026-11-23, W-1, 리뷰 4 F-5) 라우터가 해시 원문을 `window.location.hash` 추정 대신 `to.fullPath`에서 떼어 내게(`rawHashOf`) · 다른 페이지에서 `router.push('/#subs?add%61')`를 하면 `location.hash`가 아직 앞 페이지의 것이라 디코딩된 `to.hash`로 돌아가, 이미 고친 이중 디코딩이 되살아났음 · 이 커밋
