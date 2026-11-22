@@ -57,7 +57,7 @@ export const accountsEn: AccountsMessages = {
       colIn: 'In',
       colOut: 'Out',
       colEnd: 'Month-end balance',
-      projNote: 'Only buffer spending is taken off · other money going out is not counted.',
+      projNote: 'Card bills paid from this account are taken off · other money going out is not counted. No interest.',
       goalLine: 'Goal {goal} · reached in {ym}',
       goalNone: 'Goal {goal} · not reached in the forecast yet',
       goalMark: 'Goal reached',

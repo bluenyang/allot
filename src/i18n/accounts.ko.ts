@@ -58,7 +58,7 @@ export const accountsKo = {
       colIn: '들어옴',
       colOut: '나감',
       colEnd: '월말 잔액',
-      projNote: '버퍼 지출만 빼요 · 다른 나가는 돈은 세지 않아요.',
+      projNote: '이 통장에서 내는 카드값을 빼요 · 그 밖의 나가는 돈은 세지 않아요. 이자는 넣지 않아요.',
       goalLine: '목표 {goal} · 예상 도달 {ym}',
       goalNone: '목표 {goal} · 예상으로는 아직 닿지 않아요',
       goalMark: '목표 도달',
