@@ -58,13 +58,3 @@ const RAW: [string, string][] = [
 for (const [fullPath, want] of RAW) {
   test(`rawHashOf(${JSON.stringify(fullPath)})`, () => assert.equal(rawHashOf(fullPath), want))
 }
-
-test('rawHashOf: a bare # after this navigation\'s address is the empty old hash', () => {
-  assert.equal(rawHashOf('/pay', 'http://h/pay#', 'http://h'), '#')
-  assert.deepEqual(fromOldHash(rawHashOf('/pay', 'http://h/pay#', 'http://h')), { path: '/', query: {} })
-})
-test('rawHashOf: any other navigation has no hash', () => {
-  assert.equal(rawHashOf('/pay', 'http://h/history#', 'http://h'), '')
-  assert.equal(rawHashOf('/pay', 'http://h/pay', 'http://h'), '')
-  assert.equal(rawHashOf('/pay'), '')
-})

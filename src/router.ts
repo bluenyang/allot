@@ -65,11 +65,8 @@ export const router = createRouter({
 // An old hash address (#settings/ai, #subs?add, /?error=…#account, …) becomes its new address, in
 // place of the one in the history (spec 012 S-2). The query before the hash is kept (an auth error).
 // vue-router decodes `to.hash` before the guard; the old code read the raw one, so take it from `to.fullPath`.
-// A bare `#` typed on a page leaves `location.hash` empty; `rawHashOf` reads it from the address.
 router.beforeEach((to) => {
-  const next = fromOldHash(typeof window === 'undefined'
-    ? rawHashOf(to.fullPath)
-    : rawHashOf(to.fullPath, window.location.href, window.location.origin))
+  const next = fromOldHash(rawHashOf(to.fullPath))
   if (!next) return true
   return { path: next.path, query: { ...to.query, ...next.query }, hash: '', replace: true }
 })
