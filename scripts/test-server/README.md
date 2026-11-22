@@ -11,7 +11,7 @@ The values are passed by name only (`docker run -e NAME`, `source`); nothing pri
 | Script | What |
 |---|---|
 | `up.sh [image]` | (Re)start `allot-rc` from `allot:test` (built from the working tree) or the given image; waits for `/healthz`. Log: `$LOG_DIR/up-<time>.log` (`UP_LOG=<file>` to choose). |
-| `down.sh` | Take the test server down through the runner: `docker rm -f allot-rc`, then a check that no container of that name remains. Log: `$LOG_DIR/down-<time>.log` (`DOWN_LOG=<file>`). |
+| `down.sh` | Take the test server down through the runner: `docker rm -f allot-rc`, then `no-container.mjs allot-rc` (exit 1 if a container of that name remains, 2 on a docker error). Log: `$LOG_DIR/down-<time>.log` (`DOWN_LOG=<file>`). |
 | `stage.sh` | Update the staging stack on :15173 (`docker/compose.dev.yaml`, real data; nothing writes test data) through the runner: `up -d --build -V --wait`, the running images, the git HEAD they were built from, and the front page answering 200. Log: `$LOG_DIR/stage-<time>.log` (`STAGE_LOG=<file>`). |
 | `cleanup.mjs` | Delete rows whose name starts with `E2E-`, `V8-marker`, `V5-marker` or `V4-fixture` from every list of the test account. A marker subscription that has a plan change which is not a test row is skipped and reported (exit 1), because deleting a subscription deletes its plan changes. |
 | `seed.mjs` | Create fake data the E2E assume if it is missing (settings, living costs, one target of each kind, a subscription with a plan change, an open phase covering this month, a check item). Names start with `Seed `. Run twice, it changes nothing the second time. |

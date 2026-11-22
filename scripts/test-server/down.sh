@@ -12,5 +12,5 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$ROOT/scripts/check-run.sh"
 begin down "${DOWN_LOG:-$LOG_DIR/down-$(date +%Y%m%dT%H%M%S).log}"
 step "remove container" docker rm -f allot-rc
-step "no allot-rc remains" sh -c 'n=$(docker ps -a -q -f name=^allot-rc$) || exit 2; [ -z "$n" ] || { echo "container allot-rc still exists: $n"; exit 1; }'
+step "no allot-rc remains" node "$HERE/no-container.mjs" allot-rc
 done_check
