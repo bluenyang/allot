@@ -56,6 +56,8 @@ export const routes: RouteRecordRaw[] = [
 export const router = createRouter({
   history: createWebHistory(),
   routes,
+  // Case matters, as it did in the hash addresses: /spend/SUBS is not the 구독 tab (review 1 F-3).
+  sensitive: true,
   // Every change of page or tab starts at the top, as every hash change did (back and forward too).
   scrollBehavior: () => ({ top: 0 }),
 })

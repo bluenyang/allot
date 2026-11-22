@@ -109,7 +109,7 @@ test('(S-1) deep addresses reload to the same screen; /home, unknown addresses a
   await page.goto('/spend/inst')
   await page.reload()
   await expect(tab(page, /^할부/)).toHaveAttribute('aria-selected', 'true')
-  for (const [from, to] of [['/home', '/'], ['/no/such/page', '/'], ['/spend', '/spend/general'], ['/spend/nope', '/spend/general'], ['/settings', '/settings/general'], ['/settings/nope', '/settings/general']]) {
+  for (const [from, to] of [['/home', '/'], ['/no/such/page', '/'], ['/spend', '/spend/general'], ['/spend/nope', '/spend/general'], ['/settings', '/settings/general'], ['/settings/nope', '/settings/general'], ['/spend/SUBS', '/spend/general'], ['/PAY', '/']]) {
     await page.goto(from)
     await expect.poll(() => pathOf(page), from).toBe(to)
     await expect(h1(page)).toBeVisible()
