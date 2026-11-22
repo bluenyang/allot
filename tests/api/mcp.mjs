@@ -312,9 +312,15 @@ async function toolsMode() {
 
   const unknown = await tool(key, 'delete_everything', {})
   ok(failedCall(unknown), `an unknown tool is an MCP error (${unknown.status} ${JSON.stringify(unknown.error ?? unknown.result?.content?.[0]?.text)?.slice(0, 80)})`)
-  for (const [name, args] of [['get_overview', { month: '2026-13' }], ['get_overview', { month: 'now' }], ['get_schedule', { months: 13 }], ['get_schedule', { months: 0 }], ['list_changes', { limit: 51 }], ['list_changes', { before: '2026-01-01 00:00:00+00' }], ['list_subscriptions', { status: 'gone' }], ['get_budget', { month: '2026-00' }], ['list_accounts', { months: 0 }], ['list_accounts', { months: 25 }]]) {
+  for (const [name, args] of [['get_overview', { month: '2026-13' }], ['get_overview', { month: 'now' }], ['get_schedule', { months: 13 }], ['get_schedule', { months: 0 }], ['list_changes', { limit: 51 }], ['list_changes', { before: '2026-01-01 00:00:00+00' }], ['list_subscriptions', { status: 'gone' }], ['get_budget', { month: '2026-00' }]]) {
     const t = await tool(key, name, args)
     ok(failedCall(t), `${name} ${JSON.stringify(args)} is refused`)
+  }
+  // list_accounts takes any number of months, clamped to 1..120 (review 1 F-13: no limit the spec did not state)
+  for (const [months, want] of [[0, 1], [25, 25], [500, 120]]) {
+    const t = await tool(key, 'list_accounts', { months })
+    const p = t.data?.accounts?.find((x) => Array.isArray(x.projection))?.projection
+    ok(!failedCall(t) && (p === undefined || p.length === want), `list_accounts {"months":${months}} answers with ${want} months of projection`)
   }
 
   // A timestamp that does not exist is an input error, and no tool failure shows SQL (review finding 1).
