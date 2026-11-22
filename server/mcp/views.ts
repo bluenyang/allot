@@ -3,12 +3,14 @@
 // so the AI and the screen see the same numbers. No database here: the unit tests run without one.
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
-  addYm, changesIn, chargeKrw, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate, planAt, spendingIn, spendingKrw, spendState, splitRemainder,
-  transferAt, unallocated, upcomingPayments, ymd, ymOf, type MonthDate,
+  addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, goalMonth, groupAt, lastBalance, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate,
+  phaseAt, planAt, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
+  type AccountState, type MonthDate,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 import type {
-  Account, AllocationTarget, CheckItem, Debt, HolidaySet, Living, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Spending, SubStatus, Subscription,
+  Account, AllocationTarget, Balance, BudgetGroup, Card, CheckItem, Debt, HolidaySet, Living, LivingItem, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Spending,
+  SubStatus, Subscription,
 } from '../../src/data/types'
 
 /** The part of GET /api/state the tools read. */
@@ -27,6 +29,12 @@ export interface Data {
   holidaySets: HolidaySet[]
   /** one-off spendings with their rounds (spec 011); absent = none */
   spendings?: Spending[]
+  /** living items (spec 013 S-2); when present they make the living total, else the old `living` row does */
+  livingItems?: LivingItem[]
+  /** balance records (spec 013 S-6); absent = none */
+  balances?: Balance[]
+  /** cards (spec 013 S-13); absent = none */
+  cards?: Card[]
 }
 
 const krw = (n: number) => Math.round(n)
@@ -213,13 +221,13 @@ export function planChangeList(d: Data) {
 export function allocation(d: Data) {
   return {
     living: d.living,
-    targets: d.targets.map((t) => ({ id: t.id, name: t.name, kind: t.kind, ...(t.note ? { note: t.note } : {}) })),
+    targets: d.targets.map((t) => ({ id: t.id, name: t.name, kind: t.kind, ...(t.note ? { note: t.note } : {}), accountId: t.accountId ?? null })),
     phases: d.phases.map((p) => ({
       id: p.id, label: p.label, name: p.name, from: p.from, to: p.to, ...(p.note ? { note: p.note } : {}),
       amounts: Object.entries(p.amounts).map(([targetId, amount]) => ({ targetId, amountKrw: krw(amount) })),
     })),
     remainderSplit: d.remainderSplit.map((s) => ({ id: s.id, name: s.name, code: s.code, ratio: s.ratio })),
-    accounts: d.accounts.map((a) => ({ id: a.id, name: a.name, role: a.role, inflow: a.inflow, outflow: a.outflow })),
+    accounts: d.accounts.map((a) => ({ id: a.id, name: a.name, role: a.role, inflow: a.inflow, outflow: a.outflow, group: a.group ?? null })),
     debts: d.debts.map((x) => ({ id: x.id, name: x.name, principalKrw: krw(x.principal), rate: x.rate, method: x.method, plan: x.plan })),
   }
 }
@@ -246,5 +254,143 @@ export function schedule(d: Data, from: string, months: number) {
     checkItems: d.checks.map((c) => ({ id: c.id, text: c.text, done: c.done })),
     holidays: holidaysIn(enabledSets(d.holidaySets), firstOf(from), `${last}-${String(lastDay(last)).padStart(2, '0')}`)
       .map((h) => ({ date: h.date, name: h.name, substitute: h.substitute })),
+  }
+}
+
+// ---------- budget and accounts (spec 013 S-10) ----------
+const phaseList = (amounts: Record<string, number> | undefined) => Object.entries(amounts ?? {}).map(([phaseId, amount]) => ({ phaseId, amountKrw: krw(amount) }))
+
+/** The Savings or Investment menu in a month, as groupAt() works it out (S-3, S-4). */
+function groupView(d: Data, group: BudgetGroup, ym: string) {
+  const g = groupAt(group, d.accounts, d.phases, d.targets, d.settings, ym)
+  return {
+    mode: g.mode,
+    target: g.target ? { id: g.target.id, name: g.target.name, accountId: g.target.accountId ?? null } : null,
+    /** ratio split: the phase amount of the target that month; amount split: the items added up */
+    totalKrw: krw(g.total),
+    items: g.rows.map(({ account: a, amount }) => ({
+      accountId: a.id,
+      name: a.name,
+      kind: a.kind ?? '',
+      bank: a.bank ?? '',
+      last4: a.last4 ?? '',
+      /** amount split: the monthly amount (a phase amount replaces it in that phase) */
+      amountKrw: krw(a.amount ?? 0),
+      phaseAmounts: phaseList(a.amounts),
+      /** ratio split: the share of the total (0..1) */
+      ratio: a.ratio ?? null,
+      monthKrw: krw(amount),
+      from: a.from ?? null,
+      stopFrom: a.stopFrom ?? null,
+      goalKrw: a.goal ?? null,
+      annualLimitKrw: a.annualLimit ?? null,
+    })),
+    sumKrw: krw(g.sum),
+    ratioSum: g.ratioSum,
+  }
+}
+
+/**
+ * get_budget (S-10): the living items, the Savings and Investment menus and what each allocation target gets
+ * in month `ym`, with the same functions the Living, Savings and Investment pages use.
+ */
+export function budget(d: Data, ym: string) {
+  const items = d.livingItems ?? []
+  const living = livingAt(items, d.phases, ym)
+  const phase = phaseAt(d.phases, ym)
+  const { dist } = monthMoney(d, ym)
+  const got = new Map(dist.rows.map((r) => [r.key, r.amount]))
+  return {
+    month: ym,
+    phase: phase ? { id: phase.id, label: phase.label, name: phase.name, from: phase.from, to: phase.to } : null,
+    living: {
+      items: living.rows.map(({ item: x, amount }) => ({
+        id: x.id, name: x.name, kind: x.kind, payMethod: x.payMethod, amountKrw: krw(x.amount), from: x.from, code: x.code,
+        ...(x.note ? { note: x.note } : {}), phaseAmounts: phaseList(x.amounts), monthKrw: krw(amount),
+      })),
+      sumKrw: krw(living.sum),
+    },
+    saving: groupView(d, 'saving', ym),
+    invest: groupView(d, 'invest', ym),
+    /** every target with what it gets that month (the remainder target: the remainder; negative = short) */
+    targets: d.targets.map((t) => ({
+      targetId: t.id, name: t.name, kind: t.kind, accountId: t.accountId ?? null,
+      amountKrw: krw(t.kind === 'remainder' ? dist.remainder : (got.get(t.id) ?? 0)),
+    })),
+    remainderKrw: krw(dist.remainder),
+    unallocatedKrw: krw(unallocated(dist)),
+  }
+}
+
+/** What list_accounts computes with: the state with its balance records and cards. */
+const accountState = (d: Data): AccountState => ({ ...d, balances: d.balances ?? [], cards: d.cards ?? [] })
+
+/**
+ * list_accounts (S-10, S-13): every account with its balance records and, as the account sheet shows them, the
+ * projection from this month, the goal month, this year's contribution against the yearly limit and the buffer gauge;
+ * plus every card with its paying account and billing day.
+ */
+export function accountList(d: Data, now: Date, months = 12) {
+  const st = accountState(d)
+  const today = ymd(now)
+  const ym = ymOf(now)
+  const year = now.getFullYear()
+  const firstRec = st.balances.map((b) => b.date.slice(0, 7)).sort()[0]
+  const off = offDays(d, firstRec && firstRec < ym ? firstRec : ym, addYm(ym, Math.max(months, 12)))
+  const name = (id: string | null | undefined) => (id ? d.accounts.find((a) => a.id === id)?.name ?? null : null)
+  const cardOut = (c: Card) => ({
+    id: c.id, name: c.name, last4: c.last4, accountId: c.accountId, account: name(c.accountId),
+    billingDay: c.billingDay, effectiveBillingDay: billingDayOf(c, d.settings), ...(c.note ? { note: c.note } : {}),
+  })
+  return {
+    month: ym,
+    accounts: d.accounts.map((a) => {
+      const recs = st.balances.filter((b) => b.accountId === a.id).sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0))
+      const last = lastBalance(st.balances, a.id)
+      const rows = projectAccount(a, st, off, ym, months)
+      const contribution = yearContribution(a, st, off, year)
+      const limit = a.annualLimit ?? null
+      const gauge = bufferGauge(a, st, today)
+      return {
+        id: a.id,
+        name: a.name,
+        role: a.role,
+        inflow: a.inflow,
+        outflow: a.outflow,
+        bank: a.bank ?? '',
+        last4: a.last4 ?? '',
+        kind: a.kind ?? '',
+        rate: a.rate ?? '',
+        term: a.term ?? '',
+        group: a.group ?? null,
+        amountKrw: krw(a.amount ?? 0),
+        ratio: a.ratio ?? null,
+        phaseAmounts: phaseList(a.amounts),
+        from: a.from ?? null,
+        stopFrom: a.stopFrom ?? null,
+        bufferKrw: a.buffer ?? 0,
+        goalKrw: a.goal ?? null,
+        goalAck: a.goalAck ?? null,
+        annualLimitKrw: limit,
+        ...(a.note ? { note: a.note } : {}),
+        balances: recs.map((b) => ({ id: b.id, date: b.date, amountKrw: krw(b.amount), ...(b.note ? { note: b.note } : {}) })),
+        lastBalance: last ? { date: last.date, amountKrw: krw(last.amount) } : null,
+        /** null without a balance record */
+        projection: rows ? rows.map((r) => ({ month: r.ym, inflowKrw: krw(r.inflow), outflowKrw: krw(r.outflow), endKrw: krw(r.end) })) : null,
+        goalMonth: goalMonth(a, st, off),
+        year: {
+          year,
+          contributionKrw: krw(contribution),
+          limitKrw: limit,
+          leftKrw: limit === null ? null : krw(limit - contribution),
+          /** near = at least 90% of the limit, over = above it (spec 013 S-7) */
+          state: limit === null ? null : contribution > limit ? 'over' : contribution >= limit * 0.9 ? 'near' : 'under',
+        },
+        buffer: { bufferKrw: krw(gauge.buffer), usedKrw: krw(gauge.used), leftKrw: krw(gauge.left) },
+        targets: d.targets.filter((t) => t.accountId === a.id).map((t) => ({ id: t.id, name: t.name, kind: t.kind })),
+        cards: st.cards.filter((c) => c.accountId === a.id).map((c) => ({ id: c.id, name: c.name, last4: c.last4, effectiveBillingDay: billingDayOf(c, d.settings) })),
+      }
+    }),
+    cards: st.cards.map(cardOut),
   }
 }

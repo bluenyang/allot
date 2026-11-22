@@ -65,3 +65,27 @@ test('a proposed spending moves the month it falls in: remainder (salary) or tra
   assert.deepEqual(other.remainderKrw.before, other.remainderKrw.after)
   assert.notEqual(hashState(data), hashState({ ...data, spendings: [sp('a', 'salary', 70_000)] }))
 })
+
+test('the preview reads the living items, the savings accounts and a buffer use (spec 013 S-10)', () => {
+  const item = { id: 'i1', name: 'E2E-food', kind: '', payMethod: '', amount: 400_000, from: null, code: 'food' as const, amounts: {} }
+  const base: Data = {
+    ...data,
+    livingItems: [item],
+    targets: [...data.targets, { id: 't-sv', name: 'Saving total', kind: 'saving' }],
+    accounts: [{ id: 'a1', name: 'E2E-cma', role: '', inflow: '', outflow: '', group: 'saving', amount: 100_000 }],
+    cards: [{ id: 'c1', name: 'E2E-card', last4: '', accountId: 'a1', billingDay: null }],
+  }
+  // a new living item and a larger savings amount come out of the remainder
+  const more: Data = { ...base, livingItems: [item, { ...item, id: 'i2', name: 'E2E-other', code: null, amount: 50_000 }], accounts: [{ ...base.accounts[0]!, amount: 300_000 }] }
+  const p = monthPreview(base, more, '2026-11')
+  assert.deepEqual(p.distribution.find((r) => r.targetId === 't-live')!.amountKrw, { before: 400_000, after: 450_000 })
+  assert.deepEqual(p.distribution.find((r) => r.targetId === 't-sv')!.amountKrw, { before: 100_000, after: 300_000 })
+  assert.equal(p.remainderKrw.before - p.remainderKrw.after, 250_000)
+  // a buffer use takes only its refill off the month's remainder, not the bill
+  const refill = (no: number, date: string) => ({ no, date, amount: 150_000, state: 'left' as const, edited: false })
+  const buf: Data = { ...base, spendings: [{
+    id: 'b', name: 'E2E-pc', category: 'etc', bought: '2026-11-02', amount: 300_000, currency: 'KRW', fxRate: null, fxBuffer: null, how: 'buffer', payBy: 'card',
+    count: 2, fee: 0, interval: null, cancelled: false, cardId: 'c1', refillFrom: '2026-11-25', rounds: [refill(1, '2026-11-25'), refill(2, '2026-12-25')],
+  }] }
+  for (const ym of ['2026-11', '2026-12']) assert.equal(monthPreview(base, buf, ym).remainderKrw.before - monthPreview(base, buf, ym).remainderKrw.after, 150_000)
+})

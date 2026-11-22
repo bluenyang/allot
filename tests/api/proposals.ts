@@ -90,7 +90,8 @@ try {
   ], note: 'v4' })
   ok(p1.status === 'pending' && p1.confirm === 'chat' && p1.keyName === 'chat-key', 'a proposal is stored pending with its key and method')
   const pr = p1.preview as { rows: { table: string; op: string; before: unknown; after: Record<string, unknown> | null }[]; months: { month: string; transferKrw: { before: number; after: number } }[] }
-  ok(pr.rows.length === 2 && pr.rows.some((r) => r.table === 'subscription' && r.op === 'insert') && pr.rows.some((r) => r.table === 'living' && r.op === 'insert'), 'the preview has the row changes')
+  // a fresh user has no living items: the old living resource makes the three coded ones (spec 013 S-2)
+  ok(pr.rows.length === 4 && pr.rows.some((r) => r.table === 'subscription' && r.op === 'insert') && pr.rows.filter((r) => r.table === 'living_item' && r.op === 'insert').length === 3, 'the preview has the row changes')
   ok(pr.months.length === 2 && pr.months[0]!.month === ymOf(today()), 'the preview has this month and the next')
   ok(JSON.stringify(await state(A)) === s0, 'the data is unchanged after proposing')
   const c1 = await counts(A)
@@ -108,7 +109,7 @@ try {
   ok((await counts(A)).props === c1.props, 'a refused proposal is not stored')
   ok(await code(propose(A, kChat, { changes: Array.from({ length: 21 }, (_, i) => ({ resource: 'events', action: 'create', data: { when: '2031-01', kind: 'k', title: `e${i}`, state: 'todo' } })) })) === 'invalid', '21 changes are refused')
   ok(await code(propose(A, kChat, { changes: [] })) === 'invalid', 'no changes are refused')
-  ok(await code(propose(A, kChat, { changes: [{ resource: 'accounts', action: 'create', data: { name: 'x', role: '', inflow: '', outflow: '' } }] })) === 'invalid', 'accounts are not for an AI')
+  ok(await code(propose(A, kChat, { changes: [{ resource: 'debts', action: 'create', data: { name: 'x', principal: 1, rate: '', method: '', plan: '' } }] })) === 'invalid', 'debts are not for an AI')
 
   // ── V-5: applying gives the preview's "after", as one change set by the key ──
   const sub2 = await code(applyProposal(A, p1.id, { kind: 'key', keyId: kUi.id }))
@@ -303,7 +304,6 @@ try {
     return setId!
   }
   const excluded: [string, { resource: string; action: 'create'; data: unknown }][] = [
-    ['accounts', { resource: 'accounts', action: 'create', data: { name: 'rv-acc', role: '', inflow: '', outflow: '' } }],
     ['debts', { resource: 'debts', action: 'create', data: { name: 'rv-debt', principal: 1, rate: '', method: '', plan: '' } }],
     ['holiday sets', { resource: 'holiday-sets', action: 'create', data: { name: 'rv-hol', enabled: true, builtin: null, rules: [{ name: 'h', rdate: ['2031-05-05'] }] } }],
   ]
@@ -325,6 +325,24 @@ try {
   const okRevert = await propose(A, kUi, { revertOf: allowedSet })
   ok((okRevert.preview as { rows: unknown[] }).rows.length === 1, 'a change set of allowed tables can still be reverted')
   await rejectProposal(A, okRevert.id)
+  // spec 013 S-10: accounts, balance records, cards and living items are AI resources, so their change sets can be reverted too
+  {
+    const accSet = await direct([{ resource: 'accounts', action: 'create', data: { name: 'rv-acc', role: '', inflow: '', outflow: '', group: 'saving', amount: 10_000, amounts: {} } }])
+    const acc = (await state(A)).accounts.find((x) => x.name === 'rv-acc')!
+    const restSet = await direct([
+      { resource: 'balances', action: 'create', data: { accountId: acc.id, date: '2031-01-01', amount: 1000 } },
+      { resource: 'cards', action: 'create', data: { name: 'rv-card', last4: '', accountId: acc.id, billingDay: null } },
+      { resource: 'living-items', action: 'create', data: { name: 'rv-item', kind: '', payMethod: '', amount: 1000, from: null, amounts: {} } },
+    ])
+    const r1 = await propose(A, kUi, { revertOf: restSet })
+    ok((r1.preview as { rows: { table: string }[] }).rows.map((r) => r.table).sort().join() === 'account_balance,card,living_item', 'a change set of a balance record, a card and a living item can be reverted')
+    await applyProposal(A, r1.id, { kind: 'user' })
+    const r2 = await propose(A, kUi, { revertOf: accSet })
+    await applyProposal(A, r2.id, { kind: 'user' })
+    const after = await state(A)
+    ok(!after.accounts.some((x) => x.name === 'rv-acc') && !after.cards.some((x) => x.name === 'rv-card') && !after.livingItems.some((x) => x.name === 'rv-item') && !after.balances.some((x) => x.accountId === acc.id),
+      'reverting them through proposals removes the account, its balance record, the card and the living item')
+  }
 
   // ── V-9: another user's proposal and change set ──
   const pa = await propose(A, kUi, { changes: [{ resource: 'living', action: 'update', data: living(400_000) }] })
@@ -366,7 +384,7 @@ try {
     const pv = await propose(A, kUi, { changes: [{ resource: 'subscriptions', action: 'create', data: sub('planted') }] })
     await sqlClient`update mcp_proposal set ops = ${JSON.stringify([{ resource: 'subscriptions', action: 'create', data: { plan: 'p' } }])}::jsonb where id = ${pv.id}`
     ok(await code(applyProposal(A, pv.id, { kind: 'user' })) === 'invalid' && JSON.stringify(await state(A)) === stateBefore, 'a stored operation that no longer validates is refused and nothing is applied')
-    await sqlClient`update mcp_proposal set ops = ${JSON.stringify([{ resource: 'accounts', action: 'create', data: { name: 'x', role: '', inflow: '', outflow: '' } }])}::jsonb where id = ${pv.id}`
+    await sqlClient`update mcp_proposal set ops = ${JSON.stringify([{ resource: 'debts', action: 'create', data: { name: 'x', principal: 1, rate: '', method: '', plan: '' } }])}::jsonb where id = ${pv.id}`
     ok(await code(applyProposal(A, pv.id, { kind: 'user' })) === 'invalid' && JSON.stringify(await state(A)) === stateBefore, 'a stored operation on a resource the AI may not change is refused')
     await rejectProposal(A, pv.id)
   }

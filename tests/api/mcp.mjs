@@ -6,11 +6,12 @@
 // written straight into the `apikey` table in the form the plugin stores them (the way a key made
 // on the screen looks in the database: SHA-256 base64url of the key); making keys through the
 // screen's API is tests/api/api-keys.mjs. No raw key is printed or written anywhere.
-//   isolation  V-5: users A and B each put marked data in; A's key calls all seven tools and nothing of B shows, and back.
-//   tools      V-6: tools/list (seven, read-only), get_overview for this month and three months on against calc.ts,
-//              an unknown tool and bad arguments, list_changes paging.
+//   isolation  V-5: users A and B each put marked data in; A's key calls all nine tools and nothing of B shows, and back.
+//   tools      V-6: tools/list (nine, read-only), get_overview for this month and three months on against calc.ts,
+//              get_budget and list_accounts against calc.ts (spec 013 S-10), an unknown tool and bad arguments, list_changes paging.
 //   write      spec 009 V-3…V-9 through the tools: scope, proposals, previews, apply, confirmation methods,
-//              stale / expired / revoked, revert, isolation (a fresh user W; keys are made through the API).
+//              stale / expired / revoked, revert, isolation (a fresh user W; keys are made through the API);
+//              spec 013 S-10: living items, accounts, cards, a balance record and a buffer use proposed, confirmed, read back and reverted.
 //   auth       V-4: every refusal is the same 401, the per-address limit (21st failure → 429), the per-key
 //              limit, a session or a key on the wrong path, GET, a big body, a foreign Origin.
 //              Ends by exhausting the address limit: restart the api before the next mode.
@@ -83,7 +84,7 @@ const createUser = async (tag) => {
   return r.json.user.id
 }
 
-const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes', 'list_spendings']
+const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes', 'list_spendings', 'get_budget', 'list_accounts']
 let rpcId = 100
 /** tools/call → { status, result (the tool's result), error (JSON-RPC error), data (structuredContent) } */
 async function tool(key, name, args = {}) {
@@ -239,7 +240,10 @@ async function isolationMode() {
     await post('/api/targets', { name: `${marker}-target`, kind: 'fixed', note: `${marker}-tnote` })
     await post('/api/events', { when: thisMonth, kind: '저축', title: `${marker}-event`, state: 'todo' })
     await post('/api/checks', { text: `${marker}-check`, done: false })
-    await post('/api/accounts', { name: `${marker}-account`, role: 'r', inflow: 'i', outflow: 'o' })
+    const account = await post('/api/accounts', { name: `${marker}-account`, role: 'r', inflow: 'i', outflow: 'o' })
+    await post('/api/balances', { accountId: account.id, date: `${thisMonth}-01`, amount: 1000, note: `${marker}-balance` })
+    await post('/api/cards', { name: `${marker}-card`, last4: '', accountId: account.id, billingDay: null })
+    await post('/api/living-items', { name: `${marker}-living`, kind: '', payMethod: '', amount: 1000, from: null, amounts: {} })
     await post('/api/spendings', { name: `${marker}-spend`, note: '', category: 'etc', bought: `${thisMonth}-02`, amount: 33_000, currency: 'KRW', fxRate: null, fxBuffer: null, how: 'installment', payBy: 'salary', count: 2, fee: 0, interval: null, cancelled: false,
       rounds: [{ no: 1, date: `${thisMonth}-15`, amount: 16_500, state: 'left', edited: false }, { no: 2, date: `${calc0.addYm(thisMonth, 1)}-15`, amount: 16_500, state: 'left', edited: false }] })
     await post('/api/debts', { name: `${marker}-debt`, principal: 1000, rate: '1%', method: 'm', plan: 'p' })
@@ -255,10 +259,11 @@ async function isolationMode() {
   users.B.made.push(['/api/phases', bPhase.json?.id])
 
   const uuidIds = (state) => JSON.stringify(state).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g) ?? []
-  const ownStrings = (state) => [...state.subscriptions.map((x) => x.name), ...state.targets.map((x) => x.name), ...state.accounts.map((x) => x.name), ...state.debts.map((x) => x.name), ...(state.spendings ?? []).map((x) => x.name)].filter((x) => x.length >= 4)
+  const ownStrings = (state) => [...state.subscriptions.map((x) => x.name), ...state.targets.map((x) => x.name), ...state.accounts.map((x) => x.name), ...state.debts.map((x) => x.name), ...(state.spendings ?? []).map((x) => x.name),
+    ...(state.cards ?? []).map((x) => x.name), ...(state.livingItems ?? []).map((x) => x.name)].filter((x) => x.length >= 4)
   const states = {}
   for (const tag of ['A', 'B']) states[tag] = (await users[tag].api('GET', '/api/state')).json
-  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }], ['list_spendings', {}]]
+  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }], ['list_spendings', {}], ['get_budget', {}], ['list_accounts', {}]]
   for (const [me, other] of [['A', 'B'], ['B', 'A']]) {
     const out = {}
     const outD = {}
@@ -269,7 +274,7 @@ async function isolationMode() {
       outD[name] = t.data
     }
     const all = Object.values(out).join('\n')
-    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the seven answers`)
+    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the nine answers`)
     const foreignIds = uuidIds(states[other]).filter((x) => !uuidIds(states[me]).includes(x))
     ok(foreignIds.length > 0 && !foreignIds.some((x) => all.includes(x)), `${me}'s key: none of ${other}'s ${foreignIds.length} ids appear`)
     const foreignNames = ownStrings(states[other]).filter((n) => !ownStrings(states[me]).includes(n))
@@ -284,6 +289,8 @@ async function isolationMode() {
       `${me}'s key: list_spendings, get_overview and get_schedule show ${me}'s own spending and its rounds, and no other ISO one`)
     ok(!out.list_spendings.includes(users[other].marker) && !out.get_overview.includes(users[other].marker) && !out.get_schedule.includes(users[other].marker), `${me}'s key: ${other}'s spending is in none of the three`)
     ok(out.list_changes.includes('subscription') || out.list_changes.includes(`${m}-sub`), `${me}'s key: list_changes shows ${me}'s own changes`)
+    ok(out.list_accounts.includes(`${m}-account`) && out.list_accounts.includes(`${m}-balance`) && out.list_accounts.includes(`${m}-card`) && out.get_budget.includes(`${m}-living`),
+      `${me}'s key: list_accounts shows ${me}'s own account, balance record and card, get_budget ${me}'s own living item`)
   }
   // A's key cannot ask for B's data by id or by any argument: the tools take none, and an extra argument is ignored or refused
   const sneaky = await tool(users.A.key, 'list_changes', { limit: 50, userId: users.B.id })
@@ -298,14 +305,14 @@ async function toolsMode() {
   const key = await insertKey(aId)
   const list = await mcp(A, key)
   const tools = list.json?.result?.tools ?? []
-  ok(tools.length === 7 && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the seven tools (${tools.map((t) => t.name).join(', ')})`)
+  ok(tools.length === 9 && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the nine tools (${tools.map((t) => t.name).join(', ')})`)
   ok(tools.every((t) => t.annotations?.readOnlyHint === true), 'every tool says readOnlyHint: true')
   ok(tools.every((t) => !/create|update|delete|write|set_|add_|remove/.test(t.name)), 'no tool name is a write')
   ok(tools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'descriptions are English text')
 
   const unknown = await tool(key, 'delete_everything', {})
   ok(failedCall(unknown), `an unknown tool is an MCP error (${unknown.status} ${JSON.stringify(unknown.error ?? unknown.result?.content?.[0]?.text)?.slice(0, 80)})`)
-  for (const [name, args] of [['get_overview', { month: '2026-13' }], ['get_overview', { month: 'now' }], ['get_schedule', { months: 13 }], ['get_schedule', { months: 0 }], ['list_changes', { limit: 51 }], ['list_changes', { before: '2026-01-01 00:00:00+00' }], ['list_subscriptions', { status: 'gone' }]]) {
+  for (const [name, args] of [['get_overview', { month: '2026-13' }], ['get_overview', { month: 'now' }], ['get_schedule', { months: 13 }], ['get_schedule', { months: 0 }], ['list_changes', { limit: 51 }], ['list_changes', { before: '2026-01-01 00:00:00+00' }], ['list_subscriptions', { status: 'gone' }], ['get_budget', { month: '2026-00' }], ['list_accounts', { months: 0 }], ['list_accounts', { months: 25 }]]) {
     const t = await tool(key, name, args)
     ok(failedCall(t), `${name} ${JSON.stringify(args)} is refused`)
   }
@@ -354,6 +361,30 @@ async function toolsMode() {
     ok(!failedCall(f) && f.data.spendings.every((x) => (st === 'cancelled' ? x.cancelled : st === 'done' ? x.state === 'paid' : !x.cancelled && x.state !== 'paid')), `list_spendings status ${st}`)
   }
   for (const bad of [{ status: 'gone' }, { month: '2026-13' }]) ok(failedCall(await tool(key, 'list_spendings', bad)), `list_spendings ${JSON.stringify(bad)} is refused`)
+  // spec 013 S-10: the budget menus and the accounts, with the functions the screens use
+  for (const ym of [ym0, ym3]) {
+    const b = await tool(key, 'get_budget', { month: ym })
+    const items = state.livingItems ?? []
+    const { dist } = calc.monthMoney(state, ym)
+    ok(!failedCall(b) && b.data?.month === ym && b.data.living.items.length === items.length && b.data.living.sumKrw === calc.livingAt(items, state.phases, ym).sum, `get_budget ${ym}: the ${items.length} living items and their sum are calc.ts's`)
+    for (const g of ['saving', 'invest']) {
+      const x = calc.groupAt(g, state.accounts, state.phases, state.targets, state.settings, ym)
+      ok(b.data?.[g]?.mode === x.mode && b.data[g].sumKrw === x.sum && b.data[g].totalKrw === x.total && JSON.stringify(b.data[g].items.map((i) => [i.accountId, i.monthKrw])) === JSON.stringify(x.rows.map((r) => [r.account.id, r.amount])),
+        `get_budget ${ym}: ${g} (${x.mode}, ${x.rows.length} items) is calc.ts's`)
+    }
+    ok(b.data?.targets?.length === state.targets.length && b.data.targets.every((t) => t.amountKrw === (t.kind === 'remainder' ? dist.remainder : (dist.rows.find((r) => r.key === t.targetId)?.amount ?? 0))) && b.data.remainderKrw === dist.remainder,
+      `get_budget ${ym}: what every target gets is monthMoney's`)
+  }
+  const la = await tool(key, 'list_accounts', {})
+  const bal = state.balances ?? []
+  ok(!failedCall(la) && la.data?.accounts?.length === state.accounts.length && la.data.cards.length === (state.cards ?? []).length, `list_accounts: all ${state.accounts.length} accounts and ${(state.cards ?? []).length} cards`)
+  ok((la.data?.accounts ?? []).every((a) => a.balances.length === bal.filter((x) => x.accountId === a.id).length && (a.projection === null) === !bal.some((x) => x.accountId === a.id) && (a.projection === null || a.projection.length === 12)),
+    'list_accounts: every balance record, and twelve months of projection exactly for the accounts that have one')
+  ok((la.data?.accounts ?? []).every((a) => { const g = calc.bufferGauge(state.accounts.find((x) => x.id === a.id), state, calc.ymd(calc.today())); return a.buffer.bufferKrw === g.buffer && a.buffer.usedKrw === g.used && a.buffer.leftKrw === g.left }), 'list_accounts: the buffer gauges are calc.ts\'s')
+  const la3 = await tool(key, 'list_accounts', { months: 3 })
+  ok(!failedCall(la3) && la3.data.accounts.every((a) => a.projection === null || (a.projection.length === 3 && a.projection[0].month === ym0)), 'list_accounts months 3: three months from this month')
+  ok(al.data.targets.every((t) => 'accountId' in t) && al.data.accounts.every((a) => 'group' in a && 'role' in a && 'inflow' in a && 'outflow' in a), 'get_allocation: targets with accountId, accounts with group and the old fields')
+
   const sc = await tool(key, 'get_schedule', { from: ym0, months: 3 })
   ok(sc.data.months.length === 3 && sc.data.months[0].month === ym0 && sc.data.months[2].month === calc.addYm(ym0, 2), 'get_schedule: three months from the first')
   const sc12 = await tool(key, 'get_schedule', { months: 12 })
@@ -393,17 +424,19 @@ async function writeMode() {
 
   // ── V-3: scope ──
   const rn = await names(kRead.key)
-  ok(rn.length === 7 && rn.includes('list_spendings') && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the seven read tools (list_spendings among them) and no write tool')
+  ok(rn.length === 9 && rn.includes('list_spendings') && rn.includes('get_budget') && rn.includes('list_accounts') && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the nine read tools (list_spendings, get_budget and list_accounts among them) and no write tool')
   for (const [name, args] of [['propose_changes', { changes: [] }], ['apply_proposal', { proposalId: 'x' }], ['get_proposal', { proposalId: 'x' }], ['propose_revert', { changeSetId: 'x' }]]) {
     ok(failedCall(await tool(kRead.key, name, args)), `a read key calling ${name} is an MCP error`)
   }
   const un = await mcp(A, kUi.key)
   const utools = un.json?.result?.tools ?? []
-  ok(utools.length === 11 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: eleven tools (${utools.length})`)
+  ok(utools.length === 13 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: thirteen tools (${utools.length})`)
   ok(utools.find((t) => t.name === 'apply_proposal')?.annotations?.destructiveHint === true && utools.find((t) => t.name === 'get_proposal')?.annotations?.readOnlyHint === true && utools.find((t) => t.name === 'propose_changes')?.annotations?.readOnlyHint === false, 'annotations: apply is destructive, get is read-only, propose is not read-only')
   ok(utools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'write tool descriptions are English text')
   const pc = utools.find((t) => t.name === 'propose_changes')
   ok(JSON.stringify(pc?.inputSchema ?? {}).includes('subscriptions') && JSON.stringify(pc?.inputSchema ?? {}).includes('remainder-split') && JSON.stringify(pc?.inputSchema ?? {}).includes('spendings') && /spendings/.test(pc?.description ?? ''), 'propose_changes advertises the resource shapes (spendings too)')
+  ok(['living-items', 'accounts', 'balances', 'cards'].every((r) => JSON.stringify(pc?.inputSchema ?? {}).includes(`"${r}"`)) && /buffer/.test(pc?.description ?? '') && /maturity/.test(pc?.description ?? '') && /mini PC/.test(pc?.description ?? ''),
+    'propose_changes advertises living items, accounts, balances and cards, the buffer use and the two examples (spec 013 S-10)')
   console.log(`INFO propose_changes input schema: ${JSON.stringify(pc?.inputSchema ?? {}).length} bytes`)
 
   // without the badge's number, which a proposal changes by existing
@@ -421,7 +454,10 @@ async function writeMode() {
     { resource: 'living', action: 'update', data: LIV(111000) },
   ] })
   ok(!failedCall(pr1) && typeof pr1.data?.proposalId === 'string' && pr1.data.confirm === 'chat' && pr1.data.status === 'pending', `propose_changes → proposal ${pr1.data?.status} (${pr1.data?.confirm})`)
-  ok(pr1.data?.preview?.rows?.length === 2 && pr1.data.preview.months?.length === 2 && pr1.data.preview.months[0].transferKrw.after !== undefined, 'the preview has rows and two months of transfer and distribution')
+  // a fresh user has no living items yet: the old living resource makes the three coded ones (spec 013 S-2)
+  const pr1Rows = pr1.data?.preview?.rows ?? []
+  ok(pr1Rows.length === 4 && pr1Rows.filter((r) => r.table === 'living_item' && r.op === 'insert').length === 3 && pr1Rows.some((r) => r.table === 'subscription') && pr1.data.preview.months?.length === 2 && pr1.data.preview.months[0].transferKrw.after !== undefined,
+    `the preview has rows (${pr1Rows.map((r) => r.table)}) and two months of transfer and distribution`)
   ok(/user agrees/.test(pr1.data?.next ?? ''), 'a chat proposal tells the AI to show the preview and wait for the user')
   ok(JSON.stringify(await wState()) === s0 && (await wSets()).length === n0, 'the data and the history are unchanged after proposing')
   const cnt1 = await proposalCount(wId)
@@ -444,8 +480,9 @@ async function writeMode() {
   ok(failedCall(await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'checks', action: 'create', data: { text: 'x', done: false } }], force: true })), 'an extra top-level field is refused')
   ok(failedCall(await tool(kChat.key, 'get_proposal', { proposalId: 'x', extra: 1 })) && failedCall(await tool(kChat.key, 'apply_proposal', { proposalId: 'x', extra: 1 })) && failedCall(await tool(kChat.key, 'propose_revert', { changeSetId: 'x', extra: 1 })), 'extra fields are refused by the other three tools')
   ok(await proposalCount(wId) === cnt6, 'and no proposal was stored')
-  const acc = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'accounts', action: 'create', data: { name: 'x', role: '', inflow: '', outflow: '' } }] })
-  ok(failedCall(acc), 'accounts cannot be proposed')
+  // accounts are an AI resource since spec 013 S-10; debts are not
+  const debt = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'debts', action: 'create', data: { name: 'x', principal: 1, rate: '', method: '', plan: '' } }] })
+  ok(failedCall(debt) && await proposalCount(wId) === cnt6, 'debts cannot be proposed')
 
   // ── V-5: apply gives the preview's after ──
   const ap = await tool(kChat.key, 'apply_proposal', { proposalId: pr1.data.proposalId })
@@ -716,6 +753,114 @@ async function writeMode() {
   await W('DELETE', `/api/spendings/${wSpend}`)
   await X('DELETE', `/api/spendings/${xSpend}`)
   ok(await spCount() === 0 && await roundCount() === 0 && (await X('GET', '/api/state')).json.spendings.length === 0, 'both seeded spendings and their rounds are gone')
+
+  // ── spec 013 S-10: living items, accounts, cards, a balance record and a buffer use through the tools ──
+  {
+    const ym1 = mjs.addYm(ymNow, 1)
+    const ym2 = mjs.addYm(ymNow, 2)
+    const todayStr = mjs.ymd(mjs.today())
+    const made13 = { spendings: [], cards: [], targets: [], 'living-items': [], accounts: [] }
+    const drop13 = async () => { for (const r of ['spendings', 'cards', 'targets', 'living-items', 'accounts']) for (const id of made13[r].splice(0)) await W('DELETE', `/api/${r}/${id}`) }
+    cleanups.push(drop13)
+    const ACC_CMA = { name: 'E2E-mcp-cma', role: 'saving', inflow: '', outflow: '', bank: 'E2E Bank', last4: '1234', kind: 'CMA', group: 'saving', amount: 300_000, goal: 6_000_000, annualLimit: 20_000_000 }
+    const ACC_PAY = { name: 'E2E-mcp-pay', role: 'card', inflow: '', outflow: '', buffer: 1_000_000 }
+    const ITEM = { name: 'E2E-mcp-item', kind: 'food', payMethod: 'card', amount: 70_000, from: null, note: '', amounts: {} }
+    // the accounts, the item and a living total target first (ids are server-assigned), then the card and the savings target that refer to them
+    const st0 = await wState()
+    const livingBefore = mjs.livingAt(st0.livingItems ?? [], st0.phases, ymNow).sum
+    const q1 = await tool(kChat.key, 'propose_changes', { note: 's10 accounts', changes: [
+      { resource: 'accounts', action: 'create', data: ACC_CMA },
+      { resource: 'accounts', action: 'create', data: ACC_PAY },
+      { resource: 'living-items', action: 'create', data: ITEM },
+      { resource: 'targets', action: 'create', data: { name: 'E2E-mcp-living', kind: 'living', note: '' } },
+    ] })
+    ok(!failedCall(q1) && q1.data.preview.rows.filter((r) => r.table === 'bank_account').length === 2 && q1.data.preview.rows.some((r) => r.table === 'living_item'), `propose_changes: two accounts, a living item and a target (${(q1.text ?? '').slice(0, 100)})`)
+    const q1m = q1.data?.preview?.months?.[0]
+    const q1l = q1m?.distribution?.find((r) => r.kind === 'living')
+    ok(q1l?.amountKrw?.before === null && q1l.amountKrw.after === livingBefore + 70_000 && q1m.remainderKrw.before - q1m.remainderKrw.after === livingBefore + 70_000,
+      `the preview: the living total (the items with the new one, ${q1l?.amountKrw?.after}) comes off this month's remainder (${q1m?.remainderKrw?.before} → ${q1m?.remainderKrw?.after})`)
+    const a1 = await tool(kChat.key, 'apply_proposal', { proposalId: q1.data?.proposalId })
+    ok(!failedCall(a1), 'applied: the accounts and the living item')
+    const st1 = await wState()
+    const cma = st1.accounts.find((x) => x.name === 'E2E-mcp-cma')
+    const pay = st1.accounts.find((x) => x.name === 'E2E-mcp-pay')
+    const it = (st1.livingItems ?? []).find((x) => x.name === 'E2E-mcp-item')
+    const lt = st1.targets.find((x) => x.name === 'E2E-mcp-living')
+    for (const [r, x] of [['accounts', cma], ['accounts', pay], ['living-items', it], ['targets', lt]]) if (x) made13[r].push(x.id)
+    ok(!!cma && !!pay && !!it && cma.group === 'saving' && cma.amount === 300_000 && cma.last4 === '1234' && pay.buffer === 1_000_000, 'the accounts and the item are in the data as proposed')
+    const q2 = await tool(kChat.key, 'propose_changes', { changes: [
+      { resource: 'cards', action: 'create', data: { name: 'E2E-mcp-card', last4: '9876', accountId: pay?.id ?? 'x', billingDay: 12 } },
+      { resource: 'targets', action: 'create', data: { name: 'E2E-mcp-saving', kind: 'saving', accountId: null } },
+    ] })
+    const a2 = failedCall(q2) ? q2 : await tool(kChat.key, 'apply_proposal', { proposalId: q2.data.proposalId })
+    ok(!failedCall(a2), `applied: the card paid from the pay account and the savings target (${(q2.text ?? '').slice(0, 100)})`)
+    const st2 = await wState()
+    const card = (st2.cards ?? []).find((x) => x.name === 'E2E-mcp-card')
+    const tgt = st2.targets.find((x) => x.name === 'E2E-mcp-saving')
+    if (card) made13.cards.push(card.id)
+    if (tgt) made13.targets.push(tgt.id)
+    ok(card?.accountId === pay?.id && card?.billingDay === 12 && tgt?.kind === 'saving', 'the card and the target are in the data')
+
+    // the two examples of the description: a CMA balance after a maturity payout, a mini PC bought by card from the buffer
+    const round = (no, date) => ({ no, date, amount: 150_000, state: 'left', edited: false })
+    const BUF = { name: 'E2E-mcp-minipc', note: '', category: 'etc', bought: `${ymNow}-02`, amount: 300_000, currency: 'KRW', fxRate: null, fxBuffer: null, how: 'buffer', payBy: 'card',
+      count: 2, fee: 0, interval: null, cancelled: false, cardId: card?.id ?? 'x', refillFrom: `${ym1}-25`, rounds: [round(1, `${ym1}-25`), round(2, `${ym2}-25`)] }
+    const noCard = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: { ...BUF, cardId: null } }] })
+    ok(failedCall(noCard) && !/bufferNeedsCard/.test(noCard.text), `a buffer use without a card is refused, in English (${(noCard.error?.message ?? noCard.text).slice(0, 100)})`)
+    const s13 = JSON.stringify(await wState())
+    const q3 = await tool(kUi.key, 'propose_changes', { note: 'maturity payout and a mini PC', changes: [
+      { resource: 'balances', action: 'create', data: { accountId: cma?.id ?? 'x', date: `${ymNow}-01`, amount: 4_800_000, note: 'after the maturity payout' } },
+      { resource: 'spendings', action: 'create', data: BUF },
+    ] })
+    const rows3 = q3.data?.preview?.rows ?? []
+    ok(!failedCall(q3) && rows3.some((r) => r.table === 'account_balance' && r.op === 'insert') && rows3.some((r) => r.table === 'spending' && r.op === 'insert') && rows3.filter((r) => r.table === 'spending_round').length === 2,
+      `propose_changes: the balance record and the buffer use with its two refills (${rows3.map((r) => r.table)})`)
+    const [m3a, m3b] = q3.data?.preview?.months ?? []
+    ok(m3a?.remainderKrw?.before === m3a?.remainderKrw?.after && m3b?.month === ym1 && m3b.remainderKrw.before - m3b.remainderKrw.after === 150_000,
+      `the preview: nothing this month (the bill is paid from the buffer), next month's refill comes off the remainder (${m3b?.remainderKrw?.before} → ${m3b?.remainderKrw?.after})`)
+    ok(JSON.stringify(await wState()) === s13, 'proposing wrote nothing')
+    const apply3 = await W('POST', `/api/proposals/${q3.data?.proposalId}/apply`)
+    ok(apply3.status === 200 && typeof apply3.json?.changeSet === 'string', `the user confirms it on the screen → ${apply3.status}`)
+    const st3 = await wState()
+    const sp13 = (st3.spendings ?? []).find((x) => x.name === 'E2E-mcp-minipc')
+    if (sp13) made13.spendings.push(sp13.id)
+    ok(sp13?.how === 'buffer' && sp13.cardId === card?.id && sp13.refillFrom === `${ym1}-25` && sp13.rounds.length === 2 && (st3.balances ?? []).some((b) => b.accountId === cma?.id && b.amount === 4_800_000),
+      'the buffer use and the balance record are in the data')
+
+    // read back: get_budget and list_accounts with the functions the screens use
+    const gb = (await tool(kRead.key, 'get_budget', {})).data
+    const x = mjs.groupAt('saving', st3.accounts, st3.phases, st3.targets, st3.settings, ymNow)
+    ok(gb?.saving?.mode === 'amount' && gb.saving.target?.id === tgt?.id && gb.saving.sumKrw === x.sum && gb.saving.items.some((i) => i.accountId === cma?.id && i.monthKrw === 300_000 && i.last4 === '1234' && i.goalKrw === 6_000_000),
+      `get_budget: the savings menu with the CMA account sending 300,000 (sum ${gb?.saving?.sumKrw})`)
+    ok(gb?.living?.items?.some((i) => i.id === it?.id && i.monthKrw === 70_000) && gb.living.sumKrw === mjs.livingAt(st3.livingItems, st3.phases, ymNow).sum && gb.targets.find((t) => t.targetId === tgt?.id)?.amountKrw === x.sum,
+      'get_budget: the living item, the living sum and the savings target value')
+    const la = (await tool(kRead.key, 'list_accounts', {})).data
+    const lc = la?.accounts?.find((a) => a.id === cma?.id)
+    const lp = la?.accounts?.find((a) => a.id === pay?.id)
+    const none = new Set() // W's settings shift no date (dayShift none), so no holiday moves one
+    const proj = mjs.projectAccount(st3.accounts.find((a) => a.id === cma?.id), st3, none, ymNow, 12)
+    ok(!!lc && lc.lastBalance?.amountKrw === 4_800_000 && JSON.stringify(lc.projection) === JSON.stringify(proj.map((r) => ({ month: r.ym, inflowKrw: r.inflow, outflowKrw: r.outflow, endKrw: r.end }))),
+      `list_accounts: the CMA account's last balance and its projection are calc.ts's (${lc?.projection?.[0]?.endKrw})`)
+    ok(lc?.goalMonth === mjs.addYm(ymNow, 3) && lc.goalMonth === mjs.goalMonth(st3.accounts.find((a) => a.id === cma?.id), st3, none), `list_accounts: the goal month is three transfers on (${lc?.goalMonth})`)
+    ok(lc?.year?.contributionKrw === mjs.yearContribution(st3.accounts.find((a) => a.id === cma?.id), st3, none, new Date().getFullYear()) && lc.year.limitKrw === 20_000_000, `list_accounts: this year's contribution (${lc?.year?.contributionKrw}) against the limit`)
+    const g = mjs.bufferGauge(st3.accounts.find((a) => a.id === pay?.id), st3, todayStr)
+    ok(lp?.buffer?.bufferKrw === 1_000_000 && lp.buffer.usedKrw === 300_000 && lp.buffer.usedKrw === g.used && lp.buffer.leftKrw === 700_000 && lp.projection === null && lp.cards.some((c) => c.id === card?.id && c.effectiveBillingDay === 12),
+      `list_accounts: the pay account's buffer gauge (${JSON.stringify(lp?.buffer)}), no projection without a record, its card`)
+    ok(la?.cards?.some((c) => c.id === card?.id && c.accountId === pay?.id && c.account === 'E2E-mcp-pay' && c.billingDay === 12), 'list_accounts: the card with its paying account and billing day')
+    const ov1 = (await tool(kRead.key, 'get_overview', { month: ym1 })).data
+    ok(ov1?.distribution?.remainderKrw === m3b?.remainderKrw?.after, "get_overview next month: the remainder is the preview's after")
+
+    // the user reverts it in the change history: no balance record, no spending, the data as before
+    const rv13 = await W('POST', `/api/changes/${apply3.json?.changeSet}/revert`)
+    ok(rv13.status === 200 && JSON.stringify(await wState()) === s13, `reverting the confirmed proposal → ${rv13.status}, the data as before`)
+    made13.spendings.splice(0)
+    const la2 = (await tool(kRead.key, 'list_accounts', {})).data
+    ok(la2?.accounts?.find((a) => a.id === cma?.id)?.projection === null && la2.accounts.find((a) => a.id === pay?.id)?.buffer?.usedKrw === 0, 'list_accounts after the revert: no record, no buffer used')
+    await drop13()
+    const st4 = await wState()
+    ok(!st4.accounts.some((a) => a.name.startsWith('E2E-mcp-')) && !(st4.cards ?? []).some((c) => c.name.startsWith('E2E-mcp-')) && !(st4.livingItems ?? []).some((i) => i.name.startsWith('E2E-mcp-')) && !st4.targets.some((t) => t.name.startsWith('E2E-mcp-')),
+      'the accounts, card, living item and target made here are gone')
+  }
 
   // ── revoked key ──
   const dead = await W('DELETE', `/api/keys/${kChat.id}`)

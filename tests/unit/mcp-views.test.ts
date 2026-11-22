@@ -1,9 +1,12 @@
 // spec 008 V-6: what the MCP tools say is what calc.ts says for the same data (synthetic data).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { distributionAt, monthDates, monthlyKrw, nextPayment, parseDate, planAt, transferAt, upcomingPayments, ymd } from '../../src/lib/calc'
-import type { Spending, Subscription } from '../../src/data/types'
-import { allocation, overview, planChangeList, schedule, spendingList, subscriptionList, type Data } from '../../server/mcp/views'
+import {
+  bufferGauge, distributionAt, goalMonth, groupAt, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate, planAt, planRounds, projectAccount, transferAt,
+  upcomingPayments, yearContribution, ymd, type AccountState,
+} from '../../src/lib/calc'
+import type { Account, LivingItem, Spending, Subscription } from '../../src/data/types'
+import { accountList, allocation, budget, overview, planChangeList, schedule, spendingList, subscriptionList, type Data } from '../../server/mcp/views'
 
 const sub = (over: Partial<Subscription> & { id: string; name: string }): Subscription => ({
   category: 'tool', plan: 'basic', amount: 10_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active',
@@ -235,4 +238,170 @@ test('overview and schedule: spending rounds are items of their own, not in the 
   assert.deepEqual(s.months.map((m) => m.spendingRounds.length), [1, 2, 1])
   assert.deepEqual(s.months.map((m) => m.payments), schedule(data, '2026-11', 3).months.map((m) => m.payments))
   assert.deepEqual(schedule(data, '2026-11', 1).months[0]!.spendingRounds, [])
+})
+
+// ── spec 013 S-10: get_budget and list_accounts (and get_overview, get_allocation with the new state) ──
+const none: ReadonlySet<string> = new Set()
+const item = (id: string, amount: number, over: Partial<LivingItem> = {}): LivingItem =>
+  ({ id, name: `E2E-${id}`, kind: 'food', payMethod: 'card', amount, from: null, code: null, amounts: {}, ...over })
+const acc = (id: string, over: Partial<Account> = {}): Account =>
+  ({ id, name: `E2E-${id}`, role: '', inflow: '', outflow: '', bank: '', last4: '', kind: '', rate: '', term: '', buffer: 0, goal: null, annualLimit: null, group: null, amount: 0, ratio: null, from: null, stopFrom: null, goalAck: null, amounts: {}, ...over })
+const refills = planRounds({ bought: '2026-11-18', how: 'buffer', payBy: 'card', count: 2, principal: 400_000, refillFrom: '2026-12-25' }, data.settings, none)
+const pc: Spending = {
+  id: 'pc', name: 'E2E-PC', category: 'home', bought: '2026-11-18', amount: 400_000, currency: 'KRW', fxRate: null, fxBuffer: null,
+  how: 'buffer', payBy: 'card', count: 2, fee: 0, interval: null, cancelled: false, cardId: 'c1', refillFrom: '2026-12-25', rounds: refills,
+}
+const bd: Data = {
+  ...data,
+  // no weekend or holiday shift, no holidays: the calc functions below run with no off days
+  settings: { ...data.settings, dayShift: 'none' },
+  holidaySets: [{ id: 'kr', name: 'KR', enabled: false, builtin: 'kr', rules: [] }],
+  subscriptions: [], planChanges: [],
+  living: { food: 300_000, transit: 0, allowance: 0 },
+  livingItems: [item('food', 300_000, { code: 'food' }), item('later', 50_000, { from: '2026-12' }), item('phased', 30_000, { amounts: { p2: 80_000 }, note: 'n' })],
+  phases: [
+    { id: 'p1', label: 'P1', name: 'one', from: '2026-01', to: '2026-12', amounts: { 't-fix': 200_000, 't-inv': 1_000_000 } },
+    { id: 'p2', label: 'P2', name: 'two', from: '2027-01', to: null, amounts: { 't-fix': 300_000, 't-inv': 1_200_000 } },
+  ],
+  targets: [
+    { id: 't-live', name: 'Living', kind: 'living', accountId: 'living-acc' },
+    { id: 't-sav', name: 'Savings', kind: 'saving' },
+    { id: 't-inv', name: 'Investment', kind: 'invest', accountId: null },
+    { id: 't-fix', name: 'Emergency', kind: 'fixed', accountId: 'emergency' },
+    { id: 't-rest', name: 'Rest', kind: 'remainder' },
+  ],
+  accounts: [
+    acc('cma', { group: 'saving', kind: 'CMA', bank: 'E2E Bank', last4: '1234', amount: 500_000, goal: 11_000_000, annualLimit: 12_000_000 }),
+    acc('isa', { group: 'invest', kind: 'ISA', ratio: 0.6, annualLimit: 20_000_000 }),
+    acc('irp', { group: 'invest', ratio: 0.3, from: '2027-01' }),
+    acc('living-acc', { buffer: 1_000_000 }),
+    acc('emergency'),
+  ],
+  balances: [
+    { id: 'b1', accountId: 'cma', date: '2026-11-01', amount: 10_000_000, note: 'start' },
+    { id: 'b2', accountId: 'living-acc', date: '2026-11-20', amount: 1_200_000 },
+  ],
+  cards: [
+    { id: 'c1', name: 'E2E-Card', last4: '9876', accountId: 'living-acc', billingDay: 12 },
+    { id: 'c2', name: 'E2E-Other', last4: '', accountId: null, billingDay: null },
+  ],
+  spendings: [pc],
+}
+const bst: AccountState = { ...bd, balances: bd.balances!, cards: bd.cards! }
+
+test('get_budget: living items, the savings and investment menus and every target are calc.ts\'s', () => {
+  for (const ym of ['2026-11', '2026-12', '2027-01']) {
+    const b = budget(bd, ym)
+    assert.equal(b.month, ym)
+    const l = livingAt(bd.livingItems!, bd.phases, ym)
+    assert.deepEqual(b.living.items.map((x) => [x.id, x.monthKrw]), l.rows.map((r) => [r.item.id, r.amount]))
+    assert.equal(b.living.sumKrw, l.sum)
+    for (const g of ['saving', 'invest'] as const) {
+      const x = groupAt(g, bd.accounts, bd.phases, bd.targets, bd.settings, ym)
+      assert.equal(b[g].mode, x.mode)
+      assert.deepEqual(b[g].items.map((i) => [i.accountId, i.monthKrw]), x.rows.map((r) => [r.account.id, r.amount]))
+      assert.equal(b[g].sumKrw, x.sum)
+      assert.equal(b[g].totalKrw, x.total)
+      assert.equal(b[g].ratioSum, x.ratioSum)
+    }
+    const { dist } = monthMoney(bd, ym)
+    for (const t of b.targets) {
+      const row = dist.rows.find((r) => r.key === t.targetId)
+      assert.equal(t.amountKrw, t.kind === 'remainder' ? dist.remainder : (row?.amount ?? 0), `${ym} ${t.targetId}`)
+    }
+    assert.equal(b.remainderKrw, dist.remainder)
+    // everything adds up to the net pay, less what one-off spendings take off the remainder
+    assert.equal(b.targets.reduce((a, t) => a + t.amountKrw, 0), bd.settings.netPay - monthMoney(bd, ym).spend.remainder)
+  }
+  const nov = budget(bd, '2026-11')
+  assert.deepEqual(nov.living.items.map((x) => x.monthKrw), [300_000, 0, 30_000])
+  assert.equal(nov.living.items[2]!.note, 'n')
+  assert.deepEqual(nov.living.items[2]!.phaseAmounts, [{ phaseId: 'p2', amountKrw: 80_000 }])
+  assert.equal(nov.living.items[0]!.code, 'food')
+  assert.equal(nov.saving.mode, 'amount')
+  assert.deepEqual(nov.saving.target, { id: 't-sav', name: 'Savings', accountId: null })
+  assert.deepEqual(nov.saving.items[0], {
+    accountId: 'cma', name: 'E2E-cma', kind: 'CMA', bank: 'E2E Bank', last4: '1234', amountKrw: 500_000, phaseAmounts: [], ratio: null, monthKrw: 500_000,
+    from: null, stopFrom: null, goalKrw: 11_000_000, annualLimitKrw: 12_000_000,
+  })
+  assert.equal(nov.invest.mode, 'ratio')
+  assert.equal(nov.invest.totalKrw, 1_000_000)
+  assert.deepEqual(nov.invest.items.map((i) => [i.accountId, i.ratio, i.monthKrw]), [['isa', 0.6, 600_000], ['irp', 0.3, 0]])
+  assert.equal(nov.invest.ratioSum, 0.9)
+  // 3,000,000 − living 330,000 − savings 500,000 − investment 600,000 − fixed 200,000
+  assert.equal(nov.remainderKrw, 1_370_000)
+  assert.deepEqual(nov.phase && nov.phase.id, 'p1')
+  const jan = budget(bd, '2027-01')
+  assert.equal(jan.living.sumKrw, 300_000 + 50_000 + 80_000)
+  assert.deepEqual(jan.invest.items.map((i) => i.monthKrw), [720_000, 360_000])
+  // the buffer refill of January comes off the remainder
+  assert.equal(jan.remainderKrw, 3_000_000 - 430_000 - 500_000 - 1_080_000 - 300_000 - 200_000)
+  // no living items: an empty list
+  assert.deepEqual(budget(data, '2026-11').living, { items: [], sumKrw: 0 })
+})
+
+test('get_overview reads the living items and the savings and investment accounts', () => {
+  const o = overview(bd, '2026-11')
+  const { dist } = monthMoney(bd, '2026-11')
+  assert.equal(o.distribution.livingKrw, 330_000)
+  assert.deepEqual(o.distribution.rows.map((r) => [r.targetId, r.amountKrw]), dist.rows.map((r) => [r.key, r.amount]))
+  assert.equal(o.distribution.remainderKrw, budget(bd, '2026-11').remainderKrw)
+  // the old living row is not used when the items are there
+  assert.notEqual(o.distribution.livingKrw, overview({ ...bd, livingItems: undefined }, '2026-11').distribution.livingKrw)
+})
+
+test('list_accounts: fields, balance records, projection, goal month, yearly contribution, buffer gauge, links and cards', () => {
+  const now = new Date(2026, 10, 21)
+  const l = accountList(bd, now, 4)
+  assert.equal(l.month, '2026-11')
+  assert.deepEqual(l.accounts.map((a) => a.id), ['cma', 'isa', 'irp', 'living-acc', 'emergency'])
+  const cmaAcc = bd.accounts[0]!
+  const cma = l.accounts[0]!
+  assert.deepEqual([cma.group, cma.kind, cma.bank, cma.last4, cma.amountKrw, cma.goalKrw, cma.annualLimitKrw, cma.bufferKrw], ['saving', 'CMA', 'E2E Bank', '1234', 500_000, 11_000_000, 12_000_000, 0])
+  assert.deepEqual(cma.balances, [{ id: 'b1', date: '2026-11-01', amountKrw: 10_000_000, note: 'start' }])
+  assert.deepEqual(cma.lastBalance, { date: '2026-11-01', amountKrw: 10_000_000 })
+  assert.deepEqual(cma.projection, projectAccount(cmaAcc, bst, none, '2026-11', 4)!.map((r) => ({ month: r.ym, inflowKrw: r.inflow, outflowKrw: r.outflow, endKrw: r.end })))
+  assert.deepEqual(cma.projection!.map((r) => r.endKrw), [10_500_000, 11_000_000, 11_500_000, 12_000_000])
+  assert.equal(cma.goalMonth, goalMonth(cmaAcc, bst, none))
+  assert.equal(cma.goalMonth, '2026-12')
+  assert.equal(cma.year.contributionKrw, yearContribution(cmaAcc, bst, none, 2026))
+  // 10,000,000 put in at once (the first record) + Nov and Dec 500,000: 11,000,000 of 12,000,000 is over 90%
+  assert.deepEqual(cma.year, { year: 2026, contributionKrw: 11_000_000, limitKrw: 12_000_000, leftKrw: 1_000_000, state: 'near' })
+  const isa = l.accounts[1]!
+  assert.equal(isa.projection, null, 'no balance record: no projection')
+  assert.equal(isa.goalMonth, null)
+  assert.equal(isa.year.state, 'under')
+  assert.deepEqual(l.accounts[2]!.year, { year: 2026, contributionKrw: 0, limitKrw: null, leftKrw: null, state: null })
+  const liv = l.accounts[3]!
+  const livAcc = bd.accounts[3]!
+  assert.deepEqual(liv.buffer, { bufferKrw: 1_000_000, usedKrw: 400_000, leftKrw: 600_000 })
+  assert.deepEqual(liv.buffer, (({ buffer, used, left }) => ({ bufferKrw: buffer, usedKrw: used, leftKrw: left }))(bufferGauge(livAcc, bst, '2026-11-21')))
+  assert.deepEqual(liv.targets, [{ id: 't-live', name: 'Living', kind: 'living' }])
+  assert.deepEqual(liv.cards, [{ id: 'c1', name: 'E2E-Card', last4: '9876', effectiveBillingDay: 12 }])
+  // Nov: living 330,000 in on the 26th; Dec: the card bill out on the 12th, the living transfer and the refill in
+  assert.deepEqual(liv.projection!.slice(0, 2).map((r) => [r.month, r.inflowKrw, r.outflowKrw, r.endKrw]), [
+    ['2026-11', 330_000, 0, 1_530_000],
+    ['2026-12', 380_000 + 200_000, 400_000, 1_710_000],
+  ])
+  assert.deepEqual(liv.projection, projectAccount(livAcc, bst, none, '2026-11', 4)!.map((r) => ({ month: r.ym, inflowKrw: r.inflow, outflowKrw: r.outflow, endKrw: r.end })))
+  assert.deepEqual(l.accounts[4]!.targets, [{ id: 't-fix', name: 'Emergency', kind: 'fixed' }])
+  assert.deepEqual(l.cards, [
+    { id: 'c1', name: 'E2E-Card', last4: '9876', accountId: 'living-acc', account: 'E2E-living-acc', billingDay: 12, effectiveBillingDay: 12 },
+    { id: 'c2', name: 'E2E-Other', last4: '', accountId: null, account: null, billingDay: null, effectiveBillingDay: 14 },
+  ])
+  // the default is twelve months from this month
+  assert.equal(accountList(bd, now).accounts[0]!.projection!.length, 12)
+  // no balance records or cards in the data: every account without a projection, no cards
+  const bare = accountList(data, now)
+  assert.deepEqual(bare.cards, [])
+  assert.equal(bare.accounts[0]!.projection, null)
+  assert.equal(bare.accounts[0]!.name, 'Main')
+})
+
+test('get_allocation: the new target kinds with their account, and each account\'s group', () => {
+  const a = allocation(bd)
+  assert.deepEqual(a.targets.map((t) => [t.kind, t.accountId]), [['living', 'living-acc'], ['saving', null], ['invest', null], ['fixed', 'emergency'], ['remainder', null]])
+  assert.deepEqual(a.accounts.map((x) => x.group), ['saving', 'invest', 'invest', null, null])
+  // the fields it had stay
+  assert.deepEqual(Object.keys(allocation(data).accounts[0]!), ['id', 'name', 'role', 'inflow', 'outflow', 'group'])
 })
