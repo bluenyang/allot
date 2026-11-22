@@ -7,6 +7,7 @@ import {
   type AccountState,
 } from '../../src/lib/calc'
 import type { Account, AllocationTarget, Card, LivingItem, Phase, Settings, Spending } from '../../src/data/types'
+import { accountMonthIn } from '../../src/lib/accounts'
 
 const S: Settings = { netPay: 3_000_000, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 16, subRound: 10_000, dayShift: 'none' }
 const none: ReadonlySet<string> = new Set()
@@ -197,4 +198,6 @@ test('review 2 F-2: a remainder account still counts its buffer use: the bill ou
   // December: remainder 3,000,000 − refill 100,000 = 2,900,000 in, the refill 100,000 back in, the bill 300,000 out
   const dec = projectAccount(pay, st, none, '2026-12', 1)![0]!
   assert.deepEqual([dec.inflow, dec.outflow, dec.end], [3_000_000, 300_000, 2_700_000])
+  // the 이번 달 column counts the same money in (review 3 F-2)
+  assert.equal(accountMonthIn(pay, st, '2026-12'), 3_000_000)
 })
