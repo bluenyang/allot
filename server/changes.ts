@@ -79,8 +79,10 @@ const col = (table: PgTable, k: string) => (table as unknown as Record<string, P
  */
 export function keyOf(table: PgTable, row: Row): RowKey {
   if (table === t.phaseAmount) return { phaseId: String(row.phaseId), targetId: String(row.targetId) }
+  if (table === t.livingPhaseAmount) return { phaseId: String(row.phaseId), itemId: String(row.itemId) }
+  if (table === t.accountPhaseAmount) return { phaseId: String(row.phaseId), accountId: String(row.accountId) }
   if (table === t.spendingRound) return { spendingId: String(row.spendingId), no: String(row.no) }
-  if (table === t.settings || table === t.living || table === t.preference) return {}
+  if (table === t.settings || table === t.preference) return {}
   return { id: String(row.id) }
 }
 
@@ -125,6 +127,8 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
 
   for (const log of logs) {
     const table = byName.get(log.tableName)
+    // The old living row became living items (spec 013 S-2): its history stays readable but cannot be undone.
+    if (!table && GONE.has(log.tableName)) throw new Conflict(m('changeGone'), log.tableName, log.rowKey)
     if (!table) throw new Error(`unknown table in change log: ${log.tableName}`)
     const current = await readRow(q, table, uid, log.rowKey)
     const expected = log.op === 'delete' ? null : log.after
@@ -153,12 +157,17 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
   if (rec.id) await q.update(t.changeSet).set({ revertedBy: rec.id }).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id)))
 }
 
+/** Tables that are gone; their logged changes cannot be reverted. */
+const GONE = new Set(['living'])
+
 /** Rows that reference this one (the cascades the API otherwise handles itself). */
 const CHILDREN = new Map<PgTable, [OwnedTable, PgColumn][]>([
   [t.subscription, [[t.planChange, t.planChange.subId]]],
-  [t.phase, [[t.phaseAmount, t.phaseAmount.phaseId]]],
+  [t.phase, [[t.phaseAmount, t.phaseAmount.phaseId], [t.livingPhaseAmount, t.livingPhaseAmount.phaseId], [t.accountPhaseAmount, t.accountPhaseAmount.phaseId]]],
   [t.allocationTarget, [[t.phaseAmount, t.phaseAmount.targetId]]],
   [t.spending, [[t.spendingRound, t.spendingRound.spendingId]]],
+  [t.livingItem, [[t.livingPhaseAmount, t.livingPhaseAmount.itemId]]],
+  [t.bankAccount, [[t.accountBalance, t.accountBalance.accountId], [t.accountPhaseAmount, t.accountPhaseAmount.accountId]]],
 ])
 
 export const childrenOf = (table: PgTable) => CHILDREN.get(table) ?? []
@@ -183,7 +192,7 @@ async function checkRules(q: Db, uid: string) {
   if (amounts.length) {
     const ids = [...new Set(amounts.map((a) => a.targetId))]
     const fixed = await q.select({ id: t.allocationTarget.id }).from(t.allocationTarget)
-      .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), eq(t.allocationTarget.kind, 'fixed')))
+      .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), inArray(t.allocationTarget.kind, ['fixed', 'saving', 'invest'])))
     if (fixed.length !== ids.length) throw new RuleBroken(m('revertAmounts'))
   }
   // Spendings: the same rule a save keeps for the rounds against count and how (src/lib/spending-rules.ts).

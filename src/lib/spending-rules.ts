@@ -14,13 +14,13 @@ export interface RoundsShape {
 
 /**
  * Which field breaks the rules, or null.
- * - lump is one round and count 1; installment and split need count 2..60
+ * - lump is one round and count 1; installment and split need count 2..60; a buffer use refills over 1..60 months (spec 013 S-8)
  * - rounds are numbered 1.. in order; an early payoff merges the rounds left and adds one,
  *   so there are `count` rounds plus at most one per merged round (a lump has no merged round)
  * - what is still to pay or paid (not merged) adds up to at most ROUND_MAX, so an early payoff always fits one round
  */
 export function roundsProblem(x: RoundsShape): 'count' | 'rounds' | null {
-  if (x.how === 'lump' ? x.count !== 1 : x.count < 2) return 'count'
+  if (x.how === 'lump' ? x.count !== 1 : x.count < (x.how === 'buffer' ? 1 : 2)) return 'count'
   if (x.rounds.some((r, i) => r.no !== i + 1)) return 'rounds'
   const merged = x.rounds.filter((r) => r.state === 'merged').length
   const extra = x.rounds.length - x.count

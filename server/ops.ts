@@ -4,9 +4,9 @@
 // and kind rules, same change-set records. An operation is { resource, action, id?, data? };
 // `data` is the resource's request body. Call everything here inside asUser(uid, …).
 import { randomUUID } from 'node:crypto'
-import { and, eq, inArray, ne } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, ne } from 'drizzle-orm'
 import { getTableName } from 'drizzle-orm'
-import type { PgTable } from 'drizzle-orm/pg-core'
+import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
 import { childrenOf, keyOf, readRow, Recorder, whereKey, type RowKey } from './changes'
 import type { Db } from './db/client'
@@ -61,8 +61,11 @@ async function deleteChildren(q: Db, rec: Recorder, uid: string, table: PgTable,
   }
 }
 
+/** Target kinds that may carry phase amounts: fixed, and the Savings / Investment totals (spec 013 S-3). */
+export const AMOUNT_KINDS = ['fixed', 'saving', 'invest'] as const
+
 /**
- * Replace a phase's amounts; only fixed targets may carry one.
+ * Replace a phase's amounts; only fixed, saving and invest targets may carry one.
  * Target writes hold the user's allocation_target lock; taking it here means a target cannot
  * change kind between this check and the insert. Lock order is always phase → allocation_target
  * (target writes never take the phase lock), so the two cannot deadlock.
@@ -73,10 +76,10 @@ async function writeAmounts(q: Db, rec: Recorder, uid: string, phaseId: string, 
   const ids = Object.keys(want)
   if (ids.length) {
     const fixed = await q.select({ id: t.allocationTarget.id }).from(t.allocationTarget)
-      .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), eq(t.allocationTarget.kind, 'fixed')))
+      .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), inArray(t.allocationTarget.kind, [...AMOUNT_KINDS])))
     const ok = new Set(fixed.map((f) => f.id))
     const bad = ids.filter((i) => !ok.has(i))
-    if (bad.length) throw new Rejected(m('amountsFixedOnly'))
+    if (bad.length) throw new Rejected(m('amountsTargetsOnly'))
   }
   // Only what differs is written (and logged): removed, changed, added.
   const pa = t.phaseAmount
@@ -95,6 +98,83 @@ async function writeAmounts(q: Db, rec: Recorder, uid: string, phaseId: string, 
     await rec.record(pa, { phaseId, targetId }, 'insert', null, written as Row)
   }
   return { amounts: want }
+}
+
+/**
+ * Replace the per-phase amounts of a living item or a Savings / Investment account (spec 013 S-4): only what
+ * differs is written (and logged). `amounts` is phaseId → amount; 0 is kept (it means "nothing in that phase").
+ */
+async function writeItemAmounts(q: Db, rec: Recorder, uid: string, table: typeof t.livingPhaseAmount | typeof t.accountPhaseAmount, itemId: string, amounts: Record<string, number>) {
+  const living = table === t.livingPhaseAmount
+  const itemCol = living ? t.livingPhaseAmount.itemId : t.accountPhaseAmount.accountId
+  const itemKey = living ? 'itemId' : 'accountId'
+  const have = (await q.select().from(table).where(and(eq(table.userId, uid), eq(itemCol, itemId)))) as Row[]
+  for (const old of have) {
+    const phaseId = String(old.phaseId)
+    const key = { phaseId, [itemKey]: itemId }
+    if (!(phaseId in amounts)) await deleteLogged(q, rec, table, uid, key)
+    else if (amounts[phaseId] !== old.amount) {
+      const [written] = await q.update(table).set({ amount: amounts[phaseId]! }).where(whereKey(table, uid, key)).returning()
+      await rec.record(table, key, 'update', old, written as Row)
+    }
+  }
+  for (const [phaseId, amount] of Object.entries(amounts)) {
+    if (have.some((h) => h.phaseId === phaseId)) continue
+    const [written] = await q.insert(table).values({ userId: uid, phaseId, [itemKey]: itemId, amount } as never).returning()
+    await rec.record(table, { phaseId, [itemKey]: itemId }, 'insert', null, written as Row)
+  }
+  return { amounts: { ...amounts } }
+}
+
+/** Set `col` to null, with logs, in every row of `table` where it is `id` (a card's or a target's account, a spending's card). */
+async function unlink(q: Db, rec: Recorder, uid: string, table: OwnedTable & { id: PgColumn }, col: PgColumn, id: string) {
+  const rows = await q.select().from(table as never).where(and(eq(table.userId, uid), eq(col, id))) as Row[]
+  for (const old of rows) {
+    const key = { id: String(old.id) }
+    const [written] = await q.update(table).set({ [colName(table, col)]: null } as never).where(whereKey(table, uid, key)).returning()
+    await rec.record(table, key, 'update', old, written as Row)
+  }
+}
+const colName = (table: PgTable, col: PgColumn) => Object.entries(table as unknown as Record<string, unknown>).find(([, c]) => c === col)![0]
+
+/** Is a buffer use paid through `cardIds` (S-8)? */
+async function bufferUses(q: Db, uid: string, cardIds: string[]) {
+  if (!cardIds.length) return false
+  const [hit] = await q.select({ id: t.spending.id }).from(t.spending)
+    .where(and(eq(t.spending.userId, uid), eq(t.spending.how, 'buffer'), inArray(t.spending.cardId, cardIds))).limit(1)
+  return !!hit
+}
+
+/** The three coded living items as the old living row (spec 013 S-2): what /api/state answers as `living`. */
+export async function livingOf(q: Db, uid: string) {
+  const rows = await q.select().from(t.livingItem).where(and(eq(t.livingItem.userId, uid), isNotNull(t.livingItem.code)))
+  const of = (c: string) => rows.find((r) => r.code === c)?.amount ?? 0
+  return { food: of('food'), transit: of('transit'), allowance: of('allowance') }
+}
+
+const LIVING_NAMES = { ko: { food: '식비', transit: '교통', allowance: '용돈' }, en: { food: 'Food', transit: 'Transport', allowance: 'Allowance' } } as const
+
+/**
+ * PUT /api/living and the AI resource `living` (spec 013 S-2): the old three values are still accepted and
+ * set the amounts of the three coded items; one that was deleted is made again, named in the user's language.
+ */
+async function applyLiving(q: Db, uid: string, rec: Recorder, input: { food: number; transit: number; allowance: number }): Promise<OpResult> {
+  await lockFor(q, 'living', uid)
+  const li = t.livingItem
+  const [pref] = await q.select({ language: t.preference.language }).from(t.preference).where(eq(t.preference.userId, uid))
+  const names = LIVING_NAMES[pref?.language === 'en' ? 'en' : 'ko']
+  for (const code of ['food', 'transit', 'allowance'] as const) {
+    const [old] = await q.select().from(li).where(and(eq(li.userId, uid), eq(li.code, code))).for('update')
+    if (old) {
+      if (old.amount === input[code]) continue
+      const [written] = await q.update(li).set({ amount: input[code] }).where(whereKey(li, uid, { id: old.id })).returning()
+      await rec.record(li, { id: old.id }, 'update', old as Row, written as Row)
+    } else {
+      const [written] = await q.insert(li).values({ userId: uid, id: randomUUID(), name: names[code], kind: names[code], amount: input[code], code }).returning()
+      await rec.record(li, { id: written!.id }, 'insert', null, written as Row)
+    }
+  }
+  return { found: true, row: await livingOf(q, uid) }
 }
 
 /**
@@ -139,6 +219,8 @@ interface ListResource {
   afterWrite?: (q: Db, rec: Recorder, uid: string, id: string, input: never) => Promise<Record<string, unknown>>
   /** Same transaction (and lock) as the delete; a message refuses it with 400. */
   beforeDelete?: (q: Db, uid: string, id: string) => Promise<Msg | null>
+  /** Same transaction, after beforeDelete and before the row goes: unlink rows that point at it (logged). */
+  onDelete?: (q: Db, rec: Recorder, uid: string, id: string) => Promise<void>
 }
 
 /** The one-row records of a user (no id; an update creates the row when there is none). */
@@ -151,7 +233,7 @@ interface SingleResource {
   full: (input: never, before: Row | null) => Row
 }
 
-const ONE_ONLY = { living: 'oneLiving', subscriptions: 'oneSubscriptions', remainder: 'oneRemainder' } as const
+const ONE_ONLY = { living: 'oneLiving', subscriptions: 'oneSubscriptions', remainder: 'oneRemainder', saving: 'oneSaving', invest: 'oneInvest' } as const
 
 const list = <T extends ListTable, S extends z.ZodType>(table: T, schema: S, o: Omit<ListResource, 'kind' | 'table' | 'schema' | 'check' | 'toRow' | 'afterWrite'> & {
   check?: (q: Db, uid: string, input: z.infer<S>, id?: string) => Promise<Msg | null>
@@ -176,13 +258,64 @@ export const RESOURCES = {
   }),
   events: list(t.planEvent, v.planEvent),
   checks: list(t.checkItem, v.checkItem),
-  accounts: list(t.bankAccount, v.account),
+  accounts: list(t.bankAccount, v.account, {
+    optional: ['note'],
+    toRow: ({ amounts: _a, ...x }) => ({ ...x, note: x.note || null }),
+    // Only a Savings / Investment item carries per-phase amounts (S-9): the group it will have after this write.
+    check: async (q, uid, x, id) => {
+      if (!x.amounts || !Object.keys(x.amounts).length) return null
+      let group = x.group
+      if (group === undefined && id) {
+        const [row] = await q.select({ group: t.bankAccount.group }).from(t.bankAccount).where(and(eq(t.bankAccount.userId, uid), eq(t.bankAccount.id, id)))
+        group = row?.group ?? null
+      }
+      return group ? null : m('groupOnly')
+    },
+    afterWrite: async (q, rec, uid, id, x) => (x.amounts ? writeItemAmounts(q, rec, uid, t.accountPhaseAmount, id, x.amounts) : {}),
+    // An account whose buffer pays a buffer use (through one of its cards) cannot go (S-9).
+    beforeDelete: async (q, uid, id) => {
+      const cards = await q.select({ id: t.card.id }).from(t.card).where(and(eq(t.card.userId, uid), eq(t.card.accountId, id)))
+      return (await bufferUses(q, uid, cards.map((c) => c.id))) ? m('accountBufferInUse') : null
+    },
+    onDelete: async (q, rec, uid, id) => {
+      await unlink(q, rec, uid, t.card, t.card.accountId, id)
+      await unlink(q, rec, uid, t.allocationTarget, t.allocationTarget.accountId, id)
+    },
+  }),
+  balances: list(t.accountBalance, v.balance, {
+    optional: ['note'],
+    toRow: (x) => ({ ...x, note: x.note || null }),
+  }),
+  cards: list(t.card, v.card, {
+    optional: ['note'],
+    toRow: (x) => ({ ...x, note: x.note || null }),
+    beforeDelete: async (q, uid, id) => ((await bufferUses(q, uid, [id])) ? m('cardBufferInUse') : null),
+    onDelete: (q, rec, uid, id) => unlink(q, rec, uid, t.spending, t.spending.cardId, id),
+  }),
+  'living-items': list(t.livingItem, v.livingItem, {
+    optional: ['note'],
+    toRow: ({ amounts: _a, ...x }) => ({ ...x, note: x.note || null }),
+    afterWrite: (q, rec, uid, id, x) => writeItemAmounts(q, rec, uid, t.livingPhaseAmount, id, x.amounts),
+  }),
   debts: list(t.debt, v.debt),
   'remainder-split': list(t.remainderSplit, v.remainderSplit),
   'holiday-sets': list(t.holidaySet, v.holidaySet),
   spendings: list(t.spending, v.spending, {
     optional: ['note'],
     toRow: ({ rounds: _r, ...x }) => ({ ...x, note: x.note || null }),
+    // A buffer use is paid from its card's account (S-8): the card must have one. A card change on
+    // update that leaves `cardId` out keeps the stored card, so check that one.
+    check: async (q, uid, x, id) => {
+      if (x.how !== 'buffer') return null
+      let cardId = x.cardId
+      if (cardId === undefined && id) {
+        const [row] = await q.select({ cardId: t.spending.cardId }).from(t.spending).where(and(eq(t.spending.userId, uid), eq(t.spending.id, id)))
+        cardId = row?.cardId ?? null
+      }
+      if (!cardId) return m('bufferNeedsCard')
+      const [c] = await q.select({ accountId: t.card.accountId }).from(t.card).where(and(eq(t.card.userId, uid), eq(t.card.id, cardId)))
+      return c?.accountId ? null : m('bufferNeedsCard')
+    },
     afterWrite: (q, rec, uid, id, x) => writeRounds(q, rec, uid, id, x.rounds),
   }),
   targets: list(t.allocationTarget, v.target, {
@@ -196,9 +329,9 @@ export const RESOURCES = {
       }
       return null
     },
-    // A target that is no longer 'fixed' keeps no phase amounts.
+    // A target whose kind takes no phase amounts keeps none (fixed, saving and invest keep theirs, S-3).
     afterWrite: async (q, rec, uid, id, x) => {
-      if (x.kind !== 'fixed') await deleteChildren(q, rec, uid, t.allocationTarget, id)
+      if (!(AMOUNT_KINDS as readonly string[]).includes(x.kind)) await deleteChildren(q, rec, uid, t.allocationTarget, id)
       return {}
     },
   }),
@@ -209,7 +342,6 @@ const single = <S extends z.ZodType>(table: OwnedTable, schema: S, lockName: str
 
 export const SINGLES = {
   settings: single(t.settings, v.settings, 'settings', (input, before) => ({ ...input, dayShift: input.dayShift ?? (before?.dayShift as typeof input.dayShift) ?? 'none' })),
-  living: single(t.living, v.living, 'living', (input) => input),
   // A client that does not send the language keeps the saved one (spec 008 S-9).
   preferences: single(t.preference, v.preferences, 'preference', (input, before) => ({
     ...input,
@@ -217,13 +349,22 @@ export const SINGLES = {
   })),
 } satisfies Record<string, SingleResource>
 
-export type ListName = keyof typeof RESOURCES
-export type SingleName = keyof typeof SINGLES
-export const resourceOf = (name: string): ListResource | SingleResource | undefined =>
-  (Object.hasOwn(RESOURCES, name) ? RESOURCES[name as ListName] : Object.hasOwn(SINGLES, name) ? SINGLES[name as SingleName] : undefined)
+/** The old living row, kept as an adapter over the three coded items (spec 013 S-2). */
+interface LivingResource { kind: 'living'; schema: typeof v.living }
+const LIVING: LivingResource = { kind: 'living', schema: v.living }
 
-/** What an AI may change (spec 009 S-2): not accounts, debts, holiday sets or display settings. */
-export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings'] as const
+/** The request schema of a one-row record (the living adapter included). */
+export const singleSchema = (name: SingleName): z.ZodType => (name === 'living' ? LIVING.schema : SINGLES[name].schema)
+
+export type ListName = keyof typeof RESOURCES
+export type SingleName = keyof typeof SINGLES | 'living'
+export const resourceOf = (name: string): ListResource | SingleResource | LivingResource | undefined =>
+  (Object.hasOwn(RESOURCES, name) ? RESOURCES[name as ListName]
+    : name === 'living' ? LIVING
+    : Object.hasOwn(SINGLES, name) ? SINGLES[name as keyof typeof SINGLES] : undefined)
+
+/** What an AI may change (spec 009 S-2, spec 013 S-10): not debts, holiday sets or display settings. */
+export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings', 'living-items', 'accounts', 'balances', 'cards'] as const
 export const AI_SINGLES = ['settings', 'living'] as const
 export type AiResource = (typeof AI_LISTS)[number] | (typeof AI_SINGLES)[number]
 export const AI_RESOURCES: readonly string[] = [...AI_LISTS, ...AI_SINGLES]
@@ -239,6 +380,7 @@ const LOCK_ORDER = ['data', 'phase', 'allocation_target', 'settings', 'living', 
 function locksOf(op: Op): string[] {
   const r = resourceOf(op.resource)
   if (!r) return ['data']
+  if (r.kind === 'living') return ['data', 'living']
   if (r.kind === 'single') return ['data', r.lockName]
   const name = getTableName(r.table)
   return r.lock ? ['data', name, ...(r.alsoLocks ?? [])] : ['data']
@@ -249,6 +391,7 @@ export async function applyOp(q: Db, uid: string, rec: Recorder, op: Op): Promis
   const r = resourceOf(op.resource)
   if (!r) throw new Error(`unknown resource: ${op.resource}`)
   await lockFor(q, 'data', uid) // first, before any other lock (spec 009 review 2)
+  if (r.kind === 'living') return applyLiving(q, uid, rec, op.data as never)
   if (r.kind === 'single') return applySingle(q, uid, rec, r, op)
   return applyList(q, uid, rec, r, op)
 }
@@ -266,6 +409,7 @@ async function applyList(q: Db, uid: string, rec: Recorder, r: ListResource, op:
     const problem = await r.beforeDelete?.(q, uid, id)
     if (problem) throw new Rejected(problem)
     if (!(await readRow(q, owned, uid, { id }))) return { found: false }
+    await r.onDelete?.(q, rec, uid, id)
     await deleteChildren(q, rec, uid, table, id)
     await deleteLogged(q, rec, owned, uid, { id })
     return { found: true }
@@ -316,7 +460,7 @@ export class OpInvalid extends Error {
 export function parseOp(raw: Op, index: number, allowed: readonly string[] = AI_RESOURCES): Op {
   const r = resourceOf(raw.resource)
   if (!r || !allowed.includes(raw.resource)) throw new OpInvalid(index, `resource "${raw.resource}" cannot be changed`)
-  if (r.kind === 'single') {
+  if (r.kind === 'single' || r.kind === 'living') {
     if (raw.action !== 'update') throw new OpInvalid(index, `${raw.resource} can only be updated`)
     if (raw.id !== undefined) throw new OpInvalid(index, `${raw.resource} has no id`)
   } else {

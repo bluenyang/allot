@@ -10,7 +10,7 @@ import { ROUND_MAX } from '../../src/lib/spending-rules'
 import { listSets } from '../changes'
 import { asUser } from '../db/scope'
 import { issueText } from '../messages'
-import { AI_LISTS, AI_SINGLES, RESOURCES, SINGLES } from '../ops'
+import { AI_LISTS, AI_SINGLES, RESOURCES, singleSchema } from '../ops'
 import { applyProposal, getProposal, MAX_OPS, propose, ProposalError, proposalText, type KeyInfo, type ProposalView } from '../proposals'
 import { readState } from '../state'
 import { guarded, isTimestamp } from './safe'
@@ -40,7 +40,7 @@ const change = z.discriminatedUnion('resource', ([
   ...AI_SINGLES.map((resource) => z.object({
     resource: z.literal(resource),
     action: z.literal('update'),
-    data: SINGLES[resource].schema.describe('the whole new record; it replaces the saved one'),
+    data: singleSchema(resource).describe(resource === 'living' ? 'the three old living amounts (food, transit, allowance): they set the amounts of the three living items moved from them; other living items are resource living-items' : 'the whole new record; it replaces the saved one'),
   }).strict()),
 ]) as unknown as [z.ZodObject<{ resource: z.ZodLiteral<string> }>, ...z.ZodObject<{ resource: z.ZodLiteral<string> }>[]])
 

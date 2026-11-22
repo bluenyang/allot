@@ -34,6 +34,9 @@ export const settings = z.object({
   subRound: z.number().int().positive().max(INT_MAX),
   // Optional so a client that does not know it keeps the saved value (spec 007 S-10).
   dayShift: z.enum(['none', 'before', 'after']).optional(),
+  // The same for the split of the Savings and Investment menus (spec 013 S-3).
+  savingSplit: z.enum(['amount', 'ratio']).optional(),
+  investSplit: z.enum(['amount', 'ratio']).optional(),
 })
 
 // ── Display settings and holiday sets (spec 007 S-7, S-8, S-9) ──
@@ -81,6 +84,25 @@ export const holidaySet = z.object({
 
 export const living = z.object({ food: won, transit: won, allowance: won })
 
+// ── Budget core (spec 013 S-9) ──
+const short = z.string().trim().max(40)
+const memo = z.string().trim().max(200).optional()
+const last4 = z.string().regex(/^(\d{4})?$/, 'last4Format')
+/** A ratio of 0..1 with at most 4 decimals (0.01%), as numeric(5,4) stores it. */
+const ratio = z.number().min(0).max(1).refine((n) => Math.round(n * 10_000) / 10_000 === n, 'ratioDecimals')
+const phaseAmounts = z.record(z.string().min(1), won) // phaseId → amount
+
+export const livingItem = z.object({
+  name: text.min(1, 'nameReq').max(40),
+  kind: short,
+  payMethod: short,
+  amount: won,
+  from: ym.nullable(),
+  code: z.enum(['food', 'transit', 'allowance']).nullable().optional(),
+  note: memo,
+  amounts: phaseAmounts.default({}),
+}).strict()
+
 const plan = z.object({
   plan: text,
   amount: z.number().min(0).max(9_999_999_999.99, 'amountTooBig'),
@@ -124,7 +146,52 @@ export const planEvent = z.object({
 
 export const checkItem = z.object({ text: text.min(1), done: z.boolean() })
 
-export const account = z.object({ name: text.min(1), role: z.string(), inflow: z.string(), outflow: z.string() })
+// The fields up to 0.1.6 stay as they were (name, role, inflow, outflow); the rest are optional, so a
+// client that sends only those keeps the stored values of the others (spec 013 S-11).
+export const account = z.object({
+  name: text.min(1),
+  role: z.string(),
+  inflow: z.string(),
+  outflow: z.string(),
+  bank: short.optional(),
+  last4: last4.optional(),
+  kind: short.optional(),
+  rate: short.optional(),
+  term: short.optional(),
+  buffer: won.optional(),
+  goal: won.nullable().optional(),
+  annualLimit: won.nullable().optional(),
+  group: z.enum(['saving', 'invest']).nullable().optional(),
+  amount: won.optional(),
+  ratio: ratio.nullable().optional(),
+  from: ym.nullable().optional(),
+  stopFrom: ym.nullable().optional(),
+  goalAck: won.nullable().optional(),
+  note: memo,
+  amounts: phaseAmounts.optional(),
+}).strict().superRefine((x, ctx) => {
+  // Only a Savings / Investment item carries a monthly amount, a ratio or phase amounts.
+  if (x.group === null || x.group === undefined) {
+    if (x.group === null && ((x.amount ?? 0) !== 0 || (x.ratio ?? null) !== null || Object.keys(x.amounts ?? {}).length)) {
+      ctx.addIssue({ code: 'custom', path: ['group'], message: 'groupOnly' })
+    }
+  }
+})
+
+export const balance = z.object({
+  accountId: text.min(1),
+  date,
+  amount: won,
+  note: memo,
+}).strict()
+
+export const card = z.object({
+  name: text.min(1, 'nameReq').max(40),
+  last4: last4,
+  accountId: text.min(1).nullable(),
+  billingDay: day.nullable(),
+  note: memo,
+}).strict()
 
 export const debt = z.object({ name: text.min(1), principal: won, rate: z.string(), method: z.string(), plan: z.string() })
 
@@ -132,12 +199,14 @@ export const remainderSplit = z.object({ name: text.min(1), code: z.string(), ra
 
 export const target = z.object({
   name: text.min(1, 'nameReq'),
-  kind: z.enum(['living', 'subscriptions', 'fixed', 'remainder']),
+  kind: z.enum(['living', 'subscriptions', 'fixed', 'remainder', 'saving', 'invest']),
   note: optText,
+  // Optional: a client that does not send it keeps the stored link (spec 013 S-5).
+  accountId: text.min(1).nullable().optional(),
 })
 
 // ── One-off spending (spec 011 S-2, S-4, S-6) ──
-export const spendHow = z.enum(['lump', 'installment', 'split'])
+export const spendHow = z.enum(['lump', 'installment', 'split', 'buffer'])
 export const payBy = z.enum(['card', 'salary', 'subs'])
 export const spendInterval = z.enum(['monthly', 'biweekly', 'custom'])
 export const roundState = z.enum(['left', 'paid', 'merged'])
@@ -171,9 +240,19 @@ export const spending = z.object({
   fee: won,
   interval: spendInterval.nullable(),
   cancelled: z.boolean(),
+  // Optional, so a client that does not know them keeps the stored ones (spec 013 S-8, S-13).
+  cardId: text.min(1).nullable().optional(),
+  refillFrom: date.nullable().optional(),
   rounds: z.array(spendingRound).min(1).max(MAX_ROUNDS),
 }).strict().superRefine((x, ctx) => {
   const bad = (path: string, message: MsgKey) => ctx.addIssue({ code: 'custom', path: [path], message })
+  // A buffer use is a card purchase with a card, no fee and no interval, and a refill start (S-8, S-9);
+  // the card must have a paying account (checked in the API, it needs the card row).
+  if (x.how === 'buffer') {
+    if (x.payBy !== 'card' || !x.cardId) bad('cardId', 'bufferNeedsCard')
+    if (!x.refillFrom) bad('refillFrom', 'spendHow')
+  } else if (x.refillFrom) bad('refillFrom', 'refillOnlyBuffer')
+  if (x.cardId && x.payBy !== 'card') bad('cardId', 'cardOnlyCard')
   if (x.currency === 'USD' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
   // the columns are numeric(8,2) and numeric(5,2): what is stored must be what the rounds were worked out with
   if (!twoDecimals(x.fxRate)) bad('fxRate', 'spendFxDecimals')

@@ -42,7 +42,12 @@ export interface Settings {
   billingDay: number
   subRound: number // 구독 이체 올림 단위
   dayShift: DayShift // 주말·공휴일이면 (spec 007 S-10)
+  /** How the Savings and Investment menus split their total (spec 013 S-3). */
+  savingSplit?: SplitMode // default 'amount'
+  investSplit?: SplitMode // default 'ratio'
 }
+
+export type SplitMode = 'amount' | 'ratio'
 
 export type DayShift = 'none' | 'before' | 'after'
 
@@ -82,19 +87,37 @@ export interface HolidaySet {
   rules: HolidayRule[]
 }
 
+/** The old living row (until 0.1.6): still accepted by PUT /api/living and answered by /api/state, as the three coded items (spec 013 S-2). */
 export interface Living {
   food: number
   transit: number
   allowance: number
 }
 
+export type LivingCode = 'food' | 'transit' | 'allowance'
+
+/** A living-cost item (spec 013 S-2). `amounts`: phaseId → the amount in that phase (S-4). */
+export interface LivingItem {
+  id: string
+  name: string
+  kind: string
+  payMethod: string
+  amount: number
+  from: string | null // YYYY-MM; null = from the start
+  code: LivingCode | null
+  note?: string
+  amounts: Record<string, number>
+}
+
 /** 월급이 가는 곳. 이름은 사용자 데이터이고, 종류가 금액 계산 방식을 정한다. */
-export type AllocationKind = 'living' | 'subscriptions' | 'fixed' | 'remainder'
+export type AllocationKind = 'living' | 'subscriptions' | 'fixed' | 'remainder' | 'saving' | 'invest'
 export interface AllocationTarget {
   id: string
   name: string
-  kind: AllocationKind // living: 생활비 합계 · subscriptions: 구독 필요 이체액 · fixed: 구간별 금액 · remainder: 나머지 전부
+  kind: AllocationKind // living: 생활비 합계 · subscriptions: 구독 필요 이체액 · fixed: 구간별 금액 · remainder: 나머지 전부 · saving/invest: 그 메뉴 항목 합계 (spec 013 S-3)
   note?: string
+  /** The account its money goes to (spec 013 S-5). */
+  accountId?: string | null
 }
 
 /** 구간. 고정 대상(kind 'fixed')별 금액을 가진다. */
@@ -104,7 +127,7 @@ export interface Phase {
   name: string
   from: string // YYYY-MM
   to: string | null // YYYY-MM, 포함
-  amounts: Record<string, number> // targetId → 금액 (fixed 대상만)
+  amounts: Record<string, number> // targetId → 금액 (fixed 대상, 비율로 나누는 saving·invest 대상의 총액)
   note?: string
 }
 
@@ -125,12 +148,54 @@ export interface CheckItem {
   done: boolean
 }
 
+export type BudgetGroup = 'saving' | 'invest'
+
+/**
+ * A bank account (spec 013 S-5). With a `group` it is an item of the Savings or Investment menu: its
+ * monthly `amount` (amount split; `amounts` = phaseId → amount) or `ratio` (ratio split) goes to it from
+ * `from` until `stopFrom` (that month and later: nothing).
+ */
 export interface Account {
   id: string
   name: string
   role: string
   inflow: string
   outflow: string
+  bank?: string
+  last4?: string
+  kind?: string
+  rate?: string
+  term?: string
+  buffer?: number
+  goal?: number | null
+  annualLimit?: number | null
+  group?: BudgetGroup | null
+  amount?: number
+  ratio?: number | null
+  from?: string | null
+  stopFrom?: string | null
+  goalAck?: number | null
+  note?: string
+  amounts?: Record<string, number>
+}
+
+/** A balance written down on a date (spec 013 S-6). */
+export interface Balance {
+  id: string
+  accountId: string
+  date: string // YYYY-MM-DD
+  amount: number
+  note?: string
+}
+
+/** A card (spec 013 S-13): its bill is paid from `accountId` on `billingDay` (null = the settings' billing day). */
+export interface Card {
+  id: string
+  name: string
+  last4: string
+  accountId: string | null
+  billingDay: number | null
+  note?: string
 }
 
 export interface Debt {
@@ -151,8 +216,8 @@ export interface RemainderSplit {
 }
 
 // ---------- one-off spending (spec 011 S-2) ----------
-/** How a spending is paid: all at once, in card installments, or split by the user. 0.1.7 adds 'buffer'. */
-export type SpendHow = 'lump' | 'installment' | 'split'
+/** How a spending is paid: all at once, in card installments, split by the user, or by card from the paying account's buffer, refilled over months (spec 013 S-8). */
+export type SpendHow = 'lump' | 'installment' | 'split' | 'buffer'
 /** Where the money comes from: the card (billed on the billing day), the salary account, or the subscription account. */
 export type PayBy = 'card' | 'salary' | 'subs'
 /** A round is still to pay, paid, or merged into another round by an early payoff. */
@@ -184,5 +249,9 @@ export interface Spending {
   fee: number // KRW, 0 = interest free
   interval: SpendInterval | null // split only
   cancelled: boolean
+  /** The card it was paid with (spec 013 S-13); a buffer use needs one with a paying account. */
+  cardId?: string | null
+  /** Buffer use: the first refill date (spec 013 S-8); null otherwise. */
+  refillFrom?: string | null
   rounds: SpendingRound[]
 }

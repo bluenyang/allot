@@ -59,7 +59,7 @@ const catTouched = ref(false) // an untouched category is saved as it was stored
 const pickCat = (id: string) => { catId.value = id; catTouched.value = true }
 const how = ref<SpendHow>(edit.value!.how)
 const payBy = ref<PayBy>(edit.value!.payBy)
-const countSel = ref(I ? (how.value !== 'lump' && COUNTS[how.value].includes(I.count) ? String(I.count) : 'c') : how.value === 'installment' ? '6' : '3')
+const countSel = ref(I ? (how.value !== 'lump' && COUNTS[how.value as keyof typeof COUNTS]?.includes(I.count) ? String(I.count) : 'c') : how.value === 'installment' ? '6' : '3')
 const countCustom = ref<number | ''>(I && countSel.value === 'c' && how.value !== 'lump' ? I.count : '')
 const feeOn = ref((I?.fee ?? 0) > 0)
 const fee = ref<number | ''>(I && I.fee > 0 ? I.fee : '')
