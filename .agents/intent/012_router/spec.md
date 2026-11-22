@@ -121,6 +121,8 @@ summary_for_user: |
 - A-5 (2026-11-22, W-1, 리뷰 1 F-3) 경로를 대소문자 구분(`sensitive: true`) · vue-router 기본은 구분 안 함이라 `/spend/SUBS`가 일반 탭을 보이면서 구독 추가 창을 나중에 엶. 해시 주소도 구분했음(`#SPEND` → 현황). `/spend/SUBS`는 기본 탭, `/PAY`는 `/`로. **새 제한(이 브랜치에만 있던 대문자 주소를 다른 화면으로 보냄)이라 커밋 전에 물었어야 함 — 사후 확인 요청** · 1ad999a
 - A-6 (2026-11-22, W-3, 리뷰 1 F-4) `?add`를 키 `add` 뒤에 단어 문자가 없는 모든 키로(`add`, `add=1`, `add-x`) · 예전 정규식 `[?&]add\b`가 받던 형태 · bf1179c
 - A-7 (2026-11-22, V-5) 기준 이미지는 `ghcr.io/bluenyang/allot:0.1.5-rc.1`(로컬에 :0.1.5가 없음, CHANGELOG "Same code as 0.1.5-rc.1"), 테스트는 master 70cf134 worktree. `redesign.spec`은 serial이라 앞 실패 뒤가 안 돌아 그 뒤 시험은 줄 번호로 따로 돌림. 기준 실패: auth:105(Dex), payroll:113, redesign:451(휴대폰 더보기), redesign:479(토요일 색). 건너뜀 3개(Dex)
+- A-8 (2026-11-22, W-7, V-5) 열린 페이지가 다음에 하는 일을 보는 시험은 `page.goto` 대신 사이드바 링크로 앱 안에서 이동(`tests/e2e/helpers.ts` `menu`) · 해시 `goto`는 같은 문서 안의 이동이었고 새 주소 `goto`는 페이지를 새로 불러옴. zz-account-switch:45는 자기 `/api/state` 붙잡기가 첫 로딩을 잡아 멈췄고, api-keys "늦은 응답"(A-21)은 KeepAlive 없이 지나가 아무것도 증명하지 못했음. 뒤이어 `menu`는 이름 앞부분으로 찾고(대기 건수 배지), 늦은 응답 시험은 창이 열린 채라 사이드바 대신 열린 탭에 주소(`#home`)를 넣어 떠남 · a171204, 다음 커밋
+- A-9 (2026-11-22, W-6) api-keys:46이 찾는 문구를 0.1.11로 · W-6에서 화면 문구를 밀 때 빠뜨림. 브랜치 E2E에서 드러남 · 5e5e8a3
 
 ## 우려
 - vue-router의 `history.state`: 앱이 아닌 코드가 `history.replaceState(null, …)`를 부르면 뒤로 가기 스크롤 위치·경고가 생긴다. 지금 두 곳(`Spending.vue` checkAdd, `auth-ui.ts`)뿐이고 W-3·W-4에서 고친다. 새로 생기지 않게 리뷰에서 `replaceState`·`pushState`·`location.hash`를 grep한다.
