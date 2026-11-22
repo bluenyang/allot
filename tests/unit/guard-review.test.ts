@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 // @ts-expect-error plain .mjs without types
@@ -162,8 +162,10 @@ test('recordFile: feat/a and feat__a do not collide', () => {
   assert.notEqual(recordFile('/p', 'feat/a'), recordFile('/p', 'feat__a'))
 })
 
-function setup() {
-  const root = mkdtempSync(join(tmpdir(), 'guard-review-'))
+// base: where the scratch repository goes (default: the system temp dir); tests added in retro 0.1.6 pass a folder under the worktree's .loctx/
+function setup(base: string = tmpdir()) {
+  mkdirSync(base, { recursive: true })
+  const root = mkdtempSync(join(base, 'guard-review-'))
   const dir = join(root, 'work')
   const origin = join(root, 'owner1', 'repo.git')
   const env = { ...gitFreeEnv(), CLAUDE_PROJECT_DIR: dir, GUARD_REVIEW_GH: join(root, 'fakegh') }
@@ -186,7 +188,9 @@ function setup() {
   const hook = (command: string | null, extra: Record<string, string> = {}) =>
     sh(dir, 'node', [script], JSON.stringify({ tool_input: command === null ? {} : { command } }), { ...env, ...extra })
   const commit = (n: string) => { writeFileSync(join(dir, 'a'), n); git('commit', '-q', '-am', n); return git('rev-parse', 'HEAD') }
-  return { root, dir, env, sh, git, hook, commit }
+  const review = join(root, 'review.md')
+  writeFileSync(review, '# review\nmodel: gpt-x\nno open findings\n')
+  return { root, dir, env, sh, git, hook, commit, review }
 }
 
 test('create: bare origin, local tip, remote tip and record', () => {
@@ -198,7 +202,7 @@ test('create: bare origin, local tip, remote tip and record', () => {
     t.git('push', '-q', 'origin', 'feat/x')
     assert.match(t.hook(create).stderr, /recorded none/)
     const first = t.git('rev-parse', 'HEAD')
-    assert.equal(t.sh(t.dir, 'node', [script, '--mark']).status, 0)
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark', '--review', t.review]).status, 0)
     assert.equal(t.hook(create).status, 0) // reviewed: from here only the named check can block
     for (const c of [
       'gh pr create --base master --head owner1:feat/x', 'gh pr create --head=feat/x', 'gh pr create -Hfeat/x', 'gh pr create -H feat/x',
@@ -227,7 +231,7 @@ test('create: branch on origin but not local is blocked by the local-branch chec
   const t = setup()
   try {
     t.git('push', '-q', 'origin', 'feat/x')
-    assert.equal(t.sh(t.dir, 'node', [script, '--mark']).status, 0) // reviewed, recorded at the remote tip
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark', '--review', t.review]).status, 0) // reviewed, recorded at the remote tip
     const create = 'gh pr create --head feat/x'
     assert.equal(t.hook(create).status, 0)
     t.git('checkout', '-q', '-b', 'other')
@@ -298,15 +302,66 @@ test('--mark: branch must exist, sha must be tip or ancestor', () => {
     writeFileSync(join(t.dir, 'b'), 'x'); t.git('add', 'b'); t.git('commit', '-q', '-m', 'orphan')
     const orphan = t.git('rev-parse', 'HEAD')
     t.git('checkout', '-q', 'feat/x')
-    assert.equal(t.sh(t.dir, 'node', [script, '--mark', 'feat/x', first]).status, 0) // ancestor
-    assert.equal(t.sh(t.dir, 'node', [script, '--mark', 'feat/x', orphan]).status, 1) // unrelated
-    assert.equal(t.sh(t.dir, 'node', [script, '--mark', 'nope']).status, 1) // no branch
-    assert.equal(t.sh(t.dir, 'node', [script, '--mark', 'feat/x', 'deadbeef']).status, 1)
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark', '--review', t.review, 'feat/x', first]).status, 0) // ancestor
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark', '--review', t.review, 'feat/x', orphan]).status, 1) // unrelated
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark', '--review', t.review, 'nope']).status, 1) // no branch
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark', '--review', t.review, 'feat/x', 'deadbeef']).status, 1)
     // feat/a and feat__a keep separate records
     t.git('branch', 'feat/a'); t.git('branch', 'feat__a', first)
-    assert.equal(t.sh(t.dir, 'node', [script, '--mark', 'feat/a']).status, 0)
-    assert.equal(t.sh(t.dir, 'node', [script, '--mark', 'feat__a']).status, 0)
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark', '--review', t.review, 'feat/a']).status, 0)
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark', '--review', t.review, 'feat__a']).status, 0)
     assert.notEqual(recordFile(t.dir, 'feat/a'), recordFile(t.dir, 'feat__a'))
+  } finally { rmSync(t.root, { recursive: true, force: true }) }
+})
+
+test('--mark: needs a review record with a model line, matching the delegation table when there is one', () => {
+  const t = setup(join(resolve('.'), '.loctx', 'scratch'))
+  try {
+    const mark = (...a: string[]) => t.sh(t.dir, 'node', [script, '--mark', ...a])
+    const head = t.git('rev-parse', 'HEAD')
+    const rec = recordFile(t.dir, 'feat/x')
+    const refused = mark()
+    assert.equal(refused.status, 1)
+    assert.match(refused.stderr, /pnpm review:mark --review <file>/)
+    assert.equal(mark('feat/x').status, 1) // the old form
+    assert.equal(mark('--review').status, 1)
+    assert.equal(mark('--review', join(t.root, 'missing.md')).status, 1)
+    const nomodel = join(t.root, 'nomodel.md')
+    writeFileSync(nomodel, '# review\nno model here\n')
+    assert.match(mark('--review', nomodel).stderr, /model: <name>/)
+    assert.throws(() => readFileSync(rec, 'utf8')) // nothing recorded by a refusal
+    // no personal table: any model name is accepted; the record is the SHA line, then the review line
+    assert.equal(mark('--review', t.review).status, 0)
+    assert.equal(readFileSync(rec, 'utf8'), `${head}\nreview: ${t.review}\n`)
+    assert.equal(t.hook('gh pr create --head feat/x').status, 2) // not on origin: the check still reads the SHA line only
+    t.git('push', '-q', 'origin', 'feat/x')
+    assert.equal(t.hook('gh pr create --head feat/x').status, 0)
+    // a personal table that names reviewers: the model must be one of them
+    mkdirSync(join(t.dir, '.loctx'), { recursive: true })
+    writeFileSync(join(t.dir, '.loctx', 'delegation.local.md'), '## Delegation\n\n| role | model | how |\n|---|---|---|\n| pl/code-reviewer | openai gpt-y | x |\n| implementer/code | claude gpt-x | x |\n')
+    const wrong = mark('--review', t.review)
+    assert.equal(wrong.status, 1)
+    assert.match(wrong.stderr, /gpt-x is not a pl\/code-reviewer/)
+    const ok = join(t.root, 'ok.md')
+    writeFileSync(ok, 'model: gpt-y\n')
+    assert.equal(mark('--review', ok).status, 0)
+    writeFileSync(ok, 'model: openai gpt-y\n')
+    assert.equal(mark('--review', ok).status, 0)
+    // several models in one cell: each entry counts, with its provider or without
+    writeFileSync(join(t.dir, '.loctx', 'delegation.local.md'), '| pl/code-reviewer | openai model-a, openai model-b | x |\n')
+    for (const m of ['model-a', 'openai model-a', 'model-b', 'openai model-b']) {
+      writeFileSync(ok, `model: ${m}\n`)
+      assert.equal(mark('--review', ok).status, 0, m)
+    }
+    writeFileSync(ok, 'model: model-c\n')
+    assert.equal(mark('--review', ok).status, 1)
+    // every model line counts: a listed one does not cover an unlisted one; the same model twice is fine
+    writeFileSync(ok, 'model: model-a\nmodel: model-c\n')
+    assert.equal(mark('--review', ok).status, 1)
+    writeFileSync(ok, 'model: model-c\nmodel: model-a\n')
+    assert.equal(mark('--review', ok).status, 1)
+    writeFileSync(ok, 'model: model-a\nmodel: openai model-a\n')
+    assert.equal(mark('--review', ok).status, 0)
   } finally { rmSync(t.root, { recursive: true, force: true }) }
 })
 
@@ -317,7 +372,7 @@ test('merge: fake gh (exact args) decides the head', () => {
     const out = (o: object) => ({ FAKE_GH_OUT: JSON.stringify(o) })
     const view = { headRefName: 'feat/x', headRefOid: head, isCrossRepository: false }
     assert.equal(t.hook('gh pr merge 24 --merge', out(view)).status, 2) // unreviewed
-    assert.equal(t.sh(t.dir, 'node', [script, '--mark']).status, 0)
+    assert.equal(t.sh(t.dir, 'node', [script, '--mark', '--review', t.review]).status, 0)
     assert.equal(t.hook('gh pr merge 24 --merge', out(view)).status, 0) // reviewed
     assert.equal(t.hook('gh pr merge 24 --merge --delete-branch', out(view)).status, 0)
     assert.equal(t.hook('gh pr "merge" 24', out(view)).status, 0) // quotes tokenise to merge: normal review check

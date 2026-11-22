@@ -5,7 +5,10 @@
 //
 // Record: .loctx/reviews/<branch>.sha (`/` in the branch becomes `__`), the full SHA of the last
 // reviewed commit. Write it after a review with no open findings:
-//   node scripts/guard-review.mjs --mark [<branch> [<sha>]]     (pnpm review:mark)
+//   node scripts/guard-review.mjs --mark --review <file> [<branch> [<sha>]]     (pnpm review:mark)
+// <file> is the review record: it must hold a line `model: <name>`, and when .loctx/delegation.local.md
+// names pl/code-reviewer or pl/doc-reviewer models, <name> must be one of them. The record keeps the
+// SHA on its first line and `review: <file>` on its second.
 //
 // Activate the hook in .claude/settings.json (the user's file; the agent never edits settings):
 //   { "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [
@@ -14,8 +17,8 @@
 // Exit 2 blocks the call and shows the reason to the agent; exit 0 lets it run.
 // Self-test: node scripts/guard-review.mjs --test
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PH, parseShell } from './shell-words.mjs'
 
@@ -259,25 +262,51 @@ function projectDir() {
 }
 
 function readRecord(dir, branch) {
-  try { return readFileSync(recordFile(dir, branch), 'utf8').trim() || null } catch { return null }
+  try { return readFileSync(recordFile(dir, branch), 'utf8').split('\n')[0].trim() || null } catch { return null }
 }
 
 function fail(msg) { console.error(`guard-review: ${msg}`); process.exit(1) }
 
+const MARK_FORM = 'pnpm review:mark --review <file> [<branch>] [<commit>]'
+
+/** Models the personal delegation table names for the review roles (pl/code-reviewer, pl/doc-reviewer), or null. */
+export function reviewerModels(text) {
+  const names = []
+  for (const line of String(text).split('\n')) {
+    const cells = line.split('|').map((c) => c.trim())
+    if (cells.length < 3 || !/^pl\/(code|doc)-reviewer$/.test(cells[1])) continue
+    for (const entry of cells[2].split(',').map((e) => e.trim()).filter(Boolean)) names.push(entry, entry.split(/\s+/).pop())
+  }
+  return names.length ? names : null
+}
+
 function mark(args) {
+  const i = args.indexOf('--review')
+  if (i < 0 || !args[i + 1] || args[i + 1].startsWith('--')) fail(`a review record is required: ${MARK_FORM}`)
+  const review = args[i + 1]
+  const rest = args.filter((_, k) => k !== i && k !== i + 1)
   const dir = projectDir()
-  const branch = args[0] || git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')
+  const reviewPath = resolve(process.cwd(), review)
+  if (!existsSync(reviewPath) || !statSync(reviewPath).isFile()) fail(`review record ${review} does not exist (${MARK_FORM})`)
+  const models = [...readFileSync(reviewPath, 'utf8').matchAll(/^model:[ \t]*(\S.*?)[ \t]*$/gm)].map((m) => m[1])
+  const model = models.join(', ')
+  if (models.length === 0) fail(`review record ${review} has no \`model: <name>\` line (${MARK_FORM})`)
+  let table = null
+  try { table = reviewerModels(readFileSync(join(dir, '.loctx', 'delegation.local.md'), 'utf8')) } catch { /* no personal table */ }
+  const unlisted = table ? models.find((m) => !table.includes(m)) : undefined
+  if (unlisted) fail(`review record model ${unlisted} is not a pl/code-reviewer or pl/doc-reviewer model of .loctx/delegation.local.md (${[...new Set(table)].join(', ')})`)
+  const branch = rest[0] || git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')
   let tip
   try { tip = git(dir, 'rev-parse', '--verify', `refs/heads/${branch}^{commit}`) } catch { fail(`no local branch ${branch}`) }
   let sha = tip
-  if (args[1]) {
-    try { sha = git(dir, 'rev-parse', '--verify', `${args[1]}^{commit}`) } catch { fail(`unknown commit ${args[1]}`) }
+  if (rest[1]) {
+    try { sha = git(dir, 'rev-parse', '--verify', `${rest[1]}^{commit}`) } catch { fail(`unknown commit ${rest[1]}`) }
     try { git(dir, 'merge-base', '--is-ancestor', sha, tip) } catch { fail(`${sha} is not the tip of ${branch} or one of its ancestors`) }
   }
   const file = recordFile(dir, branch)
   mkdirSync(join(dir, '.loctx', 'reviews'), { recursive: true })
-  writeFileSync(file, `${sha}\n`)
-  console.log(`guard-review: recorded ${sha} for ${branch} (${file})`)
+  writeFileSync(file, `${sha}\nreview: ${review}\n`)
+  console.log(`guard-review: recorded ${sha} for ${branch} (${file}), review ${review} by ${model}`)
 }
 
 function selfTest() {
@@ -300,6 +329,8 @@ function selfTest() {
   t('command words are candidates', ['git push x && gh pr merge 24', 'sh -c "gh pr merge 24"', 'env GH_REPO=o/r gh pr create --head b', "gh pr $'\\155erge' 24"].map(cand), [true, true, true, true])
   t('equal allows', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'aaa', recorded: 'aaa' }), null)
   t('different blocks', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'bbb', recorded: 'aaa' }) !== null, true)
+  t('reviewer models', reviewerModels('| pl/code-reviewer | openai gpt-x | c |\n| implementer/code | claude y | c |\n| pl/doc-reviewer | claude z | c |'), ['openai gpt-x', 'gpt-x', 'claude z', 'z'])
+  t('several models in one cell', reviewerModels('| pl/code-reviewer | openai model-a, openai model-b | c |'), ['openai model-a', 'model-a', 'openai model-b', 'model-b'])
   t('collision-free path', recordFile('/p', 'feat/a') !== recordFile('/p', 'feat__a'), true)
   console.log(bad ? `${bad} FAILED` : 'all ok')
   process.exit(bad ? 1 : 0)

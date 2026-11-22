@@ -1,7 +1,8 @@
 // check-logs.mjs — verify that check logs are evidence: every step/cleanup block has exactly one rev line,
 // one "$ " command line (without any "|") and one exit= line, in that order, and ends with "=== end".
 // Lines starting with ">" are command output and are ignored.
-//   node scripts/check-logs.mjs <file|dir>...      (pnpm check:logs <file|dir>...)
+//   node scripts/check-logs.mjs [--revs] <file|dir>...      (pnpm check:logs [--revs] <file|dir>...)
+// --revs also prints one line per log: `<file> rev=<the rev values, unique> exit=<last exit= value>`.
 // Exit 0 only when nothing is reported. Logs come from scripts/check-run.sh.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -43,19 +44,35 @@ export function checkLog(text) {
   return problems
 }
 
+// The unique rev values (in order) and the last exit= value of one log's text (output lines are ignored).
+export function summarize(text) {
+  const revs = []
+  let exit = null
+  for (const l of text.split('\n')) {
+    if (l.startsWith('>')) continue
+    if (l.startsWith('rev ')) { const r = l.slice(4).trim(); if (!revs.includes(r)) revs.push(r) }
+    else if (/^exit=\d+$/.test(l)) exit = l.slice(5)
+  }
+  return { revs, exit }
+}
+
 function collect(path, out) {
   if (statSync(path).isDirectory()) {
     for (const e of readdirSync(path).sort()) collect(join(path, e), out)
   } else if (path.endsWith('.log') || out.explicit.has(path)) out.files.push(path)
 }
 
-function main(args) {
-  if (args.length === 0) { console.error('usage: node scripts/check-logs.mjs <file|dir>...'); return 2 }
+function main(argv) {
+  const showRevs = argv.includes('--revs')
+  const args = argv.filter((a) => a !== '--revs')
+  if (args.length === 0) { console.error('usage: node scripts/check-logs.mjs [--revs] <file|dir>...'); return 2 }
   const out = { files: [], explicit: new Set(args.filter((a) => !statSync(a).isDirectory())) }
   for (const a of args) collect(a, out)
   let bad = 0
   for (const f of out.files) {
-    for (const p of checkLog(readFileSync(f, 'utf8'))) { bad++; console.log(`${f}:${p.line}: ${p.problem}`) }
+    const text = readFileSync(f, 'utf8')
+    for (const p of checkLog(text)) { bad++; console.log(`${f}:${p.line}: ${p.problem}`) }
+    if (showRevs) { const { revs, exit } = summarize(text); console.log(`${f} rev=${revs.join(',')} exit=${exit ?? 'none'}`) }
   }
   console.log(`${out.files.length} log(s) checked, ${bad} problem(s)`)
   if (out.files.length === 0) { console.log('no .log file found: nothing was checked'); return 1 }
