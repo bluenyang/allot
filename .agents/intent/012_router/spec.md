@@ -9,6 +9,13 @@ approvals:
     words: "진행"
     rev: 3078489
     note: "요약의 PM 결정(첫 화면 JS +15kB, 모르는 경로는 /, 탭 없는 /spend·/settings는 기본 탭 주소, 버전 표기 밀기)을 이 진행으로 받음."
+  - role: user
+    kind: decision
+    by: BlueNyang
+    at: "2026-11-23"
+    words: "사후 승인"
+    rev: b0f299e
+    note: "A-5(경로 대소문자 구분, 1ad999a)를 사후 승인. 커밋 전에 묻지 않았음(첫 감사 비판 1). 같은 답에서 87a53e1의 두 원인 묶음은 '수용 (Recommended)'."
 summary_for_user: |
   주소에서 `#`를 뺍니다: `/spend/general`, `/settings/ai`처럼 지금 해시와 같은 이름이고, 첫 화면은 `/`(현황, `/home`도 `/`로)입니다. vue-router 4.6.5(history 모드, A-1: 처음엔 5.5.1) 하나를 정확한 버전으로 들입니다.
   예전 주소는 모두 같은 화면으로 이어 줍니다: `#home`·`#subs`·`#subs?add`·`#spend/<탭>?add`·`#settings/<탭>`·`#account` 등은 열 때나 주소창에서 바꿀 때 새 주소로 바뀌고(기록에 두 번 남지 않게 replace), `?error=` 같은 질의는 따라갑니다. 외부 로그인 연결은 이제 `/settings/security`로 돌아오고, 예전 `/#account`도 그대로 됩니다. 모바일 앱의 `#app-login`은 건드리지 않습니다.
