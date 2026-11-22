@@ -22,7 +22,8 @@ export async function reload(page: Page, hash: Parameters<typeof go>[1], tab?: s
  * is what an already open page does next uses this instead (spec 012 W-7).
  */
 export async function menu(page: Page, name: string) {
-  await page.locator('aside.side').getByRole('link', { name, exact: true }).click()
+  // the name starts the link's name: 대기 중인 변경 carries its count ("대기 중 1건")
+  await page.locator('aside.side').getByRole('link', { name: new RegExp(`^${name}`) }).first().click()
 }
 
 export const sheet = (page: Page, title: string | RegExp) => page.getByRole('form', { name: title })

@@ -231,7 +231,9 @@ test('keys: an answer that comes after the screen was left does not bring the ke
   })
   await s.getByRole('button', { name: '키 만들기', exact: true }).click()
   await wasSent
-  await menu(page, '현황') // leave the screen inside the app (it is kept alive)
+  // leave the screen inside the app while the dialog is open (it is kept alive): an address typed into
+  // the open tab, as before — the dialog hides the menu from a click
+  await page.evaluate(() => { location.hash = '#home' })
   await page.locator('header.ph h1').waitFor()
   release()
   await page.waitForTimeout(1500)
