@@ -421,7 +421,10 @@ async function writeMode() {
     { resource: 'living', action: 'update', data: LIV(111000) },
   ] })
   ok(!failedCall(pr1) && typeof pr1.data?.proposalId === 'string' && pr1.data.confirm === 'chat' && pr1.data.status === 'pending', `propose_changes → proposal ${pr1.data?.status} (${pr1.data?.confirm})`)
-  ok(pr1.data?.preview?.rows?.length === 2 && pr1.data.preview.months?.length === 2 && pr1.data.preview.months[0].transferKrw.after !== undefined, 'the preview has rows and two months of transfer and distribution')
+  // a fresh user has no living items yet: the old living resource makes the three coded ones (spec 013 S-2)
+  const pr1Rows = pr1.data?.preview?.rows ?? []
+  ok(pr1Rows.length === 4 && pr1Rows.filter((r) => r.table === 'living_item' && r.op === 'insert').length === 3 && pr1Rows.some((r) => r.table === 'subscription') && pr1.data.preview.months?.length === 2 && pr1.data.preview.months[0].transferKrw.after !== undefined,
+    `the preview has rows (${pr1Rows.map((r) => r.table)}) and two months of transfer and distribution`)
   ok(/user agrees/.test(pr1.data?.next ?? ''), 'a chat proposal tells the AI to show the preview and wait for the user')
   ok(JSON.stringify(await wState()) === s0 && (await wSets()).length === n0, 'the data and the history are unchanged after proposing')
   const cnt1 = await proposalCount(wId)
@@ -444,8 +447,9 @@ async function writeMode() {
   ok(failedCall(await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'checks', action: 'create', data: { text: 'x', done: false } }], force: true })), 'an extra top-level field is refused')
   ok(failedCall(await tool(kChat.key, 'get_proposal', { proposalId: 'x', extra: 1 })) && failedCall(await tool(kChat.key, 'apply_proposal', { proposalId: 'x', extra: 1 })) && failedCall(await tool(kChat.key, 'propose_revert', { changeSetId: 'x', extra: 1 })), 'extra fields are refused by the other three tools')
   ok(await proposalCount(wId) === cnt6, 'and no proposal was stored')
-  const acc = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'accounts', action: 'create', data: { name: 'x', role: '', inflow: '', outflow: '' } }] })
-  ok(failedCall(acc), 'accounts cannot be proposed')
+  // accounts are an AI resource since spec 013 S-10; debts are not
+  const debt = await tool(kChat.key, 'propose_changes', { changes: [{ resource: 'debts', action: 'create', data: { name: 'x', principal: 1, rate: '', method: '', plan: '' } }] })
+  ok(failedCall(debt) && await proposalCount(wId) === cnt6, 'debts cannot be proposed')
 
   // ── V-5: apply gives the preview's after ──
   const ap = await tool(kChat.key, 'apply_proposal', { proposalId: pr1.data.proposalId })
