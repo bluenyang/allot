@@ -192,9 +192,9 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
   server.registerTool('list_accounts', {
     title: 'Bank accounts, balances and cards',
     description: 'Every bank account with its fields (name, role, inflow, outflow, bank, last4, kind, rate, term, group, amount, ratio, from, stopFrom, buffer, goal, annualLimit, note), its balance records (date and amount, oldest first) and the last one, the projected balance month by month from this month for `months` months (no interest: from the last record, the transfers into it on the transfer day, buffer refills in on pay days, card bills paid from it out on billing days; null without a balance record), the month the projection first reaches its goal (null when it does not within 50 years, or without a goal or a record), this calendar year\'s contribution against its yearly limit (left, and state near = 90% or more, over = above it), the buffer gauge (its buffer, what buffer uses through its cards took and have not refilled yet, what is left), the allocation targets that send to it and the cards paid from it. Plus every card with its paying account and its billing day (null = the settings\' billing day; effectiveBillingDay is the day used).',
-    inputSchema: z.object({ months: z.number().int().min(1).max(24).optional().describe('how many months of projection, 1 to 24; default 12') }),
+    inputSchema: z.object({ months: z.number().int().optional().describe('how many months of projection; default 12 (fewer than 1 counts as 1, more than 120 as 120)') }),
     annotations: READ_ONLY,
-  }, guarded('list_accounts', async ({ months }) => json(accountList(await data(), today(), months ?? 12))))
+  }, guarded('list_accounts', async ({ months }) => json(accountList(await data(), today(), Math.min(120, Math.max(1, months ?? 12))))))
 
   server.registerTool('get_schedule', {
     title: 'Schedule over several months',

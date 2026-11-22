@@ -54,7 +54,8 @@ const steps = computed(() => [t('budget.editor.stepBasic'), t('budget.editor.ste
 // ---------- step 1 ----------
 const kindPick = ref<ChipPick>(isNew ? { id: kinds[0]!.id, text: '' } : chipOf(props.initial!.kind, kinds, 'other'))
 // the typed text is kept while another chip is chosen, so going back to 기타 finds it again
-const pickKind = (id: string) => { kindPick.value = { id, text: kindPick.value.text } }
+// pressing the chosen chip again chooses none: the kind may be empty, as the API takes (review 1 F-14)
+const pickKind = (id: string) => { kindPick.value = { id: kindPick.value.id === id ? null : id, text: kindPick.value.text } }
 /** A stored pay method that is none of the chips: shown as one more chip so it is kept. */
 const extraMethod = props.initial?.payMethod && !methods.some((m) => m.label === props.initial!.payMethod) ? props.initial.payMethod : ''
 const methodChips = computed(() => [...methods.map((m) => m.label), ...(extraMethod ? [extraMethod] : [])])
