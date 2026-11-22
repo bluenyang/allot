@@ -116,6 +116,7 @@ summary_for_user: |
 <!-- - A-n (YYYY-MM-DD, W-n) 무엇을 · 왜 · 커밋 -->
 - A-1 (2026-11-22, W-1) vue-router 5.5.1 → 4.6.5 · 5.5.1은 파일 기반 라우팅 플러그인용 설치 의존성 16개(패키지 43개)를 가져오고 4.6.5는 `@vue/devtools-api` 하나, 쓰는 API는 같음. 둘 다 `pnpm audit --prod` 취약점 없음. 사용자 "그면 4.6.5 써." · W-1 커밋
 - A-2 (2026-11-22, W-1) 라우터 설치(`main.ts`)를 W-1에서 W-2로 옮김 · 라우터만 설치되고 셸이 아직 해시를 읽으면 catch-all 리다이렉트가 주소를 바꿔 한 커밋 안에서 두 방식이 섞임 · W-1 커밋
+- A-3 (2026-11-22, W-5) 단위 테스트는 `/api/*`가 앱(`index.html`)이 아님만 본다(JSON 404 본문은 아님) · DB 없이 부르면 API 미들웨어가 500을 냄. 404 JSON 본문은 실제 서버의 V-6에서 본다 · W-5 커밋
 
 ## 우려
 - vue-router의 `history.state`: 앱이 아닌 코드가 `history.replaceState(null, …)`를 부르면 뒤로 가기 스크롤 위치·경고가 생긴다. 지금 두 곳(`Spending.vue` checkAdd, `auth-ui.ts`)뿐이고 W-3·W-4에서 고친다. 새로 생기지 않게 리뷰에서 `replaceState`·`pushState`·`location.hash`를 grep한다.
