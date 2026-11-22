@@ -487,6 +487,22 @@ export function groupAt(group: BudgetGroup, accounts: Account[], phases: Phase[]
   return { group, mode, target, total: mode === 'ratio' ? ratioTotal : sum, rows, sum, ratioSum }
 }
 
+/**
+ * What a Savings / Investment item really gets in month `ym`: its item amount, but only while the menu has its
+ * target — without one, the salary split sends nothing to the items (the remainder keeps it; review 1 F-4).
+ */
+export function itemSent(acc: Account, st: Pick<MonthState, 'phases' | 'targets' | 'settings'> & { accounts?: Account[] }, ym: string): number {
+  if (!acc.group) return 0
+  const g = groupAt(acc.group, st.accounts ?? [acc], st.phases, st.targets, st.settings, ym)
+  return g.target ? (g.rows.find((r) => r.account.id === acc.id)?.amount ?? 0) : 0
+}
+
+/** Does the remainder target send to this account? Its money is the remainder after the month's spendings (review 1 F-9). */
+export const takesRemainder = (acc: Account, targets: AllocationTarget[]) => targets.some((t) => t.kind === 'remainder' && t.accountId === acc.id)
+
+/** Targets whose money a linked account receives as a transfer: not the Savings / Investment totals, whose money goes to their items (review 1 F-9). */
+export const sendsToLinked = (t: AllocationTarget) => t.kind !== 'saving' && t.kind !== 'invest'
+
 /** The billing day of a card spending: the card's own, else the settings' (S-13). */
 export const billingDayOf = (card: Pick<Card, 'billingDay'> | null | undefined, s: Pick<Settings, 'billingDay'>) => card?.billingDay ?? s.billingDay
 
@@ -518,15 +534,17 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
   const moves: Move[] = []
   const transfer = monthDay(ym, s.transferDay, s.dayShift ?? 'none', off).date
   if (acc.group) {
-    const row = groupAt(acc.group, st.accounts, st.phases, st.targets, s, ym).rows.find((r) => r.account.id === acc.id)
-    if (row?.amount) moves.push({ date: transfer, amount: row.amount })
+    const sent = itemSent(acc, st, ym)
+    if (sent) moves.push({ date: transfer, amount: sent })
   } else {
     const dist = monthMoney(st, ym).dist
     for (const r of dist.rows) {
       const t = st.targets.find((x) => x.id === r.key)
-      if (t?.accountId === acc.id && r.amount > 0) moves.push({ date: transfer, amount: r.amount })
+      if (t?.accountId === acc.id && sendsToLinked(t) && r.amount > 0) moves.push({ date: transfer, amount: r.amount })
     }
   }
+  // An account that takes the remainder gets it after the month's spendings: its card bills and refills are in it already.
+  if (takesRemainder(acc, st.targets)) return moves
   const cards = new Set(st.cards.filter((c) => c.accountId === acc.id).map((c) => c.id))
   for (const sp of st.spendings ?? []) {
     if (!sp.cardId || !cards.has(sp.cardId)) continue
@@ -656,10 +674,22 @@ export function goalAlerts(st: AccountState, today: string, off: ReadonlySet<str
   const out: GoalAlert[] = []
   for (const a of st.accounts) {
     if (a.goal === null || a.goal === undefined || a.stopFrom || a.goalAck === a.goal) continue
-    const month = goalMonth(a, st, off)
-    if (month && month <= now) out.push({ account: a, month, stopFrom: nextTransferYm(today, st.settings, off) })
+    const month = goalMonthBy(a, st, off, now)
+    if (month) out.push({ account: a, month, stopFrom: nextTransferYm(today, st.settings, off) })
   }
   return out
+}
+
+/** The goal month if it is `until` or earlier: projects only up to `until`, so the badge does not work out decades (review 1 F-15). */
+function goalMonthBy(acc: Account, st: AccountState, off: ReadonlySet<string>, until: string): string | null {
+  const rec = lastBalance(st.balances, acc.id)
+  if (acc.goal === null || acc.goal === undefined || !rec) return null
+  const from = rec.date.slice(0, 7)
+  if (rec.amount >= acc.goal) return from <= until ? from : null
+  if (from > until) return null
+  let n = 1
+  for (let ym = from; ym < until; ym = addYm(ym, 1)) n++
+  return (projectAccount(acc, st, off, from, n) ?? []).find((r) => r.end >= acc.goal!)?.ym ?? null
 }
 
 // ---------- one-off spending (spec 011 S-3..S-6) ----------
