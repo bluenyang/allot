@@ -330,12 +330,16 @@ export const ko = {
       subscriptions: '구독 필요 이체액을 올림 단위로 올림',
       fixed: '구간별 금액',
       remainder: '나머지 전부',
+      saving: '저축 상품 금액 합계',
+      invest: '투자 계좌 금액 합계',
     },
     allocKind: {
       living: '생활비 합계',
       subscriptions: '구독 이체액',
       fixed: '고정 금액',
       remainder: '나머지',
+      saving: '저축 합계',
+      invest: '투자 합계',
     },
   },
   calendar: {

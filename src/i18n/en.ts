@@ -330,12 +330,16 @@ export const en = {
       subscriptions: 'Needed subscription transfer, rounded up to the unit',
       fixed: 'Amount per phase',
       remainder: 'Everything that is left',
+      saving: 'Sum of the savings items',
+      invest: 'Sum of the investment accounts',
     },
     allocKind: {
       living: 'Living total',
       subscriptions: 'Subscription transfer',
       fixed: 'Fixed amount',
       remainder: 'Remainder',
+      saving: 'Savings total',
+      invest: 'Investment total',
     },
   },
   calendar: {
