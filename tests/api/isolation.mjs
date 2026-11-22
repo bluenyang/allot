@@ -1,4 +1,5 @@
-// API check for spec 005 V-5 and V-8 (h): one user cannot see or change another user's data.
+// API check for spec 005 V-5 and V-8 (h): one user cannot see or change another user's data; spec 013 V-4: also the
+// living items, the new account fields, balance records and cards.
 //   BASE=… ADMIN_EMAIL=… ADMIN_PASSWORD=… B_EMAIL=… B_PASSWORD=… node tests/api/isolation.mjs
 // A is the seeded account (has data); B is a second account with no data (tests/api/make-user.ts).
 // B's rows are removed at the end (in finally); its change history and the account stay, so run it on a
@@ -120,6 +121,54 @@ ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings
     ok(aSp?.amount === 1000 && aSp.rounds.length === 1 && aSp.rounds[0].state === 'left', "A's spending and its round are unchanged")
   } finally {
     if (aSpend.status === 201) ok((await A('DELETE', `/api/spendings/${aSpend.json.id}`)).status === 204, "A's test spending removed")
+  }
+  // spec 013 V-4: A's living item, account with the new fields, balance record and card are invisible to B and out of
+  // its reach; B cannot point a balance record or a card at A's account, or a spending at A's card. B's PUT /api/living
+  // (above) wrote B's own coded items, not A's.
+  ok(JSON.stringify((await A('GET', '/api/state')).json.livingItems) === JSON.stringify(aState.livingItems), "B's PUT /api/living left A's living items as they were")
+  const aMade = [] // [path, id], removed by A in the finally below
+  const aMake = async (path, body) => {
+    const r = await A('POST', path, body)
+    if (r.status === 201 && r.json?.id) aMade.push([path, r.json.id])
+    return r
+  }
+  try {
+    const aLi = await aMake('/api/living-items', { name: MARK, kind: '', payMethod: '', amount: 1000, from: null, note: '', amounts: {} })
+    const aAcc = await aMake('/api/accounts', { name: MARK, role: '', inflow: '', outflow: '', bank: 'b', last4: '1234', buffer: 50_000, goal: 1_000_000, annualLimit: null, group: 'saving', amount: 10_000, note: MARK })
+    const aBal = await aMake('/api/balances', { accountId: aAcc.json?.id, date: '2090-01-01', amount: 1000, note: MARK })
+    const aCard = await aMake('/api/cards', { name: MARK, last4: '', accountId: aAcc.json?.id, billingDay: 10, note: '' })
+    ok([aLi, aAcc, aBal, aCard].every((r) => r.status === 201), `A creates a living item, an account, a balance record and a card (${[aLi, aAcc, aBal, aCard].map((r) => r.status).join(',')})`)
+    const bSees = JSON.stringify((await B('GET', '/api/state')).json)
+    ok([aLi, aAcc, aBal, aCard].every((r) => !bSees.includes(r.json.id)), "B's state has none of them")
+    for (const [path, r, body] of [
+      ['/api/living-items', aLi, { name: MARK, kind: '', payMethod: '', amount: 1, from: null, amounts: {} }],
+      ['/api/accounts', aAcc, { name: MARK, role: '', inflow: '', outflow: '', buffer: 1, goal: 1 }],
+      ['/api/balances', aBal, { accountId: aAcc.json.id, date: '2090-01-01', amount: 1 }],
+      ['/api/cards', aCard, { name: MARK, last4: '', accountId: null, billingDay: null }],
+    ]) {
+      const put = await B('PUT', `${path}/${r.json.id}`, body)
+      const del = await B('DELETE', `${path}/${r.json.id}`)
+      ok(put.status === 404 && del.status === 404, `B PUT/DELETE ${path}/<A's id> → ${put.status}/${del.status} (want 404/404)`)
+    }
+    const bBal = track('/api/balances', await B('POST', '/api/balances', { accountId: aAcc.json.id, date: '2090-01-01', amount: 1, note: MARK }))
+    ok(bBal.status === 400, `B balance record on A's account → ${bBal.status} (want 400)`)
+    const bCard = track('/api/cards', await B('POST', '/api/cards', { name: MARK, last4: '', accountId: aAcc.json.id, billingDay: null }))
+    ok(bCard.status === 400, `B card paid from A's account → ${bCard.status} (want 400)`)
+    const bSpend = track('/api/spendings', await B('POST', '/api/spendings', { name: MARK, category: 'x', bought: '2090-01-10', amount: 1000, currency: 'KRW', fxRate: null, how: 'lump', payBy: 'card', count: 1, fee: 0, interval: null, cancelled: false,
+      cardId: aCard.json.id, rounds: [{ no: 1, date: '2090-02-10', amount: 1000, state: 'left', edited: false }] }))
+    ok(bSpend.status === 400, `B spending on A's card → ${bSpend.status} (want 400)`)
+    const bTgt = track('/api/targets', await B('POST', '/api/targets', { name: MARK, kind: 'fixed', accountId: aAcc.json.id }))
+    ok(bTgt.status === 400, `B target linked to A's account → ${bTgt.status} (want 400)`)
+    const aNow = (await A('GET', '/api/state')).json
+    const row = (list, r) => aNow[list].find((x) => x.id === r.json.id)
+    ok(row('livingItems', aLi)?.amount === 1000 && row('balances', aBal)?.amount === 1000 && row('cards', aCard)?.accountId === aAcc.json.id && row('cards', aCard)?.billingDay === 10
+      && row('accounts', aAcc)?.buffer === 50_000 && row('accounts', aAcc)?.goal === 1_000_000,
+      "A's living item, account, balance record and card are unchanged")
+  } finally {
+    for (const [path, id] of aMade.reverse()) {
+      const d = await A('DELETE', `${path}/${id}`)
+      ok(d.status === 204, `A's ${path} row removed → ${d.status}`)
+    }
   }
   const aSets = (await A('GET', '/api/changes?limit=200')).json
   const bSets = (await B('GET', '/api/changes?limit=200')).json
