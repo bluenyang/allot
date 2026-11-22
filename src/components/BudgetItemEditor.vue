@@ -61,7 +61,8 @@ const title = props.initial
 const steps = computed(() => [t(saving ? 'budget.editor.stepProduct' : 'budget.editor.stepAccount'), t('budget.editor.stepPay')])
 
 // ---------- step 1 ----------
-const kindPick = ref<ChipPick>(isNew ? { id: kinds[0]!.id, text: '' } : chipOf(props.initial!.kind, kinds, 'other'))
+// a new Investment item starts with no chip and presses the first one below (which fills its limit); pressing a chosen chip clears it
+const kindPick = ref<ChipPick>(isNew ? { id: saving ? kinds[0]!.id : null, text: '' } : chipOf(props.initial!.kind, kinds, 'other'))
 const limitFilled = ref('')
 function pickKind(id: string) {
   // the typed text is kept for a later 기타; pressing the chosen chip again chooses none (an empty kind, as the API takes; review 1 F-14)
