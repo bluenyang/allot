@@ -26,7 +26,7 @@ export async function sealNewAccountTokens<A extends { userId: string; providerI
  * account.update.before only sees the changed fields, not which row they belong to, so it
  * cannot pick the owner's key. Token updates are dropped instead of being written in clear:
  * the stored tokens stay those sealed when the account was linked. (Sign-in does not update
- * them: account.updateAccountOnSignIn is off.) 0.1.7, the first reader, decides on refresh.
+ * them: account.updateAccountOnSignIn is off.) 0.1.8, the first reader, decides on refresh.
  */
 export function dropTokenUpdates<D extends Record<string, unknown>>(data: D): D {
   const out: Record<string, unknown> = { ...data }
