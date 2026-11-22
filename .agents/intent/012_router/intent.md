@@ -2,9 +2,15 @@
 id: "012"
 slug: router
 version: 0.1.6
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-22"
+    words: "승인"
+    rev: c84ec84
+    note: "열린 질문 1(기준 E2E 실패 6개)은 '따로 (Recommended)', 2(새 주소 이름)는 '해시와 같은 이름 (Recommended)'으로 답함."
 waivers: []
 supersedes: null
 ---
