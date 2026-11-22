@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
-import { checkLog, hasPipe } from '../../scripts/check-logs.mjs'
+import { checkLog, hasPipe, summarize } from '../../scripts/check-logs.mjs'
 import { gitFreeEnv } from './git-env'
 
 const root = resolve(import.meta.dirname, '../..')
@@ -240,4 +240,18 @@ test('begin refuses a dangling symlink and /dev/null', () => {
     assert.equal(run.status, 64, target)
   }
   assert.equal(existsSync(join(dir, 'nowhere')), false)
+})
+
+test('--revs prints one line per log: unique revs and the last exit; without it the output is unchanged', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-logs-'))
+  const log = join(dir, 'a.log')
+  const step = (rev: string, exit: number) => ['=== step: s', `rev ${rev}`, 'date d', '$ true', '> rev fake', `exit=${exit}`, '=== end', ''].join('\n')
+  writeFileSync(log, ['# check t', '', step('aaa', 0), step('aaa', 0), step('bbb+uncommitted', 3), 'RESULT t: fail'].join('\n'))
+  const plain = spawnSync('node', [join(root, 'scripts/check-logs.mjs'), log], { encoding: 'utf8' })
+  const withRevs = spawnSync('node', [join(root, 'scripts/check-logs.mjs'), '--revs', log], { encoding: 'utf8' })
+  assert.equal(plain.status, 0)
+  assert.equal(withRevs.status, 0)
+  assert.equal(plain.stdout, '1 log(s) checked, 0 problem(s)\n')
+  assert.equal(withRevs.stdout, `${log} rev=aaa,bbb+uncommitted exit=3\n1 log(s) checked, 0 problem(s)\n`)
+  assert.deepEqual(summarize(readFileSync(log, 'utf8')), { revs: ['aaa', 'bbb+uncommitted'], exit: '3' })
 })

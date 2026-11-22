@@ -1,2 +1,3 @@
 export function hasPipe(cmd: string): boolean
 export function checkLog(text: string): { line: number; problem: string }[]
+export function summarize(text: string): { revs: string[]; exit: string | null }
