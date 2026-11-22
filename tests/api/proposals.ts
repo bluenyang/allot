@@ -325,6 +325,24 @@ try {
   const okRevert = await propose(A, kUi, { revertOf: allowedSet })
   ok((okRevert.preview as { rows: unknown[] }).rows.length === 1, 'a change set of allowed tables can still be reverted')
   await rejectProposal(A, okRevert.id)
+  // spec 013 S-10: accounts, balance records, cards and living items are AI resources, so their change sets can be reverted too
+  {
+    const accSet = await direct([{ resource: 'accounts', action: 'create', data: { name: 'rv-acc', role: '', inflow: '', outflow: '', group: 'saving', amount: 10_000, amounts: {} } }])
+    const acc = (await state(A)).accounts.find((x) => x.name === 'rv-acc')!
+    const restSet = await direct([
+      { resource: 'balances', action: 'create', data: { accountId: acc.id, date: '2031-01-01', amount: 1000 } },
+      { resource: 'cards', action: 'create', data: { name: 'rv-card', last4: '', accountId: acc.id, billingDay: null } },
+      { resource: 'living-items', action: 'create', data: { name: 'rv-item', kind: '', payMethod: '', amount: 1000, from: null, amounts: {} } },
+    ])
+    const r1 = await propose(A, kUi, { revertOf: restSet })
+    ok((r1.preview as { rows: { table: string }[] }).rows.map((r) => r.table).sort().join() === 'account_balance,card,living_item', 'a change set of a balance record, a card and a living item can be reverted')
+    await applyProposal(A, r1.id, { kind: 'user' })
+    const r2 = await propose(A, kUi, { revertOf: accSet })
+    await applyProposal(A, r2.id, { kind: 'user' })
+    const after = await state(A)
+    ok(!after.accounts.some((x) => x.name === 'rv-acc') && !after.cards.some((x) => x.name === 'rv-card') && !after.livingItems.some((x) => x.name === 'rv-item') && !after.balances.some((x) => x.accountId === acc.id),
+      'reverting them through proposals removes the account, its balance record, the card and the living item')
+  }
 
   // ── V-9: another user's proposal and change set ──
   const pa = await propose(A, kUi, { changes: [{ resource: 'living', action: 'update', data: living(400_000) }] })
