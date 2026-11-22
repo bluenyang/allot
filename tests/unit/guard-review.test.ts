@@ -114,6 +114,30 @@ test('isCandidate: data that flows into an executor, or a data command with an e
     'git commit --template "gh pr merge 1" -m x', 'gh pr view 1 --web "gh pr merge 1"', 'gh pr edit 1 -F f "gh pr merge 1"', 'cat -x "gh pr merge 1"', 'echo "gh pr merge 1" && rg -z --pre sh x f',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
 })
+test('isCandidate: bodies that may run, and real PR commands around a body, are still candidates', () => {
+  for (const c of [
+    "python3 - <<'EOF'\nx = 'gh pr merge 24'\n", // never terminated: the body runs to the end of the text
+    'cat <<EOF\n$(gh pr merge 24)\nEOF', // unquoted: the substitution runs
+    'cat <<EOF\n`gh pr merge 24`\nEOF',
+    "cat > f <<'EOF'\necho hi\nEOF\ngh pr merge 24",
+    "gh pr merge 24 && cat > f <<'EOF'\necho hi\nEOF",
+    "cat > f <<'EOF' && gh pr create --head x\necho hi\nEOF",
+    "cat > f <<'EOF'\ngh pr merge 24\nEOF\nsh f",
+    "cat > f <<'EOF'\ngh pr merge 24\nEOF\n./f",
+    "cat > f <<'EOF'\ngh pr merge 24\nEOF\npython3 f",
+    "cat <<'EOF' | sh\ngh pr merge 24\nEOF",
+    "bash <<'EOF'\ngh pr merge 24\nEOF",
+    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run('gh pr merge 24', shell=True)\nEOF",
+    "python3 - <<'EOF'\nx = 'gh pr create'\nEOF\npython3 - <<'EOF'\nimport os\nos.system('gh pr merge 1')\nEOF",
+    "python3 - <<EOF\nx = '$(gh pr merge 1)'\nEOF",
+  ]) assert.equal(isCandidate(asInput(c)), true, c)
+})
+test('isCandidate: gh pr edit <n> --body-file <f> passes this guard; chained with a PR operation it does not (retro 0.1.5 R4)', () => {
+  for (const c of ['gh pr edit 38 --body-file /tmp/x/body.md', 'gh pr edit 38 --body-file=/tmp/x/body.md', 'gh pr edit 38 --title t --body-file f'])
+    assert.equal(isCandidate(asInput(c)), false, c)
+  for (const c of ['gh pr edit 38 --body-file f; gh pr merge 38', 'gh pr edit 38 --body-file f && gh pr create --head x'])
+    assert.equal(isCandidate(asInput(c)), true, c)
+})
 test('isCandidate: fails closed on input the parser cannot take', () => {
   const deep = '$('.repeat(20000) + 'gh pr merge 1' + ')'.repeat(20000)
   assert.equal(isCandidate(asInput(deep)), true)
