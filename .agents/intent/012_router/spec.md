@@ -10,7 +10,7 @@ approvals:
     rev: 3078489
     note: "요약의 PM 결정(첫 화면 JS +15kB, 모르는 경로는 /, 탭 없는 /spend·/settings는 기본 탭 주소, 버전 표기 밀기)을 이 진행으로 받음."
 summary_for_user: |
-  주소에서 `#`를 뺍니다: `/spend/general`, `/settings/ai`처럼 지금 해시와 같은 이름이고, 첫 화면은 `/`(현황, `/home`도 `/`로)입니다. vue-router 5.5.1(history 모드) 하나를 정확한 버전으로 들입니다.
+  주소에서 `#`를 뺍니다: `/spend/general`, `/settings/ai`처럼 지금 해시와 같은 이름이고, 첫 화면은 `/`(현황, `/home`도 `/`로)입니다. vue-router 4.6.5(history 모드, A-1: 처음엔 5.5.1) 하나를 정확한 버전으로 들입니다.
   예전 주소는 모두 같은 화면으로 이어 줍니다: `#home`·`#subs`·`#subs?add`·`#spend/<탭>?add`·`#settings/<탭>`·`#account` 등은 열 때나 주소창에서 바꿀 때 새 주소로 바뀌고(기록에 두 번 남지 않게 replace), `?error=` 같은 질의는 따라갑니다. 외부 로그인 연결은 이제 `/settings/security`로 돌아오고, 예전 `/#account`도 그대로 됩니다. 모바일 앱의 `#app-login`은 건드리지 않습니다.
   화면·저장·KeepAlive 상태 유지·탭 떠날 때 편집기 닫기·지연 로드와 불러오기 실패 안내·스크롤 맨 위·뒤로/앞으로는 지금과 같게 둡니다. 서버는 API가 아닌 경로에 앱을 돌려주는 처리가 이미 있어 단위 테스트로 굳히기만 합니다.
   PM 결정: 첫 화면 JS 증가 한도 +15 kB(gzip, 0.1.5와 같음), 모르는 경로는 현황으로, 탭이 없거나 틀린 `/spend`·`/settings`는 기본 탭 주소로. 버전 표기 밀기(0.1.10→0.1.11 등)도 넣습니다.
@@ -68,7 +68,7 @@ summary_for_user: |
   - README 145줄의 "`#subs` 같은 예전 주소"는 새 주소와 예전 주소 둘 다 적게 고친다.
 
 ## 설계
-- 의존성: `vue-router@5.5.1`(2026-11-13 공개, `pnpm add -E`). `allowBuilds` 필요 없음(빌드 스크립트 없음 — 설치 때 확인).
+- 의존성: `vue-router@4.6.5`(2026-11-13 공개, `pnpm add -E`; A-1 — 처음 적은 5.5.1에서 바꿈). `allowBuilds` 필요 없음(빌드 스크립트 없음).
 - `src/router.ts`: `createRouter({ history: createWebHistory(), routes, scrollBehavior })`. 경로마다 `meta.page`(KeepAlive 키, 메뉴 선택 표시)와 `props`(설정·지출은 `{ sub: params.tab }`). 경로 컴포넌트는 `App.vue`에 있던 `PAGES` 표를 옮긴 것(현황만 첫 묶음, 나머지 `lazyPage`).
   - `/spend/:tab(general|inst|subs)`, `/spend/:rest(.*)*` → `/spend/general`; 설정도 같은 모양.
   - `/home` → `/`, `/:rest(.*)*` → `/`.
@@ -81,7 +81,7 @@ summary_for_user: |
 - 마이그레이션 없음. API·데이터 변경 없음.
 
 ## 작업 단위
-- [ ] W-1 라우터 기반: `vue-router` 추가(`package.json`·`pnpm-lock.yaml` 같은 커밋), `src/lib/old-hash.ts`+단위 테스트, `src/router.ts`, `main.ts` 설치. 이 커밋만으로도 앱은 지금처럼 해시로 돈다(App.vue는 아직 해시를 읽음 — 라우터의 넘기기는 W-2와 함께 켠다: `beforeEach`는 W-2 커밋에서 연결).
+- [ ] W-1 라우터 기반: `vue-router` 추가(`package.json`·`pnpm-lock.yaml` 같은 커밋), `src/lib/old-hash.ts`+단위 테스트, `src/router.ts`(경로·`beforeEach`). 설치(`main.ts`)는 W-2(A-2). 이 커밋만으로는 앱이 지금처럼 해시로 돈다.
 - [ ] W-2 셸: `App.vue`를 `RouterView`+`KeepAlive`, `RouterLink`로. `beforeEach` 넘기기 연결. S-1·S-2·S-4(셸 부분).
 - [ ] W-3 페이지 안 주소: `Settings.vue`·`Spending.vue`(탭 `router.push`, `?add`를 `route.query`로 S-3)·`Payroll.vue`·`AddRecordModal.vue`·`MoreSheet.vue`와 `href="#…"`가 있는 모든 곳(`Dashboard`·`Pending`·`History`·`SettingsTheme`·`SpendGeneral`·`Account`의 관리 링크)을 `RouterLink`/`router.push`로. S-3·S-4.
 - [ ] W-4 로그인 돌아오기: `Account.vue` 연결 돌아오기 `/settings/security`, `takeErrorFromUrl`이 `history.state`를 지키게. S-5.
@@ -114,7 +114,8 @@ summary_for_user: |
 
 ## 조정 기록
 <!-- - A-n (YYYY-MM-DD, W-n) 무엇을 · 왜 · 커밋 -->
-—
+- A-1 (2026-11-22, W-1) vue-router 5.5.1 → 4.6.5 · 5.5.1은 파일 기반 라우팅 플러그인용 설치 의존성 16개(패키지 43개)를 가져오고 4.6.5는 `@vue/devtools-api` 하나, 쓰는 API는 같음. 둘 다 `pnpm audit --prod` 취약점 없음. 사용자 "그면 4.6.5 써." · W-1 커밋
+- A-2 (2026-11-22, W-1) 라우터 설치(`main.ts`)를 W-1에서 W-2로 옮김 · 라우터만 설치되고 셸이 아직 해시를 읽으면 catch-all 리다이렉트가 주소를 바꿔 한 커밋 안에서 두 방식이 섞임 · W-1 커밋
 
 ## 우려
 - vue-router의 `history.state`: 앱이 아닌 코드가 `history.replaceState(null, …)`를 부르면 뒤로 가기 스크롤 위치·경고가 생긴다. 지금 두 곳(`Spending.vue` checkAdd, `auth-ui.ts`)뿐이고 W-3·W-4에서 고친다. 새로 생기지 않게 리뷰에서 `replaceState`·`pushState`·`location.hash`를 grep한다.
