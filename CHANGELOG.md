@@ -2,7 +2,7 @@
 
 ## 0.1.6 — 2026-11-23
 
-Released without a release candidate, on the user's instruction ("rc.1 없이 stable"). The stable image is checked on the test server after the release (spec 012 V-8 is checked on it).
+Released without a release candidate, on the user's instruction ("rc.1 없이 stable"). The stable image will be checked on the test server after the release (spec 012 V-8, pending).
 
 Addresses without `#`. Intent 012 (`.agents/intent/012_router/`). No database or API change.
 
