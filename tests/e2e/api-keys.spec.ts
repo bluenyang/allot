@@ -234,7 +234,8 @@ test('keys: an answer that comes after the screen was left does not bring the ke
   // leave the screen inside the app while the dialog is open (it is kept alive): an address typed into
   // the open tab, as before — the dialog hides the menu from a click
   await page.evaluate(() => { location.hash = '#home' })
-  await page.locator('header.ph h1').waitFor()
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/') // the router has left the screen (review 2)
+  await page.getByRole('tab', { name: '이번 달' }).waitFor()
   release()
   await page.waitForTimeout(1500)
   await menu(page, '설정')
