@@ -26,6 +26,11 @@ const mon = (d: string) => monthShort(Number(d.slice(5, 7)))
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
 const orig = (s: Spending) => (s.currency === 'USD' ? `USD ${s.amount.toFixed(2)}` : `KRW ${num(s.amount)}`)
 const payName = (p: PayBy) => t(`spending.gen.pay.${p}` as 'spending.gen.pay.card')
+/** A card lump sum names its card when it has one (spec 013 S-13). */
+const cardLump = (s: Spending) => {
+  const c = s.cardId ? store.cards.find((x) => x.id === s.cardId) : undefined
+  return c ? t('spending.gen.cardLumpNamed', { card: c.name + (c.last4 ? ` ${c.last4}` : '') }) : t('spending.gen.pay.cardLump')
+}
 
 const rows = computed(() =>
   general.value.map((s) => {
@@ -38,7 +43,7 @@ const rows = computed(() =>
       : s.payBy === 'subs' ? t('spending.gen.where.subs') : t('spending.gen.where.salary')
     return {
       s, st, krw: krw(s), orig: orig(s), where, month: counted ? mon(r!.date) : '—', rym: r?.date.slice(0, 7) ?? '',
-      pay: s.payBy === 'card' ? t('spending.gen.pay.cardLump') : payName(s.payBy),
+      pay: s.payBy === 'card' ? cardLump(s) : payName(s.payBy),
     }
   }).sort((a, b) => (a.s.bought < b.s.bought ? -1 : a.s.bought > b.s.bought ? 1 : a.s.name.localeCompare(b.s.name))),
 )

@@ -3,8 +3,9 @@ import { computed, ref } from 'vue'
 import { t } from '../i18n'
 import { store, upsertSpending } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
+import { offDays } from '../lib/holidays-lazy'
 import { monthShort } from '../lib/format'
-import { addYm, spendingIn, spendingKrw, today, ymLabel, ymOf } from '../lib/calc'
+import { addYm, billingDayOf, cardBillDate, spendingIn, spendingKrw, today, ymLabel, ymOf } from '../lib/calc'
 import type { PayBy, Spending, SpendingRound } from '../data/types'
 import ConfirmDialog from './ConfirmDialog.vue'
 import PayOffDialog from './PayOffDialog.vue'
@@ -18,11 +19,18 @@ import SpendEditor from './SpendEditor.vue'
 // from the store through calc.ts: the month sums by `spendingIn`, the principal by `spendingKrw`. A change to a
 // round, an early payoff and a cancel are each one `upsertSpending` of the whole spending (its rounds travel in
 // the body); the editors are RoundEditor and PayOffDialog. The whole-spending editor is SpendEditor (W-7).
+// A buffer use (spec 013 S-8) is listed here too: its rounds are the refills, taken off the remainder of their months.
 const ym = ymOf(today())
 const mon = (d: string) => monthShort(Number(d.slice(5, 7)))
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
 const ymText = (d: string) => ymLabel(d.slice(0, 7)).replace('.', '. ')
 const payName = (p: PayBy) => t(`spending.gen.pay.${p}` as 'spending.gen.pay.card')
+/** The card bill date of a buffer use (its note): the billing day of the month after the purchase, moved for holidays as the editor does. */
+function billOf(s: Spending, day: number) {
+  const ym = addYm(s.bought.slice(0, 7), 1)
+  const off = (store.settings.dayShift ?? 'none') === 'none' ? new Set<string>() : offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 2)}-01`) ?? new Set<string>()
+  return cardBillDate(s.bought, day, store.settings, off)
+}
 
 const inst = computed(() => store.spendings.filter((s) => s.how !== 'lump'))
 /** The KRW principal as it was fixed when the spending was saved: its own rate and buffer, never today's settings (S-3). */
@@ -54,7 +62,7 @@ const howOpts = computed(() => [
   { value: '', label: t('spending.inst.how.all') },
   { value: 'installment', label: t('spending.inst.how.installment') },
   { value: 'split', label: t('spending.inst.how.split') },
-  { value: 'buffer', label: `${t('spending.inst.how.buffer')} (${t('common.soon')})`, disabled: true }, // 0.1.7
+  { value: 'buffer', label: t('spending.inst.how.buffer') },
 ])
 const shown = computed(() => items.value
   .filter((i) => inStatus(i, status.value) && (!how.value || i.s.how === how.value))
@@ -85,8 +93,10 @@ const list = computed(() => shown.value.map(row))
 const k1 = computed(() => {
   const on = items.value.filter((i) => i.active)
   const card = on.filter((i) => i.s.how === 'installment').length
+  const buffer = on.filter((i) => i.s.how === 'buffer').length
   return {
-    n: on.length, left: on.reduce((a, i) => a + i.leftSum, 0), sub: t('spending.inst.k1Sub', { card, split: on.length - card }),
+    n: on.length, left: on.reduce((a, i) => a + i.leftSum, 0),
+    sub: t('spending.inst.k1Sub', { card, split: on.length - card - buffer }) + (buffer ? t('spending.inst.k1SubBuffer', { n: buffer }) : ''),
     progs: on.map((i) => ({ label: t('spending.inst.progLabel', { name: i.s.name, done: i.paidN, n: i.n }), v: i.leftSum, w: i.n ? (i.paidN / i.n) * 100 : 0 })),
   }
 })
@@ -121,7 +131,7 @@ const d = computed(() => {
   const i = sel.value
   if (!i) return null
   const s = i.s
-  const totalSub = s.how === 'split' ? t('spending.inst.totalSplit') : s.fee > 0 ? t('spending.inst.totalFee', { p: fmtMoney(totalOf(s) - s.fee), f: fmtMoney(s.fee) }) : t('spending.inst.totalFree')
+  const totalSub = s.how === 'split' ? t('spending.inst.totalSplit') : s.how === 'buffer' ? t('spending.inst.totalBuffer') : s.fee > 0 ? t('spending.inst.totalFee', { p: fmtMoney(totalOf(s) - s.fee), f: fmtMoney(s.fee) }) : t('spending.inst.totalFree')
   const orig = s.rounds.filter((r) => r.no <= s.count).sort((a, b) => a.no - b.no)
   // the per-round amount is the first round that is neither edited nor the last (the last takes the odd won); with none, the first round
   const lastO = orig[orig.length - 1]
@@ -139,14 +149,28 @@ const d = computed(() => {
   const per = s.how === 'split'
     ? { monthly: t('spending.inst.interval.monthly', { day: Number(s.rounds[0]?.date.slice(8, 10) ?? 1) }), biweekly: t('spending.inst.interval.biweekly'), custom: t('spending.inst.interval.custom') }[s.interval ?? 'monthly']
     : ''
-  const pay = s.payBy === 'card' ? t('spending.inst.pay.card', { day: store.settings.billingDay }) : `${t(`spending.inst.pay.${s.payBy}` as 'spending.inst.pay.salary')}${per ? ` · ${per}` : ''}`
+  // the card (spec 013 S-13): a chosen one names itself and its billing day; a buffer use names the account whose buffer pays
+  const card = s.cardId ? store.cards.find((c) => c.id === s.cardId) ?? null : null
+  const acc = card?.accountId ? store.accounts.find((a) => a.id === card.accountId) ?? null : null
+  const cardLabel = card ? card.name + (card.last4 ? ` ${card.last4}` : '') : t('spending.gen.pay.card')
+  const pay = s.how === 'buffer'
+    ? (acc ? t('spending.inst.payBuffer', { card: cardLabel, account: acc.name, buffer: fmtMoney(acc.buffer ?? 0) }) : t('spending.inst.payBufferNone', { card: cardLabel }))
+    : s.payBy === 'card'
+      ? (card ? t('spending.inst.payCardNamed', { card: cardLabel, day: billingDayOf(card, store.settings) }) : t('spending.inst.pay.card', { day: store.settings.billingDay }))
+      : `${t(`spending.inst.pay.${s.payBy}` as 'spending.inst.pay.salary')}${per ? ` · ${per}` : ''}`
+  const where = s.how === 'buffer' ? t('spending.inst.whereBuffer', { account: acc?.name ?? '—' }) : t(`spending.inst.where.${s.payBy}` as 'spending.inst.where.card')
   // an edited round or an early payoff may leave the rounds adding up to something else than the total (S-4)
   const total = totalOf(s)
   const diff = s.rounds.some((r) => r.edited || r.state === 'merged') ? i.liveSum - total : 0
   const fee = s.how === 'installment' && s.fee > 0 ? s.fee : 0
   const rem = lastO && eachR ? lastO.amount - eachR.amount : 0
   const notes = [
-    s.cancelled ? t('spending.inst.noteCancelled') : i.done ? t('spending.inst.noteDone') : s.how === 'split' ? t('spending.inst.noteSplit') : t('spending.inst.noteCard'),
+    s.cancelled ? t('spending.inst.noteCancelled') : i.done ? t('spending.inst.noteDone') : s.how === 'split' ? t('spending.inst.noteSplit')
+    : s.how === 'buffer' ? t('spending.inst.noteBuffer', {
+      total: fmtMoney(total), date: md(billOf(s, billingDayOf(card, store.settings))), account: acc?.name ?? '—',
+      month: orig[0] ? mon(orig[0].date) : '—', each: fmtMoney(eachR?.amount ?? 0),
+    })
+    : t('spending.inst.noteCard'),
     ...(fee ? [t('spending.inst.noteFee', { fee: fmtMoney(fee), n: s.count })] : []),
     ...(!editedN && rem > 0 && s.how === 'installment' ? [t('spending.inst.noteRemainder', { amount: fmtMoney(rem) })] : []),
   ]
@@ -162,7 +186,7 @@ const d = computed(() => {
     sub: `${howText(s)} · ${t(s.how === 'split' ? 'spending.inst.boughtSplit' : 'spending.inst.bought', { date: fmtDate(s.bought) })}`,
     total: fmtMoney(total), totalSub, each: fmtMoney(eachR?.amount ?? 0), eachSub,
     paid: fmtMoney(i.paidSum), paidSub: i.paidN ? t('spending.inst.paidN', { n: i.paidN }) : i.left[0] ? t('spending.inst.paidFrom', { date: md(i.left[0].date) }) : '—',
-    left: fmtMoney(leftSum), leftSub, pay, where: t(`spending.inst.where.${s.payBy}` as 'spending.inst.where.card'), notes, diff, rounds,
+    left: fmtMoney(leftSum), leftSub, pay, where, notes, diff, rounds,
     leftN: i.left.length,
   }
 })
