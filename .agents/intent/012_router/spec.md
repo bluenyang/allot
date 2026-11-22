@@ -134,6 +134,7 @@ summary_for_user: |
 - A-11 (2026-11-23, W-7, 리뷰 2) router.spec의 뒤로/앞으로 시험을 앱 안 이동으로, 스크롤한 페이지에서 · `goto` 두 번 뒤 뒤로 가기는 문서를 넘나들어 라우터의 popstate·`scrollBehavior`를 거치지 않았고, 스크롤하지 않은 쪽을 봐서 늘 통과했음 · 826d17a
 - A-12 (2026-11-23, W-7, 리뷰 2) 늦은 키 응답 시험이 주소가 `/`가 된 뒤에 응답을 풀게 · 기다리던 `header.ph h1`은 설정 화면에도 있어 기다림이 없었음 · a99569f
 - A-13 (2026-11-23, W-1, 리뷰 3 F-1) `fromOldHash`가 디코딩하지 않은 해시를 받게(라우터가 `location.hash` 원문을 넘김), 질의는 한 번만 디코딩, 원문이 예전 `add\b`에 맞으면 `add` 키를 보탬 · vue-router가 해시를 먼저 디코딩해서 `#subs?add%61`이 `adda`가 되어 창이 안 열리고 `#settings/ai?x=a%26b`가 키 둘로 갈렸음(예전 `read()`·`checkAdd`는 원문을 봄) · 이 커밋
+- A-14 (2026-11-23, W-1, 리뷰 3 F-2) 모르는 해시(`#app-login…`과 빈 해시 말고)는 `{ path: '/', query }`로 · 예전 `read()`는 모르는 해시를 어느 페이지에서든 현황으로 보였는데, `null`이라 `/pay`에서 `location.hash = '#nope'`를 해도 월급 분배에 머물렀음 · 이 커밋
 
 ## 우려
 - vue-router의 `history.state`: 앱이 아닌 코드가 `history.replaceState(null, …)`를 부르면 뒤로 가기 스크롤 위치·경고가 생긴다. 지금 두 곳(`Spending.vue` checkAdd, `auth-ui.ts`)뿐이고 W-3·W-4에서 고친다. 새로 생기지 않게 리뷰에서 `replaceState`·`pushState`·`location.hash`를 grep한다.

@@ -29,7 +29,7 @@ const OLD: [string, string, string | RegExp, string | RegExp | null][] = [
   ['#settings/nope', '/settings/general', '설정', '일반'],
   ['#account', '/settings/security', '설정', '로그인·보안'],
   ['#admin', '/admin', '관리', null],
-  ['#nope', '/#nope', /현황$/, null], // not an old app address: left alone, the overview as before
+  ['#nope', '/', /현황$/, null], // not an old app address: the overview as before
 ]
 
 const pathOf = (page: Page) => { const u = new URL(page.url()); return u.pathname + u.search + u.hash }
@@ -59,6 +59,14 @@ test('(S-2) an old hash typed on a new address is replaced too', async ({ page }
   await expect(tab(page, 'AI·연동')).toHaveAttribute('aria-selected', 'true')
   await page.goBack()
   await expect.poll(() => pathOf(page)).toBe('/pay')
+})
+
+test('(S-1) an unknown hash typed on another page shows the overview, as 0.1.5 did', async ({ page }) => {
+  await page.goto('/pay')
+  await expect(h1(page)).toHaveText('월급 분배')
+  await page.evaluate(() => { location.hash = '#nope' })
+  await expect.poll(() => pathOf(page)).toBe('/')
+  await expect(page.locator('header.ph h1')).toHaveText(/현황$/)
 })
 
 for (const [from, title] of [

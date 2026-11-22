@@ -4,8 +4,8 @@
 //
 // The hash is the raw one (as in `location.hash`, not decoded by the router): head and tab are
 // compared raw, the query is decoded once — as the 0.1.5 `read()` and `checkAdd` did.
-// A hash that is not an old app address — `#app-login?return=…` (the mobile app's sign-in, spec 006
-// S-6) or anything unknown — gives null and is left alone.
+// `#app-login?return=…` (the mobile app's sign-in, spec 006 S-6) and an empty hash give null and are
+// left alone; any other hash that is not an old app address shows the overview, as `read()` did.
 
 export interface NewAddress { path: string; query: Record<string, string | null> }
 
@@ -25,6 +25,7 @@ const RAW_ADD = /(^|&)add\b/
 
 export function fromOldHash(hash: string): NewAddress | null {
   if (!hash.startsWith('#')) return null
+  if (hash.startsWith('#app-login')) return null
   const body = hash.slice(1)
   const at = body.indexOf('?')
   const [head = '', sub = ''] = (at < 0 ? body : body.slice(0, at)).split('/')
@@ -39,5 +40,5 @@ export function fromOldHash(hash: string): NewAddress | null {
   if (head === 'spend') return { path: `/spend/${tab(SPEND_TABS)}`, query }
   if (head === 'settings') return { path: `/settings/${tab(SETTINGS_TABS)}`, query }
   if (PLAIN.includes(head)) return { path: `/${head}`, query }
-  return null
+  return { path: '/', query } // unknown: the overview, as `read()` showed
 }

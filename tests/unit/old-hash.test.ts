@@ -33,12 +33,14 @@ const CASES: [string, { path: string; query: Record<string, string | null> } | n
   // not old app addresses: left alone
   ['#app-login?return=allot://auth', null],
   ['#app-login', null],
-  ['#nope', null],
   ['', null],
+  // unknown: the overview, as read() showed
+  ['#nope', { path: '/', query: {} }],
+  ['#nope?x=1', { path: '/', query: { x: '1' } }],
   // raw input, as read() and checkAdd saw it
   ['#subs?add%61', { path: '/spend/subs', query: { adda: null, add: null } }],
   ['#settings/ai?x=a%26b', { path: '/settings/ai', query: { x: 'a&b' } }],
-  ['#%73ubs', null], // raw head is not subs, as in read()
+  ['#%73ubs', { path: '/', query: {} }],
   ['#spend/subs?add=1', { path: '/spend/subs', query: { add: '1' } }],
   ['#subs?addx', { path: '/spend/subs', query: { addx: null } }],
 ]
