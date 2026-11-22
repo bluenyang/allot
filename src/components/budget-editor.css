@@ -1,0 +1,25 @@
+/* Shared look of the budget item editors (LivingItemEditor, BudgetItemEditor, BudgetTotalEditor; spec 013 S-1):
+   one field per row (DESIGN.md "Form"), chips that fill a free-text field, the "구간별 금액" row and the memo button. */
+.flabel{font-size:13px;color:var(--text-2);font-weight:600}
+.lrow{display:flex;align-items:center;gap:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.err{font-size:12px;color:var(--neg-text);margin:0}
+.memo-add{display:flex;align-items:center;gap:8px;width:100%;height:44px;padding:0 12px;border:1px dashed var(--border-strong);border-radius:var(--r-ctl);background:var(--input);color:var(--muted);font:inherit;font-size:14px;cursor:pointer;text-align:left}
+.memo-add:hover{border-color:var(--primary-text);color:var(--primary-text)}
+.fold-b{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;height:44px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--input);color:var(--text-2);font:inherit;font-size:14px;font-weight:600;cursor:pointer;text-align:left}
+.fold-b .chv{display:grid;color:var(--muted);transition:transform .12s}
+.fold-b .chv svg{width:16px;height:16px}
+.fold-b[aria-expanded="true"] .chv{transform:rotate(90deg)}
+.phs{display:flex;flex-direction:column;gap:12px;padding:12px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface-2)}
+.pvw{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:var(--r-card);background:var(--primary-tint);border:1px solid var(--primary-line);font-size:13px}
+.pvw .pl{display:flex;justify-content:space-between;gap:12px;color:var(--text-2)}
+.pvw .pl b,.pvw .pl s{font-variant-numeric:tabular-nums}
+.pvw .pl s{color:var(--subtle);margin-right:6px}
+.pvw .sub{display:flex;flex-direction:column;gap:2px;padding-top:6px;border-top:1px solid var(--primary-line);color:var(--muted)}
+.pvw .bad{color:var(--neg-text);font-weight:600}
+.now-v{display:flex;justify-content:space-between;align-items:center;gap:12px;height:44px;padding:0 12px;border:1px solid var(--border);border-radius:var(--r-ctl);background:var(--surface-2);font-size:14px}
+.now-v span{color:var(--muted)}
+.danger{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--neg-line);border-radius:var(--r-card);background:var(--neg-soft)}
+.danger span{flex:1;min-width:0;font-size:13px;color:var(--text-2)}
+.danger span b{display:block;color:var(--neg-text)}
+.danger .btn{flex:none}

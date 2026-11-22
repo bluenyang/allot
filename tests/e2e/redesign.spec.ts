@@ -382,7 +382,7 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
 
 // spec 010 V-8, V-9: the shell. Menu entries for features that do not exist yet are inert and have no route.
 test.describe('(V-8, V-9) shell', () => {
-  const SOON = ['생활', '저축', '투자', '명세서 분석', 'AI 어시스턴트']
+  const SOON = ['저축', '투자', '명세서 분석', 'AI 어시스턴트'] // 생활 opens in spec 013 S-1
   test.use({ viewport: { width: 1440, height: 900 } })
 
   test('(a) sidebar groups; the unfinished entries are visible, disabled, and do nothing; no 개발 entry; #dev still opens', async ({ page }) => {
@@ -390,7 +390,7 @@ test.describe('(V-8, V-9) shell', () => {
     await page.goto('/')
     const side = page.locator('aside.side')
     await expect(side.locator('.glabel')).toHaveText(['개요', '예산', '관리', 'AI'])
-    await expect(side.getByRole('link')).toContainText(['현황', '월급 분배', '지출', '일정', '대기 중인 변경', '변경 내역', '설정'])
+    await expect(side.getByRole('link')).toContainText(['현황', '월급 분배', '생활', '지출', '일정', '대기 중인 변경', '변경 내역', '설정'])
     await expect(side.getByRole('link', { name: '개발' })).toHaveCount(0)
     page.on('request', (req) => { if (req.url().includes('/api/')) calls.push(req.url()) })
     const before = page.url()
@@ -461,8 +461,8 @@ test.describe('(V-8, V-9) shell', () => {
     await more.click()
     const sheet = page.getByRole('dialog', { name: '더보기' })
     await expect(sheet).toBeVisible()
-    for (const name of ['생활', '저축', '투자', '명세서 분석', 'AI 어시스턴트']) await expect(sheet.getByRole('button', { name: new RegExp(name) })).toHaveAttribute('aria-disabled', 'true')
-    for (const name of ['지출', '변경 내역', '설정']) await expect(sheet.getByRole('link', { name })).toBeVisible()
+    for (const name of ['저축', '투자', '명세서 분석', 'AI 어시스턴트']) await expect(sheet.getByRole('button', { name: new RegExp(name) })).toHaveAttribute('aria-disabled', 'true')
+    for (const name of ['생활', '지출', '변경 내역', '설정']) await expect(sheet.getByRole('link', { name })).toBeVisible()
     await expect(sheet.getByRole('button', { name: '로그아웃' })).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(sheet).toBeHidden()

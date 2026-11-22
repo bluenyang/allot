@@ -23,7 +23,7 @@ const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 interface Entry { id: string; soon?: boolean }
 const groups: { id: 'overview' | 'budget' | 'manage' | 'ai'; items: Entry[] }[] = [
   { id: 'overview', items: [{ id: 'home' }] },
-  { id: 'budget', items: [{ id: 'pay' }, { id: 'living', soon: true }, { id: 'spend' }, { id: 'saving', soon: true }, { id: 'invest', soon: true }] },
+  { id: 'budget', items: [{ id: 'pay' }, { id: 'living' }, { id: 'spend' }, { id: 'saving', soon: true }, { id: 'invest', soon: true }] },
   { id: 'manage', items: [{ id: 'events' }, { id: 'pending' }, { id: 'history' }] },
   { id: 'ai', items: [{ id: 'statements', soon: true }, { id: 'assistant', soon: true }] },
 ]
@@ -47,7 +47,7 @@ const pathOf = (id: string) => PATH[id] ?? `/${id}`
 
 // ── Header bar (spec 010 S-4): where you are (the overview: its month and phase), search and
 // notifications as drawn (not there yet → `Soon`). No light/dark switch: the theme is chosen in Settings (D-10).
-const GROUP_OF: Record<string, MessageKey> = { spend: 'shell.groupBudget', pay: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
+const GROUP_OF: Record<string, MessageKey> = { spend: 'shell.groupBudget', pay: 'shell.groupBudget', living: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
 const crumbPage = computed(() => (route.value.page === 'settings'
   ? t(`settings.tabs.${['general', 'theme', 'ai', 'security'].includes(route.value.sub) ? route.value.sub : 'general'}` as MessageKey)
   : label(route.value.page)))
@@ -60,10 +60,10 @@ const REPO = 'https://github.com/bluenyang/allot'
 
 // ── Phone: the bottom bar and the "더보기" sheet (spec 010 S-4). The pending page has a place on the
 // bar only while something waits there (spec 009 A-7); the budget slot opens the pay split, and
-// stays current on the spending page too.
+// stays current on the spending and living pages too (spec 013 S-1).
 const bottom = computed(() => [
   { id: 'home', href: '/', icon: 'home', label: t('shell.tabs.home'), on: route.value.page === 'home' },
-  { id: 'budget', href: '/pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'spend'].includes(route.value.page) },
+  { id: 'budget', href: '/pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'spend', 'living'].includes(route.value.page) },
   { id: 'events', href: '/events', icon: 'events', label: t('shell.tabs.events'), on: route.value.page === 'events' },
   ...(store.pendingProposals ? [{ id: 'pending', href: '/pending', icon: 'pending', label: t('shell.tabs.pending'), on: route.value.page === 'pending', badge: store.pendingProposals }] : []),
 ])
