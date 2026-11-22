@@ -92,10 +92,10 @@ const balDeposit = computed({
       <div class="bh"><h3>{{ t('accounts.detail.balances') }}</h3><button class="btn sm" type="button" @click="bal.open()">{{ t('accounts.detail.addBalance') }}</button></div>
       <div v-if="balances.length" class="tbl">
         <table>
-          <thead><tr><th scope="col">{{ t('accounts.detail.colDate') }}</th><th scope="col" class="n">{{ t('accounts.detail.colAmount') }}</th><th scope="col">{{ t('accounts.detail.colMemo') }}</th></tr></thead>
+          <thead><tr><th scope="col">{{ t('accounts.detail.colDate') }}</th><th scope="col" class="n">{{ t('accounts.detail.colAmount') }}</th><th scope="col" class="n">{{ t('accounts.balance.deposit') }}</th><th scope="col">{{ t('accounts.detail.colMemo') }}</th></tr></thead>
           <tbody>
             <tr v-for="b in balances" :key="b.id" class="click" tabindex="0" @click="bal.open(b)" @keydown.enter="bal.open(b)">
-              <td class="num">{{ b.date }}</td><td class="n num amt">{{ fmtMoney(b.amount) }}</td><td class="hint">{{ b.note }}</td>
+              <td class="num">{{ b.date }}</td><td class="n num amt">{{ fmtMoney(b.amount) }}</td><td class="n num">{{ b.deposit ? fmtMoney(b.deposit) : '—' }}</td><td class="hint">{{ b.note }}</td>
             </tr>
           </tbody>
         </table>
