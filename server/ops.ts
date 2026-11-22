@@ -212,6 +212,8 @@ interface ListResource {
   check?: (q: Db, uid: string, input: never, id?: string) => Promise<Msg | null>
   /** The user's lock on this table is taken first, so checks cannot race. */
   lock?: boolean
+  /** `optional` fields left out of an update keep their stored value instead of being cleared (spec 013 S-11). */
+  keepOmitted?: boolean
   /** Locks taken (in the global order) before the first write, besides the table's own. */
   alsoLocks?: string[]
   toRow?: (input: never) => Record<string, unknown>
@@ -259,7 +261,10 @@ export const RESOURCES = {
   events: list(t.planEvent, v.planEvent),
   checks: list(t.checkItem, v.checkItem),
   accounts: list(t.bankAccount, v.account, {
-    // `note` is not cleared when it is left out: a client in the 0.1.6 shape keeps it (S-11, review 1 F-7).
+    // `note` is not cleared when it is left out: a client in the 0.1.6 shape keeps it (S-11, review 1 F-7);
+    // an empty one is still answered as absent, as before (review 2 F-1).
+    optional: ['note'],
+    keepOmitted: true,
     toRow: ({ amounts: _a, ...x }) => ({ ...x, ...(x.note === undefined ? {} : { note: x.note || null }) }),
     // Only a Savings / Investment item carries a monthly amount, a ratio or per-phase amounts (S-9): the group it
     // will have after this write, also when the body leaves the group out (review 1 F-8).
@@ -440,7 +445,7 @@ async function applyList(q: Db, uid: string, rec: Recorder, r: ListResource, op:
 
   const id = op.id!
   // Clear optional fields the client left out, so "deleting" a note sticks.
-  const cleared = Object.fromEntries((r.optional ?? []).map((k) => [k, null]))
+  const cleared = r.keepOmitted ? {} : Object.fromEntries((r.optional ?? []).map((k) => [k, null]))
   const before = await readRow(q, owned, uid, { id })
   if (!before) return { found: false }
   const [written] = await q.update(table).set({ ...cleared, ...toRow(input) } as never).where(and(eq(table.userId, uid), eq(table.id, id))).returning()

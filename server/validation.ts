@@ -86,7 +86,8 @@ export const living = z.object({ food: won, transit: won, allowance: won })
 
 // ── Budget core (spec 013 S-9) ──
 const short = z.string().trim().max(40)
-const memo = z.string().trim().max(200).optional()
+// null is taken as no memo, as an answer of the API may hold (review 2 F-1)
+const memo = z.string().trim().max(200).nullable().optional()
 const last4 = z.string().regex(/^(\d{4})?$/, 'last4Format')
 /** A ratio of 0..1 with at most 4 decimals (0.01%), as numeric(5,4) stores it. */
 const ratio = z.number().min(0).max(1).refine((n) => Math.round(n * 10_000) / 10_000 === n, 'ratioDecimals')
