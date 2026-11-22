@@ -106,7 +106,7 @@ export const RESOURCES = {
 } as const
 
 /** Lists whose delete also changes other rows on the server (unlinks, spec 013 S-9, S-13): reload the state after one. */
-const RELOAD_AFTER_DELETE: readonly ListKey[] = ['accounts', 'cards', 'livingItems']
+const RELOAD_AFTER_DELETE: readonly ListKey[] = ['accounts', 'cards', 'livingItems', 'phases'] // a phase takes its item amounts (review 1 F-6)
 export type ListKey = keyof typeof RESOURCES
 
 /** Create (no id) or replace an item; returns the saved item. */
