@@ -183,6 +183,14 @@ test('(S-4) a page keeps its state when you come back; an editor closes when you
   await expect(sheet(page, '구독 추가')).toHaveCount(0)
 })
 
+test('(S-2) a bare # typed on a page shows the overview, as the empty hash did in 0.1.5', async ({ page }) => {
+  await page.goto('/pay')
+  await expect(h1(page)).toHaveText('월급 분배')
+  await page.evaluate(() => { location.hash = '#' })
+  await expect.poll(() => pathOf(page)).toBe('/')
+  await expect(h1(page)).toHaveText(/현황$/)
+})
+
 test('(S-4) a page whose code cannot be loaded says so', async ({ page }) => {
   await page.route(/\/assets\/Spending-[^/]+\.js$/, (r) => r.abort())
   await page.goto('/spend/general')

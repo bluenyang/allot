@@ -47,8 +47,17 @@ export function fromOldHash(hash: string): NewAddress | null {
  * The raw hash of a navigation, from its full path (`/spend/subs?y=1#settings/ai` → `#settings/ai`).
  * vue-router keeps the hash raw in `fullPath` for a string location (and for the initial navigation and
  * popstate, which resolve a string built from `window.location`); only `to.hash` is decoded.
+ * A bare `#` typed on a page leaves `location.hash` empty, so the navigation has no hash; when the
+ * browser's `href` is exactly this navigation's address followed by `#`, it counts as `#` (the old
+ * empty hash, which `read()` showed as the overview). No other navigation is read as `#`.
  */
-export function rawHashOf(fullPath: string): string {
+export function rawHashOf(fullPath: string, href?: string, origin?: string): string {
   const at = fullPath.indexOf('#')
-  return at < 0 ? '' : fullPath.slice(at)
+  if (at >= 0) return fullPath.slice(at)
+  if (href && origin) {
+    try {
+      if (href === new URL(fullPath, origin).href + '#') return '#'
+    } catch { /* not an address: no hash */ }
+  }
+  return ''
 }
