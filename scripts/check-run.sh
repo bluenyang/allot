@@ -69,12 +69,14 @@ _cr_run() { # kind name command...
 # file is not touched. Pick a new name.
 begin() {
   CHECK=$1
-  if [ -e "$2" ] || [ -L "$2" ]; then
+  mkdir -p "$(dirname "$2")"
+  # The log is created exclusively (O_EXCL through noclobber), so of two runs that start the same name
+  # at once exactly one wins. The -e test also refuses non-regular paths such as /dev/null.
+  if [ -e "$2" ] || [ -L "$2" ] || ! ( set -C; : > "$2" ) 2>/dev/null; then
     _cr_say "check-run: refused, the log '$2' already exists. Pick a new log name; a log is never overwritten." >&2
     exit 64
   fi
   LOG=$2
-  mkdir -p "$(dirname "$LOG")"
   { _cr_say "# check $CHECK, started $(date -Is)"; _cr_say ''; } > "$LOG"
 }
 # step <name> <command...>: run; stop everything on non-zero.

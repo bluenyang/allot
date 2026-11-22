@@ -1,8 +1,8 @@
 // scripts/check-logs.mjs: a log is evidence only when every step has rev, command and exit.
 //   pnpm test:unit
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -197,4 +197,34 @@ test('begin works as before for a new log, in a directory that does not exist ye
   // a second run with the same name is refused
   const again = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
   assert.equal(again.status, 64)
+})
+
+test('concurrent begins on the same log name: exactly one wins, the others get 64 and the log stays intact', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const log = join(dir, 'race.log')
+  const script = join(dir, 'run.sh')
+  writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${log}\nstep one /usr/bin/env sleep 1\ndone_check\n`)
+  const runs = Array.from({ length: 6 }, () => new Promise<number | null>((done) => {
+    const p = spawn('bash', [script], { cwd: root, env: gitFreeEnv(), stdio: 'ignore' })
+    p.on('close', done)
+  }))
+  const codes = await Promise.all(runs)
+  assert.equal(codes.filter((c) => c === 0).length, 1, JSON.stringify(codes))
+  assert.equal(codes.filter((c) => c === 64).length, 5, JSON.stringify(codes))
+  const text = readFileSync(log, 'utf8')
+  assert.equal(text.match(/^=== step: one$/gm)?.length, 1)
+  assert.deepEqual(checkLog(text), [])
+})
+
+test('begin refuses a dangling symlink and /dev/null', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'check-run-'))
+  const link = join(dir, 'link.log')
+  symlinkSync(join(dir, 'nowhere'), link)
+  for (const target of [link, '/dev/null']) {
+    const script = join(dir, 'run.sh')
+    writeFileSync(script, `. ${root}/scripts/check-run.sh\nbegin t ${target}\nstep one /usr/bin/env true\ndone_check\n`)
+    const run = spawnSync('bash', [script], { cwd: root, encoding: 'utf8', env: gitFreeEnv() })
+    assert.equal(run.status, 64, target)
+  }
+  assert.equal(existsSync(join(dir, 'nowhere')), false)
 })
