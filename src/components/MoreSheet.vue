@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The phone's "더보기" (spec 010 S-4): a bottom sheet with the account, the budget pages the bottom
-// bar has no room for (living opens since spec 013 S-1), the pages that are not in the bar, and sign out. Items for features that do
+// bar has no room for (living, savings and investment open since spec 013 S-1), the pages that are not in the bar, and sign out. Items for features that do
 // not exist yet are `Soon` (visible, inert). The shell closes it when the route changes.
 import { t, type MessageKey } from '../i18n'
 import Icon from './Icon.vue'
@@ -23,8 +23,8 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
         <div class="tiles">
           <RouterLink class="tile" to="/living"><span class="ti"><Icon name="living" /></span>{{ t('shell.pages.living') }}</RouterLink>
           <RouterLink class="tile" to="/spend/subs"><span class="ti"><Icon name="spend" /></span>{{ t('shell.pages.spend') }}</RouterLink>
-          <Soon tag="div" class="tile" :aria-label="`${t('shell.pages.saving')} (${t('common.soon')})`"><span class="ti"><Icon name="saving" /></span>{{ t('shell.pages.saving') }}</Soon>
-          <Soon tag="div" class="tile" :aria-label="`${t('shell.pages.invest')} (${t('common.soon')})`"><span class="ti"><Icon name="invest" /></span>{{ t('shell.pages.invest') }}</Soon>
+          <RouterLink class="tile" to="/saving"><span class="ti"><Icon name="saving" /></span>{{ t('shell.pages.saving') }}</RouterLink>
+          <RouterLink class="tile" to="/invest"><span class="ti"><Icon name="invest" /></span>{{ t('shell.pages.invest') }}</RouterLink>
         </div>
       </section>
       <Soon v-for="id in ['statements', 'assistant']" :key="id" tag="div" class="sh-row mrow" :aria-label="`${t(`shell.pages.${id}` as MessageKey)} (${t('common.soon')})`">

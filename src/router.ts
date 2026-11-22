@@ -23,6 +23,8 @@ export const PAGES: Record<string, Component> = {
   spend: lazyPage(() => loadSpendingMessages().then(() => import('./pages/Spending.vue'))),
   pay: lazyPage(() => import('./pages/Payroll.vue')),
   living: lazyPage(() => import('./pages/Living.vue')),
+  saving: lazyPage(() => import('./pages/Saving.vue')),
+  invest: lazyPage(() => import('./pages/Invest.vue')),
   events: lazyPage(() => import('./pages/Timeline.vue')),
   pending: lazyPage(() => import('./pages/Pending.vue')),
   history: lazyPage(() => import('./pages/History.vue')),
@@ -44,6 +46,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/home', redirect: keepQuery('/') },
   page('pay'),
   page('living'), // spec 013 S-1: the budget pages, no tabs
+  page('saving'),
+  page('invest'),
   ...tabbed('spend', 'general|inst|subs', 'general'),
   page('events'),
   page('pending'),
