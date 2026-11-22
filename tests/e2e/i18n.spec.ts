@@ -15,7 +15,7 @@ async function pickLanguage(page: Page, value: 'browser' | 'ko' | 'en') {
 }
 
 async function openGeneral(page: Page) {
-  await page.goto('/#settings/general')
+  await page.goto('/settings/general')
   await expect(page.locator('#g-lang')).toBeVisible()
 }
 
@@ -42,9 +42,9 @@ test('English from the settings: menus, titles, html lang, kept after a reload',
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   // the other pages' titles
-  await page.goto('/#history')
+  await page.goto('/history')
   await expect(page.getByRole('heading', { name: 'Change history', exact: true })).toBeVisible()
-  await page.goto('/#subs')
+  await page.goto('/spend/subs')
   await expect(page.getByRole('heading', { name: 'Spending', exact: true })).toBeVisible()
 
   await openGeneral(page)
@@ -55,19 +55,19 @@ test('English from the settings: menus, titles, html lang, kept after a reload',
 
 // spec 011 V-8: the 지출 page's lazy messages hold both languages, so a switch after the tab is open still reads right.
 test('지출 › 할부: opened in Korean, then English from the settings, the tab speaks English', async ({ page }) => {
-  await page.goto('/#spend/inst')
+  await page.goto('/spend/inst')
   await expect(page.getByRole('region', { name: '할부 요약' })).toBeVisible()
 
   await openGeneral(page)
   await pickLanguage(page, 'en')
-  await page.goto('/#spend/inst')
+  await page.goto('/spend/inst')
   await expect(page.getByRole('region', { name: 'Installment summary' })).toBeVisible()
   await expect(page.getByText('In progress', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('region', { name: '할부 요약' })).toHaveCount(0)
 
   await openGeneral(page)
   await pickLanguage(page, 'ko')
-  await page.goto('/#spend/inst')
+  await page.goto('/spend/inst')
   await expect(page.getByRole('region', { name: '할부 요약' })).toBeVisible()
 })
 

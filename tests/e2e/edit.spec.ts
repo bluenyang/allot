@@ -500,7 +500,7 @@ test('record modal (spec 010 V-6, V-10): a 일정 with a month range saves and r
   await expect(s.getByRole('alert')).toBeVisible()
   await s.getByRole('radio', { name: /^구독/ }).click()
   await s.getByRole('button', { name: '다음' }).click()
-  await expect(page).toHaveURL(/#subs$/)
+  await expect(page).toHaveURL(/\/spend\/subs$/)
   // ... and opens the subscription add editor there
   await expect(sheet(page, '구독 추가')).toBeVisible()
   await page.keyboard.press('Escape')

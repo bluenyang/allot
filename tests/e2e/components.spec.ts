@@ -119,7 +119,7 @@ test('(V-13) Switch, Seg and Tabs carry their role and aria state', async ({ pag
   await expect(page.locator('[role="tab"][aria-selected="true"]')).toHaveText(name!.trim())
 
   await go(page, 'home')
-  await page.goto('/#history')
+  await page.goto('/history')
   const seg = page.getByRole('group', { name: '바꾼 사람으로 거르기' })
   const pressed = seg.locator('button[aria-pressed="true"]')
   await expect(pressed).toHaveCount(1)
@@ -130,7 +130,7 @@ test('(V-13) Switch, Seg and Tabs carry their role and aria state', async ({ pag
   await expect(seg.getByRole('button').nth(1)).toHaveAttribute('aria-pressed', 'true')
   await seg.getByRole('button').first().click()
 
-  await page.goto('/#settings/general')
+  await page.goto('/settings/general')
   const sw = page.getByRole('switch').first()
   await expect(sw).toHaveAttribute('aria-checked', /true|false/)
   const was = await sw.getAttribute('aria-checked')
@@ -251,7 +251,7 @@ test('(V-13) the history revert confirmation (no field) takes the focus and keep
   expect(made.ok()).toBe(true)
   const id = ((await made.json()) as { id: string }).id
   try {
-    await page.goto('/#history')
+    await page.goto('/history')
     const list = page.getByRole('list', { name: '변경 목록' })
     const first = list.getByRole('listitem').first()
     await expect(first).toContainText(text)
@@ -271,7 +271,7 @@ test('(V-13) the API key manage dialog (no field) takes the focus and keeps Tab 
   const key = await request.post('/api/keys', { data: { name: `${MARK}-fk`, expiresInDays: 30, write: false } })
   expect(key.ok()).toBe(true)
   try {
-    await page.goto('/#settings/ai')
+    await page.goto('/settings/ai')
     await page.getByRole('button', { name: `${MARK}-fk 키 관리` }).click()
     const manage = page.getByRole('dialog').first()
     await expect(manage).toBeVisible()

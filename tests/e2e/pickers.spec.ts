@@ -181,7 +181,7 @@ test('(V-14 d) delete asks in a dialog: cancel and Escape keep the item, confirm
 test('(V-14 e) an instant save is told in a toast, there is no line in the card, and no card changes height', async ({ page, request }) => {
   const s0 = await state(request)
   try {
-    await page.goto('/#settings/general')
+    await page.goto('/settings/general')
     const group = page.getByRole('group', { name: '날짜 형식' })
     await group.waitFor()
     const heights = () => page.locator('.set').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))
@@ -270,7 +270,7 @@ test('(V-14 b, A-41) a Payroll phase end month erased to "2095-" saves no end (n
     const made = await mine('POST', '/api/phases', { label: '', name: `${MARK}-ph2`, from: '2095-01', to: '2095-06', amounts: {}, note: MARK })
     expect(made.status).toBeLessThan(300)
     const id = (made.json as { id: string }).id
-    await page.goto('/#pay')
+    await page.goto('/pay')
     await page.reload() // the phase was made after the sign-in loaded the state
     await page.getByRole('tablist').first().waitFor()
     await page.getByRole('tab', { name: '구간' }).click()

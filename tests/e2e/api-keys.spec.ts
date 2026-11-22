@@ -35,7 +35,7 @@ async function mcp(baseURL: string, key: string) {
 }
 
 async function openAi(page: Page) {
-  await page.goto('/#settings/ai')
+  await page.goto('/settings/ai')
   await expect(page.getByRole('heading', { name: 'API 키', exact: true })).toBeVisible()
 }
 
@@ -122,7 +122,7 @@ test('policy: "만료 없음" is offered only while the server allows it; switch
     await sheet(page, '새 API 키').getByRole('button', { name: '취소' }).click()
 
     // on: the option is there; make a key without an expiry
-    await page.goto('/#admin')
+    await page.goto('/admin')
     await page.getByRole('tab', { name: 'API 키' }).click()
     const sw = page.getByLabel('만료 없는 키 허용')
     await expect(sw).not.toBeChecked()
@@ -139,7 +139,7 @@ test('policy: "만료 없음" is offered only while the server allows it; switch
     await expect(row).toContainText('없음')
 
     // off again from the admin screen: the key now expires in a year
-    await page.goto('/#admin')
+    await page.goto('/admin')
     await page.getByRole('tab', { name: 'API 키' }).click()
     page.once('dialog', (d) => d.accept())
     await page.getByLabel('만료 없는 키 허용').uncheck()
@@ -156,7 +156,7 @@ test('policy: "만료 없음" is offered only while the server allows it; switch
 test('policy: when env sets it, the switch is locked and says so', async ({ page, request }) => {
   const p = await policy(request)
   test.skip(!p.locked, 'ALLOT_API_KEY_NO_EXPIRY is not set (this check runs with it set)')
-  await page.goto('/#admin')
+  await page.goto('/admin')
   await page.getByRole('tab', { name: 'API 키' }).click()
   const sw = page.getByLabel('만료 없는 키 허용')
   await expect(sw).toBeDisabled()
@@ -231,11 +231,11 @@ test('keys: an answer that comes after the screen was left does not bring the ke
   })
   await s.getByRole('button', { name: '키 만들기', exact: true }).click()
   await wasSent
-  await page.goto('/#home') // leave the screen (it is kept alive)
+  await page.goto('/') // leave the screen (it is kept alive)
   await page.locator('header.ph h1').waitFor()
   release()
   await page.waitForTimeout(1500)
-  await page.goto('/#settings/ai')
+  await page.goto('/settings/ai')
   await expect(page.getByRole('heading', { name: 'API 키', exact: true })).toBeVisible()
   await expect(page.getByLabel('API 키', { exact: true })).toHaveCount(0)
   expect(await page.content()).not.toMatch(/allot_[A-Za-z]{64}/)

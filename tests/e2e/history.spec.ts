@@ -10,7 +10,7 @@ test('history: a save shows up, revert undoes it, the revert is listed', async (
   await saveSheet(page, '기록 추가')
   await expect(page.getByRole('checkbox', { name: text })).toBeVisible()
 
-  await page.goto('/#history')
+  await page.goto('/history')
   const list = page.getByRole('list', { name: '변경 목록' })
   const first = list.getByRole('listitem').first()
   await expect(first).toContainText(`체크리스트 추가 · ${text}`)
@@ -49,7 +49,7 @@ test('history (spec 010 S-9): day groups, the actor and the item filters, a refu
   const text = `${MARK}-grp`
   const made = (await (await request.post('/api/checks', { data: { text, done: false } })).json()) as { id: string }
   try {
-    await page.goto('/#history')
+    await page.goto('/history')
     const list = page.getByRole('list', { name: '변경 목록' })
     await expect(list.getByRole('listitem').filter({ hasText: text })).toBeVisible()
     // one heading per day, with the count
@@ -88,7 +88,7 @@ test('history (spec 010 S-9): day groups, the actor and the item filters, a refu
 })
 
 test('history (A-18): a filter that matches nothing in the loaded page does not claim there is nothing while older changes exist', async ({ page }) => {
-  await page.goto('/#history')
+  await page.goto('/history')
   const list = page.getByRole('list', { name: '변경 목록' })
   await expect(list.getByRole('listitem').first()).toBeVisible()
   const more = page.getByRole('button', { name: '더 보기', exact: true })

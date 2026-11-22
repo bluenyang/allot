@@ -71,7 +71,7 @@ test('pending: nothing of the first account reaches the next one signed in on th
       const page = await ctx.newPage()
       await page.goto('/')
       await login(page, process.env.ADMIN_EMAIL!, process.env.ADMIN_PASSWORD!, () => page.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 }))
-      await page.goto('/#pending')
+      await page.goto('/pending')
       const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
       let hold: ReturnType<typeof holdState>
       if (round === 'apply') {
@@ -102,11 +102,11 @@ test('pending: nothing of the first account reaches the next one signed in on th
       await page.waitForTimeout(1000)
       const toast = page.getByRole('status').filter({ hasText: /제안을 (적용|되돌렸)/ })
       await expect(toast).toHaveCount(0)
-      await page.goto('/#subs')
+      await page.goto('/spend/subs')
       await expect(page.getByRole('heading', { name: '지출', exact: true })).toBeVisible()
       await expect(page.getByText(SUB)).toHaveCount(0)
       await expect(page.getByText(sentinel)).toHaveCount(0)
-      await page.goto('/#pending')
+      await page.goto('/pending')
       await page.getByRole('button', { name: '처리함', exact: true }).click()
       await expect(page.locator('[data-proposal]')).toHaveCount(0)
     } finally {
@@ -135,7 +135,7 @@ test('settings: a language pick of the first account does not reach the next acc
     await page.getByLabel('비밀번호').fill(process.env.ADMIN_PASSWORD!)
     await page.getByRole('button', { name: '로그인', exact: true }).click()
     await page.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
-    await page.goto('/#settings/general')
+    await page.goto('/settings/general')
     await page.locator('#g-lang').waitFor()
     // hold the answer of the preferences save: it is sent (the server has it), not yet delivered
     let release!: () => void
@@ -195,7 +195,7 @@ test('admin: a save of the first admin sends no later request under the next adm
     await page.getByLabel('비밀번호').fill(process.env.ADMIN_PASSWORD!)
     await page.getByRole('button', { name: '로그인', exact: true }).click()
     await page.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
-    await page.goto('/#admin')
+    await page.goto('/admin')
     await page.getByRole('button', { name: `${target.email} 관리` }).click()
     const dlg = page.getByRole('form', { name: target.email })
     await dlg.getByLabel('이름').fill('E2E renamed')

@@ -2,9 +2,10 @@ import { expect, type Locator, type Page } from '@playwright/test'
 
 export const MARK = `E2E-${Date.now().toString(36)}`
 
-/** Open a page by its hash route and wait for the data to be on screen. */
-export async function go(page: Page, hash: 'home' | 'subs' | 'pay' | 'events' | 'dev', tab?: string) {
-  await page.goto(`/#${hash}`)
+/** Open a page by its name and wait for the data to be on screen. */
+const PATH = { home: '/', subs: '/spend/subs', pay: '/pay', events: '/events', dev: '/dev' } as const
+export async function go(page: Page, hash: keyof typeof PATH, tab?: string) {
+  await page.goto(PATH[hash])
   await page.getByRole('tablist').first().waitFor()
   if (tab) await page.getByRole('tab', { name: tab }).click()
 }
