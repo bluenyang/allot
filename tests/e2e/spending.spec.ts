@@ -665,9 +665,9 @@ test('(S-4, S-6, S-7, V-6) the 할부 tab: list, filters, detail numbers, rounds
     expect(await big(page, 0)).toBe(out0 + 158_250 + 1_000_000)
     expect(((await state(request)).spendings as unknown as Inst[]).find((x) => x.id === ids[0])!.cancelled).toBe(false)
 
-    // 버퍼 사용 is not selectable (0.1.6)
+    // 버퍼 사용 is a filter like the others (spec 013 S-8)
     await page.getByRole('combobox', { name: '내는 방식' }).click()
-    await expect(page.getByRole('option', { name: /^버퍼 사용/ })).toHaveAttribute('aria-disabled', 'true')
+    await expect(page.getByRole('option', { name: /^버퍼 사용/ })).not.toHaveAttribute('aria-disabled', 'true')
     await page.keyboard.press('Escape')
     // the 카드 할부 / 나눠 내기 filter
     await choose(page.getByRole('combobox', { name: '내는 방식' }), { label: '나눠 내기' })
@@ -935,7 +935,7 @@ test('(S-3, V-6, W-7) USD from the subscription account: KRW at the rate with th
   }
 })
 
-test('(S-7, W-7) 버퍼 사용 cannot be chosen', async ({ page }) => {
+test('(spec 013 S-8) 버퍼 사용 can be chosen; it asks for a card with a paying account', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   const s = await openAdd(page, 'general')
   await s.getByLabel('내용', { exact: true }).fill(`${EDM}-buf`)
@@ -943,10 +943,11 @@ test('(S-7, W-7) 버퍼 사용 cannot be chosen', async ({ page }) => {
   await next(s)
   const how = grp(s, '내는 방식')
   const buf = how.getByRole('button', { name: '버퍼 사용', exact: true })
-  await expect(buf).toBeDisabled()
-  await buf.click({ force: true })
-  await expect(how.getByRole('button', { name: '일시불', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(s.getByText('버퍼 사용은 준비 중이에요.')).toBeVisible()
+  await expect(buf).toBeEnabled()
+  await buf.click()
+  await expect(buf).toHaveAttribute('aria-pressed', 'true')
+  await expect(s.getByText('채울 개월').first()).toBeVisible()
+  await expect(s.getByText('버퍼 사용은 준비 중이에요.')).toHaveCount(0)
   await s.getByRole('button', { name: '취소', exact: true }).click()
   await expect(s).toBeHidden()
 })
@@ -1216,7 +1217,6 @@ test('(S-10, W-7) the editor in English', async ({ page, request }) => {
     await s.getByLabel('Amount', { exact: true }).fill('12000')
     await s.getByRole('button', { name: 'Next', exact: true }).click()
     await expect(grp(s, 'How you pay').getByRole('button')).toHaveText(['Lump sum', 'Card installment', 'Split payment', 'Use buffer'])
-    await expect(s.getByText('Use buffer is coming soon.')).toBeVisible()
     await s.getByRole('button', { name: 'Next', exact: true }).click()
     await expect(s.getByText('3/3 · Saved to the change history')).toBeVisible()
     await expect(s.getByText(/Comes off the remainder of month \d+ and goes to One-off/)).toBeVisible()
