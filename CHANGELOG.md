@@ -1,12 +1,14 @@
 # Changelog
 
-## 0.1.6 — Unreleased
+## 0.1.6 — 2026-11-23
+
+Released without a release candidate, on the user's instruction ("rc.1 없이 stable"). The stable image will be checked on the test server after the release (spec 012 V-8, pending).
 
 Addresses without `#`. Intent 012 (`.agents/intent/012_router/`). No database or API change.
 
 ### Changed
-- **Addresses**: the app uses history addresses with the names the hash addresses had: `/` (overview), `/pay`, `/spend/general`, `/spend/inst`, `/spend/subs`, `/events`, `/pending`, `/history`, `/settings/general`, `/settings/theme`, `/settings/ai`, `/settings/security`, `/admin` and `/dev`. `/home` opens `/`; `/spend` and `/settings` without a tab, or with an unknown one, open the first tab; an unknown address opens `/`. Routing uses vue-router 4.6.5.
-- **Old addresses keep working**: every hash address of 0.1.5 (`#home`, `#pay`, `#spend/<tab>`, `#subs`, `#settings/<tab>`, `#account`, `#events`, `#pending`, `#history`, `#admin`, `#dev`) is replaced by its new address when it is opened or typed, without a second history entry. `#subs?add` and `#spend/<tab>?add` open the add dialog as before; the new form is `/spend/<tab>?add`.
+- **Addresses**: the app uses history addresses with the names the hash addresses had: `/` (overview), `/pay`, `/spend/general`, `/spend/inst`, `/spend/subs`, `/events`, `/pending`, `/history`, `/settings/general`, `/settings/theme`, `/settings/ai`, `/settings/security`, `/admin` and `/dev`. `/home` opens `/`; `/spend` and `/settings` without a tab, or with an unknown one, open the first tab; an unknown address opens `/`. Addresses are case-sensitive (`/PAY` opens `/`, `/spend/SUBS` opens the first tab). Routing uses vue-router 4.6.5.
+- **Old addresses keep working**: every hash address of 0.1.5 (`#home`, `#pay`, `#spend/<tab>`, `#subs`, `#settings/<tab>`, `#account`, `#events`, `#pending`, `#history`, `#admin`, `#dev`) is replaced by its new address when it is opened or typed, without a second history entry; an unknown hash opens the overview. Two rare old forms are not carried over: a bare `#` typed on a page, and an encoded old hash on a path that a route record redirects (`/home`, `/spend`, `/settings` and unknown paths). `#subs?add` and `#spend/<tab>?add` open the add dialog as before; the new form is `/spend/<tab>?add`.
 - **External-login linking** now returns to `/settings/security`; a link started before the update comes back to `/#account`, which still opens that tab, with its error message if there was one.
 - The mobile app sign-in address (`/#app-login?return=…`) is unchanged.
 - The server already served the app for every address outside `/api` and `/healthz`; this is now covered by a unit test.
