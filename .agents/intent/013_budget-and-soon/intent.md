@@ -11,6 +11,13 @@ approvals:
     words: "intent까지만. spec 부터는 다음 세션에서"
     rev: 8027f56
     note: "PM 질문 'intent 013을 승인하실까요? 열린 질문 4개는 PM 제안대로'(보기: 승인(제안대로) / 수정)에 직접 쓴 답. PM은 intent 승인(열린 질문 1~4 PM 제안대로)과 spec 전에 멈춤으로 읽음 — 다음 세션 시작 때 사용자에게 이 해석을 확인한다."
+  - role: user
+    kind: confirm
+    by: BlueNyang
+    at: "2026-11-23"
+    words: "맞음, spec 진행"
+    rev: fe4867d
+    note: "새 세션 첫머리 PM 질문(위 승인을 'intent 승인, 열린 질문 1~4 PM 제안대로'로 읽은 해석이 맞나요?)에 보기로 답함. 해석 확인."
 waivers: []
 supersedes: null
 ---
