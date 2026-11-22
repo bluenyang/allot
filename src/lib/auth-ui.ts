@@ -37,14 +37,14 @@ export function authMessage(code: string | null | undefined): string {
   }
 }
 
-/** Read ?error= from the address once, then drop it from the address bar. */
+/** Read ?error= from the address once, then drop it from the address bar (keeping the router's history.state, spec 012 S-5). */
 export function takeErrorFromUrl(): string {
   const u = new URL(window.location.href)
   const code = u.searchParams.get('error')
   if (!code) return ''
   u.searchParams.delete('error')
   u.searchParams.delete('error_description')
-  history.replaceState(null, '', u.pathname + u.search + u.hash)
+  history.replaceState(history.state, '', u.pathname + u.search + u.hash)
   return authMessage(code)
 }
 

@@ -43,7 +43,8 @@ async function link(provider: string) {
   error.value = ''
   busy.value = true
   try {
-    await startSocial(provider, `${window.location.origin}/#account`, true)
+    // Back to this tab (spec 012 S-5); a link started before 0.1.6 comes back to /#account, which the router turns into this.
+    await startSocial(provider, `${window.location.origin}/settings/security`, true)
   } catch (e) {
     busy.value = false
     fail(e, t('account.linkFailed'))
