@@ -11,7 +11,18 @@ approvals:
     words: "승인"
     rev: c84ec84
     note: "열린 질문 1(기준 E2E 실패 6개)은 '따로 (Recommended)', 2(새 주소 이름)는 '해시와 같은 이름 (Recommended)'으로 답함."
-waivers: []
+  - role: user
+    kind: release
+    by: BlueNyang
+    at: "2026-11-23"
+    words: "rc.1 없이 stable"
+    rev: c0f0b89
+    note: "PM 질문(0.1.6 릴리스를 어떻게 할까요; 보기 'rc.1 → stable까지' / 'rc.1까지만')에 직접 쓴 답. 이 답을 stable 지시와 릴리스 노트 PR 머지 지시로 기록. 앞선 지시: '작업 중인거 뭐야? 필요없으면 중지하고 머지해. 감사 및 회고도 진행하고'. V-8은 rc 이미지 대신 stable 이미지로 :15174에서 돌린다."
+waivers:
+  - step: "release: rc before stable"
+    words: "rc.1 없이 stable"
+    at: "2026-11-23"
+    scope: once
 supersedes: null
 ---
 ## 문제
