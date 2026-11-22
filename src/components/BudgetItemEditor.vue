@@ -64,7 +64,9 @@ const steps = computed(() => [t(saving ? 'budget.editor.stepProduct' : 'budget.e
 const kindPick = ref<ChipPick>(isNew ? { id: kinds[0]!.id, text: '' } : chipOf(props.initial!.kind, kinds, 'other'))
 const limitFilled = ref('')
 function pickKind(id: string) {
-  kindPick.value = { id, text: kindPick.value.text } // the typed text is kept for a later 기타
+  // the typed text is kept for a later 기타; pressing the chosen chip again chooses none (an empty kind, as the API takes; review 1 F-14)
+  if (kindPick.value.id === id) { kindPick.value = { id: null, text: kindPick.value.text }; return }
+  kindPick.value = { id, text: kindPick.value.text }
   const x = edit.value!
   if (!saving && LIMITS[id] !== undefined && (x.annualLimit === null || x.annualLimit === undefined)) {
     x.annualLimit = LIMITS[id]!

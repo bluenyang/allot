@@ -111,3 +111,10 @@ test('a card only on a card spending; a refill start only on a buffer use; old s
   no(spending, { ...lump, payBy: 'salary', cardId: 'c1' })
   no(spending, { ...lump, refillFrom: '2090-02-25' })
 })
+
+test('review 1 F-2, F-3: names have no maximum, and an unknown key is dropped as in 0.1.6', () => {
+  ok(account, { ...OLD_ACCOUNT, id: 'a1' })
+  ok(livingItem, { name: 'x'.repeat(41), kind: '', payMethod: '', amount: 0, from: null, extra: 1 })
+  ok(card, { name: 'x'.repeat(41), last4: '', accountId: null, billingDay: null, id: 'c1' })
+  ok(balance, { accountId: 'a1', date: '2026-11-23', amount: 1, id: 'b1' })
+})

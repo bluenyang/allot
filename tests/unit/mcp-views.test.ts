@@ -358,7 +358,7 @@ test('list_accounts: fields, balance records, projection, goal month, yearly con
   const cmaAcc = bd.accounts[0]!
   const cma = l.accounts[0]!
   assert.deepEqual([cma.group, cma.kind, cma.bank, cma.last4, cma.amountKrw, cma.goalKrw, cma.annualLimitKrw, cma.bufferKrw], ['saving', 'CMA', 'E2E Bank', '1234', 500_000, 11_000_000, 12_000_000, 0])
-  assert.deepEqual(cma.balances, [{ id: 'b1', date: '2026-11-01', amountKrw: 10_000_000, note: 'start' }])
+  assert.deepEqual(cma.balances, [{ id: 'b1', date: '2026-11-01', amountKrw: 10_000_000, depositKrw: null, note: 'start' }])
   assert.deepEqual(cma.lastBalance, { date: '2026-11-01', amountKrw: 10_000_000 })
   assert.deepEqual(cma.projection, projectAccount(cmaAcc, bst, none, '2026-11', 4)!.map((r) => ({ month: r.ym, inflowKrw: r.inflow, outflowKrw: r.outflow, endKrw: r.end })))
   assert.deepEqual(cma.projection!.map((r) => r.endKrw), [10_500_000, 11_000_000, 11_500_000, 12_000_000])
@@ -366,7 +366,7 @@ test('list_accounts: fields, balance records, projection, goal month, yearly con
   assert.equal(cma.goalMonth, '2026-12')
   assert.equal(cma.year.contributionKrw, yearContribution(cmaAcc, bst, none, 2026))
   // 10,000,000 put in at once (the first record) + Nov and Dec 500,000: 11,000,000 of 12,000,000 is over 90%
-  assert.deepEqual(cma.year, { year: 2026, contributionKrw: 11_000_000, limitKrw: 12_000_000, leftKrw: 1_000_000, state: 'near' })
+  assert.deepEqual(cma.year, { year: 2026, contributionKrw: 6_000_000, limitKrw: 12_000_000, leftKrw: 6_000_000, state: 'under' })
   const isa = l.accounts[1]!
   assert.equal(isa.projection, null, 'no balance record: no projection')
   assert.equal(isa.goalMonth, null)

@@ -218,6 +218,13 @@
       "when": 1795380679228,
       "tag": "0030_drop_living",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795387260116,
+      "tag": "0031_balance_deposit",
+      "breakpoints": true
     }
   ]
 }

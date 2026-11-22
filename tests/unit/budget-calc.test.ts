@@ -150,10 +150,36 @@ test('goal month, the goal card and the annual contribution (S-7)', () => {
   assert.deepEqual(goalAlerts(state({ ...st, accounts: [{ ...cma, stopFrom: '2027-01' }] }), '2026-12-27', none), [])
   // a record already above the goal: its own month
   assert.equal(goalMonth({ ...cma, goal: 5_000_000 }, st, none), '2026-11')
-  // 2026: the first record counts whole (money put in at once), then the Nov and Dec transfers after it
-  assert.equal(yearContribution(cma, st, none, 2026), 11_000_000)
-  // a later record above the projection adds what is above it
-  const two = state({ ...st, balances: [...st.balances, { id: 'b2', accountId: 'cma', date: '2027-02-01', amount: 13_000_000 }] })
-  // projected on 2027-02-01: 10M + Nov + Dec + Jan transfers = 11.5M → 1.5M put in; plus 12 transfers of 2027
+  // a balance alone is not paid in: 2026 counts every planned transfer of the year (12 × 500,000)
+  assert.equal(yearContribution(cma, st, none, 2026), 12 * 500_000)
+  // a record naming money put in at once adds it to its year (review 1 F-12)
+  const two = state({ ...st, balances: [...st.balances, { id: 'b2', accountId: 'cma', date: '2027-02-01', amount: 13_000_000, deposit: 1_500_000 }] })
   assert.equal(yearContribution(cma, two, none, 2027), 1_500_000 + 12 * 500_000)
+})
+
+test('review 1 F-4: without the menu target nothing is sent to its items, so the forecast adds nothing', () => {
+  const cma = acc('cma', { group: 'saving', amount: 500_000, goal: 11_000_000 })
+  const st = state({ accounts: [cma], balances: [{ id: 'b1', accountId: 'cma', date: '2026-11-01', amount: 10_000_000 }] })
+  const rows = projectAccount(cma, st, none, '2026-11', 2)!
+  assert.deepEqual(rows.map((r) => r.end), [10_000_000, 10_000_000])
+  assert.deepEqual(goalAlerts(st, '2027-06-01', none), [])
+})
+
+test('review 1 F-9: a savings total linked to an account is not counted there; a remainder account is not charged its card bills twice', () => {
+  const targets: AllocationTarget[] = [
+    { id: 'ts', name: 'Savings', kind: 'saving', accountId: 'pay' },
+    { id: 'tr', name: 'Rest', kind: 'remainder', accountId: 'pay' },
+  ]
+  const pay = acc('pay')
+  const item = acc('cma', { group: 'saving', amount: 400_000 })
+  const card: Card = { id: 'c1', name: 'Card', last4: '', accountId: 'pay', billingDay: 16 }
+  const sp: Spending = {
+    id: 's1', name: 'TV', category: 'home', bought: '2026-11-02', amount: 100_000, currency: 'KRW', fxRate: null, fxBuffer: null,
+    how: 'lump', payBy: 'card', count: 1, fee: 0, interval: null, cancelled: false, cardId: 'c1', refillFrom: null,
+    rounds: [{ no: 1, date: '2026-12-16', amount: 100_000, state: 'left', edited: false }],
+  }
+  const st = state({ targets, accounts: [pay, item], cards: [card], spendings: [sp], balances: [{ id: 'b', accountId: 'pay', date: '2026-11-30', amount: 0 }] })
+  // December: remainder = 3,000,000 − 400,000 (savings) − 100,000 (card bill) = 2,500,000, and nothing else
+  const dec = projectAccount(pay, st, none, '2026-12', 1)![0]!
+  assert.deepEqual([dec.inflow, dec.outflow, dec.end], [2_500_000, 0, 2_500_000])
 })

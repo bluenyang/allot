@@ -1,0 +1,2 @@
+ALTER TABLE "account_balance" ADD COLUMN "deposit" integer;--> statement-breakpoint
+ALTER TABLE "account_balance" ADD CONSTRAINT "account_balance_deposit_nonneg" CHECK ("account_balance"."deposit" is null or "account_balance"."deposit" >= 0);

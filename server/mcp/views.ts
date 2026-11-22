@@ -373,7 +373,7 @@ export function accountList(d: Data, now: Date, months = 12) {
         goalAck: a.goalAck ?? null,
         annualLimitKrw: limit,
         ...(a.note ? { note: a.note } : {}),
-        balances: recs.map((b) => ({ id: b.id, date: b.date, amountKrw: krw(b.amount), ...(b.note ? { note: b.note } : {}) })),
+        balances: recs.map((b) => ({ id: b.id, date: b.date, amountKrw: krw(b.amount), depositKrw: b.deposit ?? null, ...(b.note ? { note: b.note } : {}) })),
         lastBalance: last ? { date: last.date, amountKrw: krw(last.amount) } : null,
         /** null without a balance record */
         projection: rows ? rows.map((r) => ({ month: r.ym, inflowKrw: krw(r.inflow), outflowKrw: krw(r.outflow), endKrw: krw(r.end) })) : null,

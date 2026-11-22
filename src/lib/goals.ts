@@ -3,7 +3,7 @@
 // argument so the unit tests run them without a store; `goalCards` and `goalCount` read the store for the screens
 // (the page's cards, the waiting count and the sidebar badge).
 import { computed } from 'vue'
-import { addYm, goalAlerts, groupAt, lastBalance, monthMoney, today, ymd, type AccountState, type GoalAlert } from './calc'
+import { addYm, goalAlerts, itemSent, lastBalance, monthMoney, today, ymd, type AccountState, type GoalAlert } from './calc'
 import { offDays } from './holidays-lazy'
 import { store } from './store'
 import type { Account } from '../data/types'
@@ -32,7 +32,7 @@ export function goalOffRange(st: Pick<AccountState, 'accounts' | 'balances' | 's
  */
 export function accountSendIn(acc: Account, st: AccountState, ym: string): number {
   const a = st.accounts.find((x) => x.id === acc.id) ?? acc
-  if (a.group) return groupAt(a.group, st.accounts, st.phases, st.targets, st.settings, ym).rows.find((r) => r.account.id === a.id)?.amount ?? 0
+  if (a.group) return itemSent(a, st, ym)
   const linked = new Set(st.targets.filter((t) => t.kind === 'fixed' && t.accountId === a.id).map((t) => t.id))
   return monthMoney(st, ym).dist.rows.filter((r) => linked.has(r.key)).reduce((s, r) => s + r.amount, 0)
 }

@@ -92,8 +92,9 @@ const last4 = z.string().regex(/^(\d{4})?$/, 'last4Format')
 const ratio = z.number().min(0).max(1).refine((n) => Math.round(n * 10_000) / 10_000 === n, 'ratioDecimals')
 const phaseAmounts = z.record(z.string().min(1), won) // phaseId → amount
 
+// No maximum on names, like the other names (S-9 "이름은 지금 규칙"); unknown keys are dropped, as for accounts in 0.1.6 (review 1 F-2, F-3).
 export const livingItem = z.object({
-  name: text.min(1, 'nameReq').max(40),
+  name: text.min(1, 'nameReq'),
   kind: short,
   payMethod: short,
   amount: won,
@@ -101,7 +102,7 @@ export const livingItem = z.object({
   code: z.enum(['food', 'transit', 'allowance']).nullable().optional(),
   note: memo,
   amounts: phaseAmounts.default({}),
-}).strict()
+})
 
 const plan = z.object({
   plan: text,
@@ -169,7 +170,7 @@ export const account = z.object({
   goalAck: won.nullable().optional(),
   note: memo,
   amounts: phaseAmounts.optional(),
-}).strict().superRefine((x, ctx) => {
+}).superRefine((x, ctx) => {
   // Only a Savings / Investment item carries a monthly amount, a ratio or phase amounts.
   if (x.group === null || x.group === undefined) {
     if (x.group === null && ((x.amount ?? 0) !== 0 || (x.ratio ?? null) !== null || Object.keys(x.amounts ?? {}).length)) {
@@ -182,16 +183,17 @@ export const balance = z.object({
   accountId: text.min(1),
   date,
   amount: won,
+  deposit: won.nullable().optional(),
   note: memo,
-}).strict()
+})
 
 export const card = z.object({
-  name: text.min(1, 'nameReq').max(40),
+  name: text.min(1, 'nameReq'),
   last4: last4,
   accountId: text.min(1).nullable(),
   billingDay: day.nullable(),
   note: memo,
-}).strict()
+})
 
 export const debt = z.object({ name: text.min(1), principal: won, rate: z.string(), method: z.string(), plan: z.string() })
 

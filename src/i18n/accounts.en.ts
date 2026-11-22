@@ -71,6 +71,8 @@ export const accountsEn: AccountsMessages = {
       desc: 'The money in the account on that day. Money put in at once, such as a matured deposit, is a balance too.',
       date: 'Date',
       amount: 'Balance',
+      deposit: 'Money put in this time',
+      depositHint: 'Write it when money was put in at once that day, like a maturity payout. It counts toward the yearly limit; a balance alone is not counted as paid in.',
       note: 'Note',
       needDate: 'Pick a date.',
       needAmount: 'Enter the balance.',
