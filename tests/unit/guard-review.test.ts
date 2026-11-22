@@ -345,6 +345,14 @@ test('--mark: needs a review record with a model line, matching the delegation t
     assert.equal(mark('--review', ok).status, 0)
     writeFileSync(ok, 'model: openai gpt-y\n')
     assert.equal(mark('--review', ok).status, 0)
+    // several models in one cell: each entry counts, with its provider or without
+    writeFileSync(join(t.dir, '.loctx', 'delegation.local.md'), '| pl/code-reviewer | openai model-a, openai model-b | x |\n')
+    for (const m of ['model-a', 'openai model-a', 'model-b', 'openai model-b']) {
+      writeFileSync(ok, `model: ${m}\n`)
+      assert.equal(mark('--review', ok).status, 0, m)
+    }
+    writeFileSync(ok, 'model: model-c\n')
+    assert.equal(mark('--review', ok).status, 1)
   } finally { rmSync(t.root, { recursive: true, force: true }) }
 })
 

@@ -275,7 +275,7 @@ export function reviewerModels(text) {
   for (const line of String(text).split('\n')) {
     const cells = line.split('|').map((c) => c.trim())
     if (cells.length < 3 || !/^pl\/(code|doc)-reviewer$/.test(cells[1])) continue
-    names.push(cells[2], cells[2].split(/\s+/).pop())
+    for (const entry of cells[2].split(',').map((e) => e.trim()).filter(Boolean)) names.push(entry, entry.split(/\s+/).pop())
   }
   return names.length ? names : null
 }
@@ -328,6 +328,7 @@ function selfTest() {
   t('equal allows', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'aaa', recorded: 'aaa' }), null)
   t('different blocks', decide({ command: 'gh pr merge 1', branch: 'b', headSha: 'bbb', recorded: 'aaa' }) !== null, true)
   t('reviewer models', reviewerModels('| pl/code-reviewer | openai gpt-x | c |\n| implementer/code | claude y | c |\n| pl/doc-reviewer | claude z | c |'), ['openai gpt-x', 'gpt-x', 'claude z', 'z'])
+  t('several models in one cell', reviewerModels('| pl/code-reviewer | openai model-a, openai model-b | c |'), ['openai model-a', 'model-a', 'openai model-b', 'model-b'])
   t('collision-free path', recordFile('/p', 'feat/a') !== recordFile('/p', 'feat__a'), true)
   console.log(bad ? `${bad} FAILED` : 'all ok')
   process.exit(bad ? 1 : 0)
