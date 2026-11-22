@@ -136,6 +136,7 @@ summary_for_user: |
 - A-13 (2026-11-23, W-1, 리뷰 3 F-1) `fromOldHash`가 디코딩하지 않은 해시를 받게(라우터가 `location.hash` 원문을 넘김), 질의는 한 번만 디코딩, 원문이 예전 `add\b`에 맞으면 `add` 키를 보탬 · vue-router가 해시를 먼저 디코딩해서 `#subs?add%61`이 `adda`가 되어 창이 안 열리고 `#settings/ai?x=a%26b`가 키 둘로 갈렸음(예전 `read()`·`checkAdd`는 원문을 봄) · 이 커밋
 - A-14 (2026-11-23, W-1, 리뷰 3 F-2) 모르는 해시(`#app-login…`과 빈 해시 말고)는 `{ path: '/', query }`로 · 예전 `read()`는 모르는 해시를 어느 페이지에서든 현황으로 보였는데, `null`이라 `/pay`에서 `location.hash = '#nope'`를 해도 월급 분배에 머물렀음 · 이 커밋
 - A-15 (2026-11-23, W-7, 리뷰 3 F-3) i18n.spec의 '지출 › 할부' 시험이 설정·지출을 `goto` 대신 사이드바(`menu`)와 할부 탭 클릭으로 오가게 · `goto('/settings/general')`과 `goto('/spend/inst')`가 페이지를 다시 불러와, 이미 열린 화면에서 언어를 바꿔도 읽히는지(011 V-8)를 더는 보지 못했음 · 이 커밋
+- A-16 (2026-11-23, W-6, 리뷰 3 F-4) `docs/ROADMAP.md` 0.1.7 행의 "명세서 실제 지출은 0.1.7을 기다림"을 0.1.8로 고치고, 2026-11-21에 정할 때는 0.1.7이었다는 말을 덧붙임 · 라우팅 패치가 0.1.6을 가져가며 뒤 패치가 하나씩 밀렸는데 이 행만 자기 자신을 가리켰음(명세서·거래는 0.1.8 행) · 이 커밋
 
 ## 우려
 - vue-router의 `history.state`: 앱이 아닌 코드가 `history.replaceState(null, …)`를 부르면 뒤로 가기 스크롤 위치·경고가 생긴다. 지금 두 곳(`Spending.vue` checkAdd, `auth-ui.ts`)뿐이고 W-3·W-4에서 고친다. 새로 생기지 않게 리뷰에서 `replaceState`·`pushState`·`location.hash`를 grep한다.
