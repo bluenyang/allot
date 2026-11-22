@@ -183,6 +183,7 @@ export const balance = z.object({
   accountId: text.min(1),
   date,
   amount: won,
+  deposit: won.nullable().optional(),
   note: memo,
 })
 

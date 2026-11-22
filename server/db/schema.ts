@@ -233,7 +233,10 @@ export const bankAccount = pgTable('bank_account', {
   check('bank_account_stop_ym', sql`${t.stopFrom} is null or ${t.stopFrom} ~ '^[0-9]{4}-[0-9]{2}$'`),
 ])
 
-/** A balance written down on a date (spec 013 S-6): the projection starts from the last one. */
+/**
+ * A balance written down on a date (spec 013 S-6): the projection starts from the last one. `deposit` is money put in at
+ * once that day (a maturity payout, …): the yearly contribution counts it (review 1 F-12, user: "잔액 기록에 '넣은 돈' 표시").
+ */
 export const accountBalance = pgTable('account_balance', {
   userId: owner(),
   id: text('id').primaryKey(),
@@ -241,10 +244,12 @@ export const accountBalance = pgTable('account_balance', {
   accountId: text('account_id').notNull(),
   date: date('date', { mode: 'string' }).notNull(),
   amount: integer('amount').notNull(),
+  deposit: integer('deposit'),
   note: text('note'),
 }, (t) => [
   userScoped(t.userId),
   unique('account_balance_user_id_id').on(t.userId, t.id),
+  check('account_balance_deposit_nonneg', sql`${t.deposit} is null or ${t.deposit} >= 0`),
   foreignKey({ name: 'account_balance_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }).onDelete('cascade'),
   check('account_balance_amount_nonneg', sql`${t.amount} >= 0`),
 ])

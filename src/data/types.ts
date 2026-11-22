@@ -185,6 +185,8 @@ export interface Balance {
   accountId: string
   date: string // YYYY-MM-DD
   amount: number
+  /** money put in at once that day (review 1 F-12); the yearly contribution counts it */
+  deposit?: number | null
   note?: string
 }
 

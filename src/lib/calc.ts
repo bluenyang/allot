@@ -608,36 +608,18 @@ export function goalMonth(acc: Account, st: AccountState, off: ReadonlySet<strin
 }
 
 /**
- * What goes into an account in calendar year `year` (S-7): the planned transfers and refills of that year,
- * plus, for every balance record of that year, what it is above the balance projected from the record
- * before it (money put in at once). A first record ever counts whole, and then only the movements after it.
+ * What goes into an account in calendar year `year` (S-7): the planned transfers and refills of that year, plus the
+ * money put in at once that the balance records of that year name (`deposit`; review 1 F-12, user: "잔액 기록에 '넣은 돈'
+ * 표시" — a balance alone is not counted as paid in).
  */
 export function yearContribution(acc: Account, st: AccountState, off: ReadonlySet<string>, year: number): number {
-  const recs = st.balances.filter((b) => b.accountId === acc.id).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
-  const lo = `${year}-01-01`
-  const hi = `${year}-12-31`
-  const after = recs[0] && recs[0].date >= lo && recs[0].date <= hi ? recs[0].date : ''
   let total = 0
   for (let m = 1; m <= 12; m++) {
     const ym = `${year}-${String(m).padStart(2, '0')}`
-    for (const mv of movesIn(acc, st, ym, off)) if (mv.amount > 0 && mv.date > after) total += mv.amount
+    for (const mv of movesIn(acc, st, ym, off)) if (mv.amount > 0) total += mv.amount
   }
-  for (const [i, r] of recs.entries()) {
-    if (r.date < lo || r.date > hi) continue
-    const prev = recs[i - 1]
-    const expected = prev ? balanceOn(acc, st, off, prev, r.date) : 0
-    total += Math.max(0, r.amount - expected)
-  }
+  for (const r of st.balances) if (r.accountId === acc.id && r.date.slice(0, 4) === String(year)) total += r.deposit ?? 0
   return total
-}
-
-/** The balance projected on `date` from record `rec` (movements after the record, up to and including `date`). */
-function balanceOn(acc: Account, st: AccountState, off: ReadonlySet<string>, rec: Balance, date: string): number {
-  let bal = rec.amount
-  for (let ym = rec.date.slice(0, 7); ym <= date.slice(0, 7); ym = addYm(ym, 1)) {
-    for (const mv of movesIn(acc, st, ym, off)) if (mv.date > rec.date && mv.date <= date) bal += mv.amount
-  }
-  return bal
 }
 
 export interface BufferGauge {

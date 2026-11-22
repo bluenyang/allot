@@ -72,6 +72,8 @@ export const accountsKo = {
       desc: '그날 통장에 있던 돈이에요. 만기금처럼 한 번에 넣은 돈도 잔액으로 적어요.',
       date: '날짜',
       amount: '잔액',
+      deposit: '이번에 넣은 돈',
+      depositHint: '만기금처럼 그날 한 번에 넣은 돈이면 적어요. 연 납입 한도에 셉니다. 잔액만으로는 납입으로 세지 않아요.',
       note: '메모',
       needDate: '날짜를 골라 주세요.',
       needAmount: '잔액을 입력해 주세요.',

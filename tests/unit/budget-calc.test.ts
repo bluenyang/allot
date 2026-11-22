@@ -150,11 +150,10 @@ test('goal month, the goal card and the annual contribution (S-7)', () => {
   assert.deepEqual(goalAlerts(state({ ...st, accounts: [{ ...cma, stopFrom: '2027-01' }] }), '2026-12-27', none), [])
   // a record already above the goal: its own month
   assert.equal(goalMonth({ ...cma, goal: 5_000_000 }, st, none), '2026-11')
-  // 2026: the first record counts whole (money put in at once), then the Nov and Dec transfers after it
-  assert.equal(yearContribution(cma, st, none, 2026), 11_000_000)
-  // a later record above the projection adds what is above it
-  const two = state({ ...st, balances: [...st.balances, { id: 'b2', accountId: 'cma', date: '2027-02-01', amount: 13_000_000 }] })
-  // projected on 2027-02-01: 10M + Nov + Dec + Jan transfers = 11.5M → 1.5M put in; plus 12 transfers of 2027
+  // a balance alone is not paid in: 2026 counts every planned transfer of the year (12 × 500,000)
+  assert.equal(yearContribution(cma, st, none, 2026), 12 * 500_000)
+  // a record naming money put in at once adds it to its year (review 1 F-12)
+  const two = state({ ...st, balances: [...st.balances, { id: 'b2', accountId: 'cma', date: '2027-02-01', amount: 13_000_000, deposit: 1_500_000 }] })
   assert.equal(yearContribution(cma, two, none, 2027), 1_500_000 + 12 * 500_000)
 })
 

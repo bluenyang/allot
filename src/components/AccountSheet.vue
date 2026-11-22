@@ -58,6 +58,11 @@ const balAmount = computed({
   get: () => bal.item.value!.amount as number | '',
   set: (v) => { bal.item.value!.amount = v as number },
 })
+// money put in at once that day (review 1 F-12): empty = none; the yearly contribution counts it
+const balDeposit = computed({
+  get: () => (bal.item.value!.deposit ?? '') as number | '',
+  set: (v) => { bal.item.value!.deposit = typeof v === 'number' ? v : null },
+})
 </script>
 
 <template>
@@ -67,6 +72,7 @@ const balAmount = computed({
   >
     <div class="field"><label for="bl-date">{{ t('accounts.balance.date') }}</label><DateInput id="bl-date" v-model="bal.item.value.date" :aria-label="t('accounts.balance.date')" /></div>
     <div class="field"><label for="bl-amount">{{ t('accounts.balance.amount') }}</label><MoneyInput id="bl-amount" v-model="balAmount" /></div>
+    <div class="field"><label for="bl-deposit">{{ t('accounts.balance.deposit') }} <span class="opt">{{ t('common.optional') }}</span></label><MoneyInput id="bl-deposit" v-model="balDeposit" /><span class="hint">{{ t('accounts.balance.depositHint') }}</span></div>
     <div class="field"><label for="bl-note">{{ t('accounts.balance.note') }} <span class="opt">{{ t('common.optional') }}</span></label><input id="bl-note" v-model="bal.item.value.note" class="in" autocomplete="off"></div>
   </EditSheet>
 
