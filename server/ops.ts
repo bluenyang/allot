@@ -259,11 +259,13 @@ export const RESOURCES = {
   events: list(t.planEvent, v.planEvent),
   checks: list(t.checkItem, v.checkItem),
   accounts: list(t.bankAccount, v.account, {
-    optional: ['note'],
-    toRow: ({ amounts: _a, ...x }) => ({ ...x, note: x.note || null }),
-    // Only a Savings / Investment item carries per-phase amounts (S-9): the group it will have after this write.
+    // `note` is not cleared when it is left out: a client in the 0.1.6 shape keeps it (S-11, review 1 F-7).
+    toRow: ({ amounts: _a, ...x }) => ({ ...x, ...(x.note === undefined ? {} : { note: x.note || null }) }),
+    // Only a Savings / Investment item carries a monthly amount, a ratio or per-phase amounts (S-9): the group it
+    // will have after this write, also when the body leaves the group out (review 1 F-8).
     check: async (q, uid, x, id) => {
-      if (!x.amounts || !Object.keys(x.amounts).length) return null
+      const carries = (x.amount ?? 0) !== 0 || (x.ratio ?? null) !== null || Object.keys(x.amounts ?? {}).length > 0
+      if (!carries) return null
       let group = x.group
       if (group === undefined && id) {
         const [row] = await q.select({ group: t.bankAccount.group }).from(t.bankAccount).where(and(eq(t.bankAccount.userId, uid), eq(t.bankAccount.id, id)))
@@ -289,6 +291,9 @@ export const RESOURCES = {
   cards: list(t.card, v.card, {
     optional: ['note'],
     toRow: (x) => ({ ...x, note: x.note || null }),
+    // A card that a buffer use goes through keeps a paying account: clearing it is refused, moving it to another
+    // account is not (the buffer use then uses that account's buffer). User, review 1 F-1: "비우기만 거부 (Recommended)".
+    check: async (q, uid, x, id) => (id && x.accountId === null && (await bufferUses(q, uid, [id])) ? m('cardBufferInUse') : null),
     beforeDelete: async (q, uid, id) => ((await bufferUses(q, uid, [id])) ? m('cardBufferInUse') : null),
     onDelete: (q, rec, uid, id) => unlink(q, rec, uid, t.spending, t.spending.cardId, id),
   }),
@@ -302,7 +307,13 @@ export const RESOURCES = {
   'holiday-sets': list(t.holidaySet, v.holidaySet),
   spendings: list(t.spending, v.spending, {
     optional: ['note'],
-    toRow: ({ rounds: _r, ...x }) => ({ ...x, note: x.note || null }),
+    // A card only on a card spending, a refill start only on a buffer use, also when the body leaves them out
+    // and the stored ones would stay (review 1 F-5).
+    toRow: ({ rounds: _r, ...x }) => ({
+      ...x, note: x.note || null,
+      ...(x.payBy === 'card' ? {} : { cardId: null }),
+      ...(x.how === 'buffer' ? {} : { refillFrom: null }),
+    }),
     // A buffer use is paid from its card's account (S-8): the card must have one. A card change on
     // update that leaves `cardId` out keeps the stored card, so check that one.
     check: async (q, uid, x, id) => {
