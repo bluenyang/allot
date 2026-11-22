@@ -543,8 +543,9 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
       if (t?.accountId === acc.id && sendsToLinked(t) && r.amount > 0) moves.push({ date: transfer, amount: r.amount })
     }
   }
-  // An account that takes the remainder gets it after the month's spendings: its card bills and refills are in it already.
-  if (takesRemainder(acc, st.targets)) return moves
+  // An account that takes the remainder gets it after the month's spendings: its ordinary card bills are taken off it
+  // already. A buffer use is not: its bill leaves the buffer and its refills come back (review 2 F-2).
+  const remainder = takesRemainder(acc, st.targets)
   const cards = new Set(st.cards.filter((c) => c.accountId === acc.id).map((c) => c.id))
   for (const sp of st.spendings ?? []) {
     if (!sp.cardId || !cards.has(sp.cardId)) continue
@@ -555,7 +556,7 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
       const bill = cardBillDate(sp.bought, billingDayOf(card, s), s, off)
       if (bill.slice(0, 7) === ym) moves.push({ date: bill, amount: -live.reduce((a, r) => a + r.amount, 0) })
       for (const r of live) if (r.date.slice(0, 7) === ym) moves.push({ date: r.date, amount: r.amount })
-    } else {
+    } else if (!remainder) {
       for (const r of live) if (r.date.slice(0, 7) === ym) moves.push({ date: r.date, amount: -r.amount })
     }
   }

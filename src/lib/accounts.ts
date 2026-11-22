@@ -1,6 +1,6 @@
 // The accounts table of 월급 분배 (spec 013 S-5, S-8, S-13): pure helpers, no store, so the unit tests can
 // call them. What goes into an account this month mirrors the inflows of the projection (calc.ts movesIn).
-import { itemSent, monthMoney, sendsToLinked, takesRemainder, type AccountState, type Distribution } from './calc'
+import { itemSent, monthMoney, sendsToLinked, type AccountState, type Distribution } from './calc'
 import type { Account, AllocationTarget } from '../data/types'
 
 /** The targets whose money goes to account `accountId` (shown read-only on the account). */
@@ -33,7 +33,6 @@ export function accountMonthIn(acc: Account, st: AccountState, ym: string, dist?
       if (t?.accountId === acc.id && sendsToLinked(t) && r.amount > 0) sum += r.amount
     }
   }
-  if (takesRemainder(acc, st.targets)) return sum // the remainder is after the refills already (review 1 F-9)
   const cards = new Set(st.cards.filter((c) => c.accountId === acc.id).map((c) => c.id))
   for (const sp of st.spendings ?? []) {
     if (sp.how !== 'buffer' || !sp.cardId || !cards.has(sp.cardId)) continue

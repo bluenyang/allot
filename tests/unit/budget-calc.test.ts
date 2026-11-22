@@ -183,3 +183,18 @@ test('review 1 F-9: a savings total linked to an account is not counted there; a
   const dec = projectAccount(pay, st, none, '2026-12', 1)![0]!
   assert.deepEqual([dec.inflow, dec.outflow, dec.end], [2_500_000, 0, 2_500_000])
 })
+
+test('review 2 F-2: a remainder account still counts its buffer use: the bill out and the refills back in', () => {
+  const targets: AllocationTarget[] = [{ id: 'tr', name: 'Rest', kind: 'remainder', accountId: 'pay' }]
+  const pay = acc('pay', { buffer: 1_000_000 })
+  const card: Card = { id: 'c1', name: 'Card', last4: '', accountId: 'pay', billingDay: 16 }
+  const r = planRounds({ bought: '2026-11-18', how: 'buffer', payBy: 'card', count: 3, principal: 300_000, refillFrom: '2026-12-25' }, S, none)
+  const sp: Spending = {
+    id: 's1', name: 'PC', category: 'home', bought: '2026-11-18', amount: 300_000, currency: 'KRW', fxRate: null, fxBuffer: null,
+    how: 'buffer', payBy: 'card', count: 3, fee: 0, interval: null, cancelled: false, cardId: 'c1', refillFrom: '2026-12-25', rounds: r,
+  }
+  const st = state({ targets, accounts: [pay], cards: [card], spendings: [sp], balances: [{ id: 'b', accountId: 'pay', date: '2026-11-30', amount: 0 }] })
+  // December: remainder 3,000,000 − refill 100,000 = 2,900,000 in, the refill 100,000 back in, the bill 300,000 out
+  const dec = projectAccount(pay, st, none, '2026-12', 1)![0]!
+  assert.deepEqual([dec.inflow, dec.outflow, dec.end], [3_000_000, 300_000, 2_700_000])
+})
