@@ -11,7 +11,7 @@ async function api(request: APIRequestContext, method: 'GET' | 'PUT' | 'POST' | 
 }
 const state = async (request: APIRequestContext) => (await api(request, 'GET', '/api/state')).json
 const cssVar = (page: Page, name: string) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim().toUpperCase(), name)
-const ROUTES = ['home', 'subs', 'pay', 'events', 'history', 'settings/general', 'settings/theme', 'settings/security', 'admin', 'dev']
+const ROUTES = ['home', 'spend/subs', 'pay', 'events', 'history', 'settings/general', 'settings/theme', 'settings/security', 'admin', 'dev']
 
 test.describe.configure({ mode: 'serial' })
 
@@ -21,7 +21,7 @@ test('(V-6 a) general settings: date format and amount unit apply, survive a rel
     name: MARK, category: 'tool', plan: 'p', amount: 9900, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false,
   })
   try {
-    await page.goto('/#settings/general')
+    await page.goto('/settings/general')
     // 표시 형식 saves the moment a choice is made: no save button
     const saved = () => page.waitForResponse((r) => r.url().endsWith('/api/preferences') && r.request().method() === 'PUT' && r.ok())
     let done = saved()
@@ -32,10 +32,10 @@ test('(V-6 a) general settings: date format and amount unit apply, survive a rel
     await done
     await expect(page.getByRole('status').filter({ hasText: '바로 저장했어요.' })).toBeVisible()
     await page.reload()
-    await page.goto('/#subs')
+    await page.goto('/spend/subs')
     await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText(/\d{4}\. \d{2}\. 15\./)
     await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('1만원')
-    await page.goto('/#home')
+    await page.goto('/')
     await expect(page.getByRole('region', { name: '이번 달 요약' }).or(page.locator('section[aria-label="이번 달 요약"]'))).toContainText('만원')
   } finally {
     await api(request, 'PUT', '/api/preferences', s0.preferences)
@@ -46,7 +46,7 @@ test('(V-6 a) general settings: date format and amount unit apply, survive a rel
 test('(W-8, A-21) two display formats picked while the first save is still on its way: both are kept', async ({ page, request }) => {
   const s0 = await state(request)
   try {
-    await page.goto('/#settings/general')
+    await page.goto('/settings/general')
     await page.getByRole('group', { name: '날짜 형식' }).waitFor()
     let delayed = false
     await page.route('**/api/preferences', async (route) => {
@@ -74,7 +74,7 @@ test('(V-6 b, c) theme: only the preview changes before saving; saved colour sta
   const made = await api(request, 'POST', '/api/auth/admin/create-user', { email, name: 'E2E theme', password: 'e2e-theme-pass-1' })
   expect(made.status).toBe(200)
   try {
-    await page.goto('/#settings/theme')
+    await page.goto('/settings/theme')
     const before = await cssVar(page, '--primary')
     await page.getByRole('radio', { name: '파랑', exact: true }).click()
     // (c) the preview box takes the colour, the page does not
@@ -118,7 +118,7 @@ test('(V-4 d) the pay day moves to the business day the rules give: month end, y
     for (const c of cases) {
       expect((await api(request, 'PUT', '/api/settings', { ...s0.settings, payDay: c.payDay, dayShift: c.shift })).status).toBe(200)
       await page.clock.setFixedTime(new Date(c.now))
-      await page.goto('/#home')
+      await page.goto('/')
       await page.reload()
       const header = page.locator('header.ph')
       await expect(header, `${c.now} ${c.shift}`).toContainText(c.want)
@@ -137,16 +137,16 @@ test('(V-6 d) the calendar shows the monthly dates and the holidays of the sets 
   const set = await api(request, 'POST', '/api/holiday-sets', { name: `${MARK}-set`, enabled: true, builtin: null, rules: [{ name: `${MARK}-day`, rdate: [today] }] })
   expect(set.status).toBe(201)
   try {
-    await page.goto('/#events')
+    await page.goto('/events')
     const cal = page.getByRole('region', { name: '이번 달 일정 달력' })
     await expect(cal).toContainText('월급')
     await expect(cal).toContainText('분배')
     await expect(cal).toContainText(`${MARK}-day`)
     // Turn the set off in settings: the holiday leaves the calendar.
-    await page.goto('/#settings/general')
+    await page.goto('/settings/general')
     await page.getByRole('switch', { name: `${MARK}-set 켜기` }).click()
     await expect(page.getByRole('switch', { name: `${MARK}-set 켜기` })).toHaveAttribute('aria-checked', 'false')
-    await page.goto('/#events')
+    await page.goto('/events')
     await expect(page.getByRole('region', { name: '이번 달 일정 달력' })).toContainText('월급')
     await expect(page.getByRole('region', { name: '이번 달 일정 달력' })).not.toContainText(`${MARK}-day`)
   } finally {
@@ -161,19 +161,19 @@ test('(V-6 e) features that do not exist appear only as disabled "준비 중" en
   // 설정 › AI·연동 is real since 0.1.3 (spec 008: API keys and the MCP connection), so it is not listed.
   const banned = ['명세서 분석', 'AI 어시스턴트', 'AI 분석', '명세서에서 채우기']
   for (const r of ROUTES) {
-    await page.goto(`/#${r}`)
+    await page.goto(`/${r}`)
     await page.locator('header.ph h1').waitFor()
     const text = await page.evaluate(() => {
       const copy = document.body.cloneNode(true) as HTMLElement
       copy.querySelectorAll('[aria-disabled="true"]').forEach((e) => e.remove())
       return copy.textContent ?? ''
     })
-    for (const b of banned) expect(text, `#${r}`).not.toContain(b)
+    for (const b of banned) expect(text, `/${r}`).not.toContain(b)
   }
 })
 
 test('(V-6 f) editor modal: focus inside, Tab stays inside, Esc closes and returns focus', async ({ page }) => {
-  await page.goto('/#subs')
+  await page.goto('/spend/subs')
   const opener = page.getByRole('button', { name: '구독 추가' })
   await opener.click()
   const dlg = page.getByRole('dialog', { name: '구독 추가' })
@@ -203,15 +203,15 @@ test('(V-8) every request goes to the app; the calendar code loads only with a c
     hosts.add(u.host)
     if (/fullcalendar|CalendarView|rrule-temporal/.test(u.pathname)) calendarFetches.push(u.pathname)
   })
-  await page.goto('/#home')
+  await page.goto('/')
   await page.locator('header.ph h1').waitFor()
   await page.waitForLoadState('networkidle')
   expect(calendarFetches, 'nothing of the calendar on the first screen').toEqual([])
   for (const r of ROUTES) {
-    await page.goto(`/#${r}`)
+    await page.goto(`/${r}`)
     await page.locator('header.ph h1').waitFor()
   }
-  await page.goto('/#events')
+  await page.goto('/events')
   await page.getByRole('region', { name: '이번 달 일정 달력' }).waitFor()
   await page.waitForLoadState('networkidle')
   expect(calendarFetches.length, 'the calendar tab fetched its code').toBeGreaterThan(0)
@@ -222,11 +222,11 @@ test.describe('(V-9 a) phone width', () => {
   test.use({ viewport: { width: 390, height: 844 } })
   test('no page scrolls sideways; the bottom bar reaches every main page', async ({ page }) => {
     for (const r of ROUTES) {
-      await page.goto(`/#${r}`)
+      await page.goto(`/${r}`)
       await page.locator('header.ph h1').waitFor()
       await page.waitForTimeout(300)
       const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
-      expect(sw, `#${r} scrollWidth`).toBeLessThanOrEqual(iw)
+      expect(sw, `/${r} scrollWidth`).toBeLessThanOrEqual(iw)
     }
     // spec 010 S-4: the bar reaches 현황, 예산 (월급 분배), 일정; the rest is in the "더보기" sheet
     const bar = page.getByRole('navigation', { name: '메뉴' }).last()
@@ -247,7 +247,7 @@ test.describe('(V-9 a) phone width', () => {
       name: `${MARK}-a-rather-long-service-name`, category: 'tool', plan: 'p', amount: 1234500, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-01-15', path: 'direct', verified: false,
     })
     try {
-      await page.goto('/#home')
+      await page.goto('/')
       // the trend card is not drawn on a phone (spec 010 HM-21): look at it on a narrow desktop width
       await page.setViewportSize({ width: 800, height: 900 })
       const labels = page.locator('.bars .bv')
@@ -255,7 +255,7 @@ test.describe('(V-9 a) phone width', () => {
       const boxes = (await labels.evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => [r.left, r.right])))
       for (let i = 1; i < boxes.length; i++) expect(boxes[i]![0], `label ${i} starts after label ${i - 1} ends`).toBeGreaterThanOrEqual(boxes[i - 1]![1])
       await page.setViewportSize({ width: 390, height: 844 })
-      await page.goto('/#subs')
+      await page.goto('/spend/subs')
       // a phone shows each subscription as a card (spec 010 SB-21): name and plan, monthly amount on the right
       const card = page.locator('.mcard', { hasText: MARK })
       const [name, monthly] = await Promise.all([card.locator('.m-name b').boundingBox(), card.locator('.m-amt').boundingBox()])
@@ -275,7 +275,7 @@ test('(V-13 b) a 429 on the session check shows a wait note, not the login form,
     if (refusals-- > 0) return route.fulfill({ status: 429, contentType: 'application/json', headers: { 'X-Retry-After': '6' }, body: '{"message":"Too many requests. Please try again later."}' })
     return route.continue()
   })
-  await page.goto('/#home')
+  await page.goto('/')
   const note = page.getByRole('status').filter({ hasText: '요청이 많아요' })
   await expect(note).toBeVisible()
   // the note holds, with no login form, through the whole wait (sampled every second)
@@ -305,7 +305,7 @@ test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 ap
     // the theme is chosen in Settings only: no light/dark button in the header or the phone bar
     await expect(g.getByRole('button', { name: /(라이트|다크) 모드로/ })).toHaveCount(0)
     // dark at once, a neutral grey (R, G, B within 4 of each other), kept after a reload
-    await g.goto('/#settings/general')
+    await g.goto('/settings/general')
     await g.getByRole('radiogroup', { name: '선호 테마' }).getByRole('radio', { name: '다크' }).click()
     await expect.poll(bg).toBe('rgb(15, 16, 17)')
     const [r, gg, b] = (await bg()).match(/\d+/g)!.map(Number)
@@ -313,13 +313,13 @@ test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 ap
     await g.reload()
     await expect.poll(bg).toBe('rgb(15, 16, 17)')
     // 선호 테마 in settings applies without a save button
-    await g.goto('/#settings/general')
+    await g.goto('/settings/general')
     await g.getByRole('radiogroup', { name: '선호 테마' }).getByRole('radio', { name: '라이트' }).click()
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
     await g.reload()
     await expect.poll(bg).toBe('rgb(245, 246, 245)')
     // 시스템: follows the OS, also when the OS changes while the page is open (review 11)
-    await g.goto('/#settings/general')
+    await g.goto('/settings/general')
     await g.getByRole('radiogroup', { name: '선호 테마' }).getByRole('radio', { name: '시스템' }).click()
     await expect.poll(bg).toBe('rgb(15, 16, 17)') // this context's OS is dark
     await g.emulateMedia({ colorScheme: 'light' })
@@ -338,11 +338,11 @@ test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 ap
 
 test('(V-14 c) every page has the header bar; controls drawn from the design say they are not ready', async ({ page }) => {
   for (const r of ROUTES) {
-    await page.goto(`/#${r}`)
-    await expect(page.locator('header.topbar'), `#${r}`).toBeVisible()
+    await page.goto(`/${r}`)
+    await expect(page.locator('header.topbar'), `/${r}`).toBeVisible()
   }
   const notice = page.getByRole('status').filter({ hasText: '준비 중' })
-  await page.goto('/#home')
+  await page.goto('/')
   // 내보내기 is 준비 중 (inert, spec 010 S-3); 기록 추가 opens the record modal
   const exp = page.getByRole('button', { name: '내보내기 (준비 중)' })
   await expect(exp).toHaveAttribute('aria-disabled', 'true')
@@ -372,7 +372,7 @@ test('(V-14 c) every page has the header bar; controls drawn from the design say
   }
   expect(page.url(), 'no navigation').toBe(url)
   expect(calls, 'no request').toEqual([])
-  await page.goto('/#subs')
+  await page.goto('/spend/subs')
   // CSV 내보내기 is 준비 중 as well (spec 010 S-3, S-7): inert, no notice, no request
   const csv = page.getByRole('button', { name: 'CSV 내보내기 (준비 중)' })
   await expect(csv).toHaveAttribute('aria-disabled', 'true')
@@ -387,7 +387,7 @@ test.describe('(V-8, V-9) shell', () => {
 
   test('(a) sidebar groups; the unfinished entries are visible, disabled, and do nothing; no 개발 entry; #dev still opens', async ({ page }) => {
     const calls: string[] = []
-    await page.goto('/#home')
+    await page.goto('/')
     const side = page.locator('aside.side')
     await expect(side.locator('.glabel')).toHaveText(['개요', '예산', '관리', 'AI'])
     await expect(side.getByRole('link')).toContainText(['현황', '월급 분배', '지출', '일정', '대기 중인 변경', '변경 내역', '설정'])
@@ -405,14 +405,14 @@ test.describe('(V-8, V-9) shell', () => {
     }
     expect(page.url(), 'no navigation').toBe(before)
     expect(calls, 'no request').toEqual([])
-    await page.goto('/#dev')
+    await page.goto('/dev')
     await expect(page.locator('header.ph h1')).toBeVisible()
     await expect(page.locator('header.topbar')).toContainText('시스템')
   })
 
   test('(b) the header has no theme button; the content column is in the middle at 1600', async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 })
-    await page.goto('/#home')
+    await page.goto('/')
     await page.locator('.kpis').waitFor()
     await expect(page.locator('header.topbar').getByRole('button', { name: /모드/ })).toHaveCount(0)
     const m = await page.evaluate(() => {
@@ -439,7 +439,7 @@ test.describe('(V-8, V-9) shell', () => {
       const res = await route.fetch()
       await route.fulfill({ response: res, json: { ...(await res.json()), pendingProposals: 0 } })
     })
-    await page.goto('/#home')
+    await page.goto('/')
     await page.locator('header.ph h1').waitFor()
     const bar = page.getByRole('navigation', { name: '메뉴' }).last()
     await expect(bar.getByRole('link', { name: /AI 제안/ })).toHaveCount(0)
@@ -450,7 +450,7 @@ test.describe('(V-8, V-9) shell', () => {
 
   test('(c) on a phone: top bar, a bar of the entries that exist, and the "더보기" sheet', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/#home')
+    await page.goto('/')
     await page.locator('header.ph h1').waitFor()
     await expect(page.locator('header.topbar')).toBeHidden()
     await expect(page.locator('.mbar')).toBeVisible()
@@ -503,7 +503,7 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
   const vars = () => page.evaluate(() => { const c = getComputedStyle(document.documentElement); return { sat: c.getPropertyValue('--sat').trim(), sun: c.getPropertyValue('--sun').trim(), boxSat: c.getPropertyValue('--sat').trim(), boxSun: c.getPropertyValue('--sun').trim() } })
   try {
     for (const theme of ['light', 'dark']) {
-      await page.goto('/#events')
+      await page.goto('/events')
       await page.getByRole('region', { name: '이번 달 일정 달력' }).waitFor()
       await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
       const v = await vars()
@@ -515,7 +515,7 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
         expect(colour, `${theme} calendar ${kind}`).toBe(want(kind === 'sat' ? v.sat : v.sun))
         if (other) { expect(opacity, `${theme} ${kind} out of month is faded`).toBeLessThan(1); expect(opacity).toBeGreaterThan(0.4) } else expect(opacity).toBe(1)
       }
-      await page.goto('/#home')
+      await page.goto('/')
       await page.getByRole('heading', { level: 2, name: '결제 예정' }).waitFor()
       await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme)
       const boxes = (await read('.none')).filter(([, , other]) => !other)
@@ -525,7 +525,7 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
     // Phone: no grid, the month's agenda; each weekend day takes the colour (D-3: month buttons, see the next test).
     await page.setViewportSize({ width: 390, height: 844 })
     for (const theme of ['light', 'dark']) {
-      await page.goto('/#events')
+      await page.goto('/events')
         const bar = page.getByRole('group', { name: '달 선택' })
       await bar.waitFor()
       if (nextMonth) await bar.getByRole('button', { name: '다음 달' }).click()
@@ -542,7 +542,7 @@ test('(S-17) Saturdays blue and Sundays red: calendar headers and date numbers (
 })
 
 test('(V-16) 이번 달 shows the split, the trend and the payments; 예약된 플랜 전환, 다가오는 일정 and 확인할 것 are on their own tabs (spec 010 D-1)', async ({ page }) => {
-  await page.goto('/#home')
+  await page.goto('/')
   const h2 = (name: string | RegExp) => page.getByRole('heading', { level: 2, name, exact: typeof name === 'string' })
   for (const n of [/자동이체 분배$/, '고정 지출 추이', '결제 예정']) await expect(h2(n)).toBeVisible()
   for (const n of ['예약된 플랜 전환', '다가오는 일정', '확인할 것']) await expect(h2(n)).toHaveCount(0)
@@ -563,7 +563,7 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
   const sideW = (page: Page) => page.locator('aside.side').evaluate((e) => Math.round(e.getBoundingClientRect().width))
 
   test('(a) the edge resizes the sidebar by drag and keys, within 200–360, kept after a reload; double-click resets', async ({ page }) => {
-    await page.goto('/#home')
+    await page.goto('/')
     const grip = page.getByRole('separator', { name: '사이드바 너비' })
     await expect(grip).toHaveAttribute('aria-valuenow', '272')
     expect(await sideW(page)).toBe(272)
@@ -595,7 +595,7 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
   })
 
   test('(b) folding leaves icons only; links keep their names and work; kept after a reload; unfolding brings the width back', async ({ page }) => {
-    await page.goto('/#home')
+    await page.goto('/')
     const grip = page.getByRole('separator', { name: '사이드바 너비' })
     await grip.focus()
     await page.keyboard.press('ArrowRight')
@@ -629,7 +629,7 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
   })
 
   test('(d) a visible handle on the sidebar edge; dragging it changes nothing else on the page, light and dark', async ({ page }) => {
-    await page.goto('/#subs')
+    await page.goto('/spend/subs')
     await page.locator('header.ph h1').waitFor()
     // the handle shows: a knob on the border line, at least 24px tall (the user, after rc.2)
     const knob = page.getByRole('separator', { name: '사이드바 너비' }).locator('.knob')
@@ -656,7 +656,7 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
   })
 
   test('(d) no handle when folded or on a phone', async ({ page }) => {
-    await page.goto('/#home')
+    await page.goto('/')
     await page.getByRole('button', { name: '사이드바 접기' }).click()
     await expect(page.getByRole('separator', { name: '사이드바 너비' })).toHaveCount(0)
     await page.getByRole('button', { name: '사이드바 펼치기' }).click()
@@ -668,7 +668,7 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
   test('(c) the content column sits in the middle at 1920; the header lines up with it; the header holds at 761–1000 with either sidebar width', async ({ page }) => {
     for (const width of [1920, 1440]) {
       await page.setViewportSize({ width, height: 1000 })
-      await page.goto('/#home')
+      await page.goto('/')
       await page.locator('.kpis').waitFor()
       const m = await page.evaluate(() => {
         const r = (e: Element) => e.getBoundingClientRect()
@@ -685,7 +685,7 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
     for (const sidebar of ['default', 'End'] as const) {
       for (const width of [761, 800, 1000]) {
         await page.setViewportSize({ width, height: 800 })
-        await page.goto('/#home')
+        await page.goto('/')
         await page.locator('header.topbar').waitFor()
         if (sidebar === 'End') { await page.getByRole('separator', { name: '사이드바 너비' }).focus(); await page.keyboard.press('End') }
         const h = await page.locator('header.topbar').evaluate((bar) => {
@@ -714,7 +714,7 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
 
 test('(spec 010 D-3) phone: month buttons move the agenda, there is no 오늘 button, the grid is not drawn', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/#events')
+  await page.goto('/events')
   const bar = page.getByRole('group', { name: '달 선택' })
   await bar.waitFor()
   await expect(page.getByRole('region', { name: '이번 달 일정 달력' })).toHaveCount(0)
@@ -733,7 +733,7 @@ test('(spec 010 D-3) phone: month buttons move the agenda, there is no 오늘 bu
 test.describe('(spec 010 EV-5..8) desktop', () => {
   test.use({ viewport: { width: 1440, height: 900 } })
   test('the month strip moves the grid and the agenda together; 오늘 is disabled on this month', async ({ page }) => {
-    await page.goto('/#events')
+    await page.goto('/events')
     const cal = page.getByRole('region', { name: '이번 달 일정 달력' })
     await cal.waitFor()
     const title = page.locator('[data-cal-title]')
@@ -758,7 +758,7 @@ test('(V-8, W-8) 설정 and 관리: what does not exist yet is a visible, inert 
     ['settings/security', ['비밀번호 정책', '자동 생성']],
   ]
   for (const [route, names] of cases) {
-    await page.goto(`/#${route}`)
+    await page.goto(`/${route}`)
     await page.locator('header.ph h1').waitFor()
     // the entries are there once the page's own loading (keys, proposal count, sign-in methods) is done
     await page.locator('[aria-disabled="true"]').filter({ hasText: names[0]!.startsWith('+') ? names[0]!.slice(2) : names[0]! }).first().waitFor()
@@ -786,7 +786,7 @@ test('(V-8, W-8) 설정 and 관리: what does not exist yet is a visible, inert 
 test.describe('(W-8) phone', () => {
   test.use({ viewport: { width: 390, height: 844 } })
   test('설정 opens with the account card and its sign-out; the key list is whole-row buttons', async ({ page }) => {
-    await page.goto('/#settings/general')
+    await page.goto('/settings/general')
     const card = page.getByRole('region', { name: '내 계정' })
     await expect(card).toBeVisible()
     await expect(card.getByRole('button', { name: '로그아웃' })).toBeVisible()
@@ -797,16 +797,16 @@ test.describe('(W-8) phone', () => {
 })
 
 test('(W-8) desktop has no account card on the settings page', async ({ page }) => {
-  await page.goto('/#settings/general')
+  await page.goto('/settings/general')
   await page.locator('header.ph h1').waitFor()
   await expect(page.getByRole('region', { name: '내 계정' })).toHaveCount(0)
 })
 
 test('(A-25) a page whose code cannot be downloaded says so and offers a reload', async ({ page }) => {
   await page.route(/\/(pages\/Subscriptions\.vue|assets\/Subscriptions-[^/]*\.js)/, (r) => r.abort())
-  await page.goto('/#home')
+  await page.goto('/')
   await page.locator('header.ph h1').waitFor()
-  await page.goto('/#subs')
+  await page.goto('/spend/subs')
   const alert = page.getByRole('alert').filter({ hasText: '이 화면을 불러오지 못했어요' })
   await expect(alert).toBeVisible()
   await expect(alert.getByRole('button', { name: '새로고침' })).toBeVisible()

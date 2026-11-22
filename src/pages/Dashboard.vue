@@ -277,7 +277,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
         </div>
 
         <section class="card col-side paycard">
-          <div class="card-hd"><h2>{{ t('dashboard.upcomingPayments') }}</h2><a href="#spend/subs" class="aux">{{ t('dashboard.allSubs') }}</a></div>
+          <div class="card-hd"><h2>{{ t('dashboard.upcomingPayments') }}</h2><RouterLink to="/spend/subs" class="aux">{{ t('dashboard.allSubs') }}</RouterLink></div>
           <template v-if="pays.length">
             <div class="psum"><span>{{ t('dashboard.fromToday') }}</span><b class="num">{{ t('dashboard.paySummary', { n: pays.length, amount: fmtMoney(paysSum) }) }}</b></div>
             <ul class="items pays">
@@ -307,7 +307,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
             <div class="lb-n"><span>{{ left.left < 0 ? t('dashboard.leftShort') : t('dashboard.leftRange', { from: mdShort(left.from), to: mdShort(left.to) }) }}</span><b class="num" :class="left.left < 0 ? 'neg' : 'pos'">{{ fmtMoney(left.left) }}</b></div>
             <div class="lb-a">
               <Soon class="btn sm soon-sm" :aria-label="`${t('dashboard.addPayment')} (${t('common.soon')})`">{{ t('dashboard.addPayment') }}</Soon>
-              <a class="btn sm ghost" href="#events">{{ t('dashboard.viewCalendar') }}</a>
+              <RouterLink class="btn sm ghost" to="/events">{{ t('dashboard.viewCalendar') }}</RouterLink>
             </div>
           </div>
         </section>
@@ -338,7 +338,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
             <template v-if="p.status === 'pending'">
               <span class="note">{{ t('pending.expires', { at: when(p.expiresAt) }) }}<template v-if="p.confirm === 'chat'"> · {{ t('pending.inChat') }}</template></span>
               <p v-if="!p.keyUsable" class="small warn" role="note">{{ t('pending.keyGone') }}</p>
-              <a class="btn sm ghost" href="#pending">{{ t('dashboard.detailsLink') }}</a>
+              <RouterLink class="btn sm ghost" to="/pending">{{ t('dashboard.detailsLink') }}</RouterLink>
               <button class="btn sm bad" type="button" :disabled="!!proposals.busy" @click="decide(p, 'reject')">{{ t('pending.rejectBtn') }}</button>
               <button class="btn sm pri" type="button" :disabled="!!proposals.busy || !p.keyUsable" @click="decide(p, 'apply')">{{ t('pending.confirmBtn') }}</button>
             </template>

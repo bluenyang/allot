@@ -2,9 +2,10 @@ import { expect, type Locator, type Page } from '@playwright/test'
 
 export const MARK = `E2E-${Date.now().toString(36)}`
 
-/** Open a page by its hash route and wait for the data to be on screen. */
-export async function go(page: Page, hash: 'home' | 'subs' | 'pay' | 'events' | 'dev', tab?: string) {
-  await page.goto(`/#${hash}`)
+/** Open a page by its name and wait for the data to be on screen. */
+const PATH = { home: '/', subs: '/spend/subs', pay: '/pay', events: '/events', dev: '/dev' } as const
+export async function go(page: Page, hash: keyof typeof PATH, tab?: string) {
+  await page.goto(PATH[hash])
   await page.getByRole('tablist').first().waitFor()
   if (tab) await page.getByRole('tab', { name: tab }).click()
 }
@@ -13,6 +14,16 @@ export async function go(page: Page, hash: 'home' | 'subs' | 'pay' | 'events' | 
 export async function reload(page: Page, hash: Parameters<typeof go>[1], tab?: string) {
   await page.reload()
   await go(page, hash, tab)
+}
+
+/**
+ * Go to a menu entry inside the open app, with no page load: the sidebar's link, as a user does. A
+ * `page.goto` to a history address loads the page again (a hash address did not), so a test whose point
+ * is what an already open page does next uses this instead (spec 012 W-7).
+ */
+export async function menu(page: Page, name: string) {
+  // the name starts the link's name: 대기 중인 변경 carries its count ("대기 중 1건")
+  await page.locator('aside.side').getByRole('link', { name: new RegExp(`^${name}`) }).first().click()
 }
 
 export const sheet = (page: Page, title: string | RegExp) => page.getByRole('form', { name: title })

@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, type AsyncComponentLoader, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
 import MoreSheet from './components/MoreSheet.vue'
 import Soon from './components/Soon.vue'
 import Toast from './components/Toast.vue'
-import PageLoadError from './components/PageLoadError.vue'
-import Dashboard from './pages/Dashboard.vue'
 import { api } from './lib/api'
 import { status, store } from './lib/store'
 import { toast, hideToast } from './lib/toast'
@@ -14,28 +13,12 @@ import { view } from './lib/view'
 import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
 import { t, type MessageKey } from './i18n'
-import { loadSpendingMessages } from './i18n/spending'
 import { phaseTag } from './lib/labels'
 
 // Shell (spec 010 S-4): a grouped sidebar with the user at the bottom, a header bar and a footer on
 // every page; on a phone a top bar, a bottom bar and a "더보기" sheet. Menu entries for features that
-// do not exist yet are `Soon` (S-3): shown, inert, with no route behind them.
-// A page loaded on first open; if its code cannot be downloaded, say so and offer a reload.
-const lazyPage = (loader: AsyncComponentLoader) =>
-  defineAsyncComponent({ loader, errorComponent: PageLoadError, delay: 200 })
-interface Page { id: string; comp: unknown }
-const PAGES: Record<string, Page> = {
-  // Only the dashboard is in the first chunk; every other page loads when it is first opened (spec 010 V-1, A-24).
-  home: { id: 'home', comp: Dashboard },
-  spend: { id: 'spend', comp: lazyPage(() => loadSpendingMessages().then(() => import('./pages/Spending.vue'))) },
-  pay: { id: 'pay', comp: lazyPage(() => import('./pages/Payroll.vue')) },
-  events: { id: 'events', comp: lazyPage(() => import('./pages/Timeline.vue')) },
-  pending: { id: 'pending', comp: lazyPage(() => import('./pages/Pending.vue')) },
-  history: { id: 'history', comp: lazyPage(() => import('./pages/History.vue')) },
-  settings: { id: 'settings', comp: lazyPage(() => import('./pages/Settings.vue')) },
-  admin: { id: 'admin', comp: lazyPage(() => import('./pages/Admin.vue')) },
-  dev: { id: 'dev', comp: lazyPage(() => import('./pages/Dev.vue')) }, // no menu entry: reached by the address #dev only
-}
+// do not exist yet are `Soon` (S-3): shown, inert, with no route behind them. The pages and their
+// addresses are in router.ts (spec 012).
 const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 interface Entry { id: string; soon?: boolean }
 const groups: { id: 'overview' | 'budget' | 'manage' | 'ai'; items: Entry[] }[] = [
@@ -55,24 +38,12 @@ const isAdmin = computed(() => me.value?.role === 'admin')
 /** The admin page shows for admins only; the server refuses everyone else anyway. */
 const lower = computed(() => ['settings', ...(isAdmin.value ? ['admin'] : [])])
 
-// Hash routes: #home, #spend/<tab>, …, #settings/<tab>. #account is kept as an alias of the
-// login & security tab, because external-login linking returns to /#account (spec 007 S-12).
-// #subs is kept too (spec 011 S-1): it shows the 지출 page on its 구독 tab and the address stays as typed.
-const SPEND_TABS = ['general', 'inst', 'subs']
-const read = () => {
-  const [head = '', sub = ''] = location.hash.slice(1).split('?')[0]!.split('/')
-  if (head === 'account') return { page: 'settings', sub: 'security' }
-  if (head === 'subs') return { page: 'spend', sub: 'subs' }
-  if (head === 'spend') return { page: 'spend', sub: SPEND_TABS.includes(sub) ? sub : 'general' }
-  return PAGES[head] ? { page: head, sub } : { page: 'home', sub: '' }
-}
-const route = ref(read())
-const onHash = () => {
-  route.value = read()
-  window.scrollTo(0, 0)
-}
-onMounted(() => window.addEventListener('hashchange', onHash))
-onBeforeUnmount(() => window.removeEventListener('hashchange', onHash))
+// Where we are (spec 012 S-4): the page (`meta.page`, the KeepAlive key) and its tab, from the router.
+const current = useRoute()
+const route = computed(() => ({ page: current.meta.page ?? 'home', sub: String(current.params.tab ?? '') }))
+/** The address of a menu entry: a tabbed page opens on its first tab, as #spend and #settings did. */
+const PATH: Record<string, string> = { home: '/', spend: '/spend/general', settings: '/settings/general' }
+const pathOf = (id: string) => PATH[id] ?? `/${id}`
 
 // ── Header bar (spec 010 S-4): where you are (the overview: its month and phase), search and
 // notifications as drawn (not there yet → `Soon`). No light/dark switch: the theme is chosen in Settings (D-10).
@@ -91,10 +62,10 @@ const REPO = 'https://github.com/bluenyang/allot'
 // bar only while something waits there (spec 009 A-7); the budget slot opens the pay split, and
 // stays current on the spending page too.
 const bottom = computed(() => [
-  { id: 'home', href: '#home', icon: 'home', label: t('shell.tabs.home'), on: route.value.page === 'home' },
-  { id: 'budget', href: '#pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'spend'].includes(route.value.page) },
-  { id: 'events', href: '#events', icon: 'events', label: t('shell.tabs.events'), on: route.value.page === 'events' },
-  ...(store.pendingProposals ? [{ id: 'pending', href: '#pending', icon: 'pending', label: t('shell.tabs.pending'), on: route.value.page === 'pending', badge: store.pendingProposals }] : []),
+  { id: 'home', href: '/', icon: 'home', label: t('shell.tabs.home'), on: route.value.page === 'home' },
+  { id: 'budget', href: '/pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'spend'].includes(route.value.page) },
+  { id: 'events', href: '/events', icon: 'events', label: t('shell.tabs.events'), on: route.value.page === 'events' },
+  ...(store.pendingProposals ? [{ id: 'pending', href: '/pending', icon: 'pending', label: t('shell.tabs.pending'), on: route.value.page === 'pending', badge: store.pendingProposals }] : []),
 ])
 const moreOpen = ref(false)
 const moreOn = computed(() => ['history', 'settings', 'admin', 'dev'].includes(route.value.page))
@@ -155,16 +126,16 @@ const onGripKey = (e: KeyboardEvent) => {
           <span class="glabel">{{ t(GROUP_LABEL[g.id]) }}</span>
           <template v-for="it in g.items" :key="it.id">
             <Soon v-if="it.soon" tag="div" class="ni" :title="sideFolded ? soonName(label(it.id)) : undefined"><Icon :name="it.id" /><span class="grow lbl">{{ label(it.id) }}</span></Soon>
-            <a v-else class="ni" :href="'#' + it.id" :aria-current="route.page === it.id ? 'true' : 'false'" :title="sideFolded ? label(it.id) : undefined">
+            <RouterLink v-else class="ni" :to="pathOf(it.id)" :aria-current="route.page === it.id ? 'true' : 'false'" :title="sideFolded ? label(it.id) : undefined">
               <Icon :name="it.id" /><span class="grow lbl">{{ label(it.id) }}</span>
               <span v-if="it.id === 'pending' && store.pendingProposals" class="ncount badge" :aria-label="t('shell.pendingN', { n: store.pendingProposals })">{{ store.pendingProposals }}</span>
-            </a>
+            </RouterLink>
           </template>
         </div>
       </nav>
       <div class="lower">
         <nav :aria-label="t('shell.settingsMenu')">
-          <a v-for="id in lower" :key="id" class="ni" :href="'#' + id" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? label(id) : undefined"><Icon :name="id" /><span class="lbl">{{ label(id) }}</span></a>
+          <RouterLink v-for="id in lower" :key="id" class="ni" :to="pathOf(id)" :aria-current="route.page === id ? 'true' : 'false'" :title="sideFolded ? label(id) : undefined"><Icon :name="id" /><span class="lbl">{{ label(id) }}</span></RouterLink>
         </nav>
         <div class="who">
           <template v-if="me">
@@ -209,7 +180,7 @@ const onGripKey = (e: KeyboardEvent) => {
       <Toast v-if="toast.message" :message="toast.message" :action-label="toast.actionLabel || undefined" :error="toast.error" :dismissible="toast.error" @action="toastAction" @dismiss="hideToast" />
       <main class="main">
         <p v-if="status.error" class="save-err" role="alert">{{ status.error }} <button type="button" @click="status.error = ''">{{ t('common.close') }}</button></p>
-        <KeepAlive><component :is="PAGES[route.page]!.comp" :key="route.page" v-bind="route.page === 'settings' || route.page === 'spend' ? { sub: route.sub } : {}" /></KeepAlive>
+        <RouterView v-slot="{ Component }"><KeepAlive><component :is="Component" :key="route.page" /></KeepAlive></RouterView>
       </main>
       <footer class="foot-bar">
         <div class="fl"><b>Allot</b><span class="mono">v{{ version }}</span><span aria-hidden="true">·</span><span>{{ t('shell.footerTagline') }}</span></div>
@@ -224,9 +195,9 @@ const onGripKey = (e: KeyboardEvent) => {
     </div>
 
     <nav class="botnav" :aria-label="t('shell.menu')">
-      <a v-for="it in bottom" :key="it.id" class="mi" :href="it.href" :aria-current="it.on ? 'true' : 'false'">
+      <RouterLink v-for="it in bottom" :key="it.id" class="mi" :to="it.href" :aria-current="it.on ? 'true' : 'false'">
         <Icon :name="it.icon" />{{ it.label }}<span v-if="it.badge" class="b" :aria-label="t('shell.pendingN', { n: it.badge })">{{ it.badge }}</span>
-      </a>
+      </RouterLink>
       <button class="mi" :class="{ on: moreOn }" type="button" aria-haspopup="dialog" :aria-expanded="moreOpen" @click="moreOpen = true"><Icon name="more" />{{ t('shell.tabs.more') }}</button>
     </nav>
     <MoreSheet v-model="moreOpen" :name="me?.name ?? ''" :email="me?.email ?? ''" :admin="isAdmin" :pending="store.pendingProposals" @logout="logout" />

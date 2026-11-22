@@ -54,7 +54,7 @@ const howOpts = computed(() => [
   { value: '', label: t('spending.inst.how.all') },
   { value: 'installment', label: t('spending.inst.how.installment') },
   { value: 'split', label: t('spending.inst.how.split') },
-  { value: 'buffer', label: `${t('spending.inst.how.buffer')} (${t('common.soon')})`, disabled: true }, // 0.1.6
+  { value: 'buffer', label: `${t('spending.inst.how.buffer')} (${t('common.soon')})`, disabled: true }, // 0.1.7
 ])
 const shown = computed(() => items.value
   .filter((i) => inStatus(i, status.value) && (!how.value || i.s.how === how.value))

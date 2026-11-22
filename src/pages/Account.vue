@@ -43,7 +43,8 @@ async function link(provider: string) {
   error.value = ''
   busy.value = true
   try {
-    await startSocial(provider, `${window.location.origin}/#account`, true)
+    // Back to this tab (spec 012 S-5); a link started before 0.1.6 comes back to /#account, which the router turns into this.
+    await startSocial(provider, `${window.location.origin}/settings/security`, true)
   } catch (e) {
     busy.value = false
     fail(e, t('account.linkFailed'))
@@ -96,7 +97,7 @@ const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle
     <div class="cols">
       <div class="col">
         <section v-if="me" class="card">
-          <div class="ch"><h2>{{ t('account.myInfo') }}</h2><a v-if="me.role === 'admin'" class="btn sm ghost" href="#admin">{{ t('account.adminLink') }}</a></div>
+          <div class="ch"><h2>{{ t('account.myInfo') }}</h2><RouterLink v-if="me.role === 'admin'" class="btn sm ghost" to="/admin">{{ t('account.adminLink') }}</RouterLink></div>
           <dl class="kv">
             <dt>{{ t('login.email') }}</dt><dd>{{ me.email }}</dd>
             <dt>{{ t('account.name') }}</dt><dd>{{ me.name }}</dd>

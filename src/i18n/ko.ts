@@ -1207,7 +1207,7 @@ export const ko = {
     connect: '연결 방법',
     mcpUrl: 'MCP 주소',
     keyScope: '키는 이 주소에서만 통하고 다른 API에는 쓸 수 없어요. 폐기하면 바로 쓸 수 없게 돼요.',
-    later: 'claude.ai의 원격 커넥터와 휴대폰 앱은 OAuth 로그인이 필요해서 0.1.10에서 지원할 예정이에요.',
+    later: 'claude.ai의 원격 커넥터와 휴대폰 앱은 OAuth 로그인이 필요해서 0.1.11에서 지원할 예정이에요.',
   },
   admin: {
     summary: '{n}개 · 활성 {active} · 승인 대기 {waiting}',

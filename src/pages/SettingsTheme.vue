@@ -113,7 +113,7 @@ function reset() {
           <span class="hint">{{ t('settingsTheme.accentDesc') }}</span></div>
         <div class="field"><span id="t-m" class="lbl">{{ t('settingsTheme.previewMode') }}</span>
           <Seg :options="MODES" :model-value="mode" labelledby="t-m" @update:model-value="mode = $event" />
-          <i18n-t keypath="settingsTheme.previewModeDesc" tag="span" class="hint"><template #link><a href="#settings/general">{{ t('settings.tabs.general') }}</a></template></i18n-t></div>
+          <i18n-t keypath="settingsTheme.previewModeDesc" tag="span" class="hint"><template #link><RouterLink to="/settings/general">{{ t('settings.tabs.general') }}</RouterLink></template></i18n-t></div>
         <div class="two">
           <div class="field"><span id="t-r" class="lbl">{{ t('settingsTheme.radiusTitle') }}</span>
             <Seg :options="RADII" :model-value="d.radius" labelledby="t-r" @update:model-value="d.radius = $event" />

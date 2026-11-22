@@ -6,6 +6,7 @@
 // without one, what is left of the pay stays in the pay account (`unallocated`).
 import { t, tl } from '../i18n'
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -111,11 +112,12 @@ const viewBody = computed(() => {
   }
   return { formula: t('payroll.fRest', { pay: fmtMoney(pay.value), others: fmtMoney(others) }), where: t('payroll.whereRest'), go: t('payroll.openPay') }
 })
+const router = useRouter()
 function viewGo() {
   const k = view.value?.kind
   view.value = null
   if (k === 'living') tab.value = 'accounts'
-  else if (k === 'subscriptions') location.hash = '#spend/subs'
+  else if (k === 'subscriptions') void router.push('/spend/subs')
   else openPay()
 }
 
@@ -418,7 +420,7 @@ const livingRows = computed(() => [
               <Select id="st-round" v-model="set.subRound" :options="roundOpts.map((o) => ({ value: o.v, label: o.label }))" />
               <span class="hint">{{ t('payroll.subRoundHint') }}</span>
             </div>
-            <i18n-t keypath="payroll.settingsNote" tag="p" class="hint note"><template #link><a href="#settings/general">{{ t('payroll.settingsLink') }}</a></template></i18n-t>
+            <i18n-t keypath="payroll.settingsNote" tag="p" class="hint note"><template #link><RouterLink to="/settings/general">{{ t('payroll.settingsLink') }}</RouterLink></template></i18n-t>
           </div>
           <div class="cf">
             <span class="small muted" role="status">{{ setMsg }}</span>

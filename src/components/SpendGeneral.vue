@@ -202,7 +202,7 @@ const share = (v: number, total: number) => (total ? (v / total) * 100 : 0)
       </ul>
 
       <div v-if="!shown.length" class="empty"><b>{{ t('spending.emptyTitle') }}</b><span class="hint">{{ t('spending.emptyGeneral') }}</span></div>
-      <p class="foot">{{ t('spending.gen.footA', { day: store.settings.billingDay }) }}<a class="lnkbtn" href="#spend/inst">{{ t('spending.tabs.inst') }}</a>{{ t('spending.gen.footB') }}</p>
+      <p class="foot">{{ t('spending.gen.footA', { day: store.settings.billingDay }) }}<RouterLink class="lnkbtn" to="/spend/inst">{{ t('spending.tabs.inst') }}</RouterLink>{{ t('spending.gen.footB') }}</p>
     </section>
     <SpendEditor v-if="editing" :initial="editing" @close="editing = null" />
   </section>

@@ -47,7 +47,7 @@ test('approval: a new OIDC user waits, the admin approves, then the app opens', 
   await dexLogin(g, DEX_USER)
   await expect(g.getByRole('alert')).toContainText('관리자 승인을 기다리고 있어요')
 
-  await page.goto('/#admin')
+  await page.goto('/admin')
   // the account list says who waits; approving is choosing 활성 in the account's dialog and saving
   await expect(page.getByText(/승인 대기 \d+/).first()).toBeVisible()
   await page.getByRole('button', { name: `${DEX_USER} 관리` }).click()
@@ -59,7 +59,7 @@ test('approval: a new OIDC user waits, the admin approves, then the app opens', 
   await g.goto('/')
   await dexLogin(g, DEX_USER)
   await g.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
-  await g.goto('/#account')
+  await g.goto('/settings/security')
   await expect(g.getByText(DEX_USER, { exact: true })).toBeVisible()
   await expect(g.locator('.list li', { hasText: 'Dex' })).toBeVisible()
   await guest.close()
@@ -67,7 +67,7 @@ test('approval: a new OIDC user waits, the admin approves, then the app opens', 
 
 test('admin screen: create an account without a password, then delete it completely', async ({ page }) => {
   const email = `e2e-${Date.now().toString(36)}@example.com`
-  await page.goto('/#admin')
+  await page.goto('/admin')
   await page.getByRole('button', { name: '계정 만들기' }).click()
   const sheet = page.getByRole('form', { name: '새 계정' })
   await sheet.getByLabel('이메일').fill(email)
@@ -91,7 +91,7 @@ test('admin screen: create an account without a password, then delete it complet
 })
 
 test('login methods tab: env-free fields are editable, the secret is never shown', async ({ page }) => {
-  await page.goto('/#admin')
+  await page.goto('/admin')
   await page.getByRole('tab', { name: '로그인 방식' }).click()
   await page.getByRole('button', { name: 'OIDC 설정' }).click()
   const s = page.getByRole('form', { name: 'OIDC 로그인' })
@@ -154,7 +154,7 @@ test('account screen: link Dex, unlink it, the last login stays', async ({ reque
   await g.getByLabel('비밀번호').fill('e2e-link-pass-1')
   await g.getByRole('button', { name: '로그인', exact: true }).click()
   await g.getByRole('tab', { name: '이번 달' }).waitFor({ timeout: 15_000 })
-  await g.goto('/#account')
+  await g.goto('/settings/security')
   const logins = g.locator('.list li')
   await expect(logins).toHaveCount(1)
   await g.getByRole('button', { name: 'Dex 연결' }).click()
@@ -164,7 +164,7 @@ test('account screen: link Dex, unlink it, the last login stays', async ({ reque
   await g.locator('#login').fill(DEX_LINK_USER)
   await g.locator('#password').fill(DEX_PASSWORD)
   await g.locator('#submit-login').click()
-  await g.waitForURL(/#account$/, { timeout: 20_000 })
+  await g.waitForURL(/\/settings\/security$/, { timeout: 20_000 })
   await expect(logins).toHaveCount(2)
   await expect(logins.filter({ hasText: 'Dex' })).toHaveCount(1)
 

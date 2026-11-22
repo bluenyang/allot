@@ -75,7 +75,7 @@ const steps = computed(() => [t('spending.ed.stepBought'), t('spending.ed.stepHo
 const currencyOpts = [{ id: 'KRW', label: 'KRW' }, { id: 'USD', label: 'USD' }]
 const howOpts = computed(() => [
   { id: 'lump', label: t('spending.ed.howLump') }, { id: 'installment', label: t('spending.ed.howInst') }, { id: 'split', label: t('spending.ed.howSplit') },
-  { id: 'buffer', label: t('spending.ed.howBuffer'), disabled: true }, // 0.1.6
+  { id: 'buffer', label: t('spending.ed.howBuffer'), disabled: true }, // 0.1.7
 ])
 const stateOpts = computed(() => [{ id: 'left', label: t('spending.inst.round.left') }, { id: 'paid', label: t('spending.inst.round.paid') }, { id: 'cancelled', label: t('spending.ed.stateCancelled') }])
 const feeOpts = computed(() => [{ id: 'free', label: t('spending.ed.interestFree') }, { id: 'fee', label: t('spending.ed.interestFee') }])

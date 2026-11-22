@@ -151,7 +151,7 @@ export interface RemainderSplit {
 }
 
 // ---------- one-off spending (spec 011 S-2) ----------
-/** How a spending is paid: all at once, in card installments, or split by the user. 0.1.6 adds 'buffer'. */
+/** How a spending is paid: all at once, in card installments, or split by the user. 0.1.7 adds 'buffer'. */
 export type SpendHow = 'lump' | 'installment' | 'split'
 /** Where the money comes from: the card (billed on the billing day), the salary account, or the subscription account. */
 export type PayBy = 'card' | 'salary' | 'subs'

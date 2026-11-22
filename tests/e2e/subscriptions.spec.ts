@@ -148,7 +148,7 @@ test('(V-10) in English: the same two-step add, a plan change, delete asks first
   const prefs = (await state(request)).preferences
   await api(request, 'PUT', '/api/preferences', { ...prefs, language: 'en' })
   try {
-    await page.goto('/#subs')
+    await page.goto('/spend/subs')
     await page.getByRole('tablist').first().waitFor()
     await page.getByRole('button', { name: 'Add subscription' }).click()
     const add = sheet(page, 'Add subscription')
@@ -283,16 +283,16 @@ test('(A-9) the editor: Enter on step 1 goes on, Back keeps both steps, a server
 })
 
 test('(A-9) browser Back after #subs?add leaves the page and the editor with it; Forward does not reopen it', async ({ page }) => {
-  await page.goto('/#home')
+  await page.goto('/')
   await page.getByRole('tab', { name: '이번 달' }).waitFor()
   await page.evaluate(() => { location.hash = '#subs?add' })
   await expect(sheet(page, '구독 추가')).toBeVisible()
-  await expect(page).toHaveURL(/#subs$/)
+  await expect(page).toHaveURL(/\/spend\/subs$/)
   await page.goBack()
-  await expect(page).toHaveURL(/#home$/)
+  await expect(page).toHaveURL(/:\d+\/$/)
   await expect(sheet(page, '구독 추가')).toHaveCount(0)
   await page.goForward()
-  await expect(page).toHaveURL(/#subs$/)
+  await expect(page).toHaveURL(/\/spend\/subs$/)
   await page.getByRole('tablist').first().waitFor()
   await expect(sheet(page, '구독 추가')).toHaveCount(0)
 })

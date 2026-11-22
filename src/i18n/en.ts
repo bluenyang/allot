@@ -1207,7 +1207,7 @@ export const en = {
     connect: 'How to connect',
     mcpUrl: 'MCP address',
     keyScope: 'The key works only at this address and cannot be used for other APIs. Once revoked, it stops working at once.',
-    later: 'The claude.ai remote connector and phone apps need OAuth sign-in, which is planned for 0.1.10.',
+    later: 'The claude.ai remote connector and phone apps need OAuth sign-in, which is planned for 0.1.11.',
   },
   admin: {
     summary: '{n} · active {active} · waiting {waiting}',

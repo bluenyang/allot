@@ -53,14 +53,14 @@ const big = async (page: Page, i: number) => digits(await col(page, i).locator('
 
 test('(S-1) the menu is 지출 with the receipt icon; three tabs with their own addresses; the title and breadcrumb follow the tab', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/#home')
+  await page.goto('/')
   const side = page.locator('aside.side')
   const link = side.getByRole('link', { name: '지출' })
   await expect(link).toBeVisible()
   await expect(side.getByRole('link', { name: '구독' })).toHaveCount(0)
   await expect(link.locator('svg path').first()).toHaveAttribute('d', /^M4 2v20l2-1 2 1/) // the canvas receipt
   await link.click()
-  await expect(page).toHaveURL(/#spend$/) // the menu entry is #spend, which is 일반
+  await expect(page).toHaveURL(/\/spend\/general$/) // the menu entry opens 일반
   await expect(page.locator('header.ph h1')).toHaveText('지출')
   await expect(page.locator('nav.crumbs')).toContainText('예산/지출/일반')
   await expect(link).toHaveAttribute('aria-current', 'true')
@@ -70,28 +70,28 @@ test('(S-1) the menu is 지출 with the receipt icon; three tabs with their own 
   // the add button follows the tab and opens its editor (W-7)
   await expect(page.getByRole('button', { name: '지출 추가', exact: true })).toBeEnabled()
   await tabs.getByRole('tab', { name: /^할부/ }).click()
-  await expect(page).toHaveURL(/#spend\/inst$/)
+  await expect(page).toHaveURL(/\/spend\/inst$/)
   await expect(page.locator('nav.crumbs')).toContainText('예산/지출/할부')
   await expect(page.getByRole('button', { name: '할부 추가', exact: true })).toBeEnabled()
   await tabs.getByRole('tab', { name: /^구독/ }).click()
-  await expect(page).toHaveURL(/#spend\/subs$/)
+  await expect(page).toHaveURL(/\/spend\/subs$/)
   await expect(page.locator('nav.crumbs')).toContainText('예산/지출/구독')
   await expect(page.getByRole('button', { name: '구독 추가', exact: true })).toBeEnabled()
-  // an unknown tab falls back to 일반; #spend alone is 일반
+  // an unknown tab falls back to 일반; #spend alone is 일반 (old addresses, spec 012 S-2)
   await page.goto('/#spend')
   await expect(tabs.getByRole('tab', { name: /^일반/ })).toHaveAttribute('aria-selected', 'true')
   await page.goto('/#spend/nope')
   await expect(tabs.getByRole('tab', { name: /^일반/ })).toHaveAttribute('aria-selected', 'true')
 })
 
-test('(S-1) #subs is the 지출 page on the 구독 tab and stays #subs; #subs?add and #spend/subs?add open the add editor', async ({ page }) => {
+test('(S-1, spec 012 S-2) #subs is the 지출 page on the 구독 tab at /spend/subs; #subs?add and #spend/subs?add open the add editor', async ({ page }) => {
   await page.goto('/#subs')
   const tabs = page.getByRole('tablist', { name: '지출 종류' })
   await expect(tabs.getByRole('tab', { name: /^구독/ })).toHaveAttribute('aria-selected', 'true')
-  await expect(page).toHaveURL(/#subs$/)
+  await expect(page).toHaveURL(/\/spend\/subs$/)
   await expect(page.locator('header.ph h1')).toHaveText('지출')
-  for (const [from, to] of [['#subs?add', /#subs$/], ['#spend/subs?add', /#spend\/subs$/]] as const) {
-    await page.goto('/#home')
+  for (const [from, to] of [['#subs?add', /\/spend\/subs$/], ['#spend/subs?add', /\/spend\/subs$/]] as const) {
+    await page.goto('/')
     await page.getByRole('tab', { name: '이번 달' }).waitFor()
     await page.evaluate((h) => { location.hash = h }, from)
     await expect(sheet(page, '구독 추가')).toBeVisible()
@@ -110,7 +110,7 @@ test('(S-1, V-6) the 구독 tab keeps the four views and the summary of the old 
 
 test('(S-5) the reflection card: a salary-account one-off comes off the remainder; a subscription-account one-off adds to the transfer', async ({ page, request }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/#spend/general')
+  await page.goto('/spend/general')
   await expect(card(page)).toBeVisible()
   await expect(card(page).locator('#ms-t')).toHaveText(/^\d{4}\. \d{2} 지출 반영$/)
   await expect(card(page).locator('.tip')).toHaveAttribute('aria-label', /급여 통장이나 카드로 내는 돈은 그 달 나머지에서 빼고/)
@@ -128,13 +128,13 @@ test('(S-5) the reflection card: a salary-account one-off comes off the remainde
     expect(t[1]! - t[0]!).toBeLessThanOrEqual(600_000)
     await expect(col(page, 1)).toContainText(`${MARK}-subs 1건`)
     // the same on the other tabs: the card is above all three
-    for (const tab of ['inst', 'subs']) { await page.goto(`/#spend/${tab}`); await expect(card(page)).toBeVisible() }
+    for (const tab of ['inst', 'subs']) { await page.goto(`/spend/${tab}`); await expect(card(page)).toBeVisible() }
   })
 })
 
 test('(S-5) a negative remainder says 모자라요, keeps other amounts, and links to the pay split; without the spending the month is as before', async ({ page, request }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/#spend/general')
+  await page.goto('/spend/general')
   await expect(card(page)).toBeVisible()
   const rem0 = await big(page, 2) // the month without our spending (it may already be short on a used test account)
   await withSpendings(request, [lump(`${MARK}-over`, 900_000_000, 'salary')], async () => {
@@ -145,12 +145,12 @@ test('(S-5) a negative remainder says 모자라요, keeps other amounts, and lin
     await expect(rem.getByText('모자라요')).toBeVisible()
     await expect(rem).toContainText('다른 금액은 자동으로 바꾸지 않아요')
     const link = rem.getByRole('link', { name: '월급 분배에서 조정 →' })
-    await expect(link).toHaveAttribute('href', '#pay')
+    await expect(link).toHaveAttribute('href', '/pay')
     await link.click()
-    await expect(page).toHaveURL(/#pay$/)
+    await expect(page).toHaveURL(/\/pay$/)
   })
   // gone again (after a reload: the page's data is the server's): the remainder is what it was
-  await page.goto('/#spend/general')
+  await page.goto('/spend/general')
   await page.reload()
   expect(await big(page, 2)).toBe(rem0)
 })
@@ -158,7 +158,7 @@ test('(S-5) a negative remainder says 모자라요, keeps other amounts, and lin
 test('(S-5) two subscription-account spendings with the same name count as two items', async ({ page, request }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await withSpendings(request, [lump(`${MARK}-dup`, 11_000, 'subs'), lump(`${MARK}-dup`, 22_000, 'subs')], async () => {
-    await page.goto('/#spend/general')
+    await page.goto('/spend/general')
     await page.reload()
     await expect(col(page, 1)).toContainText(`${MARK}-dup 외 1건`)
   })
@@ -205,7 +205,7 @@ test('(S-6, S-7) the 일반 tab: rows, states, 반영 text, filters, counts and 
   const names = Object.fromEntries(Object.values(set).map((g) => [g.key, `${MARK}-g${g.key}${g.suffix ?? ''}`]))
   const bodies = Object.values(set).map((g) => gBody(names[g.key]!, g))
   const ym = thisYm()
-  await page.goto('/#spend/general')
+  await page.goto('/spend/general')
   await expect(gCards(page)).toHaveCount(3)
   const k0 = await readK(page)
   const labels = ['전체', '예정', '냄', '취소']
@@ -291,9 +291,9 @@ test('(S-6, S-7) the 일반 tab: rows, states, 반영 text, filters, counts and 
     // the note under the list names the billing day and links to the 할부 tab
     await expect(page.locator('.foot')).toContainText(`카드는 청구일(매달 ${billingDay}일)이 속한 달이에요`)
     await page.locator('.foot').getByRole('link', { name: '할부' }).click()
-    await expect(page).toHaveURL(/#spend\/inst$/)
+    await expect(page).toHaveURL(/\/spend\/inst$/)
   })
-  await page.goto('/#spend/general')
+  await page.goto('/spend/general')
   await page.reload()
   expect(await readK(page), 'the cards are what they were').toEqual(k0)
 })
@@ -303,7 +303,7 @@ test('(S-7, V-7) the 일반 tab on the phone: a card list, the three cards stack
   const set = gSet()
   const names = Object.fromEntries(Object.values(set).map((g) => [g.key, `${MARK}-g${g.key}${g.suffix ?? ''}`]))
   await withSpendings(request, Object.values(set).map((g) => gBody(names[g.key]!, g)) as unknown as ReturnType<typeof lump>[], async () => {
-    await page.goto('/#spend/general')
+    await page.goto('/spend/general')
     await expect(gCards(page)).toHaveCount(3)
     await expect(page.locator('table.gen-t')).toBeHidden()
     const li = page.locator('.mlist .mcard', { hasText: names.bill })
@@ -327,7 +327,7 @@ test('(S-10) the 일반 tab in English: filters, columns, states, the reason and
   try {
     await withSpendings(request, [set.bill!, set.off!].map((g) => gBody(names[g.key]!, g)) as unknown as ReturnType<typeof lump>[], async () => {
       await page.setViewportSize({ width: 1440, height: 900 })
-      await page.goto('/#spend/general')
+      await page.goto('/spend/general')
       const seg = page.getByRole('group', { name: 'Filter by status' })
       await expect(seg.getByRole('button')).toHaveText([/^All\s*\d+$/, /^Planned\s*\d+$/, /^Paid\s*\d+$/, /^Cancelled\s*\d+$/])
       await expect(page.locator('table.gen-t thead th')).toHaveText(['Item', 'Category', 'Paid on', 'Amount', 'In KRW', 'Payment method', 'Counted', 'Status', 'Edit'])
@@ -347,15 +347,15 @@ test('(S-10) the 일반 tab in English: filters, columns, states, the reason and
 
 test('(review 3) the 구독 tab keeps its view and filter across a tab switch and Back', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/#spend/subs')
+  await page.goto('/spend/subs')
   await page.getByRole('tablist').first().waitFor()
   await page.getByRole('tab', { name: /^목록/ }).click()
   await page.getByRole('button', { name: /^전체/ }).click()
   await page.getByRole('tab', { name: /^변경 일정/ }).click()
   await page.getByRole('tablist', { name: '지출 종류' }).getByRole('tab', { name: /^일반/ }).click()
-  await expect(page).toHaveURL(/#spend\/general$/)
+  await expect(page).toHaveURL(/\/spend\/general$/)
   await page.goBack()
-  await expect(page).toHaveURL(/#spend\/subs$/)
+  await expect(page).toHaveURL(/\/spend\/subs$/)
   await expect(page.getByRole('tab', { name: /^변경 일정/ })).toHaveAttribute('aria-selected', 'true')
   await page.getByRole('tab', { name: /^목록/ }).click()
   await expect(page.getByRole('button', { name: /^전체/ })).toHaveAttribute('aria-pressed', 'true')
@@ -368,7 +368,7 @@ for (const [what, view, open, title] of [
 ] as const) {
   test(`(review 4) the ${what} closes when the 구독 tab is left with Back; the view and filter are kept`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/#spend/general')
+    await page.goto('/spend/general')
     await page.getByRole('tablist').first().waitFor()
     await page.getByRole('tablist', { name: '지출 종류' }).getByRole('tab', { name: /^구독/ }).click()
     await page.getByRole('tab', { name: /^목록/ }).click()
@@ -377,7 +377,7 @@ for (const [what, view, open, title] of [
     await page.getByRole('button', { name: open, exact: true }).click()
     await expect(sheet(page, title)).toBeVisible()
     await page.goBack()
-    await expect(page).toHaveURL(/#spend\/general$/)
+    await expect(page).toHaveURL(/\/spend\/general$/)
     await expect(sheet(page, title)).toBeHidden()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]')), 'focus is not left in a dialog').toBe(false)
@@ -392,16 +392,16 @@ test('(V-7) no sideways scroll at 390px on the three tabs, with a spending and i
   await page.setViewportSize({ width: 390, height: 844 })
   await withSpendings(request, [lump(`${MARK}-long-${'가나다라마바사'.repeat(6)}`, 700_000, 'subs')], async () => {
     for (const tab of ['general', 'inst', 'subs']) {
-      await page.goto(`/#spend/${tab}`)
+      await page.goto(`/spend/${tab}`)
       await expect(card(page)).toBeVisible()
       const w = await page.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }))
       expect(w.s, `${tab}: scrollWidth ${w.s} > clientWidth ${w.c}`).toBeLessThanOrEqual(w.c)
     }
     // the phone's bottom bar: 더보기 has the 지출 tile, which opens the 구독 tab
-    await page.goto('/#home')
+    await page.goto('/')
     await page.getByRole('navigation', { name: '메뉴' }).last().getByRole('button', { name: '더보기' }).click()
     await page.getByRole('dialog', { name: '더보기' }).getByRole('link', { name: '지출' }).click()
-    await expect(page).toHaveURL(/#spend\/subs$/)
+    await expect(page).toHaveURL(/\/spend\/subs$/)
     await expect(page.locator('header.ph h1')).toHaveText('지출')
   })
 })
@@ -411,7 +411,7 @@ test('(S-10) the page in English: title, tabs, the card and the add button', asy
   expect((await api(request, 'PUT', '/api/preferences', { ...prefs, language: 'en' })).status).toBe(200)
   try {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/#spend/general')
+    await page.goto('/spend/general')
     await expect(page.locator('header.ph h1')).toHaveText('Spending')
     await expect(page.locator('aside.side').getByRole('link', { name: 'Spending' })).toBeVisible()
     await expect(page.locator('nav.crumbs')).toContainText('Budget/Spending/One-off')
@@ -527,7 +527,7 @@ test('(S-4, S-6, S-7, V-6) the 할부 tab: list, filters, detail numbers, rounds
   await page.setViewportSize({ width: 1440, height: 900 })
   const ym = thisYm()
   const nA = `${MARK}-ac`, nB = `${MARK}-nb`, nC = `${MARK}-dt`, nD = `${MARK}-tb`
-  await page.goto('/#spend/inst')
+  await page.goto('/spend/inst')
   await expect(card(page)).toBeVisible()
   await expect(seg(page)).toBeVisible()
   const base = { on: await segCount(page, '진행 중'), done: await segCount(page, '완료'), all: await segCount(page, '전체') }
@@ -680,7 +680,7 @@ test('(S-4) a round the server refuses keeps its editor open and shows the reaso
   await page.setViewportSize({ width: 1440, height: 900 })
   const n = `${MARK}-big`
   await withSpendings(request, [instBody(n, { how: 'split', payBy: 'salary', amount: 600_000, count: 2, rounds: rounds(ymAdd(thisYm(), 1), 25, [300_000, 300_000]) })], async (ids) => {
-    await page.goto('/#spend/inst')
+    await page.goto('/spend/inst')
     await page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(n) }).click()
     await page.getByRole('button', { name: '1회차 수정' }).click()
     const s = sheet(page, `회차 수정 · ${n} 1/2회`)
@@ -699,7 +699,7 @@ test('(V-7) the 할부 tab and its round editor at 390px: stacked, no sideways s
   await page.setViewportSize({ width: 390, height: 844 })
   const n = `${MARK}-ph-${'가나다라마바사'.repeat(5)}`
   await withSpendings(request, [instBody(n, { how: 'installment', payBy: 'card', amount: 1_290_000, fee: 35_000, count: 6, rounds: rounds(thisYm(), 28, [220_830, 220_830, 220_830, 220_830, 220_830, 220_850]) })], async () => {
-    await page.goto('/#spend/inst')
+    await page.goto('/spend/inst')
     await expect(card(page)).toBeVisible()
     await page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(MARK) }).first().click()
     const fits = async (what: string) => {
@@ -731,7 +731,7 @@ test('(S-10) the 할부 tab in English', async ({ page, request }) => {
   try {
     await withSpendings(request, [instBody(n, { how: 'installment', payBy: 'card', amount: 1_290_000, fee: 35_000, count: 6, rounds: rounds(thisYm(), 28, [220_830, 220_830, 220_830, 220_830, 220_830, 220_850]) })], async () => {
       await page.setViewportSize({ width: 1440, height: 900 })
-      await page.goto('/#spend/inst')
+      await page.goto('/spend/inst')
       await expect(page.getByRole('group', { name: 'Filter by status' }).getByRole('button')).toHaveText([/^In progress\s*\d+$/, /^Done\s*\d+$/, /^All\s*\d+$/])
       await page.getByRole('list', { name: 'Installments' }).getByRole('button', { name: new RegExp(n) }).click()
       await expect(page.locator('.id-n h2')).toHaveText(n)
@@ -767,7 +767,7 @@ const grp = (s: ReturnType<typeof sheet>, name: string) => s.getByRole('group', 
 const next = (s: ReturnType<typeof sheet>) => s.getByRole('button', { name: '다음', exact: true }).click()
 const stepsOf = (s: ReturnType<typeof sheet>) => s.locator('ol.stp li:not(.cn) .nm')
 async function openAdd(page: Page, tab: 'general' | 'inst') {
-  await page.goto(`/#spend/${tab}`)
+  await page.goto(`/spend/${tab}`)
   await expect(card(page)).toBeVisible()
   await page.getByRole('button', { name: tab === 'general' ? '지출 추가' : '할부 추가', exact: true }).click()
   const s = sheet(page, tab === 'general' ? '지출 추가' : '할부 추가')
@@ -902,7 +902,7 @@ test('(S-3, V-6, W-7) USD from the subscription account: KRW at the rate with th
   await page.setViewportSize({ width: 1440, height: 900 })
   const c = await cfg(request)
   const krw = Math.round(49 * c.fxRate * (1 + c.fxBuffer / 100))
-  await page.goto('/#spend/general')
+  await page.goto('/spend/general')
   await expect(card(page)).toBeVisible()
   const before = await big(page, 1)
   try {
@@ -963,7 +963,7 @@ test('(S-4, S-6, W-7) 수정: no change keeps the rounds as they were, edited fl
   try {
     const made = await api(request, 'POST', '/api/spendings', instBody(name, { how: 'installment', payBy: 'card', amount: 300_000, count: 3, rounds: original }))
     expect(made.status).toBe(201)
-    await page.goto('/#spend/inst')
+    await page.goto('/spend/inst')
     await listItem(page, name).click()
     await page.getByRole('button', { name: `${name} 수정` }).click()
     const s = sheet(page, `할부 수정 · ${name}`)
@@ -1026,7 +1026,7 @@ test('(S-6, W-7) 일반 수정: mark the single round 냄, then delete inside th
   const name = `${EDM}-gen`
   try {
     expect((await api(request, 'POST', '/api/spendings', { ...lump(name, 55_000, 'salary') })).status).toBe(201)
-    await page.goto('/#spend/general')
+    await page.goto('/spend/general')
     await page.getByRole('button', { name: `${name} 수정` }).click()
     const s = sheet(page, `지출 수정 · ${name}`)
     await expect(s).toBeVisible()
@@ -1089,7 +1089,7 @@ test('(S-8, W-7) 기록 추가 › 일회성 지출 › 다음 opens the three-s
     await m.getByRole('radio', { name: /^일회성 지출/ }).click()
     await expect(m.getByRole('button', { name: '다음', exact: true })).toBeEnabled()
     await m.getByRole('button', { name: '다음', exact: true }).click()
-    await expect(page).toHaveURL(/#spend\/general$/)
+    await expect(page).toHaveURL(/\/spend\/general$/)
     const s = sheet(page, '지출 추가')
     await expect(s).toBeVisible()
     await expect(stepsOf(s)).toHaveCount(3)
@@ -1110,14 +1110,14 @@ test('(S-8, W-7) 기록 추가 › 일회성 지출 › 다음 opens the three-s
     await expect(pays.locator('li').filter({ hasText: nameS })).toContainText('₩40,000')
     await expect(pays.locator('li').filter({ hasText: nameS })).not.toContainText('2/3회')
     // the calendar tab: the same label on the day
-    await page.goto('/#events')
+    await page.goto('/events')
     const day = page.locator('.agenda li[data-kind="spend"]')
     await expect(day.filter({ hasText: name })).toContainText('₩77,000')
     await expect(day.filter({ hasText: `${nameS} 1/3회` })).toContainText('₩40,000')
     await expect(day.filter({ hasText: `${nameS} 2/3회` })).toHaveCount(0) // next month's round is on next month's page
     // a round marked paid and a cancelled spending leave both places
     await api(request, 'PUT', `/api/spendings/${got.id}`, { ...got, id: undefined, cancelled: true })
-    await page.goto('/#home')
+    await page.goto('/')
     await page.reload()
     await page.getByRole('tablist').first().waitFor()
     await expect(pays.locator('li').filter({ hasText: name })).toHaveCount(0)
@@ -1155,7 +1155,7 @@ test('(V-6 preservation) 기록 추가 still saves 확인할 것 and 일정 (wit
     await m.getByRole('radio', { name: /^구독/ }).click()
     await expect(m.getByRole('button', { name: '다음', exact: true })).toBeVisible()
     await m.getByRole('button', { name: '다음', exact: true }).click()
-    await expect(page).toHaveURL(/#subs$/)
+    await expect(page).toHaveURL(/\/spend\/subs$/)
     await expect(sheet(page, '구독 추가')).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(sheet(page, '구독 추가')).toBeHidden()
@@ -1205,7 +1205,7 @@ test('(S-10, W-7) the editor in English', async ({ page, request }) => {
   const prefs = (await state(request)).preferences
   expect((await api(request, 'PUT', '/api/preferences', { ...prefs, language: 'en' })).status).toBe(200)
   try {
-    await page.goto('/#spend/general')
+    await page.goto('/spend/general')
     await page.getByRole('button', { name: 'Add spending', exact: true }).click()
     const s = sheet(page, 'Add spending')
     await expect(s).toBeVisible()
@@ -1242,7 +1242,7 @@ test('(review 7, S-3) a USD installment keeps the rate and the buffer it was sav
   const feeKpi = async () => digits(await kcard(page, 2).locator('.k2 b').innerText())
   try {
     await withSpendings(request, [body], async () => {
-      await page.goto('/#spend/inst')
+      await page.goto('/spend/inst')
       await listItem(page, n).click()
       const totals = async () => ({ total: await kv(page, '총액').innerText(), fee: await feeKpi(), left: await kval(page, 0), sub: await kcard(page, 2).innerText() })
       expect(digits(await kv(page, '총액').locator('dd').innerText())).toBe(107_000)
@@ -1272,7 +1272,7 @@ test('(review 7, S-4) the per-round amount is not the odd last round: 1,001 won 
   const two = `${MARK}-two`, four = `${MARK}-four`
   const mk = (name: string, amounts: number[], edited: number[]) => instBody(name, { how: 'split', payBy: 'salary', amount: amounts.reduce((a, b) => a + b, 0), count: amounts.length, rounds: rounds(ymAdd(thisYm(), 1), 25, amounts).map((r, i) => ({ ...r, edited: edited.includes(i) })) })
   await withSpendings(request, [mk(two, [500, 501], []), mk(four, [900, 900, 500, 501], [0, 1])], async () => {
-    await page.goto('/#spend/inst')
+    await page.goto('/spend/inst')
     await listItem(page, two).click()
     expect(digits(await kv(page, '회당').locator('dd').innerText())).toBe(500)
     await expect(kv(page, '회당')).toContainText('마지막 회차 ₩501')
@@ -1294,7 +1294,7 @@ test('(S-4, A-25, review 8, W-7) a first date set a year on: the later billing d
     const made = await api(request, 'POST', '/api/holiday-sets', { name: `${EDM}-hol`, enabled: true, builtin: null, rules: [{ name: `${EDM}-day`, rdate: ['2027-12-16'] }] })
     expect(made.status).toBe(201)
     setId = (made.json as { id: string }).id
-    await page.goto('/#spend/inst')
+    await page.goto('/spend/inst')
     await page.reload()
     await page.getByRole('button', { name: '할부 추가', exact: true }).click()
     const s = sheet(page, '할부 추가')
@@ -1331,7 +1331,7 @@ test('(S-5, S-6, review 13, W-7) a lump sum is cancelled and resumed from its ed
     await saveSheet(page, `지출 수정 · ${name}`)
   }
   try {
-    await page.goto('/#spend/general')
+    await page.goto('/spend/general')
     await expect(card(page)).toBeVisible()
     const out0 = await big(page, 0)
     const k0 = digits(await gCards(page).nth(2).locator('.k2 b').innerText())
@@ -1369,7 +1369,7 @@ test('(S-5, S-6, A-38, review 14, W-7) cancelling a paid lump means refunded: th
     return sheet(page, `지출 수정 · ${name}`)
   }
   try {
-    await page.goto('/#spend/general')
+    await page.goto('/spend/general')
     await expect(card(page)).toBeVisible()
     const out0 = await big(page, 0)
     const body = lump(name, 40_000, 'salary')
@@ -1429,7 +1429,7 @@ test('(S-4, A-39, review 15, W-7) an installment with a paid round made a lump s
   ]
   try {
     expect((await api(request, 'POST', '/api/spendings', instBody(name, { how: 'installment', payBy: 'card', amount: 300_000, count: 3, rounds: orig }))).status).toBe(201)
-    await page.goto('/#spend/inst')
+    await page.goto('/spend/inst')
     await listItem(page, name).click()
     await page.getByRole('button', { name: `${name} 수정` }).click()
     const s = sheet(page, `할부 수정 · ${name}`)
@@ -1477,7 +1477,7 @@ test('(S-4, A-39, review 15, W-7) an installment with a paid round made a lump s
     expect((await byName(request, 'tl')).rounds[0]).toMatchObject({ state: 'paid', amount: 300_000 })
 
     // the other way: a paid lump sum made a 6-month installment keeps its round 1 paid, after asking
-    await page.goto('/#spend/general')
+    await page.goto('/spend/general')
     await page.getByRole('button', { name: `${name} 수정` }).click()
     const g = sheet(page, `지출 수정 · ${name}`)
     await next(g)
@@ -1504,7 +1504,7 @@ test('(S-4, A-40, review 16, W-7) six rounds with the last paid made a 3-payment
   const orig: R[] = [0, 1, 2, 3, 4, 5].map((k) => ({ no: k + 1, date: `${ymAdd(ym, k)}-16`, amount: 50_000, state: k === 5 ? 'paid' : 'left', edited: false }))
   try {
     expect((await api(request, 'POST', '/api/spendings', instBody(name, { how: 'installment', payBy: 'card', amount: 300_000, count: 6, rounds: orig }))).status).toBe(201)
-    await page.goto('/#spend/inst')
+    await page.goto('/spend/inst')
     await listItem(page, name).click()
     await page.getByRole('button', { name: `${name} 수정` }).click()
     const s = sheet(page, `할부 수정 · ${name}`)
@@ -1537,7 +1537,7 @@ test('(S-4, A-41, review 17, W-7) three rounds with the first paid made six: the
   const orig: R[] = [0, 1, 2].map((k) => ({ no: k + 1, date: `${ymAdd(ym, k)}-16`, amount: 100_000, state: k === 0 ? 'paid' : 'left', edited: false }))
   try {
     expect((await api(request, 'POST', '/api/spendings', instBody(name, { how: 'installment', payBy: 'card', amount: 300_000, count: 3, rounds: orig }))).status).toBe(201)
-    await page.goto('/#spend/inst')
+    await page.goto('/spend/inst')
     await listItem(page, name).click()
     await page.getByRole('button', { name: `${name} 수정` }).click()
     const s = sheet(page, `할부 수정 · ${name}`)

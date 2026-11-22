@@ -25,7 +25,7 @@ test('the sign-in screen follows the browser language: English for en-US, Korean
 })
 
 test('after signing out, the sign-in screen is in the language the user chose (English in a Korean browser)', async ({ page }) => {
-  await page.goto('/#settings/general')
+  await page.goto('/settings/general')
   const saved = page.waitForResponse((r) => r.url().endsWith('/api/preferences') && r.request().method() === 'PUT' && r.ok())
   await choose(page.locator('#g-lang'), 'en')
   await saved

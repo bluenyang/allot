@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { api } from '../lib/api'
 import { authClient } from '../lib/auth-client'
@@ -12,13 +13,14 @@ import SettingsAi from './SettingsAi.vue'
 import SettingsGeneral from './SettingsGeneral.vue'
 import SettingsTheme from './SettingsTheme.vue'
 
-// 설정 (spec 007 S-12, spec 010 S-11): per-account settings in tabs. The tab is part of the hash
-// (#settings/<tab>); #account opens the login & security tab. On a phone the page opens with the
+// 설정 (spec 007 S-12, spec 010 S-11): per-account settings in tabs. The tab is part of the address
+// (/settings/<tab>, spec 012); the old #account opens the login & security tab. On a phone the page opens with the
 // account card (name, e-mail, role, sign out), as drawn in the canvas (SH-25).
 const props = defineProps<{ sub?: string }>()
 const tabs = computed(() => (['general', 'theme', 'ai', 'security'] as const).map((id) => ({ id, label: t(`settings.tabs.${id}`) })))
 const tab = computed(() => (tabs.value.some((x) => x.id === props.sub) ? props.sub! : 'general'))
-const pick = (id: string) => { location.hash = `#settings/${id}` }
+const router = useRouter()
+const pick = (id: string) => { void router.push(`/settings/${id}`) }
 
 interface Me { name: string; email: string; role: string }
 const me = ref<Me | null>(null)

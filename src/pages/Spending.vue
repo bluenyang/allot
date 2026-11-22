@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onActivated, onDeactivated, ref } from 'vue'
+import { computed, defineAsyncComponent, onActivated, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { store } from '../lib/store'
 import { fmtMoney } from '../lib/display'
@@ -24,7 +25,9 @@ const props = defineProps<{ sub?: string }>()
 const KINDS = ['general', 'inst', 'subs'] as const
 type Kind = (typeof KINDS)[number]
 const kind = computed<Kind>(() => (KINDS.includes(props.sub as Kind) ? (props.sub as Kind) : 'general'))
-const pick = (id: string) => { location.hash = `#spend/${id}` }
+const route = useRoute()
+const router = useRouter()
+const pick = (id: string) => { void router.push(`/spend/${id}`) }
 
 const general = computed(() => store.spendings.filter((s) => s.how === 'lump'))
 const inst = computed(() => store.spendings.filter((s) => s.how !== 'lump'))
@@ -58,20 +61,27 @@ const month = computed(() => {
 })
 const monthName = Number(ym.slice(5, 7))
 
-// ---------- add buttons: "#subs?add", "#spend/subs?add", "#spend/general?add" and "#spend/inst?add" ----------
-// "#subs?add" (the record modal's 구독) opens the subscription add editor; "#spend/general?add" (its 일회성 지출) opens the
-// spending editor; the hash goes back to its plain form each time.
+// ---------- add buttons: "/spend/<tab>?add" (spec 012 S-3) ----------
+// "/spend/subs?add" (the record modal's 구독; the old #subs?add) opens the subscription add editor;
+// "/spend/general?add" and "/spend/inst?add" (its 일회성 지출) open the spending editor. Only `add` is
+// then taken out of the address, in place (the page stays where it is).
 const adding = ref(false)
 const spendAdd = ref<'general' | 'inst' | null>(null)
+// The key is `add` followed by nothing that is a word character, as the hash form's /[?&]add\b/ took it
+// (`add`, `add=1`, and also `add-x`; review 1 F-4).
+const ADD = /^add(?!\w)/
 function checkAdd() {
-  const m = /^#(subs|spend\/(subs|general|inst))\?(.*&)?add\b/.exec(location.hash)
-  if (!m) return
-  history.replaceState(null, '', `${location.pathname}${location.search}#${m[1]}`)
-  if (m[2] === 'general' || m[2] === 'inst') spendAdd.value = m[2]
+  if (route.meta.page !== 'spend') return // kept alive: other pages' addresses are not ours
+  const key = Object.keys(route.query).find((k) => ADD.test(k))
+  if (key === undefined) return
+  const { [key]: _add, ...rest } = route.query
+  void router.replace({ path: route.path, query: rest })
+  const tab = String(route.params.tab)
+  if (tab === 'general' || tab === 'inst') spendAdd.value = tab
   else adding.value = true
 }
-onActivated(() => { checkAdd(); window.addEventListener('hashchange', checkAdd) })
-onDeactivated(() => window.removeEventListener('hashchange', checkAdd))
+onActivated(checkAdd)
+watch(() => route.query, checkAdd)
 
 const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('spending.addInst'), subs: t('subscriptions.addSub') })[kind.value])
 </script>
@@ -103,7 +113,7 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
           <span class="ms-l">{{ t('spending.remainderOf', { month: monthName }) }}</span>
           <span class="rem"><b class="num" :class="{ neg: month.short }">{{ month.rem < 0 ? '−' : '' }}{{ fmtMoney(Math.abs(month.rem)) }}</b><span v-if="month.short" class="pill warn">{{ t('spending.short') }}</span></span>
           <small v-if="month.out || month.add" class="hint">{{ t('spending.afterDist', { amount: fmtMoney(month.remBefore) }) }}<template v-if="month.short"> {{ t('spending.keepOthers') }}</template></small>
-          <a v-if="month.short" class="lnk" href="#pay">{{ t('spending.adjust') }}</a>
+          <RouterLink v-if="month.short" class="lnk" to="/pay">{{ t('spending.adjust') }}</RouterLink>
         </div>
       </div>
     </section>

@@ -12,7 +12,7 @@ const state = async (request: APIRequestContext) => (await (await request.get('/
 
 test.afterEach(async ({ page, request }) => {
   // whatever happened, the shared account follows the browser's language again
-  await page.goto('/#settings/general')
+  await page.goto('/settings/general')
   await page.locator('#g-lang').waitFor()
   if ((await page.locator('#g-lang').getAttribute('data-value')) !== 'browser') await pickLanguage(page, 'browser')
   const props = (await (await request.get('/api/proposals?status=pending')).json()) as Proposal[]
@@ -30,7 +30,7 @@ test('pending: the list, the badge and the preview; confirming applies it and th
   const made = await propose(baseURL!, key)
   expect(made.confirm).toBe('ui')
 
-  await page.goto('/#pending')
+  await page.goto('/pending')
   await expect(page.getByRole('heading', { name: '대기 중인 변경', exact: true })).toBeVisible()
   const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
   await expect(card).toBeVisible()
@@ -73,7 +73,7 @@ test('pending: the list, the badge and the preview; confirming applies it and th
   await expect(page.locator(`[data-proposal="${made.proposalId as string}"]`)).toContainText('변경 내역에서')
 
   // the history names the key; reverting it from there works on an AI change
-  await page.goto('/#history')
+  await page.goto('/history')
   const list = page.getByRole('list', { name: '변경 목록' })
   const first = list.getByRole('listitem').filter({ hasText: `AI · ${KEY_NAME}` }).first()
   await expect(first).toContainText(`AI · ${KEY_NAME}`)
@@ -85,7 +85,7 @@ test('pending: an applied AI change set is reverted from 변경 내역 (the hist
   const made = await propose(baseURL!, key)
   expect((await request.post(`/api/proposals/${made.proposalId as string}/apply`)).status()).toBe(200)
   expect((await state(request)).subscriptions.some((s) => s.name === SUB)).toBe(true)
-  await page.goto('/#history')
+  await page.goto('/history')
   const list = page.getByRole('list', { name: '변경 목록' })
   const first = list.getByRole('listitem').filter({ hasText: `AI · ${KEY_NAME}` }).first()
   await expect(first).toContainText(`구독 추가 · ${SUB}`)
@@ -102,7 +102,7 @@ test('pending: an AI spending proposal shows the month numbers, confirming it ad
   const outflow = async () => digits(await card0().locator('.ms-g > div').nth(0).locator('b.num').first().innerText())
   const spendNames = async () => (await state(request)).spendings.filter((x) => x.name === SPEND)
   expect(await spendNames()).toHaveLength(0)
-  await page.goto('/#spend/general')
+  await page.goto('/spend/general')
   await expect(card0()).toBeVisible()
   const out0 = await outflow()
 
@@ -116,7 +116,7 @@ test('pending: an AI spending proposal shows the month numbers, confirming it ad
   expect(m0.transferKrw.after).toBe(m0.transferKrw.before)
   expect(await spendNames(), 'proposing writes nothing').toHaveLength(0)
 
-  await page.goto('/#pending')
+  await page.goto('/pending')
   const pcard = page.locator(`[data-proposal="${made.proposalId as string}"]`)
   await expect(pcard).toBeVisible()
   await expect(pcard.locator('.tt b')).toHaveText(`${MARK} spending note`)
@@ -142,13 +142,13 @@ test('pending: an AI spending proposal shows the month numbers, confirming it ad
   expect(got).toHaveLength(1)
 
   // the spending is on 지출 › 일반 and the month card moved by the amount
-  await page.goto('/#spend/general')
+  await page.goto('/spend/general')
   await expect(card0()).toBeVisible()
   await expect(page.getByText(SPEND).first()).toBeVisible()
   expect(await outflow(), 'the month card: the remainder line grew by the spending').toBe(out0 + SPEND_AMOUNT)
 
   // 변경 내역: the AI change set names the key; revert it through the screen
-  await page.goto('/#history')
+  await page.goto('/history')
   const list = page.getByRole('list', { name: '변경 목록' })
   const first = list.getByRole('listitem').filter({ hasText: `AI · ${KEY_NAME}` }).first()
   await expect(first).toContainText(SPEND)
@@ -156,7 +156,7 @@ test('pending: an AI spending proposal shows the month numbers, confirming it ad
   await page.getByRole('form', { name: '이 변경을 되돌릴까요?' }).getByRole('button', { name: '되돌리기', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: /되돌렸어요/ })).toBeVisible()
   expect(await spendNames(), 'the spending is gone (API)').toHaveLength(0)
-  await page.goto('/#spend/general')
+  await page.goto('/spend/general')
   await expect(card0()).toBeVisible()
   await expect(page.getByText(SPEND)).toHaveCount(0)
   expect(await outflow(), 'the month card is back').toBe(out0)
@@ -165,7 +165,7 @@ test('pending: an AI spending proposal shows the month numbers, confirming it ad
 test('pending: the toast Undo works before the proposal list has refreshed (the apply answer carries the change set)', async ({ page, request, baseURL }) => {
   const key = await makeKey(request, 'ui')
   const made = await propose(baseURL!, key)
-  await page.goto('/#pending')
+  await page.goto('/pending')
   const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
   await expect(card).toBeVisible()
   // hold the list refresh back after the decision
@@ -185,7 +185,7 @@ test('pending: the toast Undo works before the proposal list has refreshed (the 
 test('pending: rejecting changes nothing and moves it to the handled list', async ({ page, request, baseURL }) => {
   const key = await makeKey(request, 'chat')
   const made = await propose(baseURL!, key)
-  await page.goto('/#pending')
+  await page.goto('/pending')
   const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
   await expect(card).toContainText('대화에서도 확인할 수 있어요')
   await card.getByRole('button', { name: '거절', exact: true }).click()
@@ -204,7 +204,7 @@ test('pending: a proposal whose key was revoked cannot be confirmed, only reject
   const made = await propose(baseURL!, key)
   const keys = (await (await request.get('/api/keys')).json()) as { keys: { id: string; name: string }[] }
   await request.delete(`/api/keys/${keys.keys.find((k) => k.name === `${KEY_NAME}-gone`)!.id}`)
-  await page.goto('/#pending')
+  await page.goto('/pending')
   const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
   await expect(card).toContainText('더 쓸 수 없어서')
   await expect(card.getByRole('button', { name: '확인하고 적용' })).toBeDisabled()
@@ -219,11 +219,11 @@ async function pickLanguage(page: Page, value: 'browser' | 'en') {
 }
 
 test('pending in English: make a write key, the same flow, the history', async ({ page, request, baseURL }) => {
-  await page.goto('/#settings/general')
+  await page.goto('/settings/general')
   await pickLanguage(page, 'en')
 
   // a write key chooses its confirmation method
-  await page.goto('/#settings/ai')
+  await page.goto('/settings/ai')
   await page.getByRole('button', { name: '+ Create key' }).click()
   const s = sheet(page, 'New API key')
   await s.getByLabel('Name', { exact: false }).first().fill(`${KEY_NAME}-en`)
@@ -237,7 +237,7 @@ test('pending in English: make a write key, the same flow, the history', async (
 
   const key = await makeKey(request, 'ui')
   const made = await propose(baseURL!, key)
-  await page.goto('/#pending')
+  await page.goto('/pending')
   await expect(page.getByRole('heading', { name: 'Pending changes', exact: true })).toBeVisible()
   const card = page.locator(`[data-proposal="${made.proposalId as string}"]`)
   await expect(card).toContainText(`Key ${KEY_NAME}`)
@@ -249,6 +249,6 @@ test('pending in English: make a write key, the same flow, the history', async (
   await expect(page.getByRole('status').filter({ hasText: /Applied “/ })).toBeVisible()
   await expect(card.locator('.pill', { hasText: 'Applied' })).toBeVisible()
   await expect(card.getByRole('button', { name: 'Undo' })).toBeVisible()
-  await page.goto('/#history')
+  await page.goto('/history')
   await expect(page.getByRole('list', { name: 'Changes' }).getByRole('listitem').first()).toContainText(`AI · ${KEY_NAME}`)
 })

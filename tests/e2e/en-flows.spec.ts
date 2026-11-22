@@ -54,7 +54,7 @@ const heading = (page: Page) => page.locator('header.ph h1')
 
 /** Open a pay-split tab (the English tab names). */
 async function payTab(page: Page, tab: 'Phases' | 'Monthly simulation' | 'Accounts, living costs, settings') {
-  await page.goto('/#pay')
+  await page.goto('/pay')
   await page.getByRole('tablist').first().waitFor()
   await page.getByRole('tab', { name: tab }).click()
 }
@@ -124,7 +124,7 @@ test('pay split: delete the remainder target, the leftover stays in the pay acco
     expect(seeded.targets.some((x) => x.kind === 'remainder' && x.name === remName)).toBe(true)
     const splits = seeded.remainderSplit.length
 
-    await page.goto('/#pay')
+    await page.goto('/pay')
     await page.reload()
     await page.getByRole('tablist').first().waitFor()
     await page.getByRole('tab', { name: 'Phases' }).click()
@@ -143,7 +143,7 @@ test('pay split: delete the remainder target, the leftover stays in the pay acco
     expect(((await mine('GET', '/api/state')).json as State).remainderSplit.length, 'the split items are kept').toBe(splits)
 
     // the way back is the History revert, through the modal
-    await page.goto('/#history')
+    await page.goto('/history')
     const first = page.getByRole('list', { name: 'Changes' }).locator('li:not(.day)').first()
     await expect(first).toContainText(remName)
     await first.getByRole('button', { name: 'Revert', exact: true }).click()
@@ -155,7 +155,7 @@ test('pay split: delete the remainder target, the leftover stays in the pay acco
     // that revert reverted the deletion set, and nothing else
     const sets = (await mine('GET', '/api/changes?limit=5')).json as { id: string; revertOf?: string | null }[]
     expect(sets.some((x) => x.id === del.id)).toBe(true)
-    await page.goto('/#pay')
+    await page.goto('/pay')
     await page.reload()
     await page.getByRole('tablist').first().waitFor()
     await page.getByRole('tab', { name: 'Phases' }).click()
@@ -178,7 +178,7 @@ test('schedule: add events with a month range, picked and typed; the phone month
     for (const e of (await state(request)).events.filter((x) => x.title.startsWith(M))) await api(request, 'DELETE', `/api/events/${e.id}`)
   }
   try {
-    await page.goto('/#events')
+    await page.goto('/events')
     await page.getByRole('tablist').first().waitFor()
     await page.getByRole('tab', { name: 'Timeline' }).click()
     const open = () => page.getByRole('button', { name: 'Add event', exact: true }).click()
@@ -225,8 +225,8 @@ test('schedule: add events with a month range, picked and typed; the phone month
 
     // phone: the month strip moves the agenda, no grid, no Today button
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/#home')
-    await page.goto('/#events')
+    await page.goto('/')
+    await page.goto('/events')
     await page.reload()
     const bar = page.getByRole('group', { name: 'Choose month' })
     await bar.waitFor()
@@ -252,7 +252,7 @@ test('history: day groups, the actor and item filters, the revert modal and its 
   const text = `${M}-hist`
   const made = ((await api(request, 'POST', '/api/checks', { text, done: false })).json as { id: string })
   try {
-    await page.goto('/#history')
+    await page.goto('/history')
     await expect(page.getByRole('heading', { name: 'Change history', exact: true })).toBeVisible()
     const list = page.getByRole('list', { name: 'Changes' })
     const row = list.getByRole('listitem').filter({ hasText: text })
@@ -293,7 +293,7 @@ test('settings: the display format saves at once; a holiday set is added, switch
   const s0 = await state(request)
   let setId: string | undefined
   try {
-    await page.goto('/#settings/general')
+    await page.goto('/settings/general')
     await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
     // the format saves the moment a choice is made: no save button
     const saved = page.waitForResponse((r) => r.url().endsWith('/api/preferences') && r.request().method() === 'PUT' && r.ok())
@@ -332,7 +332,7 @@ test('settings: the display format saves at once; a holiday set is added, switch
 test('settings: an AI key is made, shown once, and revoked', async ({ page, request }) => {
   const keys = async () => ((await (await request.get('/api/keys')).json()) as { keys: { id: string; name: string }[] }).keys
   try {
-    await page.goto('/#settings/ai')
+    await page.goto('/settings/ai')
     await expect(page.getByRole('tab', { name: 'AI & integrations' })).toHaveAttribute('aria-selected', 'true')
     await page.getByRole('button', { name: '+ Create key' }).click()
     const s = sheet(page, 'New API key')
@@ -369,7 +369,7 @@ test('admin: the account list, and an account is created without a password (ext
   const email = `e2e-en-${Date.now().toString(36)}@example.com`
   const find = async () => ((await api(request, 'GET', '/api/auth/admin/list-users?limit=500')).json.users as { id: string; email: string }[]).find((x) => x.email === email)
   try {
-    await page.goto('/#admin')
+    await page.goto('/admin')
     await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible()
     await expect(page.getByText('(you)').first()).toBeVisible()
     await page.getByRole('button', { name: 'Create account' }).click()
@@ -407,7 +407,7 @@ test('overview: the record modal adds a schedule with a month range and a to-che
     for (const c of st.checks.filter((x) => x.text.startsWith(M))) await api(request, 'DELETE', `/api/checks/${c.id}`)
   }
   try {
-    await page.goto('/#home')
+    await page.goto('/')
     await page.getByRole('button', { name: 'Add record', exact: true }).click()
     const s = sheet(page, 'Add record')
     await s.getByRole('radio', { name: /^Schedule/ }).click()
@@ -443,7 +443,7 @@ test('overview: the record modal adds a schedule with a month range and a to-che
 test.describe('shell', () => {
   test('desktop: sidebar groups, the unfinished entries are visible, disabled and say "Coming soon"', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/#home')
+    await page.goto('/')
     const side = page.locator('aside.side')
     await expect(side.locator('.glabel')).toHaveText(['Overview', 'Budget', 'Manage', 'AI'])
     await expect(side.getByRole('link')).toContainText(['Overview', 'Pay split', 'Spending', 'Schedule', 'Pending changes', 'Change history', 'Settings'])
@@ -463,7 +463,7 @@ test.describe('shell', () => {
   test.describe('phone', () => {
     test.use({ viewport: { width: 390, height: 844 } })
     test('the bottom bar and the "More" sheet reach the pages', async ({ page }) => {
-      await page.goto('/#home')
+      await page.goto('/')
       await heading(page).waitFor()
       const bar = page.getByRole('navigation', { name: 'Menu' }).last()
       for (const [label, title] of [['Budget', 'Pay split'], ['Schedule', 'Schedule'], ['Overview', /overview$/]] as const) {
