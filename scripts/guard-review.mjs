@@ -288,11 +288,13 @@ function mark(args) {
   const dir = projectDir()
   const reviewPath = resolve(process.cwd(), review)
   if (!existsSync(reviewPath) || !statSync(reviewPath).isFile()) fail(`review record ${review} does not exist (${MARK_FORM})`)
-  const model = /^model:[ \t]*(\S.*?)[ \t]*$/m.exec(readFileSync(reviewPath, 'utf8'))?.[1]
-  if (!model) fail(`review record ${review} has no \`model: <name>\` line (${MARK_FORM})`)
+  const models = [...readFileSync(reviewPath, 'utf8').matchAll(/^model:[ \t]*(\S.*?)[ \t]*$/gm)].map((m) => m[1])
+  const model = models.join(', ')
+  if (models.length === 0) fail(`review record ${review} has no \`model: <name>\` line (${MARK_FORM})`)
   let table = null
   try { table = reviewerModels(readFileSync(join(dir, '.loctx', 'delegation.local.md'), 'utf8')) } catch { /* no personal table */ }
-  if (table && !table.includes(model)) fail(`review record model ${model} is not a pl/code-reviewer or pl/doc-reviewer model of .loctx/delegation.local.md (${[...new Set(table)].join(', ')})`)
+  const unlisted = table ? models.find((m) => !table.includes(m)) : undefined
+  if (unlisted) fail(`review record model ${unlisted} is not a pl/code-reviewer or pl/doc-reviewer model of .loctx/delegation.local.md (${[...new Set(table)].join(', ')})`)
   const branch = rest[0] || git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')
   let tip
   try { tip = git(dir, 'rev-parse', '--verify', `refs/heads/${branch}^{commit}`) } catch { fail(`no local branch ${branch}`) }

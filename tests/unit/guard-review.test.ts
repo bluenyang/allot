@@ -353,6 +353,13 @@ test('--mark: needs a review record with a model line, matching the delegation t
     }
     writeFileSync(ok, 'model: model-c\n')
     assert.equal(mark('--review', ok).status, 1)
+    // every model line counts: a listed one does not cover an unlisted one; the same model twice is fine
+    writeFileSync(ok, 'model: model-a\nmodel: model-c\n')
+    assert.equal(mark('--review', ok).status, 1)
+    writeFileSync(ok, 'model: model-c\nmodel: model-a\n')
+    assert.equal(mark('--review', ok).status, 1)
+    writeFileSync(ok, 'model: model-a\nmodel: openai model-a\n')
+    assert.equal(mark('--review', ok).status, 0)
   } finally { rmSync(t.root, { recursive: true, force: true }) }
 })
 
