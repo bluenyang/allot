@@ -86,7 +86,7 @@ const chEd = ref<{ item: PlanChange | null } | null>(null)
 function openSub(s?: Subscription) { tab.value = 'list'; subEd.value = { item: s ?? null } }
 function editChange(c: PlanChange) { subEd.value = null; tab.value = 'changes'; chEd.value = { item: c } }
 
-// The 지출 page (spec 011 S-1) owns the add button and the "#subs?add" / "#spend/subs?add" addresses; it asks
+// The 지출 page (spec 011 S-1) owns the add button and the "/spend/subs?add" address (and the old "#subs?add"); it asks
 // for the add editor with `adding`, and this page says when it has opened it.
 const props = defineProps<{ embedded?: boolean; adding?: boolean }>()
 const emit = defineEmits<{ added: [] }>()

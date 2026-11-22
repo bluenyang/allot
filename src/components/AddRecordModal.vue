@@ -2,7 +2,7 @@
 // 기록 추가 (spec 010 S-6, HM-37..41): what to record first, then the fields of that kind. 확인할 것 and
 // 일정 are saved through the same API as their own pages; the 일정 시기 stays a text field, because it takes
 // a month range (`2027-01~02`) which a month picker cannot. 구독 and 일회성 지출 go on to the add editors of the
-// spending page (`#subs?add`, `#spend/general?add`).
+// spending page (`/spend/subs?add`, `/spend/general?add`; spec 012 S-3).
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import EditSheet from './EditSheet.vue'
