@@ -1,4 +1,4 @@
-/* Shared look of the budget item editors (LivingItemEditor, BudgetItemEditor, BudgetTotalEditor; spec 013 S-1):
+/* Shared look of the budget item editors (LivingItemEditor, BudgetItemEditor, BudgetAdjustEditor; spec 013 S-1, S-14):
    one field per row (DESIGN.md "Form"), chips that fill a free-text field, the "구간별 금액" row and the memo button. */
 .flabel{font-size:13px;color:var(--text-2);font-weight:600}
 .lrow{display:flex;align-items:center;gap:6px}

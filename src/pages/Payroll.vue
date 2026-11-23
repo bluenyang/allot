@@ -10,9 +10,14 @@
 // spec 013 (W-5): the accounts table (bank and last digits, this month's transfer in), the warning for targets
 // with no account and its 통장 연결 sheet, the two-step account editor and the account detail sheet.
 // spec 013 (W-11): the cards table under it (paying account, billing day) and the card editor.
+// spec 013 rev 1 (W-12, S-14): the simulation's "조정" on a fixed, Savings total or Investment total row (any month):
+// this month only (a month adjustment) or to the end of the phase; an adjusted row shows the value it replaces struck
+// through and "조정됨 · 이번 달만".
+// spec 013 rev 1 S-16: a link may name the tab (`/pay?tab=sim`, or any tab id): it opens on entry, on a return through
+// KeepAlive and when the query changes; without one (or with an unknown one) the tab stays as it was.
 import { t, tl } from '../i18n'
-import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onActivated, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -20,6 +25,7 @@ import MoneyInput from '../components/MoneyInput.vue'
 import AccountEditor from '../components/AccountEditor.vue'
 import AccountSheet from '../components/AccountSheet.vue'
 import CardEditor from '../components/CardEditor.vue'
+import BudgetAdjustEditor from '../components/BudgetAdjustEditor.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
 import { fmtMoney, fmtMoneyClass } from '../lib/display'
@@ -28,6 +34,7 @@ import { accountMonthIn, bankLine, unlinkedTargets } from '../lib/accounts'
 import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
 import { kindDetail } from '../lib/labels'
+import { adjustable, adjustOf, adjustPreview } from '../lib/budget-page'
 import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, today, ymLabel, ymOf, type AllocRow } from '../lib/calc'
 import type { Account, AllocationKind, Card, AllocationTarget, BudgetGroup, Settings } from '../data/types'
 import Select from '../components/Select.vue'
@@ -39,6 +46,18 @@ const tabs = computed(() => [
   { id: 'sim', label: t('payroll.tabSim'), icon: 'chart' },
   { id: 'accounts', label: t('payroll.tabAccounts'), icon: 'money' },
 ])
+// the tab a link names (S-16)
+const route = useRoute()
+const TAB_IDS = ['phases', 'sim', 'accounts']
+function tabFromQuery() {
+  if (route.path !== '/pay') return // a KeepAlive page also sees the routes of other pages
+  const q = route.query.tab
+  const id = Array.isArray(q) ? q[0] : q
+  if (typeof id === 'string' && TAB_IDS.includes(id)) tab.value = id
+}
+tabFromQuery()
+onActivated(tabFromQuery)
+watch(() => route.query.tab, tabFromQuery)
 const now = ymOf(today())
 // The month's distribution with its one-off spendings (spec 011 S-5); `pay` is a value tried on this screen.
 const dist = (ym: string, pay = store.settings.netPay) => monthMoney(store, ym, { pay }).dist
@@ -101,9 +120,17 @@ const simPhase = computed(() => {
   return p ? `${t('payroll.phaseNo', { n: numbers.value[p.id] ?? 0 })} ${p.name}` : t('payroll.noPhase')
 })
 
-interface SimRow { key: string; name: string; kind: AllocationKind | 'leftover'; amount: number; detail: string; color: string }
+interface SimRow {
+  key: string; name: string; kind: AllocationKind | 'leftover'; amount: number; detail: string; color: string
+  /** a month adjustment of this row's target: the value it replaces (struck through) and its reason */
+  adjusted?: { orig: number; reason: string }
+}
 const simRows = computed<SimRow[]>(() => {
-  const rows: SimRow[] = sim.value.rows.map((r: AllocRow) => ({ key: r.key, name: r.name, kind: r.kind, amount: r.amount, detail: detailOf(r), color: allocColor(r.key) }))
+  const rows: SimRow[] = sim.value.rows.map((r: AllocRow) => {
+    const a = adjustable(r.kind) ? adjustOf(store.monthAdjusts, ym.value, r.key) : undefined
+    const adjusted = a ? { orig: adjustPreview(store, ym.value, r.key, a.amount, 'month', pay.value).base, reason: a.reason ?? '' } : undefined
+    return { key: r.key, name: r.name, kind: r.kind, amount: r.amount, detail: detailOf(r), color: allocColor(r.key), adjusted }
+  })
   if (!sim.value.remainderTarget) rows.push({ key: '__left', name: t('payroll.leftoverName'), kind: 'leftover', amount: sim.value.remainder, detail: t('payroll.leftoverCalc'), color: LEFT_COLOR })
   return rows
 })
@@ -123,6 +150,9 @@ function applyPay() {
   payDlg.value = false
 }
 const view = ref<SimRow | null>(null)
+/** The target whose "조정" dialog is open (S-14). */
+const adjusting = ref<AllocationTarget | null>(null)
+const openAdjust = (r: SimRow) => { adjusting.value = store.targets.find((x) => x.id === r.key) ?? null }
 const viewBody = computed(() => {
   const r = view.value
   if (!r) return null
@@ -134,7 +164,7 @@ const viewBody = computed(() => {
     return { formula, where: t('payroll.whereLiving'), go: t('payroll.openLiving') }
   }
   if (isGroup(r.kind)) {
-    const g = groupAt(r.kind, store.accounts, store.phases, store.targets, store.settings, ym.value)
+    const g = groupAt(r.kind, store.accounts, store.phases, store.targets, store.settings, ym.value, store.monthAdjusts)
     const menu = t(r.kind === 'saving' ? 'payroll.menuSaving' : 'payroll.menuInvest')
     return {
       formula: g.mode === 'ratio' ? t('payroll.fGroupRatio', { total: fmtMoney(g.total) }) : t('payroll.fGroupAmount', { menu, n: g.rows.length }),
@@ -389,10 +419,13 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
             </tr></thead>
             <tbody>
               <tr v-for="r in simRows" :key="r.key">
-                <td :data-label="t('payroll.colDest')"><span class="tname"><i :style="{ background: r.color }"></i><b>{{ r.name }}</b></span></td>
-                <td :data-label="t('payroll.colAmount')" class="n amt" :class="fmtMoneyClass(r.amount)">{{ r.kind === 'leftover' && r.amount < 0 ? `${t('payroll.leftoverShort')} ` : '' }}{{ fmtMoney(r.kind === 'leftover' && r.amount < 0 ? -r.amount : r.amount) }}</td>
-                <td :data-label="t('payroll.colCalc')" class="hint">{{ r.detail }}</td>
-                <td class="n act"><button v-if="r.kind !== 'fixed'" class="btn sm ghost link" type="button" :aria-label="t('payroll.viewOf', { name: r.name })" @click="view = r">{{ t('payroll.view') }}</button></td>
+                <td :data-label="t('payroll.colDest')"><span class="tname"><i :style="{ background: r.color }"></i><b>{{ r.name }}</b><span v-if="r.adjusted" class="pill warn adj-p">{{ t('payroll.adjusted') }}</span></span></td>
+                <td :data-label="t('payroll.colAmount')" class="n amt" :class="fmtMoneyClass(r.amount)"><s v-if="r.adjusted" class="orig">{{ fmtMoney(r.adjusted.orig) }}</s>{{ r.kind === 'leftover' && r.amount < 0 ? `${t('payroll.leftoverShort')} ` : '' }}{{ fmtMoney(r.kind === 'leftover' && r.amount < 0 ? -r.amount : r.amount) }}</td>
+                <td :data-label="t('payroll.colCalc')" class="hint">{{ r.detail }}<template v-if="r.adjusted?.reason"> · {{ r.adjusted.reason }}</template></td>
+                <td class="n act">
+                  <button v-if="adjustable(r.kind)" class="btn sm ghost link" type="button" :aria-label="t('payroll.adjustOf', { name: r.name })" @click="openAdjust(r)">{{ t('payroll.adjust') }}</button>
+                  <button v-if="r.kind !== 'fixed'" class="btn sm ghost link" type="button" :aria-label="t('payroll.viewOf', { name: r.name })" @click="view = r">{{ t('payroll.view') }}</button>
+                </td>
               </tr>
               <tr class="total">
                 <td>{{ t('payroll.total') }}</td><td :data-label="t('payroll.colAmount')" class="n amt">{{ fmtMoney(simTotal) }}</td><td :data-label="t('payroll.colCalc')" class="hint">{{ t('payroll.totalEq') }}</td><td></td>
@@ -602,6 +635,8 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
       <button class="btn sm ghost link" type="button" style="justify-self:start" @click="payDraft = store.settings.netPay">{{ t('payroll.payReset') }}</button>
     </EditSheet>
 
+    <BudgetAdjustEditor v-if="adjusting" :key="`${adjusting.id}-${ym}`" :target="adjusting" :ym="ym" :pay="pay" @close="adjusting = null" />
+
     <ConfirmDialog v-if="view && viewBody" :title="t('payroll.calcTitle', { name: view.name })" :confirm-label="viewBody.go" :cancel-label="t('common.close')" @cancel="view = null" @confirm="viewGo">
       <span class="lbl2">{{ t('payroll.calcLead') }}</span>
       <div class="formula"><b class="num">{{ fmtMoney(view.amount) }}</b>{{ viewBody.formula }}</div>
@@ -645,6 +680,8 @@ tr.click{cursor:pointer}
 .link{color:var(--primary-text)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .act{width:1%;white-space:nowrap}
+.adj-p{font-size:11px}
+s.orig{margin-right:6px;color:var(--subtle);font-weight:400}
 .short{margin:12px 18px}
 .foot{margin:0;padding:12px 18px;font-size:12px;color:var(--muted);background:var(--surface-2);border-top:1px solid var(--divider);border-radius:0 0 var(--r-card) var(--r-card)}
 .foot2{display:flex;flex-direction:column;gap:6px;padding:12px 18px;border-top:1px solid var(--divider)}

@@ -2,12 +2,14 @@
 // The template of the Living, Savings and Investment pages (spec 013 S-1, canvas AppLiving · AppSave ·
 // AppInvest): the header (title, description, "월급 분배 보기", add), the "들어오는 돈" strip (three cells
 // and the split cell from the `split` slot; a `notice` slot above them), three KPI cards, the item list with
-// a share bar, the total row with its status line, and the note under the list. No second tab in rc.1
-// (S-1, S-12): without a tab row no tabs are drawn. It only draws: the pages compute every value.
+// a share bar, the total row with its status line, and the note under the list. A page with `tabs` (rc.2, S-15: the
+// Savings 만기 일정, the Living and Investment 월별 기록) gets a tab row under the KPIs: the first tab is the list, any
+// other draws the page's `tab` slot. Without `tabs` no tab row is drawn. It only draws: the pages compute every value.
 import { RouterLink } from 'vue-router'
 import { t } from '../i18n'
 import Icon from './Icon.vue'
 import PageHeader from './PageHeader.vue'
+import SubTabs from './SubTabs.vue'
 import type { BudgetCell, BudgetKpi, BudgetRow, Tone } from '../lib/budget-page'
 
 defineProps<{
@@ -26,8 +28,11 @@ defineProps<{
   gap: number
   total: { amount: string; msg: string; tone: Tone }
   note: string
+  /** the tab row (the first tab is the list); v-model:tab */
+  tabs?: { id: string; label: string; icon?: string }[]
+  tab?: string
 }>()
-const emit = defineEmits<{ add: []; edit: [id: string]; action: [index: number] }>()
+const emit = defineEmits<{ add: []; edit: [id: string]; action: [index: number]; 'update:tab': [id: string] }>()
 const toneClass = (tone?: Tone) => (tone && tone !== 'muted' ? `t-${tone}` : '')
 </script>
 
@@ -72,7 +77,10 @@ const toneClass = (tone?: Tone) => (tone && tone !== 'muted' ? `t-${tone}` : '')
       </div>
     </section>
 
-    <section class="card blist">
+    <SubTabs v-if="tabs?.length" :model-value="tab ?? tabs[0]!.id" :tabs="tabs" :label="title" @update:model-value="emit('update:tab', $event)" />
+    <slot v-if="tabs?.length && (tab ?? tabs[0]!.id) !== tabs[0]!.id" name="tab" />
+
+    <section v-else class="card blist">
       <div class="card-hd"><h2>{{ listTitle }}</h2><span class="aux num">{{ sumLine }}</span></div>
       <div v-if="rows.length" class="sbar-w">
         <div class="sbar" role="img" :aria-label="bar.map((b) => `${b.name} ${b.share}`).join(', ')">
@@ -112,7 +120,7 @@ const toneClass = (tone?: Tone) => (tone && tone !== 'muted' ? `t-${tone}` : '')
         <button class="btn sm" type="button" @click="emit('add')"><Icon name="plus" :stroke="1.9" />{{ addLabel }}</button>
       </div>
     </section>
-    <p v-if="note" class="bnote">{{ note }}</p>
+    <p v-if="note && (!tabs?.length || (tab ?? tabs[0]!.id) === tabs[0]!.id)" class="bnote">{{ note }}</p>
     <!-- the page's editors (they open in their own dialog layer) -->
     <slot />
   </section>
