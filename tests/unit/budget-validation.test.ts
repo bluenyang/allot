@@ -123,6 +123,9 @@ test('rc.2: a month adjustment; event ranges into a later year; the other catego
   const v = await import('../../server/validation')
   ok(v.monthAdjust, { ym: '2026-12', targetId: 't1', amount: 0 })
   ok(v.monthAdjust, { ym: '2026-12', targetId: 't1', amount: 50_000, reason: 'x' })
+  // the reason has no maximum (review rc2-1 F-4); null or none is no reason
+  ok(v.monthAdjust, { ym: '2026-12', targetId: 't1', amount: 1, reason: 'x'.repeat(5_000) })
+  ok(v.monthAdjust, { ym: '2026-12', targetId: 't1', amount: 1, reason: null })
   no(v.monthAdjust, { ym: '2026-13', targetId: 't1', amount: 1 })
   no(v.monthAdjust, { ym: '2026-12', targetId: 't1', amount: -1 })
   for (const when of ['2026-11', '2026-11~12', '2026-11~2027-02']) ok(v.planEvent, { when, kind: 'k', title: 't', state: 'todo' })

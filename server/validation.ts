@@ -186,7 +186,8 @@ export const monthAdjust = z.object({
   ym,
   targetId: text.min(1),
   amount: won,
-  reason: memo,
+  // text with no maximum: S-26 states no limit for it (review rc2-1 F-4)
+  reason: text.nullable().optional(),
 })
 
 export const balance = z.object({
