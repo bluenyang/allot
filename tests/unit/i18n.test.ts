@@ -16,6 +16,12 @@ import { budgetEn } from '../../src/i18n/budget.en'
 import { budgetKo } from '../../src/i18n/budget.ko'
 import { goalsEn } from '../../src/i18n/goals.en'
 import { goalsKo } from '../../src/i18n/goals.ko'
+import { scheduleEn } from '../../src/i18n/schedule.en'
+import { scheduleKo } from '../../src/i18n/schedule.ko'
+import { currencyEn } from '../../src/i18n/currency.en'
+import { currencyKo } from '../../src/i18n/currency.ko'
+import { securityEn } from '../../src/i18n/security.en'
+import { securityKo } from '../../src/i18n/security.ko'
 import { MESSAGES, MSG_KEYS, langFromHeader, text } from '../../server/messages'
 
 function flatten(o: unknown, prefix = ''): Record<string, string> {
@@ -31,8 +37,8 @@ const vars = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!).sort
 // The 지출 page's lazy parts live in their own modules (spec 011 V-8); the checks below cover both lists together.
 // (taken before the page loader runs: vue-i18n merges the lazy messages into the main objects)
 const mainKo = flatten(ko)
-const fko = { ...flatten(ko), ...flatten(spendingKo), ...flatten(budgetKo), ...flatten(accountsKo), ...flatten(goalsKo) }
-const fen = { ...flatten(en), ...flatten(spendingEn), ...flatten(budgetEn), ...flatten(accountsEn), ...flatten(goalsEn) }
+const fko = { ...flatten(ko), ...flatten(spendingKo), ...flatten(budgetKo), ...flatten(accountsKo), ...flatten(goalsKo), ...flatten(scheduleKo), ...flatten(currencyKo), ...flatten(securityKo) }
+const fen = { ...flatten(en), ...flatten(spendingEn), ...flatten(budgetEn), ...flatten(accountsEn), ...flatten(goalsEn), ...flatten(scheduleEn), ...flatten(currencyEn), ...flatten(securityEn) }
 await loadSpendingMessages()
 
 test('the lazy modules hold none of the keys of the main lists, and the page loader merges them', () => {

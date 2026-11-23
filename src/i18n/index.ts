@@ -12,6 +12,12 @@ import { budgetEn } from './budget.en'
 import { budgetKo, type BudgetMessages } from './budget.ko'
 import { goalsEn } from './goals.en'
 import { goalsKo, type GoalsMessages } from './goals.ko'
+import { scheduleEn } from './schedule.en'
+import { scheduleKo, type ScheduleMessages } from './schedule.ko'
+import { currencyEn } from './currency.en'
+import { currencyKo, type CurrencyMessages } from './currency.ko'
+import { securityEn } from './security.en'
+import { securityKo, type SecurityMessages } from './security.ko'
 
 export type Lang = 'ko' | 'en'
 export const LANGS: readonly Lang[] = ['ko', 'en']
@@ -20,7 +26,7 @@ type Path<T, P extends string = ''> = {
   [K in keyof T & string]: T[K] extends string ? `${P}${K}` : Path<T[K], `${P}${K}.`>
 }[keyof T & string]
 /** A key of the message lists, e.g. 'shell.menu' (the 지출 page's lazy parts are in spending.ko.ts). */
-export type MessageKey = Path<Messages & SpendingMessages & BudgetMessages & AccountsMessages & GoalsMessages>
+export type MessageKey = Path<Messages & SpendingMessages & BudgetMessages & AccountsMessages & GoalsMessages & ScheduleMessages & CurrencyMessages & SecurityMessages>
 
 const KEY = 'allot.lang'
 
@@ -55,8 +61,11 @@ export const i18n = createI18n({
   legacy: false,
   locale: languageBeforeSignIn(),
   fallbackLocale: 'ko',
-  // spec 013: the budget pages, accounts and goal cards keep their messages in their own modules, merged here
-  messages: { ko: { ...ko, ...budgetKo, ...accountsKo, ...goalsKo }, en: { ...en, ...budgetEn, ...accountsEn, ...goalsEn } },
+  // spec 013: the budget pages, accounts, goal cards and the rc.3 settings keep their messages in their own modules, merged here
+  messages: {
+    ko: { ...ko, ...budgetKo, ...accountsKo, ...goalsKo, ...scheduleKo, ...currencyKo, ...securityKo },
+    en: { ...en, ...budgetEn, ...accountsEn, ...goalsEn, ...scheduleEn, ...currencyEn, ...securityEn },
+  },
   missingWarn: false,
   fallbackWarn: false,
 })
