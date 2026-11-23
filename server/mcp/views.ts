@@ -331,8 +331,9 @@ function groupView(d: Data, group: BudgetGroup, ym: string) {
 
 /**
  * The savings maturity schedule (spec 013 S-15): every Savings item whose term reads N개월 / N months / YYYY-MM까지 and that has a
- * from month (maturity.ts). Expected = the projected balance that month when the account has a balance record, else the monthly
- * amount × the months paid in. `state` is relative to month `ym`: past, due (that month) or upcoming.
+ * from month (maturity.ts). Expected (calc maturityAmount) = with a balance record, the projected balance at the end of the
+ * month before the maturity month; else what the pay split sends the item from its from month up to that month (0 without a
+ * Savings target; review rc2-1 F-10). `state` is relative to month `ym`: past, due (that month) or upcoming.
  */
 export function maturitySchedule(d: Data, ym: string) {
   const st = accountState(d)
