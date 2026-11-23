@@ -210,7 +210,7 @@ test('events: add, edit, state toggle, delete', async ({ page }) => {
   await expect(page.getByText(MARK)).toHaveCount(0)
 })
 
-test('events (spec 010 V-6, V-10): a range 2027-01~02 and a range ending before it starts save and read back; a range over a year is 준비 중', async ({ page, request }) => {
+test('events (spec 010 V-6, V-10; spec 013 S-18): a range 2027-01~02 and a range ending before it starts save and read back; a range into the next year is stored as YYYY-MM~YYYY-MM', async ({ page, request }) => {
   await go(page, 'events', '타임라인')
   const open = () => page.getByRole('button', { name: '이벤트 추가', exact: true }).click()
   await open()
@@ -228,21 +228,19 @@ test('events (spec 010 V-6, V-10): a range 2027-01~02 and a range ending before 
   await s.getByLabel('시작 월').fill('2031-05')
   await s.getByLabel('끝 월').fill('2031-03') // accepted before, still accepted
   await saveSheet(page, '이벤트 추가')
-  // a range into another year is not stored: it says so
+  // a range into another year: refused as 준비 중 until rc.1, stored in the long form since spec 013 S-18
   await open()
   s = sheet(page, '이벤트 추가')
   await s.getByLabel('내용').fill(`${MARK}-x`)
   await s.getByRole('button', { name: '기간', exact: true }).click()
   await s.getByLabel('시작 월').fill('2031-12')
   await s.getByLabel('끝 월').fill('2032-02')
-  await s.getByRole('button', { name: '저장' }).click()
-  await expect(s.getByRole('alert')).toContainText('준비 중')
-  await page.keyboard.press('Escape')
+  await saveSheet(page, '이벤트 추가')
   const events = ((await (await request.get('/api/state')).json()) as { events: { id: string; when: string; title: string }[] }).events
   try {
     expect(events.find((e) => e.title === `${MARK}-rng`)?.when).toBe('2031-01~02')
     expect(events.find((e) => e.title === `${MARK}-rev`)?.when).toBe('2031-05~03')
-    expect(events.some((e) => e.title === `${MARK}-x`)).toBe(false)
+    expect(events.find((e) => e.title === `${MARK}-x`)?.when).toBe('2031-12~2032-02')
     // opening a saved range shows its two months
     await page.getByRole('button', { name: `${MARK}-rng 수정` }).click()
     s = sheet(page, '이벤트 수정')

@@ -202,7 +202,7 @@ test('schedule: add events with a month range, picked and typed; the phone month
     await s.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(s).toBeHidden()
 
-    // a range into another year says it is coming soon and stores nothing
+    // a range into another year: coming soon until rc.1, stored in the long form since spec 013 S-18
     await open()
     s = sheet(page, 'Add event')
     await s.getByLabel('Details').fill(`${M}-x`)
@@ -210,13 +210,12 @@ test('schedule: add events with a month range, picked and typed; the phone month
     await s.getByLabel('From month').fill('2031-12')
     await s.getByLabel('To month').fill('2032-02')
     await s.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(s.getByRole('alert')).toContainText('coming soon')
-    await page.keyboard.press('Escape')
+    await expect(s).toBeHidden()
 
     const events = (await state(request)).events
     expect(events.find((e) => e.title === `${M}-picked`)?.when).toBe('2031-01~02')
     expect(events.find((e) => e.title === `${M}-typed`)?.when).toBe('2031-05~07')
-    expect(events.some((e) => e.title === `${M}-x`)).toBe(false)
+    expect(events.find((e) => e.title === `${M}-x`)?.when).toBe('2031-12~2032-02')
     await page.getByRole('button', { name: `Edit ${M}-picked` }).click()
     s = sheet(page, 'Edit event')
     await expect(s.getByLabel('From month')).toHaveValue('2031-01')
