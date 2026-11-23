@@ -2,7 +2,7 @@
 //   pnpm test:unit
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { adjustable, adjustOf, adjustPreview, phaseScope, withAdjust, withoutAdjust } from '../../src/lib/budget-page'
+import { adjustable, adjustOf, adjustPreview, adjustStart, phaseScope, withAdjust, withoutAdjust } from '../../src/lib/budget-page'
 import { monthMoney, type AccountState } from '../../src/lib/calc'
 import type { Account, AllocationTarget, MonthAdjust, Phase, Settings } from '../../src/data/types'
 
@@ -70,4 +70,26 @@ test('S-14: the preview of Savings / Investment totals — the ratio split takes
   assert.equal(inv.after - inv.before, 600_000)
   const sav = adjustPreview(st, '2026-06', 'ts', 100_000, 'month')
   assert.deepEqual([sav.base, sav.value, sav.after - sav.before], [300_000, 100_000, 200_000])
+})
+
+test('review rc2-1 F-1: in the ratio split the dialog starts from the month total, so saving it unchanged keeps the target', () => {
+  // one invest item at 50%: the phase total is 1,000,000, the items get 500,000, the rest stays in the remainder
+  const accounts = [acc('x', { group: 'invest', ratio: 0.5 }), acc('c', { group: 'saving', amount: 300_000 })]
+  const st = state({ accounts })
+  const inv = adjustStart(st, '2026-06', T[1]!)
+  assert.deepEqual(inv, { base: 1_000_000, current: 1_000_000, total: true })
+  assert.equal(row(st, '2026-06', 'ti'), 500_000)
+  // saving the pre-filled draft as the month's adjustment leaves the target as it was
+  const same = state({ accounts, monthAdjusts: [{ id: 'a1', ym: '2026-06', targetId: 'ti', amount: inv.current }] })
+  assert.equal(row(same, '2026-06', 'ti'), 500_000)
+  // +50,000 on the total gives the item half of it
+  const up = state({ accounts, monthAdjusts: [{ id: 'a1', ym: '2026-06', targetId: 'ti', amount: inv.current + 50_000 }] })
+  assert.equal(row(up, '2026-06', 'ti'), 525_000)
+  // with an adjustment, current is the adjusted total; base stays the phase total
+  assert.deepEqual(adjustStart(up, '2026-06', T[1]!), { base: 1_000_000, current: 1_050_000, total: true })
+  // no phase that month: the total is 0
+  assert.deepEqual(adjustStart(st, '2025-06', T[1]!), { base: 0, current: 0, total: true })
+  // the amount split and a fixed target start from the target's value
+  assert.deepEqual(adjustStart(st, '2026-06', T[2]!), { base: 300_000, current: 300_000, total: false })
+  assert.deepEqual(adjustStart(st, '2026-06', T[0]!), { base: 200_000, current: 200_000, total: false })
 })
