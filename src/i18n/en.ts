@@ -107,6 +107,8 @@ export const en = {
       proposalsBody: 'Apply or reject them under Pending changes',
       goalsTitle: '{n} accounts reached their goal',
       goalsBody: 'Decide under Pending changes whether to stop sending',
+      maturitiesTitle: '{n} savings items reached maturity',
+      maturitiesBody: 'Decide under Pending changes whether to stop sending',
       chargeTitle: '{name} is charged {dday}',
       chargeBody: '{date} · {amount}',
       roundTitle: '{name} round {round}/{of} {dday}',
@@ -968,6 +970,7 @@ export const en = {
       card: 'Card',
       spending: 'Spending',
       spending_round: 'Spending round',
+      month_adjust: 'Month adjustment',
     },
     op: {
       insert: 'added',
@@ -1241,6 +1244,9 @@ export const en = {
       spendingId: 'Spending',
       no: 'Round',
       edited: 'Edited',
+      ym: 'Month',
+      reason: 'Reason',
+      afterMaturity: 'After maturity',
     },
     status: {
       pending: 'To confirm',

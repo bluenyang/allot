@@ -24,6 +24,7 @@ function text(n: Notice): { title: string; body: string } {
   switch (n.kind) {
     case 'proposals': return { title: t('shell.notice.proposalsTitle', { n: n.count }), body: t('shell.notice.proposalsBody') }
     case 'goals': return { title: t('shell.notice.goalsTitle', { n: n.count }), body: t('shell.notice.goalsBody') }
+    case 'maturities': return { title: t('shell.notice.maturitiesTitle', { n: n.count }), body: t('shell.notice.maturitiesBody') }
     case 'charge': return { title: t('shell.notice.chargeTitle', { name: n.name, dday: dday(n.dday) }), body: t('shell.notice.chargeBody', { date: fmtDate(n.date), amount: fmtMoney(n.amount) }) }
     case 'round': return { title: t('shell.notice.roundTitle', { name: n.name, round: n.round, of: n.of, dday: dday(n.dday) }), body: t('shell.notice.roundBody', { date: fmtDate(n.date), amount: fmtMoney(n.amount) }) }
     case 'remainderShort': return { title: t('shell.notice.remainderTitle', { month: ymLabel(n.month) }), body: t('shell.notice.remainderBody', { amount: fmtMoney(-n.remainder) }) }

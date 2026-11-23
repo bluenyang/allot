@@ -101,6 +101,8 @@ const label = (c: Change) => {
   const r = c.after ?? c.before ?? {}
   if (c.tableName === 'plan_change' && typeof r.subId === 'string') return subLabel(r.subId)
   if (c.tableName === 'phase_amount') return `${phaseName(String(r.phaseId))} · ${targetName(String(r.targetId))}`
+  // a month adjustment: its target and month (spec 013 S-14, review rc2-1 F-3)
+  if (c.tableName === 'month_adjust') return `${targetName(String(r.targetId))} · ${String(r.ym)}`
   const name = r.name ?? r.text ?? r.title ?? r.label ?? r.note
   return typeof name === 'string' && name ? name : Object.values(c.rowKey).join(' · ')
 }
@@ -124,12 +126,14 @@ const fields = (c: Change) => {
     .filter((f) => c.op !== 'update' || JSON.stringify(f.b) !== JSON.stringify(f.a))
 }
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
+/** A field's value: an allocation target by its name (a month adjustment's or a phase amount's target; review rc2-1 F-3), else as stored. */
+const valueOf = (k: string, v: unknown) => (k === 'targetId' && typeof v === 'string' ? targetName(v) : show(v))
 const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : t('history.you'))
 
 // ---------- filters ----------
 const actor = ref<'all' | 'me' | 'ai'>('all')
 const kind = ref('')
-const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending']
+const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending', 'month_adjust']
 /** The remainder split's rows are named after what the remainder target is, not a fixed word (spec 010 S-9). */
 const kindOpts = computed(() => KIND_IDS.map((id) => ({ id, label: id === 'remainder_split' ? t('history.kindRemainder') : tableName(id) })))
 const byKind = computed(() => sets.value.filter((s) => !kind.value || s.changes.some((c) => c.tableName === kind.value)))
@@ -228,8 +232,8 @@ async function revert() {
                   <tbody>
                     <tr v-for="f in fields(c)" :key="f.k">
                       <th scope="row">{{ f.k }}</th>
-                      <td class="bef">{{ c.op === 'insert' ? '—' : show(f.b) }}</td>
-                      <td class="aft">{{ c.op === 'delete' ? '—' : show(f.a) }}</td>
+                      <td class="bef">{{ c.op === 'insert' ? '—' : valueOf(f.k, f.b) }}</td>
+                      <td class="aft">{{ c.op === 'delete' ? '—' : valueOf(f.k, f.a) }}</td>
                     </tr>
                   </tbody>
                 </table>

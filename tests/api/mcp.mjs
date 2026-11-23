@@ -933,9 +933,9 @@ async function writeMode() {
       && ovA.distribution.remainderKrw === mjs.monthMoney(stA, ymNow).dist.remainder, 'get_overview: the adjustment with the amount it replaces, the target at 100,000 and the remainder monthMoney\'s')
     const gbA = (await tool(kRead.key, 'get_budget', {})).data
     const gbN = (await tool(kRead.key, 'get_budget', { month: ym1 })).data
-    ok(gbA?.saving?.targetKrw === 100_000 && gbA.saving.sumKrw === 300_000 && gbA.saving.adjustment?.amountKrw === 100_000 && gbA.targets.find((t) => t.targetId === tgt?.id)?.amountKrw === 100_000
+    ok(gbA?.saving?.targetKrw === 100_000 && gbA.saving.sumKrw === 100_000 && gbA.saving.adjustment?.amountKrw === 100_000 && gbA.targets.find((t) => t.targetId === tgt?.id)?.amountKrw === 100_000
       && gbN?.saving?.targetKrw === 300_000 && gbN.saving.adjustment === null && (gbN.monthAdjusts ?? []).length === 0,
-      'get_budget: this month the target gets the adjustment (its items still add up to 300,000), next month 300,000 again')
+      'get_budget: this month the target gets the adjustment, spread over its items (review rc2-1 F-2), next month 300,000 again')
     const delA = await W('DELETE', `/api/month-adjusts/${ma?.id}`)
     ok(delA.status === 204 && JSON.stringify(await wState()) === sMa, `deleting the adjustment → ${delA.status}, the data as before it`)
 

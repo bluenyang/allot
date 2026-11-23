@@ -120,6 +120,8 @@ export async function lockAll(q: Db, uid: string) {
  */
 export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
   await lockAll(q, uid)
+  // the buffer uses already without a paying card: the revert is refused only for one it breaks (review rc2-1 F-7)
+  const looseBefore = await looseBuffers(q, uid)
   const [set] = await q.select().from(t.changeSet).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id))).for('update')
   if (!set) throw new NotFound(m('changeNotFound'))
   if (set.revertedBy) throw new Conflict(m('changeReverted'), 'change_set', { id })
@@ -153,7 +155,7 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
       await rec.record(table, log.rowKey, 'update', current, written as Row)
     }
   }
-  await checkRules(q, uid)
+  await checkRules(q, uid, looseBefore)
   if (rec.id) await q.update(t.changeSet).set({ revertedBy: rec.id }).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id)))
 }
 
@@ -189,8 +191,23 @@ async function hasChildren(q: Db, uid: string, table: PgTable, key: RowKey) {
   return false
 }
 
-/** The API's own rules, over the user's whole data (the database checks the rest). */
-async function checkRules(q: Db, uid: string) {
+/**
+ * The buffer uses (spec 013 S-8) whose card is gone or has no paying account, as a save refuses them, and their names. A
+ * save keeps them valid, but rc.1 had no revert check, so data may already hold such a row.
+ */
+async function looseBuffers(q: Db, uid: string): Promise<Map<string, string>> {
+  const buffers = await q.select({ id: t.spending.id, name: t.spending.name, cardId: t.spending.cardId }).from(t.spending)
+    .where(and(eq(t.spending.userId, uid), eq(t.spending.how, 'buffer')))
+  if (!buffers.length) return new Map()
+  const cards = await q.select({ id: t.card.id, accountId: t.card.accountId }).from(t.card).where(eq(t.card.userId, uid))
+  return new Map(buffers.filter((s) => !cards.find((c) => c.id === s.cardId)?.accountId).map((s) => [s.id, s.name]))
+}
+
+/**
+ * The API's own rules, over the user's whole data (the database checks the rest). `looseBefore` are the buffer uses that
+ * had no paying card before the revert: only a buffer use the revert leaves without one refuses it.
+ */
+async function checkRules(q: Db, uid: string, looseBefore: ReadonlyMap<string, string>) {
   const phases = await q.select().from(t.phase).where(eq(t.phase.userId, uid))
   const end = (x: string | null) => x ?? '9999-12'
   for (const [i, a] of phases.entries()) {
@@ -204,6 +221,15 @@ async function checkRules(q: Db, uid: string) {
       .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), inArray(t.allocationTarget.kind, ['fixed', 'saving', 'invest'])))
     if (fixed.length !== ids.length) throw new RuleBroken(m('revertAmounts'))
   }
+  // A month adjustment keeps a fixed, saving or invest target, as a save does (spec 013 S-14, S-26; review rc2-1 F-8,
+  // user: "거부하도록 고침 (Recommended)").
+  const adjusts = await q.select({ targetId: t.monthAdjust.targetId }).from(t.monthAdjust).where(eq(t.monthAdjust.userId, uid))
+  if (adjusts.length) {
+    const ids = [...new Set(adjusts.map((a) => a.targetId))]
+    const ok = await q.select({ id: t.allocationTarget.id }).from(t.allocationTarget)
+      .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), inArray(t.allocationTarget.kind, ['fixed', 'saving', 'invest'])))
+    if (ok.length !== ids.length) throw new RuleBroken(m('revertAdjusts'))
+  }
   // Spendings: the same rule a save keeps for the rounds against count and how (src/lib/spending-rules.ts).
   const spendings = await q.select().from(t.spending).where(eq(t.spending.userId, uid))
   if (spendings.length) {
@@ -213,14 +239,10 @@ async function checkRules(q: Db, uid: string) {
         throw new RuleBroken(m('revertSpending', { name: s.name }))
       }
     }
-    // A buffer use keeps a card with a paying account (spec 013 S-8, S-9; review 2 F-6, user: "거부하도록 고침 (Recommended)").
-    const buffers = spendings.filter((s) => s.how === 'buffer')
-    if (buffers.length) {
-      const cards = await q.select().from(t.card).where(eq(t.card.userId, uid))
-      for (const s of buffers) {
-        const c = cards.find((x) => x.id === s.cardId)
-        if (!c?.accountId) throw new RuleBroken(m('revertBuffer', { name: s.name }))
-      }
+    // A buffer use keeps a card with a paying account (spec 013 S-8, S-9; review 2 F-6, user: "거부하도록 고침 (Recommended)"):
+    // refused when the revert makes one newly invalid, not for one that was so already (review rc2-1 F-7).
+    for (const [sid, name] of await looseBuffers(q, uid)) {
+      if (!looseBefore.has(sid)) throw new RuleBroken(m('revertBuffer', { name }))
     }
   }
 }

@@ -6,7 +6,7 @@ import {
   addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate,
   phaseAt, planAt, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
   type AccountState, type MonthDate,
-  maturityAmount,
+  maturityAlerts, maturityAmount,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 import { buildNotices, type Notice } from '../../src/lib/notices'
@@ -103,7 +103,7 @@ function monthlyDelta(d: Data, c: PlanChange): number | null {
 
 /**
  * The month adjustments of month `ym` (spec 013 S-14), each with the amount it replaces: a fixed target's phase amount, or a
- * Savings / Investment target's split (amount split: the items added up, which the target gets in place of the adjustment;
+ * Savings / Investment target's split (amount split: the items added up, which the adjustment is spread over in proportion;
  * ratio split: the phase amount the items share, which the adjustment replaces as that month's total).
  */
 function adjustsIn(d: Data, ym: string) {
@@ -322,17 +322,18 @@ function groupView(d: Data, group: BudgetGroup, ym: string) {
     })),
     sumKrw: krw(g.sum),
     ratioSum: g.ratioSum,
-    /** what the target gets that month: the items added up, or this month's adjustment of an amount split (spec 013 S-14) */
+    /** what the target gets that month: the items added up (an amount split's adjustment is spread over them; spec 013 S-14, review rc2-1 F-2) */
     targetKrw: krw(groupValue(g, adjust)),
-    /** this month's adjustment of the target (amount split: what the target gets; ratio split: the total the items share), or null */
+    /** this month's adjustment of the target (amount split: spread over the items by amount; ratio split: the total the items share), or null */
     adjustment: adjust ? { id: adjust.id, amountKrw: krw(adjust.amount), ...(adjust.reason ? { reason: adjust.reason } : {}) } : null,
   }
 }
 
 /**
  * The savings maturity schedule (spec 013 S-15): every Savings item whose term reads N개월 / N months / YYYY-MM까지 and that has a
- * from month (maturity.ts). Expected = the projected balance that month when the account has a balance record, else the monthly
- * amount × the months paid in. `state` is relative to month `ym`: past, due (that month) or upcoming.
+ * from month (maturity.ts). Expected (calc maturityAmount) = with a balance record, the projected balance at the end of the
+ * month before the maturity month; else what the pay split sends the item from its from month up to that month (0 without a
+ * Savings target; review rc2-1 F-10). `state` is relative to month `ym`: past, due (that month) or upcoming.
  */
 export function maturitySchedule(d: Data, ym: string) {
   const st = accountState(d)
@@ -483,6 +484,7 @@ export function noticeText(n: Notice): string {
   switch (n.kind) {
     case 'proposals': return `${n.count} AI proposal(s) wait for the user's confirmation under Pending changes.`
     case 'goals': return `${n.count} account(s) reached their goal; the user decides under Pending changes whether to stop sending.`
+    case 'maturities': return `${n.count} savings item(s) reached maturity and still send; the user decides under Pending changes whether to stop sending.`
     case 'charge': return `${n.name} is charged ${won(n.amount)} on ${n.date} (${when(n.dday)}).`
     case 'round': return `Round ${n.round}/${n.of} of ${n.name}: ${won(n.amount)} on ${n.date} (${when(n.dday)}).`
     case 'remainderShort': return `The remainder of ${n.month} is short by ${won(-n.remainder)}.`
@@ -493,8 +495,10 @@ export function noticeText(n: Notice): string {
 
 /**
  * list_notifications: what the bell lists on `now` (src/lib/notices.ts) — pending proposals (`proposals`, counted by the
- * caller) and goal cards, the charges and rounds of the next three days, this month's remainder short, a yearly limit
- * used 90% or more, a buffer short — each with a sentence. The read marks are the browser's and are not here.
+ * caller), goal cards and maturity cards (a Savings item due this month or past that still sends; the "keep sending"
+ * choice is kept in the user's browser and cannot be seen here, so a maturity kept there is listed until it is stopped;
+ * review rc2-1 F-5), the charges and rounds of the next three days, this month's remainder short, a yearly limit used 90%
+ * or more, a buffer short — each with a sentence. The read marks are the browser's and are not here.
  */
 export function notificationList(d: Data, now: Date, proposals: number) {
   const st = accountState(d)
@@ -504,12 +508,14 @@ export function notificationList(d: Data, now: Date, proposals: number) {
   const jan = `${ym.slice(0, 4)}-01`
   const off = offDays(d, firstRec && firstRec < jan ? firstRec : jan, addYm(ym, 3))
   const goals = goalAlerts(st, today, off)
-  const list = buildNotices(st, today, off, { proposals, goalAccounts: goals.map((g) => g.account.id) })
+  const due = maturityAlerts(st, today, off)
+  const list = buildNotices(st, today, off, { proposals, goalAccounts: goals.map((g) => g.account.id), maturities: due.map((m) => `${m.account.id}@${m.month}`) })
   return {
     date: today,
     notifications: list.map((n) => ({
       ...n,
       ...(n.kind === 'goals' ? { accounts: goals.map((g) => ({ accountId: g.account.id, name: g.account.name, goalMonth: g.month, stopFrom: g.stopFrom })) } : {}),
+      ...(n.kind === 'maturities' ? { accounts: due.map((m) => ({ accountId: m.account.id, name: m.account.name, maturityMonth: m.month, stopFrom: m.stopFrom })) } : {}),
       message: noticeText(n),
     })),
   }

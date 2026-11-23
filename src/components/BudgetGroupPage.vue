@@ -24,7 +24,7 @@ import { offDays } from '../lib/holidays-lazy'
 import { rateText } from '../lib/labels'
 import { addYm, groupAt, groupValue, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, today, yearContribution, ymd, ymOf } from '../lib/calc'
 import {
-  accountLine, adjustOf, adjustPreview, baseAmount, itemColor, limitTone, monthPlans, pctOf, shareOf, sumStatus, yearSent,
+  accountLine, adjustOf, adjustStart, baseAmount, itemColor, limitTone, monthPlans, pctOf, shareOf, sumStatus, yearSent,
   type BudgetCell, type BudgetKpi, type BudgetRow, type LimitTone, type Tone,
 } from '../lib/budget-page'
 import type { Account, BudgetGroup, SplitMode } from '../data/types'
@@ -45,7 +45,8 @@ const target = computed(() => g.value.target)
 const ratio = computed(() => g.value.mode === 'ratio')
 /** This month's adjustment of the menu's target (S-14) and the value it replaces. */
 const adjust = computed(() => (target.value ? adjustOf(store.monthAdjusts, now, target.value.id) : undefined))
-const adjustBase = computed(() => (adjust.value && target.value ? adjustPreview(store, now, target.value.id, adjust.value.amount, 'month').base : 0))
+// in the ratio split the value it replaces is the phase's total, as the strip shows the total (review rc2-1 F-1)
+const adjustBase = computed(() => (adjust.value && target.value ? adjustStart(store, now, target.value).base : 0))
 /** What the target gets this month: the ratio split's total, or the items' sum (an adjustment of the amount split replaces it). */
 const targetValue = computed(() => (ratio.value ? g.value.total : groupValue(g.value, adjust.value)))
 /** Holidays for the dates and projections: from the oldest balance record of the menu's accounts to a year ahead. */

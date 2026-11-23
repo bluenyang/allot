@@ -14,7 +14,7 @@ import { manText, monthLong, monthShort, weekdayShort } from '../lib/format'
 import { t, lang, type MessageKey } from '../i18n'
 import { offDays } from '../lib/holidays-lazy'
 import { whenShort } from '../lib/event-when'
-import { downloadCsv, type CsvCell } from '../lib/csv'
+import { downloadCsv, wonCell, type CsvCell } from '../lib/csv'
 import {
   addYm, clusterDots, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymd, ymOf, ymRange,
 } from '../lib/calc'
@@ -179,18 +179,18 @@ function exportCsv() {
   const d = dist.value
   const xferDay = dates.value.transfer.date
   const rows: CsvCell[][] = [[H('section'), H('name'), H('kind'), H('date'), H('amount')]]
-  for (const r of d.rows) rows.push([H('secDist'), r.name, r.detail || kindDetail(r.kind), xferDay, r.amount])
+  for (const r of d.rows) rows.push([H('secDist'), r.name, r.detail || kindDetail(r.kind), xferDay, wonCell(r.amount)])
   const subsTarget = store.targets.find((x) => x.kind === 'subscriptions')?.name ?? t('subscriptions.transferName')
-  rows.push([H('secTransfer'), subsTarget, t('calendar.kind.transfer'), xferDay, xfer.value.transfer])
+  rows.push([H('secTransfer'), subsTarget, t('calendar.kind.transfer'), xferDay, wonCell(xfer.value.transfer)])
   if (d.remainderTarget) {
-    rows.push([H('secRemainder'), d.remainderTarget.name, kindDetail('remainder'), xferDay, d.remainder])
-    for (const x of split.value) rows.push([H('secSplit'), x.name, '', xferDay, x.amount])
-  } else rows.push([H('secRemainder'), spare.value < 0 ? t('dashboard.short') : t('dashboard.spare'), '', xferDay, spare.value])
+    rows.push([H('secRemainder'), d.remainderTarget.name, kindDetail('remainder'), xferDay, wonCell(d.remainder)])
+    for (const x of split.value) rows.push([H('secSplit'), x.name, '', xferDay, wonCell(x.amount)])
+  } else rows.push([H('secRemainder'), spare.value < 0 ? t('dashboard.short') : t('dashboard.spare'), '', xferDay, wonCell(spare.value)])
   const first = parseDate(`${m}-01`)
   const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate() - 1
   const due: { date: string; row: CsvCell[] }[] = []
   for (const p of upcomingPayments(store.subscriptions, store.planChanges, store.settings, first, days)) {
-    due.push({ date: ymd(p.date), row: [H('secPay'), p.sub.name, H('kindSub'), ymd(p.date), p.krw] })
+    due.push({ date: ymd(p.date), row: [H('secPay'), p.sub.name, H('kindSub'), ymd(p.date), wonCell(p.krw)] })
   }
   // every round of the month that counts (paid or to pay; not merged, not a cancelled spending's open round)
   for (const s of store.spendings) for (const r of s.rounds) {

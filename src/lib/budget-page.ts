@@ -180,6 +180,23 @@ export function adjustPreview(st: MonthState, ym: string, targetId: string, valu
   return { base, current: now.amount, before: now.rest, after: next.rest, value: next.amount }
 }
 
+/**
+ * What the "조정" dialog of target `t` in month `ym` starts from, in the units a month adjustment stores (S-14; review rc2-1
+ * F-1): a Savings / Investment total in the ratio split stores that month's total, which its items share, so `base` is the
+ * phase's total for the target (0 without a phase) and `current` the month's adjustment or that total; every other target
+ * stores its own value, so both are the target's distribution amount without and with the adjustment (`adjustPreview`).
+ * `total` says which of the two it is.
+ */
+export function adjustStart(st: MonthState, ym: string, t: AllocationTarget, pay?: number): { base: number; current: number; total: boolean } {
+  if ((t.kind === 'saving' || t.kind === 'invest') && splitOf(t.kind, st.settings) === 'ratio') {
+    const phase = phaseAt(st.phases, ym)
+    const base = phase ? (phase.amounts[t.id] ?? 0) : 0
+    return { base, current: adjustOf(st.monthAdjusts, ym, t.id)?.amount ?? base, total: true }
+  }
+  const p = adjustPreview(st, ym, t.id, 0, 'month', pay)
+  return { base: p.base, current: p.current, total: false }
+}
+
 // ---------- 월별 기록 (S-15) ----------
 export interface MonthPlan {
   ym: string

@@ -3,7 +3,7 @@
 // browser or device starts unread. Shared by every bell (the phone bar's and the header's).
 import { computed, ref } from 'vue'
 import { today, ymd } from './calc'
-import { goalCards } from './goals'
+import { goalCards, maturityCards, maturityKey } from './goals'
 import { offDays } from './holidays-lazy'
 import { buildNotices, keptMarks, unreadCount } from './notices'
 import { store } from './store'
@@ -27,7 +27,11 @@ export const notices = computed(() => {
   const off: ReadonlySet<string> = (store.settings.dayShift ?? 'none') === 'none'
     ? new Set()
     : offDays(store.holidaySets, `${year - 1}-11-01`, `${year + 1}-03-01`) ?? new Set()
-  return buildNotices(store, now, off, { proposals: store.pendingProposals, goalAccounts: goalCards.value.map((c) => c.alert.account.id) })
+  return buildNotices(store, now, off, {
+    proposals: store.pendingProposals,
+    goalAccounts: goalCards.value.map((c) => c.alert.account.id),
+    maturities: maturityCards.value.map((c) => maturityKey(c.alert.account.id, c.alert.month)),
+  })
 })
 
 export const unread = computed(() => unreadCount(notices.value, read.value))

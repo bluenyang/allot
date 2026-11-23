@@ -107,6 +107,8 @@ export const ko = {
       proposalsBody: '대기 중인 변경에서 적용하거나 거절해요',
       goalsTitle: '목표에 닿은 통장 {n}개',
       goalsBody: '대기 중인 변경에서 보내기를 멈출지 정해요',
+      maturitiesTitle: '만기가 된 상품 {n}개',
+      maturitiesBody: '대기 중인 변경에서 보내기를 멈출지 정해요',
       chargeTitle: '{name} 결제 {dday}',
       chargeBody: '{date} · {amount}',
       roundTitle: '{name} {round}/{of}회차 {dday}',
@@ -968,6 +970,7 @@ export const ko = {
       card: '카드',
       spending: '지출',
       spending_round: '지출 회차',
+      month_adjust: '이번 달만 조정',
     },
     op: {
       insert: '추가',
@@ -1241,6 +1244,9 @@ export const ko = {
       spendingId: '지출',
       no: '회차',
       edited: '고침',
+      ym: '월',
+      reason: '이유',
+      afterMaturity: '만기 후',
     },
     status: {
       pending: '확인 대기',
