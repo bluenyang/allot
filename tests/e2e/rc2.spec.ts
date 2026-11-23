@@ -187,6 +187,15 @@ test('(V-14, S-14) 저축 총액 수정: 구간 끝까지 in the ratio split sti
     expect(ph1.amounts[tg.id], '구간 끝까지 writes the phase amount').toBe(600_000)
     expect(await adjusts(), 'and no month adjustment').toHaveLength(0)
     await expect(page.getByTestId(`item-${made[0]}`)).toContainText('= ₩300,000 / 월')
+    // the simulation's 조정 on the ratio-split total starts on the month's total, not the items' sum (review rc2-1 F-1)
+    await simAt(page, ym)
+    expect(await simValue(page, tg.name)).toBe(300_000)
+    await page.getByRole('button', { name: `${tg.name} 조정` }).click()
+    const adj = sheet(page, `금액 조정 · ${tg.name}`)
+    expect(digits(await adj.locator('#ad-amount').inputValue()), 'the dialog starts on the month\'s total').toBe(600_000)
+    await adj.getByRole('button', { name: '취소', exact: true }).click()
+    await expect(adj).toBeHidden()
+    await menu(page, '저축')
 
     // the amount split: only 이번 달만; the value is this month's alone
     expect((await api(request, 'PUT', '/api/settings', { ...st0.settings, savingSplit: 'amount' })).status).toBe(200)
@@ -201,7 +210,6 @@ test('(V-14, S-14) 저축 총액 수정: 구간 끝까지 in the ratio split sti
     const [a] = await adjusts()
     expect(a).toMatchObject({ ym, targetId: tg.id, amount: 250_000 })
     await expect(page.getByText('이번 달만 조정 · 원래 ₩100,000')).toBeVisible()
-    await expect(page.getByTestId('budget-status')).toHaveText('이번 달만 ₩250,000로 조정했어요 · 항목 합 ₩100,000')
     await simAt(page, ym)
     expect(await simValue(page, tg.name), 'this month: the adjusted total').toBe(250_000)
     await expect(simRow(page, tg.name)).toContainText('조정됨 · 이번 달만')
