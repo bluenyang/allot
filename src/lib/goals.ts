@@ -6,7 +6,7 @@
 // still sends. 멈추기 writes its stop month (in the database, revertible); 계속 보내기 is kept in this browser only
 // (localStorage, per account and maturity month: no new column), so another browser asks again.
 import { computed, ref } from 'vue'
-import { addYm, goalAlerts, itemSent, lastBalance, maturityAlerts, monthMoney, today, ymd, type AccountState, type GoalAlert } from './calc'
+import { addYm, goalAlerts, itemSent, lastBalance, maturityAlerts, monthMoney, ymd, type AccountState, type GoalAlert } from './calc'
 import { offDays } from './holidays-lazy'
 import { store } from './store'
 import type { Account } from '../data/types'

@@ -97,7 +97,3 @@ export function nextFailure(row: FailureRow | null | undefined, now: Date, locko
   const lockedUntil = count >= lockout.attempts ? new Date(now.getTime() + lockout.minutes * 60_000) : null
   return { count, lockedUntil, updatedAt: now }
 }
-
-/** Rows that may be deleted at `now`: not locked, and last touched more than a day ago. */
-export const isPrunable = (row: FailureRow, now: Date): boolean =>
-  lockedMinutes(row, now) === 0 && now.getTime() - row.updatedAt.getTime() > STALE_MS
