@@ -3,8 +3,10 @@
 // `gh pr merge` while the branch has commits after its last review mark. Three audits in a row
 // found commits that landed after the review.
 //
-// Record: .loctx/reviews/<branch>.sha (`/` in the branch becomes `__`), the full SHA of the last
-// reviewed commit. Write it after a review with no open findings:
+// Record: .loctx/reviews/<branch>.sha (the branch name percent-encoded), the full SHA of the last
+// reviewed commit. The .loctx is the common one, next to the git common dir (the main checkout's),
+// also when the mark is written from a linked worktree (retro 0.1.7; the rule of
+// scripts/test-server/common.sh). Write it after a review with no open findings:
 //   node scripts/guard-review.mjs --mark --review <file> [<branch> [<sha>]]     (pnpm review:mark)
 // <file> is the review record: it must hold a line `model: <name>`, and when .loctx/delegation.local.md
 // names pl/code-reviewer or pl/doc-reviewer models, <name> must be one of them. The record keeps the
@@ -18,7 +20,7 @@
 // Self-test: node scripts/guard-review.mjs --test
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PH, parseShell } from './shell-words.mjs'
 
@@ -257,12 +259,17 @@ function git(dir, ...args) {
   return execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
 
+/** The folder that holds the common .loctx: the parent of the git common dir (the main checkout, also from a linked worktree). */
+export function commonRoot(dir) {
+  return dirname(git(dir, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+}
+
 function projectDir() {
   return process.env.CLAUDE_PROJECT_DIR || git(process.cwd(), 'rev-parse', '--show-toplevel')
 }
 
 function readRecord(dir, branch) {
-  try { return readFileSync(recordFile(dir, branch), 'utf8').split('\n')[0].trim() || null } catch { return null }
+  try { return readFileSync(recordFile(commonRoot(dir), branch), 'utf8').split('\n')[0].trim() || null } catch { return null }
 }
 
 function fail(msg) { console.error(`guard-review: ${msg}`); process.exit(1) }
@@ -286,13 +293,14 @@ function mark(args) {
   const review = args[i + 1]
   const rest = args.filter((_, k) => k !== i && k !== i + 1)
   const dir = projectDir()
+  const root = commonRoot(dir)
   const reviewPath = resolve(process.cwd(), review)
   if (!existsSync(reviewPath) || !statSync(reviewPath).isFile()) fail(`review record ${review} does not exist (${MARK_FORM})`)
   const models = [...readFileSync(reviewPath, 'utf8').matchAll(/^model:[ \t]*(\S.*?)[ \t]*$/gm)].map((m) => m[1])
   const model = models.join(', ')
   if (models.length === 0) fail(`review record ${review} has no \`model: <name>\` line (${MARK_FORM})`)
   let table = null
-  try { table = reviewerModels(readFileSync(join(dir, '.loctx', 'delegation.local.md'), 'utf8')) } catch { /* no personal table */ }
+  try { table = reviewerModels(readFileSync(join(root, '.loctx', 'delegation.local.md'), 'utf8')) } catch { /* no personal table */ }
   const unlisted = table ? models.find((m) => !table.includes(m)) : undefined
   if (unlisted) fail(`review record model ${unlisted} is not a pl/code-reviewer or pl/doc-reviewer model of .loctx/delegation.local.md (${[...new Set(table)].join(', ')})`)
   const branch = rest[0] || git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')
@@ -303,8 +311,8 @@ function mark(args) {
     try { sha = git(dir, 'rev-parse', '--verify', `${rest[1]}^{commit}`) } catch { fail(`unknown commit ${rest[1]}`) }
     try { git(dir, 'merge-base', '--is-ancestor', sha, tip) } catch { fail(`${sha} is not the tip of ${branch} or one of its ancestors`) }
   }
-  const file = recordFile(dir, branch)
-  mkdirSync(join(dir, '.loctx', 'reviews'), { recursive: true })
+  const file = recordFile(root, branch)
+  mkdirSync(join(root, '.loctx', 'reviews'), { recursive: true })
   writeFileSync(file, `${sha}\nreview: ${review}\n`)
   console.log(`guard-review: recorded ${sha} for ${branch} (${file}), review ${review} by ${model}`)
 }

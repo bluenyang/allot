@@ -390,3 +390,29 @@ test('merge: fake gh (exact args) decides the head', () => {
     assert.equal(t.hook('gh pr merge 24', { ...out(view), FAKE_GH_EXIT: '1' }).status, 2) // gh exits 1 with valid output
   } finally { rmSync(t.root, { recursive: true, force: true }) }
 })
+
+test('--mark from a linked worktree writes to and reads from the common .loctx (retro 0.1.7)', () => {
+  const t = setup(join(resolve('.'), '.loctx', 'scratch'))
+  try {
+    const wt = join(t.root, 'wt')
+    t.git('worktree', 'add', '-q', '-b', 'feat/w', wt)
+    const inWt = { ...t.env, CLAUDE_PROJECT_DIR: '' } // as in a Bash call: the checkout is found from the working directory
+    const mark = (...a: string[]) => t.sh(wt, 'node', [script, '--mark', ...a], undefined, inWt)
+    // the main checkout's table applies from the worktree too
+    mkdirSync(join(t.dir, '.loctx'), { recursive: true })
+    writeFileSync(join(t.dir, '.loctx', 'delegation.local.md'), '| pl/code-reviewer | openai gpt-y | x |\n')
+    assert.equal(mark('--review', t.review).status, 1) // gpt-x is not listed there
+    const ok = join(t.root, 'ok.md')
+    writeFileSync(ok, 'model: gpt-y\n')
+    const r = mark('--review', ok)
+    assert.equal(r.status, 0, r.stderr)
+    const head = t.sh(wt, 'git', ['rev-parse', 'HEAD'], undefined, inWt).stdout.trim()
+    // the worktree's branch, recorded in the main checkout's .loctx and not in the worktree's own
+    assert.equal(readFileSync(recordFile(t.dir, 'feat/w'), 'utf8'), `${head}\nreview: ${ok}\n`)
+    assert.throws(() => readFileSync(recordFile(wt, 'feat/w'), 'utf8'))
+    t.git('push', '-q', 'origin', 'feat/w')
+    // the hook finds the mark whether its project dir is the main checkout or the worktree
+    assert.equal(t.hook('gh pr create --head feat/w').status, 0)
+    assert.equal(t.hook('gh pr create --head feat/w', { CLAUDE_PROJECT_DIR: wt }).status, 0)
+  } finally { rmSync(t.root, { recursive: true, force: true }) }
+})
