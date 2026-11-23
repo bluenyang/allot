@@ -1011,8 +1011,9 @@ export function maturityAmount(acc: Account, st: AccountState, off: ReadonlySet<
   const last = addYm(m.ym, -1)
   if (lastBalance(st.balances, acc.id)) return { amount: projectAccount(acc, st, off, last, 1)?.[0]?.end ?? 0, projected: true }
   let amount = 0
-  const one = { ...st, accounts: [acc] }
-  for (let ym = acc.from ?? m.ym; ym < m.ym; ym = addYm(ym, 1)) amount += itemSent(acc, one, ym)
+  // the whole account list: an amount-split month adjustment is spread over all of the month's items (review rc2-2 F-1)
+  const all = st.accounts.some((a) => a.id === acc.id) ? st : { ...st, accounts: [...st.accounts, acc] }
+  for (let ym = acc.from ?? m.ym; ym < m.ym; ym = addYm(ym, 1)) amount += itemSent(acc, all, ym)
   return { amount, projected: false }
 }
 

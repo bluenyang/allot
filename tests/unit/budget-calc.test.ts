@@ -273,3 +273,15 @@ test('review rc2-1 F-2: an amount-split adjustment is spread over the items, so 
   assert.equal(monthMoney(st0, '2026-06').dist.rows.find((r) => r.key === 'ts')!.amount, 80_000)
   assert.equal(itemSent(accounts[2]!, st0, '2026-06'), 0)
 })
+
+test('review rc2-2 F-1: a maturity amount follows the share of an amount-split adjustment over all items', async () => {
+  const { maturityAmount, maturityOf } = await import('../../src/lib/calc')
+  const targets: AllocationTarget[] = [...T, { id: 'ts', name: 'Savings', kind: 'saving' }]
+  const a = acc('a', { group: 'saving', amount: 300_000, term: '6개월', from: '2026-01' })
+  const b = acc('b', { group: 'saving', amount: 100_000, from: '2026-01' })
+  // 2026-03: the target gets 400,000 that month only → spread 300,000 : 100,000, so A gets its usual 300,000
+  const st = state({ targets, accounts: [a, b], monthAdjusts: [{ id: 'x', ym: '2026-03', targetId: 'ts', amount: 200_000 }] })
+  const m = maturityOf(a)!
+  // Jan, Feb, Apr, May, Jun at 300,000 and Mar at ⌊300,000 × 200,000 ÷ 400,000⌋ = 150,000
+  assert.equal(maturityAmount(a, st, none, m).amount, 5 * 300_000 + 150_000)
+})
