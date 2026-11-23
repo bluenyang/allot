@@ -294,8 +294,11 @@ test.describe.serial('V-20 currencies', () => {
       expect(st.currencies.find((x) => x.code === 'CHF')).toMatchObject({ rate: 1000, auto: true, autoError: 'unknown_code' })
       expect(st.settings.fxRate).toBe(s0.settings.fxRate)
       expect(st.settings.fxAutoAt).toBeTruthy()
-      const asked = (await seen()).map((x) => `${x.from}>${x.to}`).sort()
-      expect(asked).toEqual(['CHF>KRW', 'EUR>KRW', 'USD>KRW'])
+      // the server keeps an answer for a few minutes (review rc3-1 F-8): on a re-run some codes come from that memory,
+      // so the fake service saw at most these three, each once, and nothing else (review rc3-5 R5-3)
+      const asked = (await seen()).map((x) => `${x.from}>${x.to}`)
+      expect(asked.filter((a) => !['CHF>KRW', 'EUR>KRW', 'USD>KRW'].includes(a))).toEqual([])
+      expect(new Set(asked).size).toBe(asked.length)
 
       // 변경 내역: the refresh is one set by 자동 갱신; it is reverted from the screen
       await page.goto('/history')
