@@ -43,7 +43,7 @@ export const budgetKo = {
     tabHistory: '월별 기록',
     tabMaturity: '만기 일정',
     status: {
-      adjusted: '이번 달만 {amount}로 조정했어요 · 항목 합 {sum}',
+      adjusted: '이번 달만 {amount}로 조정했어요 · 항목에 금액 비례로 나눠요',
       living: '이 합계가 월급 분배의 생활비 금액이 돼요',
       livingNoTarget: '월급 분배에 생활비 합계 대상이 없어 아직 월급 분배에 들어가지 않아요',
       noTarget: '월급 분배에 {cat} 합계 대상이 없어 이 항목들은 아직 월급 분배에 들어가지 않아요',
@@ -262,7 +262,7 @@ export const budgetKo = {
       colAmount: '받을 돈 (세전 추정)',
       colAfter: '만기 후',
       projected: '잔액 기록 기준 예상 · 이자 제외',
-      planned: '매달 금액 × {n}개월 · 이자 제외',
+      planned: '{n}개월 동안 분배가 보내는 돈 · 이자 제외',
       past: '지남',
       thisMonth: '이번 달',
       stopped: '멈춤',

@@ -185,7 +185,7 @@ const total = computed(() => {
   const s = sumStatus(g.value, phase.value)
   const c = cat.value
   const [msg, tone]: [string, Tone] =
-    adjust.value && !ratio.value ? [t('budget.status.adjusted', { amount: fmtMoney(adjust.value.amount), sum: fmtMoney(g.value.sum) }), 'warn']
+    adjust.value && !ratio.value ? [t('budget.status.adjusted', { amount: fmtMoney(adjust.value.amount) }), 'ok']
     : s.code === 'noTarget' ? [t('budget.status.noTarget', { cat: c }), 'warn']
     : s.code === 'noPhase' ? [t('budget.status.noPhase'), 'warn']
     : s.code === 'same' ? [t(s.ratio ? 'budget.status.sameRatio' : 'budget.status.same', { cat: c }), 'ok']

@@ -42,7 +42,7 @@ export const budgetEn: BudgetMessages = {
     tabHistory: 'By month',
     tabMaturity: 'Maturities',
     status: {
-      adjusted: 'Adjusted to {amount} for this month only · items add up to {sum}',
+      adjusted: 'Adjusted to {amount} for this month only · split over the items by their amounts',
       living: 'This total becomes the living cost amount of the pay split',
       livingNoTarget: 'The pay split has no living cost target, so this is not in the pay split yet',
       noTarget: 'The pay split has no {cat} total target, so these items are not in the pay split yet',
@@ -261,7 +261,7 @@ export const budgetEn: BudgetMessages = {
       colAmount: 'To receive (before tax, estimate)',
       colAfter: 'After maturity',
       projected: 'Projected from the balance record · no interest',
-      planned: 'Monthly amount × {n} months · no interest',
+      planned: 'What the split sends over {n} months · no interest',
       past: 'Passed',
       thisMonth: 'This month',
       stopped: 'Stopped',
