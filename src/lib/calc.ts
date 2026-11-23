@@ -960,8 +960,6 @@ export const ymLabel = (ym: string) => `${ym.slice(0, 4)}.${ym.slice(5, 7)}`
 export const md = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`
 
 // ---------- maturity (spec 013 S-15, rc.2) ----------
-/** The longest term read as a maturity: 100 years (a longer one is not listed, so nothing loops for ages). */
-const MATURITY_MAX_MONTHS = 1200
 /** How many months from `from` to `to` (YYYY-MM each; negative when `to` is earlier). */
 export const monthsBetween = (from: string, to: string) =>
   (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(from.slice(5, 7))
@@ -988,13 +986,13 @@ export function maturityOf(a: Pick<Account, 'term' | 'from'>): Maturity | null {
   const n = TERM_MONTHS.exec(term)
   if (n) {
     const months = Number(n[1])
-    return months > 0 && months <= MATURITY_MAX_MONTHS ? { ym: addYm(a.from, months), months } : null
+    return months > 0 ? { ym: addYm(a.from, months), months } : null
   }
   const u = TERM_UNTIL.exec(term) ?? TERM_UNTIL_EN.exec(term)
   if (!u) return null
   const ym = `${u[1]}-${u[2]}`
   const months = monthsBetween(a.from, ym)
-  return months >= 0 && months <= MATURITY_MAX_MONTHS ? { ym, months } : null
+  return months >= 0 ? { ym, months } : null
 }
 
 export interface MaturityAmount {

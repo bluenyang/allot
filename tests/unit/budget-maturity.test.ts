@@ -31,11 +31,12 @@ test('S-15: the term is read as "N개월" / "N months" or "YYYY-MM까지" / "unt
   assert.deepEqual(maturityOf({ term: '1 month', from: '2026-12' }), { ym: '2027-01', months: 1 })
   assert.deepEqual(maturityOf({ term: '2027-06까지', from: '2026-01' }), { ym: '2027-06', months: 17 })
   assert.deepEqual(maturityOf({ term: 'until 2027-06', from: '2026-01' }), { ym: '2027-06', months: 17 })
-  // not read: no from, no term, other text, zero, an end before the start, or longer than 100 years
+  // not read: no from, no term, other text, zero, an end before the start (no upper limit: first audit rc.2 F-1)
   for (const x of [{ term: '12개월', from: null }, { term: '', from: '2026-01' }, { term: '만기 없음', from: '2026-01' }, { term: '연 3%', from: '2026-01' },
-    { term: '0개월', from: '2026-01' }, { term: '2025-06까지', from: '2026-01' }, { term: '1201개월', from: '2026-01' }, { term: '2027-13까지', from: '2026-01' }]) {
+    { term: '0개월', from: '2026-01' }, { term: '2025-06까지', from: '2026-01' }, { term: '2027-13까지', from: '2026-01' }]) {
     assert.equal(maturityOf(x), null, JSON.stringify(x))
   }
+  assert.deepEqual(maturityOf({ term: '1201개월', from: '2026-01' }), { ym: '2126-02', months: 1201 })
   assert.equal(monthsBetween('2026-11', '2027-02'), 3)
   assert.equal(monthsBetween('2027-02', '2026-11'), -3)
 })
