@@ -36,7 +36,7 @@ if [ ! -f "$SNAP/dist-server/index.mjs" ] || [ ! -f "$SNAP/dist/index.html" ]; t
   step "remove the archive" rm "$ST/$SHA.tar"
   step "build in the dev image" docker run --rm -v "$SNAP:/w" -v allot-stage-pnpm-store:/pnpm-store -w /w allot-dev-api sh -c "pnpm config set store-dir /pnpm-store --location project && pnpm install --frozen-lockfile --ignore-scripts && pnpm build && pnpm build:server && chown -R $(id -u):$(id -g) /w"
 fi
-step "snapshot is built" test -f "$SNAP/dist-server/index.mjs" -a -f "$SNAP/dist/index.html"
+step "snapshot is built" /usr/bin/test -f "$SNAP/dist-server/index.mjs" -a -f "$SNAP/dist/index.html"
 step "back up the database" node "$HERE/backup.mjs" "$LOCTX/backup/allot-dev-before-stage-${SHA:0:7}-$STAMP.sql"
 step "point current at the snapshot" ln -sfn "$SHA" "$ST/current"
 step "recreate api and web" node "$HERE/quiet.mjs" docker compose --progress quiet -f "$ROOT/docker/compose.dev.yaml" up -d --force-recreate --wait api web
