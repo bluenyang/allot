@@ -154,10 +154,16 @@ try {
   await bad({ name: 'x', write: true, confirm: 'both' }, 'an unknown confirmation method')
   await bad({ name: 'x', write: 'yes' }, 'write that is not a boolean')
   await bad({ name: 'x', write: true, metadata: { confirm: 'chat' } }, 'metadata in the body')
-  for (const [method, body] of [['PUT', { name: 'x' }], ['PATCH', { write: true }], ['PATCH', { confirm: 'chat' }]]) {
-    const r = await U(method, `/api/keys/${w1.json?.item?.id}`, body)
-    ok(r.status === 404 || r.status === 405, `${method} /api/keys/:id → ${r.status} (no way to change a key)`)
+  // Since 0.1.7-rc.3 a key is changed with PATCH and its own fields only (spec 013 S-25; tests/api/password-keys.mjs
+  // checks them): there is still no PUT, and PATCH takes no permissions or metadata of the plugin.
+  const put = await U('PUT', `/api/keys/${w1.json?.item?.id}`, { name: 'x' })
+  ok(put.status === 404 || put.status === 405, `PUT /api/keys/:id → ${put.status} (no such route)`)
+  for (const body of [{ metadata: { confirm: 'chat' } }, { permissions: { mcp: ['read', 'write'] } }]) {
+    const r = await U('PATCH', `/api/keys/${w1.json?.item?.id}`, body)
+    ok(r.status === 400, `PATCH /api/keys/:id ${JSON.stringify(body)} → ${r.status} (not a field of the key change)`)
   }
+  const kept = await U('PATCH', `/api/keys/${w1.json?.item?.id}`, { write: true })
+  ok(kept.status === 200 && kept.json?.item?.confirm === 'ui', `PATCH { write: true } on a write key keeps its method → ${kept.status} ${kept.json?.item?.confirm}`)
   const still = ((await U('GET', '/api/keys')).json?.keys ?? []).find((k) => k.id === w1.json?.item?.id)
   ok(still?.confirm === 'ui' && still?.permissions?.mcp?.includes('write'), 'the key is unchanged after those attempts')
   for (const r of [w1, w2, w3]) await U('DELETE', `/api/keys/${r.json?.item?.id}`)
