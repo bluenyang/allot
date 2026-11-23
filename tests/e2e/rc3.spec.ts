@@ -255,7 +255,9 @@ test.describe.serial('V-20 currencies', () => {
 
   test('(V-20) automatic refresh with the fake rate service: rates change, the system set is listed and reverted, an earlier settings change stays revertible, an unknown code fails, off fetches nothing', async ({ page, request }) => {
     const FAKE = process.env.FX_FAKE
-    test.skip(!FAKE, 'FX_FAKE is not set: the test server has no fake rate service')
+    // both, so 지금 갱신 can only reach the fake service: the server was started with ALLOT_FX_URL pointing at it (the check
+    // script exports both before up.sh); without them the test is skipped before any refresh (review rc3-5 R5-4)
+    test.skip(!FAKE || !(process.env.ALLOT_FX_URL ?? '').startsWith('http://allot-fxfake'), 'FX_FAKE and ALLOT_FX_URL do not name the fake rate service')
     const fake = await pwRequest.newContext({ baseURL: FAKE })
     const seen = async () => (await (await fake.get('/_log')).json()) as { from: string; to: string }[]
     const s0 = await state(request)
