@@ -24,10 +24,15 @@ const ROUTES: Record<string, string> = {
   'GET /api/keys': 'Your API keys (for MCP): name, scope, expiry, last use; never the key itself.',
   'POST /api/keys': 'Create an API key; the key is shown once in the answer.',
   'DELETE /api/keys/:id': 'Delete an API key.',
+  'PATCH /api/keys/:id': 'Change an API key: { name?, write?, confirm?: "ui" | "chat", extendDays? } — rename it, switch read and write-proposal scope, move where its proposals are confirmed, or extend its expiry within the server policy.',
   'GET /api/admin/providers': 'Admin: the sign-in providers and their settings.',
   'PUT /api/admin/providers/:id': 'Admin: change a sign-in provider.',
   'GET /api/admin/api-keys': 'Admin: the API key policy.',
   'PUT /api/admin/api-keys': 'Admin: change the API key policy.',
+  'GET /api/admin/password-policy': 'Admin: the password policy (minimum length, and the lock after repeated failed sign-ins: off by default).',
+  'PUT /api/admin/password-policy': 'Admin: change the password policy (minimum length 8 to 128; lock after 3 to 20 failures for 1 to 1440 minutes, or off).',
+  'GET /api/admin/login-locks': 'Admin: the sign-in emails locked now after repeated failures, with when the lock ends.',
+  'DELETE /api/admin/login-locks/:email': 'Admin: lift the lock of one sign-in email.',
   'POST /api/admin/users/:id/role': 'Admin: change a user\'s role.',
   'POST /api/admin/users/:id/ban': 'Admin: ban a user (signs them out everywhere).',
   'DELETE /api/admin/users/:id': 'Admin: delete a user and all their data (confirmed with their email).',
@@ -39,6 +44,7 @@ const ROUTES: Record<string, string> = {
   'GET /api/changes': 'The change history, newest first: ?limit=&before=&beforeId= (the next page) and ?since=&until= (a period, ISO times).',
   'GET /api/changes/:id': 'One change set with its row changes.',
   'POST /api/changes/:id/revert': 'Revert a change set: the opposite change, as a new set.',
+  'POST /api/currencies/refresh': 'Refresh now the rates of your currencies that have auto on (USD included when the settings\' fxAuto is on), from the public ECB rates; a code the source does not list keeps its rate and shows the failure.',
 }
 
 /** The request body of the routes that are not data resources. */
@@ -49,6 +55,12 @@ const BODIES: Record<string, z.ZodType> = {
   'POST /api/admin/users/:id/role': v.userRole,
   'POST /api/admin/users/:id/ban': v.userBan,
   'DELETE /api/admin/users/:id': v.userDelete,
+}
+
+/** What a data resource holds, where its name alone does not say it; added to its create line. */
+const RESOURCE_NOTES: Partial<Record<ListName, string>> = {
+  schedules: 'Your own monthly dates (spec 013 S-22): name, day 1..31, accountId or null, direction in or out, note; no amount.',
+  currencies: 'Foreign currencies other than KRW and USD (spec 013 S-23): code, rate, buffer 0..100, auto; one in use by a subscription, plan change or spending cannot be deleted or renamed. The USD rate is in the settings (fxRate, fxBuffer, fxAuto).',
 }
 
 const SINGLE_PATHS = { '/api/settings': 'settings', '/api/living': 'living', '/api/preferences': 'preferences' } as const
@@ -66,7 +78,7 @@ export function describeRoute(r: RouteInfo): string | null {
   if (r.method === 'PUT' && r.path in SINGLE_PATHS) return `Replace the ${SINGLE_PATHS[r.path as keyof typeof SINGLE_PATHS]} record (the whole record; body below).`
   const res = resourceOf(r.path)
   if (!res) return null
-  if (r.method === 'POST' && !res.item) return `Create a ${res.name} row; the server assigns the id and answers with the row (body below).`
+  if (r.method === 'POST' && !res.item) return `Create a ${res.name} row; the server assigns the id and answers with the row (body below).${RESOURCE_NOTES[res.name] ? ` ${RESOURCE_NOTES[res.name]}` : ''}`
   if (r.method === 'PUT' && res.item) return `Replace a ${res.name} row (the whole row; body below).`
   if (r.method === 'DELETE' && res.item) return `Delete a ${res.name} row.`
   return null

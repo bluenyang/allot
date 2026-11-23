@@ -29,6 +29,18 @@ test('the data resources show their request body', () => {
   assert.ok(bodyOf({ method: 'PUT', path: '/api/settings' }))
   assert.equal(bodyOf({ method: 'DELETE', path: '/api/cards/:id' }), null)
   assert.equal(bodyOf({ method: 'GET', path: '/api/state' }), null)
+  // rc.3 (spec 013 S-22, S-23): the own dates and the currency list, with a line that says what they hold
+  for (const path of ['/api/schedules', '/api/currencies']) {
+    assert.ok(bodyOf({ method: 'POST', path }), path)
+    assert.ok(bodyOf({ method: 'PUT', path: `${path}/:id` }), path)
+    assert.match(describeRoute({ method: 'POST', path }) ?? '', /spec 013/)
+    assert.ok(describeRoute({ method: 'DELETE', path: `${path}/:id` }), path)
+  }
+  // the rc.3 routes of the other units have their lines too
+  for (const r of ['POST /api/currencies/refresh', 'PATCH /api/keys/:id', 'GET /api/admin/password-policy', 'PUT /api/admin/password-policy', 'GET /api/admin/login-locks', 'DELETE /api/admin/login-locks/:email']) {
+    const [method, path] = r.split(' ') as [string, string]
+    assert.ok(describeRoute({ method, path }), r)
+  }
 })
 
 test('the MCP tools are the ones the endpoint serves to a write key, eleven read and four write', async () => {
