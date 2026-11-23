@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // The phone's "더보기" (spec 010 S-4): a bottom sheet with the account, the budget pages the bottom
 // bar has no room for (living, savings and investment open since spec 013 S-1), the pages that are not in the bar, and sign out. Items for features that do
-// not exist yet are `Soon` (visible, inert). The shell closes it when the route changes.
+// not exist yet are `Soon` (visible, inert). The API docs (spec 013 S-21) open the server's page in a new tab.
+// The shell closes it when the route changes.
 import { t, type MessageKey } from '../i18n'
 import Icon from './Icon.vue'
 import Sheet from './Sheet.vue'
@@ -33,6 +34,7 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
       <RouterLink class="sh-row mrow" to="/pending"><span class="mi"><Icon name="pending" /></span><span class="mx"><b>{{ t('shell.pages.pending') }}</b><small class="hint">{{ t('shell.moreHints.pending') }}</small></span><span v-if="pending" class="pn" :aria-label="t('shell.pendingN', { n: pending })">{{ pending }}</span></RouterLink>
       <RouterLink class="sh-row mrow" to="/history"><span class="mi"><Icon name="history" /></span><span class="mx"><b>{{ t('shell.pages.history') }}</b><small class="hint">{{ t('shell.moreHints.history') }}</small></span></RouterLink>
       <RouterLink class="sh-row mrow" to="/settings/general"><span class="mi"><Icon name="settings" /></span><span class="mx"><b>{{ t('shell.pages.settings') }}</b><small class="hint">{{ t('shell.moreHints.settings') }}</small></span></RouterLink>
+      <a class="sh-row mrow" href="/api/docs" target="_blank" rel="noopener"><span class="mi"><Icon name="dev" /></span><span class="mx"><b>{{ t('shell.apiDocs') }}</b><small class="hint">{{ t('shell.moreHints.apiDocs') }}</small></span></a>
       <RouterLink v-if="admin" class="sh-row mrow" to="/admin"><span class="mi"><Icon name="admin" /></span><span class="mx"><b>{{ t('shell.pages.admin') }}</b><small class="hint">{{ t('shell.moreHints.admin') }}</small></span></RouterLink>
       <button class="sh-row mlogout" type="button" @click="emit('logout')"><span class="mi lo"><Icon name="logout" :stroke="1.9" /></span>{{ t('shell.logout') }}</button>
     </div>

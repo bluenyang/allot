@@ -4,6 +4,7 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { adminRoutes } from './admin-routes'
 import { allowedReturn } from './app-login'
 import { publicMethods } from './auth-config'
+import { docsPage } from './docs'
 import { keyRoutes } from './keys'
 import { mountMcp } from './mcp'
 import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
@@ -64,6 +65,13 @@ app.use('*', async (c, next) => {
 })
 
 app.get('/me', (c) => c.json({ user: c.get('session').user }))
+
+// spec 013 S-21: the API documentation, a page for the signed-in user (server/docs.ts), listing this app's routes.
+// No script on it: the policy allows inline styles only.
+app.get('/docs', async (c) => c.html(await docsPage(app.routes), 200, {
+  'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'Cache-Control': 'no-store',
+}))
 
 // spec 006 S-6: a one-time token for a listed app URL, for the signed-in browser (server/app-login.ts).
 app.post('/app-login/ticket', async (c) => {

@@ -1,6 +1,6 @@
 // The MCP server of one request: built per request and bound to the user the key belongs to
-// (stateless; spec 008 S-5, S-6). Nine read-only tools for every key (get_budget and list_accounts: spec 013
-// S-10) and, for a key with the write scope, four more that propose changes and apply them after confirmation
+// (stateless; spec 008 S-5, S-6). Eleven read-only tools for every key (get_budget and list_accounts: spec 013
+// S-10; search and list_notifications: S-19, S-20) and, for a key with the write scope, four more that propose changes and apply them after confirmation
 // (spec 009 S-6); each runs
 // as that user under row-level security, and what the read tools compute comes from server/mcp/views.ts.
 // Descriptions and errors are in English (spec 008 S-10); the data is as the user entered it.
@@ -12,14 +12,17 @@ import { listSets } from '../changes'
 import { asUser } from '../db/scope'
 import { issueText } from '../messages'
 import { AI_LISTS, AI_SINGLES, RESOURCES, singleSchema } from '../ops'
-import { applyProposal, getProposal, MAX_OPS, propose, ProposalError, proposalText, type KeyInfo, type ProposalView } from '../proposals'
+import { applyProposal, getProposal, MAX_OPS, pendingCount, propose, ProposalError, proposalText, type KeyInfo, type ProposalView } from '../proposals'
 import { readState } from '../state'
+import { SEARCH_KINDS } from '../../src/lib/search'
 import { guarded, isTimestamp } from './safe'
-import { accountList, allocation, budget, overview, planChangeList, schedule, spendingList, subscriptionList, type Data } from './views'
+import { accountList, allocation, budget, notificationList, overview, planChangeList, schedule, searchView, spendingList, subscriptionList, type Data } from './views'
 
 const SERVER_VERSION = '0.1'
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'use YYYY-MM')
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const
+/** A time GET /api/changes takes for its period (the same check: Date.parse reads it). */
+const isTime = (s: string) => !Number.isNaN(Date.parse(s))
 
 /** Structured data and the same JSON as text (clients that only show text still get the data). */
 const json = (data: Record<string, unknown>): CallToolResult => ({
@@ -91,11 +94,12 @@ function proposalTool<A>(tool: string, fn: (args: A) => Promise<CallToolResult>)
 function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
   server.registerTool('propose_changes', {
     title: 'Propose changes',
-    description: `Propose changes to the user's data. Nothing changes yet: the proposal is stored with a preview (the rows before and after, and the subscription transfer and salary distribution of this month and the next, before and after) and waits for the user's confirmation. Up to ${MAX_OPS} changes per proposal, all applied together or not at all. You can change subscriptions, plan changes, phases (with their fixed amounts per allocation target), allocation targets, the remainder split, plan events, check items, the settings (net pay, pay days, exchange rate, savingSplit and investSplit: amount or ratio), the living items, the bank accounts, their balance records, the cards and one-off spendings; deleting is allowed. Read the current data with the other tools first (get_budget, list_accounts, get_allocation, list_spendings show the shapes); update and delete need the row's id, and an update sends the whole row. `
+    description: `Propose changes to the user's data. Nothing changes yet: the proposal is stored with a preview (the rows before and after, and the subscription transfer and salary distribution of this month and the next, before and after) and waits for the user's confirmation. Up to ${MAX_OPS} changes per proposal, all applied together or not at all. You can change subscriptions, plan changes, phases (with their fixed amounts per allocation target), allocation targets, the remainder split, plan events, check items, the settings (net pay, pay days, exchange rate, savingSplit and investSplit: amount or ratio), the living items, the bank accounts, their balance records, the cards, one-off spendings and one month's amounts of targets (month adjustments); deleting is allowed. Read the current data with the other tools first (get_budget, list_accounts, get_allocation, list_spendings show the shapes); update and delete need the row's id, and an update sends the whole row. `
       + `Living items (resource 'living-items'): name, kind and payMethod (free text up to 40 characters, may be empty), amount (whole KRW a month), from (YYYY-MM, or null = from the start), code (only the three items moved from the old living costs: food, transit or allowance; else null), note, amounts (phaseId to the amount in that phase; leave empty for the monthly amount). Their sum is the Living total target. The old resource 'living' (food, transit, allowance) still sets the three coded items. `
-      + `Bank accounts (resource 'accounts'): name, role, inflow and outflow (free text, as before), and, optional (left out = the stored value): bank, kind, rate and term (free text up to 40), last4 (exactly 4 digits, or empty), buffer (KRW kept in the account), goal and annualLimit (KRW, or null), group (saving or invest = an item of the Savings or Investment menu; null = none), from and stopFrom (YYYY-MM or null: an item sends from its from month until the month before stopFrom), goalAck, note; only an account with a group may have amount (whole KRW a month, for the amount split), ratio (0 to 1 with at most 4 decimals, for the ratio split: the share of the phase amount of the menu's target) and amounts (phaseId to amount). Deleting an account deletes its balance records and phase amounts and unlinks its cards and targets; it is refused while a buffer use is paid from it. `
+      + `Bank accounts (resource 'accounts'): name, role, inflow and outflow (free text, as before), and, optional (left out = the stored value): bank, kind, rate and term (free text up to 40), last4 (exactly 4 digits, or empty), buffer (KRW kept in the account), goal and annualLimit (KRW, or null), group (saving or invest = an item of the Savings or Investment menu; null = none), from and stopFrom (YYYY-MM or null: an item sends from its from month until the month before stopFrom), goalAck, afterMaturity (free text up to 200 characters: where the money goes when the term matures, e.g. to the living account; get_budget shows it in the maturity schedule), note; only an account with a group may have amount (whole KRW a month, for the amount split), ratio (0 to 1 with at most 4 decimals, for the ratio split: the share of the phase amount of the menu's target) and amounts (phaseId to amount). Deleting an account deletes its balance records and phase amounts and unlinks its cards and targets; it is refused while a buffer use is paid from it. `
       + `Balance records (resource 'balances'): accountId, date (YYYY-MM-DD), amount (the balance on that date, whole KRW), deposit (money put in at once that day, such as a maturity payout, whole KRW, or null; the yearly contribution counts it, a balance alone is not counted as paid in), note; money put in at once is written as a new balance with its deposit. `
       + `Cards (resource 'cards'): name, last4 (4 digits or empty), accountId (the account its bill is paid from, or null), billingDay (1 to 31, or null = the settings' billing day), note; deleting a card is refused while a buffer use uses it. `
+      + `Month adjustments (resource 'month-adjusts'): one month's amount of a fixed, saving or invest target, in place of its phase amount for that month only: ym (the month, YYYY-MM), targetId, amount (whole KRW, 0 or more), reason (optional). For a fixed target and an amount-split Savings or Investment target the target gets that amount that month; for a ratio split it is that month's total the items share. One per month and target: update the existing one (get_overview and get_budget list them as monthAdjusts) or delete it to go back to the phase amount. To change the amount for the rest of a phase instead, update the phase. `
       + `Allocation targets (resource 'targets'): name, kind (living, subscriptions, fixed, remainder, saving or invest; at most one of each kind except fixed), note, accountId (the account it sends to, or null). `
       + `A spending (resource 'spendings') is sent whole with its rounds: name, category, bought (YYYY-MM-DD), amount, currency (KRW or USD), fxRate and fxBuffer (USD only, else null; at most 2 decimals), how (lump, installment, split or buffer), payBy (card, salary or subs), count (1 for lump, 1 to 60 for buffer, else 2 to 60), fee (KRW; only a card installment has one, else 0), interval (monthly, biweekly or custom for split only, else null), cancelled, cardId (a card, only when payBy is card; or null), refillFrom (buffer only, else null), and rounds (no from 1, date, amount in whole KRW, state left, paid or merged, edited). A buffer use (how 'buffer') is a card purchase paid at once from the buffer of the card's paying account and put back over count months: payBy card, a cardId whose card has a paying account, fee 0, interval null, refillFrom (YYYY-MM-DD: the first refill, normally the first pay day on or after the card's billing date), and its rounds are the refills: round 1 on refillFrom, then the pay day of each next month, each floor(principal / count / 10) * 10 KRW with the rest on the last. The server does not work the rounds out: plan them so they add up to the amount plus the fee (round amounts are whole KRW), and keep what is paid or still to pay to at most ${ROUND_MAX.toLocaleString('en-US')} KRW in total. An update replaces the rounds too, so send all of them. `
       + `Examples: to record the balance of a CMA account after a maturity payout went into it, create a 'balances' row with that account's id, the date and the new balance. To plan a mini PC bought by card from a buffer, create a 'spendings' row with how 'buffer', payBy 'card', the cardId of a card that has a paying account (list_accounts lists the cards), count 6, refillFrom and the six refill rounds. `
@@ -146,7 +150,7 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
 
   server.registerTool('get_overview', {
     title: 'Overview of a month',
-    description: 'The month at a glance (default: this month): pay, transfer and card-billing dates (shifted off weekends and holidays when the user set that), the subscription transfer calculation, how the salary is distributed over the allocation targets (without a remainder target, what is left stays in the pay account as unallocatedKrw), the remainder split, the subscription charges, the one-off spending rounds (spendingRounds, kept apart from the charges) and scheduled plan changes of that month, and the settings (net pay, pay days, exchange rate).',
+    description: 'The month at a glance (default: this month): pay, transfer and card-billing dates (shifted off weekends and holidays when the user set that), the subscription transfer calculation, how the salary is distributed over the allocation targets (without a remainder target, what is left stays in the pay account as unallocatedKrw; a month adjustment replaces a target\'s phase amount that month), the remainder split, the month adjustments (monthAdjusts: target, amount and the planned amount it replaces), the subscription charges, the one-off spending rounds (spendingRounds, kept apart from the charges) and scheduled plan changes of that month, and the settings (net pay, pay days, exchange rate).',
     inputSchema: z.object({ month: month.optional().describe('YYYY-MM; default this month') }),
     annotations: READ_ONLY,
   }, guarded('get_overview', async ({ month: ym }) => json(overview(await data(), ym ?? ymOf(today())))))
@@ -184,21 +188,21 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
 
   server.registerTool('get_budget', {
     title: 'Living, savings and investment budget of a month',
-    description: 'The budget menus of a month (default: this month), worked out as the Living, Savings and Investment pages do. living: every living item (name, kind, payMethod, its monthly amount, from, code, phase amounts) with what it costs that month (0 before its from month; a phase amount replaces the monthly amount in that phase) and their sum, which the Living total target gets. saving and invest: how the menu splits (mode amount: each item sends its monthly amount; mode ratio: the phase amount of the menu target is split by the item ratios, rounded to 1,000 KRW), the target (id, name, accountId), the total, every item (an account in that group: accountId, name, kind, bank, last4, amount, phase amounts, ratio, what it sends that month, from, stopFrom, goal, annualLimit; nothing before from or from stopFrom on), the sum the target gets and the ratio sum (1 = 100%; what a ratio sum under 100% leaves stays in the remainder). targets: what every allocation target gets that month; and the remainder.',
+    description: 'The budget menus of a month (default: this month), worked out as the Living, Savings and Investment pages do. living: every living item (name, kind, payMethod, its monthly amount, from, code, phase amounts) with what it costs that month (0 before its from month; a phase amount replaces the monthly amount in that phase) and their sum, which the Living total target gets. saving and invest: how the menu splits (mode amount: each item sends its monthly amount; mode ratio: the phase amount of the menu target is split by the item ratios, rounded to 1,000 KRW), the target (id, name, accountId), the total, every item (an account in that group: accountId, name, kind, bank, last4, amount, phase amounts, ratio, what it sends that month, from, stopFrom, goal, annualLimit; nothing before from or from stopFrom on), the sum of the items, what the target gets (targetKrw) and the ratio sum (1 = 100%; what a ratio sum under 100% leaves stays in the remainder), and the month adjustment of the target (adjustment: an amount split\'s target gets it in place of the items\' sum; a ratio split\'s items share it as that month\'s total). targets: what every allocation target gets that month; the remainder; monthAdjusts: that month\'s adjustments with the planned amount each replaces; and maturity: the savings maturity schedule (Savings items that have a from month and whose term reads N months, also in Korean, or YYYY-MM followed by the Korean word for until: maturityMonth, months paid in, expectedKrw = the projected balance that month with basis projection when the account has a balance record, else the monthly amount times the months with basis amount, afterMaturity, state past, due or upcoming relative to the month).',
     inputSchema: z.object({ month: month.optional().describe('YYYY-MM; default this month') }),
     annotations: READ_ONLY,
   }, guarded('get_budget', async ({ month: ym }) => json(budget(await data(), ym ?? ymOf(today())))))
 
   server.registerTool('list_accounts', {
     title: 'Bank accounts, balances and cards',
-    description: 'Every bank account with its fields (name, role, inflow, outflow, bank, last4, kind, rate, term, group, amount, ratio, from, stopFrom, buffer, goal, annualLimit, note), its balance records (date, amount and deposit = money put in at once that day, oldest first) and the last one, the projected balance month by month from this month for `months` months (no interest: from the last record, the transfers into it on the transfer day, buffer refills in on pay days, card bills paid from it out on billing days; null without a balance record), the month the projection first reaches its goal (null when it does not within 50 years, or without a goal or a record), this calendar year\'s contribution against its yearly limit (left, and state near = 90% or more, over = above it), the buffer gauge (its buffer, what buffer uses through its cards took and have not refilled yet, what is left), the allocation targets that send to it and the cards paid from it. Plus every card with its paying account and its billing day (null = the settings\' billing day; effectiveBillingDay is the day used).',
+    description: 'Every bank account with its fields (name, role, inflow, outflow, bank, last4, kind, rate, term, maturityMonth (the month the term matures: N months after from for a term of N months, also in Korean, or the YYYY-MM of a term that reads YYYY-MM followed by the Korean word for until; else null), afterMaturity, group, amount, ratio, from, stopFrom, buffer, goal, annualLimit, note), its balance records (date, amount and deposit = money put in at once that day, oldest first) and the last one, the projected balance month by month from this month for `months` months (no interest: from the last record, the transfers into it on the transfer day, buffer refills in on pay days, card bills paid from it out on billing days; null without a balance record), the month the projection first reaches its goal (null when it does not within 50 years, or without a goal or a record), this calendar year\'s contribution against its yearly limit (left, and state near = 90% or more, over = above it), the buffer gauge (its buffer, what buffer uses through its cards took and have not refilled yet, what is left), the allocation targets that send to it and the cards paid from it. Plus every card with its paying account and its billing day (null = the settings\' billing day; effectiveBillingDay is the day used).',
     inputSchema: z.object({ months: z.number().int().optional().describe('how many months of projection; default 12 (fewer than 1 counts as 1, more than 120 as 120)') }),
     annotations: READ_ONLY,
   }, guarded('list_accounts', async ({ months }) => json(accountList(await data(), today(), Math.min(120, Math.max(1, months ?? 12))))))
 
   server.registerTool('get_schedule', {
     title: 'Schedule over several months',
-    description: 'For each month from `from`: the pay, transfer and billing dates, the subscription charges, the one-off spending rounds (spendingRounds), the plan changes and the plan events; plus the check items and the holidays in the period (only the holiday sets the user has on).',
+    description: 'For each month from `from`: the pay, transfer and billing dates, the subscription charges, the one-off spending rounds (spendingRounds), the plan changes and the plan events (an event with a range, also one into a later year such as 2026-11~2027-02, is listed in every month of it, with its from and to months); plus the check items and the holidays in the period (only the holiday sets the user has on).',
     inputSchema: z.object({
       from: month.optional().describe('first month, YYYY-MM; default this month'),
       months: z.number().int().min(1).max(12).optional().describe('how many months, 1 to 12; default 3'),
@@ -208,18 +212,40 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
 
   server.registerTool('list_changes', {
     title: 'Change history',
-    description: 'The history of changes to the data, newest first: who changed what and when (one entry per saved change, with the rows before and after). For the next page pass `before` and `beforeId` from `next` of the previous answer.',
+    description: 'The history of changes to the data, newest first: who changed what and when (one entry per saved change, with the rows before and after). Optionally only a period: `since` (that time or later) and `until` (before that time), ISO times or dates (a date is midnight UTC); the same as the change history\'s period filter. For the next page pass `before` and `beforeId` from `next` of the previous answer (and the same period).',
     inputSchema: z.object({
       before: z.string().max(64).refine(isTimestamp, 'use the `before` value of the previous page').optional().describe('time of the last entry of the previous page'),
       beforeId: z.string().min(1).max(100).optional().describe('id of the last entry of the previous page'),
       limit: z.number().int().min(1).max(50).optional().describe('1 to 50; default 20'),
+      since: z.string().refine(isTime, 'use an ISO time or date').optional().describe('only changes at this time or later (ISO time or YYYY-MM-DD)'),
+      until: z.string().refine(isTime, 'use an ISO time or date').optional().describe('only changes before this time (ISO time or YYYY-MM-DD)'),
     }).refine((x) => (x.before === undefined) === (x.beforeId === undefined), { message: '`before` and `beforeId` go together' }),
     annotations: READ_ONLY,
-  }, guarded('list_changes', async ({ before, beforeId, limit }) => {
+  }, guarded('list_changes', async ({ before, beforeId, limit, since, until }) => {
     const n = limit ?? 20
-    const sets = await asUser(uid, (q) => listSets(q, uid, before && beforeId ? { at: before, id: beforeId } : undefined, n))
+    const sets = await asUser(uid, (q) => listSets(q, uid, before && beforeId ? { at: before, id: beforeId } : undefined, n, { since, until }))
     const lastSet = sets[sets.length - 1]
     return json({ sets, next: sets.length === n && lastSet ? { before: lastSet.at, beforeId: lastSet.id } : null })
+  }))
+
+  server.registerTool('search', {
+    title: 'Search by name and memo',
+    description: 'Find the user\'s subscriptions, one-off spendings, living items, bank accounts, cards, allocation targets, plan events and check items whose name (an event\'s title, a check item\'s text) or memo holds `query` (any part, case-insensitive, Korean as typed), as the header search of the app does. Results are grouped by kind in that order; in a kind name matches come before memo matches. Each result has its kind, id, name, note, matched (name or note) and page (the app page that shows it). Read the row itself with the other tools (list_subscriptions, list_spendings, get_budget, list_accounts, get_allocation, get_schedule).',
+    inputSchema: z.object({
+      query: z.string().describe('the text to find; an empty one finds nothing'),
+      kinds: z.array(z.enum(SEARCH_KINDS)).optional().describe('only these kinds; default all'),
+    }),
+    annotations: READ_ONLY,
+  }, guarded('search', async ({ query, kinds }) => json(searchView(await data(), query, kinds))))
+
+  server.registerTool('list_notifications', {
+    title: 'Notifications',
+    description: 'What the bell of the app lists now, worked out from the data (nothing is pushed or mailed): proposals waiting for the user\'s confirmation and goal cards (group pending), subscription charges and one-off spending rounds from today to three days on (group pay, with date and dday), and this month\'s remainder short, a yearly limit used 90% or more, or a buffer short (group budget). Each has an id, its kind, its numbers, the app page and a sentence (message). Whether the user has read one is kept in their browser only and is not here.',
+    inputSchema: z.object({}),
+    annotations: READ_ONLY,
+  }, guarded('list_notifications', async () => {
+    const [st, proposals] = await asUser(uid, async (q) => [await readState(q, uid), await pendingCount(q, uid)] as const)
+    return json(notificationList(st as Data, today(), proposals))
   }))
 
   if (key) registerWrite(server, uid, key)
