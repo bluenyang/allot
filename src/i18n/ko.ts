@@ -968,6 +968,7 @@ export const ko = {
       card: '카드',
       spending: '지출',
       spending_round: '지출 회차',
+      month_adjust: '이번 달만 조정',
     },
     op: {
       insert: '추가',
@@ -1241,6 +1242,9 @@ export const ko = {
       spendingId: '지출',
       no: '회차',
       edited: '고침',
+      ym: '월',
+      reason: '이유',
+      afterMaturity: '만기 후',
     },
     status: {
       pending: '확인 대기',

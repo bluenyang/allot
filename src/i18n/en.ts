@@ -968,6 +968,7 @@ export const en = {
       card: 'Card',
       spending: 'Spending',
       spending_round: 'Spending round',
+      month_adjust: 'Month adjustment',
     },
     op: {
       insert: 'added',
@@ -1241,6 +1242,9 @@ export const en = {
       spendingId: 'Spending',
       no: 'Round',
       edited: 'Edited',
+      ym: 'Month',
+      reason: 'Reason',
+      afterMaturity: 'After maturity',
     },
     status: {
       pending: 'To confirm',
