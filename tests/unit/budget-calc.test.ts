@@ -279,7 +279,7 @@ test('review rc2-2 F-1: a maturity amount follows the share of an amount-split a
   const targets: AllocationTarget[] = [...T, { id: 'ts', name: 'Savings', kind: 'saving' }]
   const a = acc('a', { group: 'saving', amount: 300_000, term: '6개월', from: '2026-01' })
   const b = acc('b', { group: 'saving', amount: 100_000, from: '2026-01' })
-  // 2026-03: the target gets 400,000 that month only → spread 300,000 : 100,000, so A gets its usual 300,000
+  // 2026-03: the target gets 200,000 that month only → spread over A and B by 300,000 : 100,000
   const st = state({ targets, accounts: [a, b], monthAdjusts: [{ id: 'x', ym: '2026-03', targetId: 'ts', amount: 200_000 }] })
   const m = maturityOf(a)!
   // Jan, Feb, Apr, May, Jun at 300,000 and Mar at ⌊300,000 × 200,000 ÷ 400,000⌋ = 150,000

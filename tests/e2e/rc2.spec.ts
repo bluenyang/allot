@@ -210,6 +210,8 @@ test('(V-14, S-14) 저축 총액 수정: 구간 끝까지 in the ratio split sti
     const [a] = await adjusts()
     expect(a).toMatchObject({ ym, targetId: tg.id, amount: 250_000 })
     await expect(page.getByText('이번 달만 조정 · 원래 ₩100,000')).toBeVisible()
+    // the total line: an amount split's adjustment is spread over the items (review rc2-2 F-2, rc2-3 F-2)
+    await expect(page.getByText('이번 달만 ₩250,000로 조정했어요 · 항목에 금액 비례로 나눠요')).toBeVisible()
     await simAt(page, ym)
     expect(await simValue(page, tg.name), 'this month: the adjusted total').toBe(250_000)
     await expect(simRow(page, tg.name)).toContainText('조정됨 · 이번 달만')
