@@ -12,14 +12,16 @@ import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
 import Select from '../components/Select.vue'
-import { PERIOD_KINDS, periodBounds, periodQuery, type PeriodKind } from '../lib/history-period'
+import { DEFAULT_TIMEZONE, isTimeZone } from '../lib/calc'
+import { dayIn, PERIOD_KINDS, periodBounds, periodQuery, type PeriodKind } from '../lib/history-period'
 import { fieldName, tableName } from '../lib/proposals'
 
 // Change history (spec 005 S-3, restyled by spec 010 S-9): one save = one change set, newest first, grouped by
 // day. A set can be reverted like a commit: the opposite change is saved as a new set (also a revert can be
 // reverted again, D-10). The server refuses when a row changed since (409) or a rule would break (400); the
 // modal shows the reason and stays open. The filters (who, item type) work on the sets loaded so far; the period
-// (spec 013 S-18) goes to the server (`since`/`until`, KST days) and the paging goes on inside it.
+// (spec 013 S-18) goes to the server (`since`/`until`, days in the user's time zone, S-22) and the paging goes on
+// inside it. The day headings and the times are in that zone too (review rc3-1 F-4).
 interface Change {
   id: number
   tableName: string
@@ -70,7 +72,7 @@ async function load(reset = true) {
   try {
     const last = sets.value.at(-1)
     const before = !reset && last ? `&before=${encodeURIComponent(last.at)}&beforeId=${encodeURIComponent(last.id)}` : ''
-    const range = periodQuery(periodBounds(period.value, new Date(), pFrom.value, pTo.value))
+    const range = periodQuery(periodBounds(period.value, new Date(), pFrom.value, pTo.value, store.preferences.timezone))
     const page = await api<ChangeSet[]>('GET', `/api/changes?limit=${PAGE}${range}${before}`)
     if (mine !== seq) return
     sets.value = reset ? page : [...sets.value, ...page]
@@ -85,8 +87,11 @@ onMounted(() => load())
 onActivated(() => load())
 
 const locale = () => (lang.value === 'en' ? 'en-US' : 'ko-KR')
-const timeOf = (at: string) => new Date(at).toLocaleTimeString(locale(), { timeStyle: 'short' })
-const dayKey = (at: string) => { const d = new Date(at); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+const zone = () => { const tz = store.preferences.timezone; return tz && isTimeZone(tz) ? tz : DEFAULT_TIMEZONE }
+const timeOf = (at: string) => new Date(at).toLocaleTimeString(locale(), { timeStyle: 'short', timeZone: zone() })
+const dayKey = (at: string) => dayIn(new Date(at), store.preferences.timezone)
+/** The day `YYYY-MM-DD` as a local midnight Date, for the date and weekday words. */
+const dayDate = (key: string) => { const [y, m, d] = key.split('-').map(Number); return new Date(y!, m! - 1, d!) }
 /** A subscription's name, also when it has been deleted since (taken from the loaded history). */
 const subLabel = (id: string) => {
   if (store.subscriptions.some((x) => x.id === id)) return subName(id)
@@ -150,7 +155,7 @@ const days = computed(() => {
     const k = dayKey(s.at)
     const last = out.at(-1)
     if (last?.key === k) last.sets.push(s)
-    else out.push({ key: k, head: `${fmtDate(new Date(s.at))} (${weekdayShort(new Date(s.at))})`, sets: [s] })
+    else out.push({ key: k, head: `${fmtDate(dayDate(k))} (${weekdayShort(dayDate(k))})`, sets: [s] })
   }
   return out
 })
