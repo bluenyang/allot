@@ -1,7 +1,7 @@
 // Notifications (spec 013 S-20): what the bell lists, computed from the state (nothing is stored on the server and
 // nothing is pushed or mailed). Pure: the bell (src/components/NoticeBell.vue, read marks in this browser) and the MCP
 // tool `list_notifications` build the same list with the same calc functions the pages use.
-//   pending   AI proposals and goal cards waiting on 대기 중인 변경
+//   pending   AI proposals, goal cards and maturity cards waiting on 대기 중인 변경
 //   pay       subscription charges and one-off spending rounds in the next `days` days (today included)
 //   budget    this month's remainder short, a yearly limit used 90% or more, a buffer short
 import { bufferGauge, monthMoney, parseDate, upcomingPayments, yearContribution, ymd, type AccountState } from './calc'
@@ -19,6 +19,7 @@ interface Base {
 export type Notice = Base & (
   | { kind: 'proposals'; count: number }
   | { kind: 'goals'; count: number }
+  | { kind: 'maturities'; count: number }
   | { kind: 'charge'; date: string; dday: number; subscriptionId: string; name: string; amount: number }
   | { kind: 'round'; date: string; dday: number; spendingId: string; name: string; amount: number; round: number; of: number; how: SpendHow; payBy: PayBy }
   | { kind: 'remainderShort'; month: string; remainder: number }
@@ -27,8 +28,11 @@ export type Notice = Base & (
 )
 export type NoticeKind = Notice['kind']
 
-/** What waits on 대기 중인 변경: the number of AI proposals and the accounts that have a goal card. */
-export interface PendingInput { proposals: number; goalAccounts: readonly string[] }
+/**
+ * What waits on 대기 중인 변경: the number of AI proposals, the accounts that have a goal card and the maturity cards (each
+ * `accountId@YYYY-MM`, the maturity month; spec 013 S-15, S-20, review rc2-1 F-5).
+ */
+export interface PendingInput { proposals: number; goalAccounts: readonly string[]; maturities?: readonly string[] }
 
 /** Days from `from` to `to` (YYYY-MM-DD, local calendar days). */
 const daysBetween = (from: string, to: string) => Math.round((parseDate(to).getTime() - parseDate(from).getTime()) / 86_400_000)
@@ -43,6 +47,10 @@ export function buildNotices(st: AccountState, today: string, off: ReadonlySet<s
   if (pending.proposals > 0) out.push({ kind: 'proposals', id: `proposals:${pending.proposals}`, group: 'pending', path: '/pending', count: pending.proposals })
   if (pending.goalAccounts.length) {
     out.push({ kind: 'goals', id: `goals:${[...pending.goalAccounts].sort().join(',')}`, group: 'pending', path: '/pending', count: pending.goalAccounts.length })
+  }
+  const maturities = pending.maturities ?? []
+  if (maturities.length) {
+    out.push({ kind: 'maturities', id: `maturities:${[...maturities].sort().join(',')}`, group: 'pending', path: '/pending', count: maturities.length })
   }
 
   // ── charges and rounds from today to today + days ──

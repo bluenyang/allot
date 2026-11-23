@@ -540,4 +540,13 @@ test('list_notifications: the bell\'s list with a sentence each, goal cards and 
   assert.match(l.notifications[3]!.message, /^Round 1\/2 of E2E-PC: 200,000 KRW on 2026-12-25/)
   // nothing waits: no pending notices
   assert.deepEqual(notificationList({ ...nd, accounts: nd.accounts.map((a) => ({ ...a, goal: null })) }, now, 0).notifications.filter((n) => n.group === 'pending'), [])
+  // a Savings item due this month that still sends is a maturity card, stopped from the next transfer (Dec 26; review rc2-1 F-5);
+  // a stopped one is not
+  const due: Data = { ...nd, accounts: [...nd.accounts.map((a) => ({ ...a, goal: null })), acc('dep', { group: 'saving', amount: 100_000, term: '12개월', from: '2025-12' })] }
+  const md = notificationList(due, now, 0).notifications.filter((n) => n.group === 'pending')
+  assert.deepEqual(md.map((n) => [n.kind, n.id]), [['maturities', 'maturities:dep@2026-12']])
+  assert.deepEqual((md[0] as { accounts?: unknown }).accounts, [{ accountId: 'dep', name: 'E2E-dep', maturityMonth: '2026-12', stopFrom: '2026-12' }])
+  assert.match(md[0]!.message, /1 savings item\(s\) reached maturity/)
+  const stopped: Data = { ...due, accounts: due.accounts.map((a) => (a.id === 'dep' ? { ...a, stopFrom: '2027-01' } : a)) }
+  assert.deepEqual(notificationList(stopped, now, 0).notifications.filter((n) => n.group === 'pending'), [])
 })

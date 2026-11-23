@@ -240,7 +240,7 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
 
   server.registerTool('list_notifications', {
     title: 'Notifications',
-    description: 'What the bell of the app lists now, worked out from the data (nothing is pushed or mailed): proposals waiting for the user\'s confirmation and goal cards (group pending), subscription charges and one-off spending rounds from today to three days on (group pay, with date and dday), and this month\'s remainder short, a yearly limit used 90% or more, or a buffer short (group budget). Each has an id, its kind, its numbers, the app page and a sentence (message). Whether the user has read one is kept in their browser only and is not here.',
+    description: 'What the bell of the app lists now, worked out from the data (nothing is pushed or mailed): proposals waiting for the user\'s confirmation, goal cards and maturity cards (group pending; maturities: Savings items whose maturity month is this month or past and that still send, with accounts listing each one; the user\'s "keep sending" choice on a maturity card is kept in their browser only, so this list cannot see it and shows such a maturity until it is stopped), subscription charges and one-off spending rounds from today to three days on (group pay, with date and dday), and this month\'s remainder short, a yearly limit used 90% or more, or a buffer short (group budget). Each has an id, its kind, its numbers, the app page and a sentence (message). Whether the user has read one is kept in their browser only and is not here.',
     inputSchema: z.object({}),
     annotations: READ_ONLY,
   }, guarded('list_notifications', async () => {

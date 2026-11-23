@@ -53,6 +53,11 @@ test('pending: AI proposals and goal cards first, with ids that change when what
   assert.deepEqual(n.slice(0, 2).map((x) => [x.kind, x.id, x.group, x.path]), [['proposals', 'proposals:3', 'pending', '/pending'], ['goals', 'goals:a,b', 'pending', '/pending']])
   assert.equal((n[1] as Extract<Notice, { kind: 'goals' }>).count, 2)
   assert.equal(buildNotices(base, TODAY, none, pending).filter((x) => x.group === 'pending').length, 0)
+  // the maturity cards wait there too, after the goal cards (review rc2-1 F-5)
+  const m = buildNotices(base, TODAY, none, { proposals: 0, goalAccounts: ['a'], maturities: ['d@2026-11', 'c@2026-10'] })
+  assert.deepEqual(m.slice(0, 2).map((x) => [x.kind, x.id, x.group, x.path]), [['goals', 'goals:a', 'pending', '/pending'], ['maturities', 'maturities:c@2026-10,d@2026-11', 'pending', '/pending']])
+  assert.equal((m[1] as Extract<Notice, { kind: 'maturities' }>).count, 2)
+  assert.equal(buildNotices(base, TODAY, none, { ...pending, maturities: [] }).filter((x) => x.group === 'pending').length, 0)
 })
 
 test('this month\'s remainder short, as monthMoney works it out', () => {

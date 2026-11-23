@@ -107,6 +107,8 @@ export const ko = {
       proposalsBody: '대기 중인 변경에서 적용하거나 거절해요',
       goalsTitle: '목표에 닿은 통장 {n}개',
       goalsBody: '대기 중인 변경에서 보내기를 멈출지 정해요',
+      maturitiesTitle: '만기가 된 상품 {n}개',
+      maturitiesBody: '대기 중인 변경에서 보내기를 멈출지 정해요',
       chargeTitle: '{name} 결제 {dday}',
       chargeBody: '{date} · {amount}',
       roundTitle: '{name} {round}/{of}회차 {dday}',

@@ -107,6 +107,8 @@ export const en = {
       proposalsBody: 'Apply or reject them under Pending changes',
       goalsTitle: '{n} accounts reached their goal',
       goalsBody: 'Decide under Pending changes whether to stop sending',
+      maturitiesTitle: '{n} savings items reached maturity',
+      maturitiesBody: 'Decide under Pending changes whether to stop sending',
       chargeTitle: '{name} is charged {dday}',
       chargeBody: '{date} · {amount}',
       roundTitle: '{name} round {round}/{of} {dday}',
