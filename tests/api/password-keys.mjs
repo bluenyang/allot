@@ -255,7 +255,7 @@ try {
   await A('PATCH', `/api/keys/${kx.json?.item?.id}`, { write: false })
   const listR = await mcp(A, kx.json?.key)
   const callR = await mcp(A, kx.json?.key, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'propose_changes', arguments: { note: 'x', changes: [{ resource: 'checks', action: 'create', data: { text: 'PK-check', done: false } }] } } })
-  ok(!listR.text.includes('propose_changes') && (callR.status >= 400 || /error|isError/.test(callR.text)), `after write → read: the tool list has no propose_changes and a call is refused (${callR.status})`)
+  ok(!listR.text.includes('propose_changes') && (callR.status >= 400 || /"isError":\s*true|"error"\s*:/.test(callR.text)), `after write → read: the tool list has no propose_changes and a call is refused (${callR.status})`)
   // someone else's key, an expired key
   const ku = await mk(U, { name: 'PK-key-of-U', expiresInDays: 30 })
   ok(ku.status === 201, `U makes a key → ${ku.status}`)
