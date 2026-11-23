@@ -221,6 +221,15 @@ async function checkRules(q: Db, uid: string, looseBefore: ReadonlyMap<string, s
       .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), inArray(t.allocationTarget.kind, ['fixed', 'saving', 'invest'])))
     if (fixed.length !== ids.length) throw new RuleBroken(m('revertAmounts'))
   }
+  // A month adjustment keeps a fixed, saving or invest target, as a save does (spec 013 S-14, S-26; review rc2-1 F-8,
+  // user: "거부하도록 고침 (Recommended)").
+  const adjusts = await q.select({ targetId: t.monthAdjust.targetId }).from(t.monthAdjust).where(eq(t.monthAdjust.userId, uid))
+  if (adjusts.length) {
+    const ids = [...new Set(adjusts.map((a) => a.targetId))]
+    const ok = await q.select({ id: t.allocationTarget.id }).from(t.allocationTarget)
+      .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), inArray(t.allocationTarget.kind, ['fixed', 'saving', 'invest'])))
+    if (ok.length !== ids.length) throw new RuleBroken(m('revertAdjusts'))
+  }
   // Spendings: the same rule a save keeps for the rounds against count and how (src/lib/spending-rules.ts).
   const spendings = await q.select().from(t.spending).where(eq(t.spending.userId, uid))
   if (spendings.length) {
