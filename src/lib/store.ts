@@ -119,22 +119,25 @@ export type ListKey = keyof typeof RESOURCES
 
 /** Create (no id) or replace an item; returns the saved item. */
 export function saveItem<K extends ListKey>(key: K, item: State[K][number]): Promise<State[K][number]> {
-  return save(async (s) => {
-    const { id, ...body } = item as { id: string }
-    const saved = await api<{ id: string }>(id ? 'PUT' : 'POST', id ? `${RESOURCES[key]}/${id}` : RESOURCES[key], body)
-    s.ifCurrent(() => {
-      // the list is read now, after the answer: the store may have been loaded again meanwhile
-      const list = store[key] as { id: string }[]
-      const i = list.findIndex((x) => x.id === saved.id)
-      if (i >= 0) list[i] = saved
-      else list.push(saved)
-      // Mirrors the server: a target whose kind takes no phase amounts loses them (spec 013 S-3).
-      if (key === 'targets' && !['fixed', 'saving', 'invest'].includes((saved as { kind?: string }).kind ?? '')) {
-        for (const p of store.phases) delete p.amounts[saved.id]
-      }
-    })
-    return saved as State[K][number]
+  return save((s) => putItem(s, key, item))
+}
+
+/** saveItem's request and store update, inside a caller's session scope. */
+async function putItem<K extends ListKey>(s: Scope, key: K, item: State[K][number]): Promise<State[K][number]> {
+  const { id, ...body } = item as { id: string }
+  const saved = await api<{ id: string }>(id ? 'PUT' : 'POST', id ? `${RESOURCES[key]}/${id}` : RESOURCES[key], body)
+  s.ifCurrent(() => {
+    // the list is read now, after the answer: the store may have been loaded again meanwhile
+    const list = store[key] as { id: string }[]
+    const i = list.findIndex((x) => x.id === saved.id)
+    if (i >= 0) list[i] = saved
+    else list.push(saved)
+    // Mirrors the server: a target whose kind takes no phase amounts loses them (spec 013 S-3).
+    if (key === 'targets' && !['fixed', 'saving', 'invest'].includes((saved as { kind?: string }).kind ?? '')) {
+      for (const p of store.phases) delete p.amounts[saved.id]
+    }
   })
+  return saved as State[K][number]
 }
 
 export function deleteItem(key: ListKey, id: string) {
@@ -176,13 +179,17 @@ export function saveSettings(patch: Partial<Settings> = {}) {
  * the server holds now: the daily refresh may have changed it since the tab loaded (review rc3-2 N-2, like the USD rate in
  * saveSettings). A rate the user typed goes as typed; the server still takes any rate.
  */
-export async function saveCurrency(row: ForeignCurrency, tabRate: number | null): Promise<ForeignCurrency> {
-  let body = row
-  if (row.id && row.auto && tabRate !== null && row.rate === tabRate) {
-    const now = (await api<State>('GET', '/api/state')).currencies.find((c) => c.id === row.id)
-    if (now) body = { ...row, rate: now.rate }
-  }
-  return saveItem('currencies', body)
+export function saveCurrency(row: ForeignCurrency, tabRate: number | null): Promise<ForeignCurrency | undefined> {
+  // one session scope for the read and the save, like saveSettings (review rc3-3 N-4): a sign-out between them sends nothing
+  return save(async (s) => {
+    let body = row
+    if (row.id && row.auto && tabRate !== null && row.rate === tabRate) {
+      const now = (await api<State>('GET', '/api/state')).currencies.find((c) => c.id === row.id)
+      if (!s.alive()) return undefined
+      if (now) body = { ...row, rate: now.rate }
+    }
+    return putItem(s, 'currencies', body)
+  })
 }
 
 export function savePreferences(next: Preferences) {
