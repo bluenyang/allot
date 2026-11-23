@@ -13,6 +13,7 @@ import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
 import Select from '../components/Select.vue'
 import { DEFAULT_TIMEZONE, isTimeZone } from '../lib/calc'
+import { byActor, type ActorFilter } from '../lib/history-actor'
 import { dayIn, PERIOD_KINDS, periodBounds, periodQuery, type PeriodKind } from '../lib/history-period'
 import { fieldName, tableName } from '../lib/proposals'
 
@@ -137,18 +138,18 @@ const valueOf = (k: string, v: unknown) => (k === 'targetId' && typeof v === 'st
 const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : s.actorKind === 'system' ? t('currency.system') : t('history.you'))
 
 // ---------- filters ----------
-const actor = ref<'all' | 'me' | 'ai'>('all')
+const actor = ref<ActorFilter>('all')
 const kind = ref('')
 const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending', 'month_adjust', 'foreign_currency', 'schedule_item']
 /** The remainder split's rows are named after what the remainder target is, not a fixed word (spec 010 S-9). */
 const kindOpts = computed(() => KIND_IDS.map((id) => ({ id, label: id === 'remainder_split' ? t('history.kindRemainder') : tableName(id) })))
 const byKind = computed(() => sets.value.filter((s) => !kind.value || s.changes.some((c) => c.tableName === kind.value)))
 const actorOpts = computed(() => [
-  { id: 'all', label: t('history.actorAll'), count: byKind.value.length },
-  { id: 'me', label: t('history.actorMe'), count: byKind.value.filter((s) => s.actorKind === 'user').length },
-  { id: 'ai', label: t('history.actorAi'), count: byKind.value.filter((s) => s.actorKind === 'api_key').length },
+  { id: 'all', label: t('history.actorAll'), count: byActor(byKind.value, 'all').length },
+  { id: 'me', label: t('history.actorMe'), count: byActor(byKind.value, 'me').length },
+  { id: 'ai', label: t('history.actorAi'), count: byActor(byKind.value, 'ai').length },
 ])
-const shown = computed(() => byKind.value.filter((s) => actor.value === 'all' || (actor.value === 'ai') === (s.actorKind === 'api_key')))
+const shown = computed(() => byActor(byKind.value, actor.value))
 const days = computed(() => {
   const out: { key: string; head: string; sets: ChangeSet[] }[] = []
   for (const s of shown.value) {
