@@ -9,7 +9,7 @@ import { fmtDate, fmtMoney } from './display'
 import { catLabel, cycleLabel, pathLabel, statusLabel } from './labels'
 import { loadState, store, subName } from './store'
 import { showToast } from './toast'
-import { usd } from './calc'
+import { fxAmount } from './currency'
 
 export interface RowChange { table: string; op: 'insert' | 'update' | 'delete'; key: Record<string, string>; before: Record<string, unknown> | null; after: Record<string, unknown> | null }
 export interface Delta { before: number; after: number }
@@ -159,7 +159,11 @@ export async function undo(id: string) {
 }
 
 // ── What a row is ──
-export const tableName = (name: string) => { const k = `history.table.${name}`; return te(k) ? t(k as MessageKey) : name }
+/** A table's name; the rc.3 tables (spec 013 S-22, S-23) keep theirs in the currency messages. */
+export const tableName = (name: string) => {
+  for (const k of [`history.table.${name}`, `currency.tables.${name}`]) if (te(k)) return t(k as MessageKey)
+  return name
+}
 const HIDDEN = new Set(['userId', 'seq', 'id'])
 const targetName = (id: string) => store.targets.find((x) => x.id === id)?.name ?? id
 const phaseName = (id: string) => { const p = store.phases.find((x) => x.id === id); return p ? `${p.label} ${p.name}` : id }
@@ -188,7 +192,14 @@ export const rowFields = (c: RowChange) => {
     .map((k) => ({ k, b: c.before?.[k], a: c.after?.[k] }))
     .filter((f) => c.op !== 'update' || JSON.stringify(f.b) !== JSON.stringify(f.a))
 }
-export const fieldName = (k: string) => { const key = `pending.fields.${k}`; return te(key) ? t(key as MessageKey) : k }
+/** Fields whose name differs in one table: a currency's `rate` is its exchange rate, an account's its interest rate. */
+const TABLE_FIELDS: Record<string, readonly string[]> = { foreign_currency: ['rate'] }
+/** A field's name (`table`, when known, picks a table's own name for it); the rc.3 fields are in the currency messages. */
+export const fieldName = (k: string, table?: string) => {
+  if (table && TABLE_FIELDS[table]?.includes(k)) return t(`currency.fields.${k}` as MessageKey)
+  for (const key of [`pending.fields.${k}`, `currency.fields.${k}`]) if (te(key)) return t(key as MessageKey)
+  return k
+}
 
 /** A stored value as words: "월간", "₩9,900", "0%", "미확인", a date in the user's format; a code or text as it is. */
 export function worded(field: string, v: unknown, row?: Record<string, unknown> | null): string {
@@ -199,7 +210,7 @@ export function worded(field: string, v: unknown, row?: Record<string, unknown> 
     case 'status': return te(`label.status.${String(v)}`) ? statusLabel(String(v)) : String(v)
     case 'cycle': return word(() => cycleLabel(String(v)))
     case 'path': return word(() => pathLabel(String(v)))
-    case 'amount': return typeof v === 'number' ? (row?.currency === 'USD' ? usd(v) : fmtMoney(v)) : String(v)
+    case 'amount': return typeof v === 'number' ? (typeof row?.currency === 'string' && row.currency !== 'KRW' ? fxAmount(row.currency, v) : fmtMoney(v)) : String(v)
     // spec 013 money fields (review 2 F-8)
     case 'deposit': case 'buffer': case 'goal': case 'annualLimit': case 'goalAck': return typeof v === 'number' ? fmtMoney(v) : String(v)
     case 'vat': return `${String(v)}%`

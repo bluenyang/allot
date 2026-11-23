@@ -15,7 +15,8 @@ import { roundsProblem } from '../src/lib/spending-rules'
 export type RowKey = Record<string, string>
 type Row = Record<string, unknown>
 
-export interface Actor { kind: 'user' | 'api_key'; id: string }
+/** Who made a set: the user, an AI key, or the server itself (the daily rate refresh, spec 013 S-23). */
+export interface Actor { kind: 'user' | 'api_key' | 'system'; id: string }
 
 /** One row change as the recorder saw it. */
 export interface Collected { table: string; key: RowKey; op: 'insert' | 'update' | 'delete'; before: Row | null; after: Row | null }
@@ -58,8 +59,17 @@ export class Recorder {
   }
 }
 
-/** JSON-safe copy (what jsonb will hold), so comparisons see the same values. */
-const plain = (r: Row): Row => JSON.parse(JSON.stringify(r)) as Row
+/**
+ * Columns only the server's rate refresh writes (spec 013 S-23): when it last refreshed a rate and why the last try
+ * failed. They are not the user's data, so they stay out of every logged row and every comparison: a refresh that only
+ * writes them is no change, and it does not stop a revert of an earlier change to the same row (a revert leaves them).
+ */
+const SERVER_ONLY = new Set(['fxAutoAt', 'fxAutoError', 'autoAt', 'autoError'])
+
+/** JSON-safe copy (what jsonb will hold) without the server-only columns, so comparisons see the same values. */
+const plain = (r: Row): Row => JSON.parse(JSON.stringify(userColumns(r))) as Row
+/** The row without the server-only columns (top level only). */
+const userColumns = (r: Row): Row => Object.fromEntries(Object.entries(r).filter(([k]) => !SERVER_ONLY.has(k)))
 
 /** Same row content, key order ignored. The owner is not content (data can move to another account). */
 export function same(a: Row | null | undefined, b: Row | null | undefined): boolean {
@@ -146,12 +156,12 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
       await q.delete(table).where(whereKey(table, uid, log.rowKey))
       await rec.record(table, log.rowKey, 'delete', current, null)
     } else if (log.op === 'delete') {
-      const row = { ...log.before!, userId: uid }
+      const row = { ...userColumns(log.before!), userId: uid }
       const ins = hasIdentity(table) ? q.insert(table).overridingSystemValue() : q.insert(table)
       const [written] = await ins.values(row as never).returning()
       await rec.record(table, log.rowKey, 'insert', null, written as Row)
     } else {
-      const { userId: _u, seq: _s, ...set } = log.before! // seq is an identity: never updated
+      const { userId: _u, seq: _s, ...set } = userColumns(log.before!) // seq is an identity: never updated
       const [written] = await q.update(table).set(set as never).where(whereKey(table, uid, log.rowKey)).returning()
       await rec.record(table, log.rowKey, 'update', current, written as Row)
     }

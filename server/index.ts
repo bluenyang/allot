@@ -9,6 +9,7 @@ import { sqlClient } from './db/client'
 import { runMigrations } from './db/migrate'
 import { checkRowLevelSecurity } from './db/rls-check'
 import { startRetention } from './retention'
+import { startFxRefresh } from './fx-refresh'
 
 const port = Number(process.env.API_PORT ?? 3000)
 
@@ -46,6 +47,7 @@ if (process.argv[2] === 'keys:forget-lost') {
 
 for (const w of await checkRowLevelSecurity()) console.warn(`WARNING: ${w}`)
 await startRetention()
+startFxRefresh()
 
 serve({ fetch: root.fetch, port, hostname: '0.0.0.0' }, (info) => {
   console.log(`api listening on :${info.port}`)

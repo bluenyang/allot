@@ -127,6 +127,18 @@ function adjustsIn(d: Data, ym: string) {
   })
 }
 
+/**
+ * The foreign currencies (spec 013 S-23, A-39): USD from the settings, then the currency list; each with its rate (KRW per
+ * unit), buffer %, whether the server refreshes it daily, and that refresh's last time and failure.
+ */
+export function currencyList(d: Data) {
+  const s = d.settings
+  return [
+    { code: 'USD', rate: s.fxRate, buffer: s.fxBuffer, auto: !!s.fxAuto, autoAt: s.fxAutoAt ?? null, autoError: s.fxAutoError ?? null },
+    ...(d.currencies ?? []).map((c) => ({ id: c.id, code: c.code, rate: c.rate, buffer: c.buffer, auto: c.auto, autoAt: c.autoAt ?? null, autoError: c.autoError ?? null })),
+  ]
+}
+
 export function overview(d: Data, ym: string) {
   const off = offDays(d, ym, ym)
   // One-off spendings are in the month's transfer and remainder (spec 011 S-5).
@@ -135,11 +147,15 @@ export function overview(d: Data, ym: string) {
   return {
     month: ym,
     settings: d.settings,
+    /** KRW is the base; these are the foreign currencies with their rates (spec 013 S-23) */
+    currencies: currencyList(d),
     dates: datesOf(d, ym, off),
     subscriptionTransfer: {
       monthlyKrw: krw(xfer.monthlySum),
       yearlyAsMonthlyKrw: krw(xfer.yearlyMonthly),
       usdAsMonthlyKrw: krw(xfer.usdMonthly),
+      /** every foreign-currency item, USD included (spec 013 S-23) */
+      foreignAsMonthlyKrw: krw(xfer.foreignMonthly),
       fxBufferKrw: krw(xfer.buffer),
       neededKrw: xfer.needed,
       transferKrw: xfer.transfer,
@@ -187,7 +203,7 @@ export function spendingList(d: Data, now: Date, filter: SpendFilter = {}) {
       bought: sp.bought,
       amount: sp.amount,
       currency: sp.currency,
-      ...(sp.currency === 'USD' ? { fxRate: sp.fxRate, fxBuffer: sp.fxBuffer } : {}),
+      ...(sp.currency !== 'KRW' ? { fxRate: sp.fxRate, fxBuffer: sp.fxBuffer } : {}),
       principalKrw: krw(spendingKrw(sp.amount, sp.currency, { fxRate: sp.fxRate ?? d.settings.fxRate, fxBuffer: sp.fxBuffer ?? d.settings.fxBuffer })),
       feeKrw: krw(sp.fee),
       how: sp.how,
