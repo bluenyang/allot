@@ -179,8 +179,8 @@ export const removeSpending = (id: string) => deleteItem('spendings', id)
 
 /** Everything the app holds, for the JSON view in the 개발 tab. */
 export function exportJson(): string {
-  const { settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, debts, remainderSplit, preferences, holidaySets, spendings } = store
-  return JSON.stringify({ settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
+  const { settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, debts, remainderSplit, preferences, holidaySets, spendings } = store
+  return JSON.stringify({ settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
 }
 
 export const subName = (id: string) => store.subscriptions.find((s) => s.id === id)?.name ?? id
