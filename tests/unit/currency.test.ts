@@ -31,6 +31,7 @@ test('foreign amounts: USD reads as before, another code by its code', () => {
   assert.equal(chargeLabel({ currency: 'EUR', amount: 8 }, num), 'EUR 8.00')
   assert.equal(rateNum(1380), '1,380')
   assert.equal(rateNum(9.05), '9.05')
+  assert.equal(rateNum(0.054793), '0.054793', 'a small unit shows its stored rate (review rc3-2 N-1)')
 })
 
 test('uses of a code: subscriptions (a plan change to it counts for its subscription) and spendings', () => {

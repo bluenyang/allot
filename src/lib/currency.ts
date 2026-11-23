@@ -44,5 +44,5 @@ export function currencyUses(code: Currency, subs: readonly Subscription[], chan
 /** A typed code as the API takes it: trimmed, upper case. Whether it is three capitals is the API's rule (S-26). */
 export const normalCode = (s: string) => s.trim().toUpperCase()
 
-/** A rate as text, its decimals kept (a rate below 10 won, e.g. JPY, has them): "1,380", "9.05". */
-export const rateNum = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+/** A rate as text, its decimals kept up to the 6 the list stores (A-43): "1,380", "9.05", "0.054793" (review rc3-2 N-1). */
+export const rateNum = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 6 })
