@@ -4,19 +4,21 @@ import PageHeader from '../components/PageHeader.vue'
 import EditSheet from '../components/EditSheet.vue'
 import Icon from '../components/Icon.vue'
 import Seg from '../components/Seg.vue'
-import Soon from '../components/Soon.vue'
+import DateInput from '../components/DateInput.vue'
 import { fmtDate } from '../lib/display'
 import { weekdayShort } from '../lib/format'
 import { showToast } from '../lib/toast'
-import { computed, onActivated, onMounted, ref } from 'vue'
+import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
 import Select from '../components/Select.vue'
+import { PERIOD_KINDS, periodBounds, periodQuery, type PeriodKind } from '../lib/history-period'
 
 // Change history (spec 005 S-3, restyled by spec 010 S-9): one save = one change set, newest first, grouped by
 // day. A set can be reverted like a commit: the opposite change is saved as a new set (also a revert can be
 // reverted again, D-10). The server refuses when a row changed since (409) or a rule would break (400); the
-// modal shows the reason and stays open. The filters (who, item type) work on the sets loaded so far.
+// modal shows the reason and stays open. The filters (who, item type) work on the sets loaded so far; the period
+// (spec 013 S-18) goes to the server (`since`/`until`, KST days) and the paging goes on inside it.
 interface Change {
   id: number
   tableName: string
@@ -51,19 +53,31 @@ const more = ref(true)
 const error = ref('')
 const PAGE = 30
 
+// ---------- period (server side) ----------
+const period = ref<PeriodKind>('all')
+const pFrom = ref('')
+const pTo = ref('')
+const periodOpts = computed(() => PERIOD_KINDS.map((id) => ({ value: id, label: t(`history.periodOpt.${id}` as MessageKey) })))
+watch([period, pFrom, pTo], () => { void load() })
+
+// Only the answer to the latest request is shown (a period changed twice quickly answers out of order).
+let seq = 0
 async function load(reset = true) {
+  const mine = ++seq
   busy.value = true
   error.value = ''
   try {
     const last = sets.value.at(-1)
     const before = !reset && last ? `&before=${encodeURIComponent(last.at)}&beforeId=${encodeURIComponent(last.id)}` : ''
-    const page = await api<ChangeSet[]>('GET', `/api/changes?limit=${PAGE}${before}`)
+    const range = periodQuery(periodBounds(period.value, new Date(), pFrom.value, pTo.value))
+    const page = await api<ChangeSet[]>('GET', `/api/changes?limit=${PAGE}${range}${before}`)
+    if (mine !== seq) return
     sets.value = reset ? page : [...sets.value, ...page]
     more.value = page.length === PAGE
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : t('history.loadFailed')
+    if (mine === seq) error.value = e instanceof ApiError ? e.message : t('history.loadFailed')
   } finally {
-    busy.value = false
+    if (mine === seq) busy.value = false
   }
 }
 onMounted(() => load())
@@ -180,7 +194,12 @@ async function revert() {
         <Seg v-model="actor" :options="actorOpts" :label="t('history.actorFilter')" />
         <span class="vr" aria-hidden="true"></span>
         <Select v-model="kind" class="fsel" :aria-label="t('history.kindFilter')" :options="[{ value: '', label: t('history.kindAll') }, ...kindOpts.map((o) => ({ value: o.id, label: o.label }))]" />
-        <Soon tag="span" class="period">{{ t('history.period') }}</Soon>
+        <Select v-model="period" class="fsel" :aria-label="t('history.period')" :options="periodOpts" />
+        <span v-if="period === 'custom'" class="prange">
+          <DateInput v-model="pFrom" clearable :aria-label="t('history.periodFrom')" />
+          <span aria-hidden="true" class="muted">~</span>
+          <DateInput v-model="pTo" clearable :aria-label="t('history.periodTo')" />
+        </span>
         <span class="hint cn">{{ t('history.count', { n: shown.length }) }}</span>
       </div>
 
@@ -220,7 +239,7 @@ async function revert() {
           </li>
         </template>
       </ul>
-      <div v-if="!sets.length && !busy" class="none"><b>{{ t('history.empty') }}</b></div>
+      <div v-if="!sets.length && !busy" class="none"><b>{{ period === 'all' ? t('history.empty') : t('history.emptyPeriod') }}</b></div>
       <div v-else-if="sets.length && !shown.length && more" class="none" data-more><b>{{ t('history.emptyLoaded') }}</b><span class="hint">{{ t('history.emptyLoadedHint') }}</span></div>
       <div v-else-if="sets.length && !shown.length" class="none"><b>{{ t('history.emptyFiltered') }}</b><span class="hint">{{ t('history.emptyFilteredHint') }}</span></div>
       <div v-if="more && sets.length" class="mr"><button class="btn sm" type="button" :disabled="busy" @click="load(false)">{{ t('history.more') }}</button></div>
@@ -245,6 +264,7 @@ async function revert() {
 .fbar .in{width:auto;height:34px;font-size:13px}
 .vr{width:1px;height:24px;background:var(--border)}
 .fbar .cn{margin-left:auto}
+.prange{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
 .chgs{list-style:none;margin:0;padding:0}
 .day{display:flex;align-items:center;gap:8px;padding:8px 18px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--subtle)}
 .chg{border-bottom:1px solid var(--divider)}
