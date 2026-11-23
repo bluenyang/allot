@@ -9,7 +9,8 @@
 # up the database (.loctx/backup/, mode 600); point .loctx/staging/current at the snapshot; recreate api and web
 # (compose output discarded through quiet.mjs: it could hold env values; only the exit is logged); show what runs,
 # the staged commit, /healthz and the front page answering 200; keep the current and the previous snapshot only.
-# The log goes to $LOG_DIR/stage-<time>.log (STAGE_LOG=<file> to choose; never overwritten), checked with
+# It refuses a commit that is not a descendant of the one staged now (the database may hold its migrations) unless
+# STAGE_BACK=1. The log goes to $LOG_DIR/stage-<time>.log (STAGE_LOG=<file> to choose; never overwritten), checked with
 # `pnpm check:logs`. Run it from the main checkout (compose resolves the snapshot mount next to docker/).
 set -u
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -28,6 +29,13 @@ mkdir -p "$ST" "$LOCTX/backup" || exit 1
 PREV=$(readlink "$ST/current" 2>/dev/null || true)
 begin stage "${STAGE_LOG:-$LOG_DIR/stage-$STAMP.log}"
 step "commit" git -C "$ROOT" log -1 --format=%H%n%s "$SHA"
+# Never back by surprise (retro review S-1): the database may already hold the newer commit's migrations.
+if [ -n "$PREV" ] && [ "$PREV" != "$SHA" ]; then
+  step "previously staged" git -C "$ROOT" log -1 --format=%H%n%s "$PREV"
+  if ! git -C "$ROOT" merge-base --is-ancestor "$PREV" "$SHA" && [ "${STAGE_BACK:-}" != 1 ]; then
+    step "the new commit is not after the staged one (set STAGE_BACK=1 to go back on purpose)" /usr/bin/false
+  fi
+fi
 if [ ! -f "$SNAP/dist-server/index.mjs" ] || [ ! -f "$SNAP/dist/index.html" ]; then
   step "clear a half-built snapshot" rm -rf "$SNAP" "$ST/$SHA.tar"
   step "archive the commit" git -C "$ROOT" archive -o "$ST/$SHA.tar" "$SHA"
