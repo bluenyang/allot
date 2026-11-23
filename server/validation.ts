@@ -355,3 +355,30 @@ export const keyCreate = z.object({
 
 /** PUT /api/admin/api-keys */
 export const keyPolicy = z.object({ noExpiry: z.boolean() }).strict()
+
+// ── Password policy and API key management (spec 013 rc.3 W-20: S-24, S-25, S-26) ──
+const wholeIn = (lo: number, hi: number, msg: MsgKey) => z.number(msg).int(msg).min(lo, msg).max(hi, msg)
+
+/** PUT /api/admin/password-policy — the whole policy (S-26: minimum 8..128, attempts 3..20, minutes 1..1440). */
+export const passwordPolicy = z.object({
+  minLength: wholeIn(8, 128, 'pwMinLengthRange'),
+  lockout: z.object({
+    enabled: z.boolean(),
+    attempts: wholeIn(3, 20, 'pwAttemptsRange'),
+    minutes: wholeIn(1, 1440, 'pwMinutesRange'),
+  }).strict(),
+}).strict()
+
+/**
+ * PATCH /api/keys/:id — any of: `name` (the key name rule), `write` (true: read + write proposals, false: read only),
+ * `confirm` (for a write key, as at create), `extendDays` (the expiry becomes now + that many days; null = no expiry,
+ * only while the server allows it). `write: false` with `confirm` is refused like at create.
+ */
+export const keyUpdate = z.object({
+  name: z.string().trim().min(1, 'keyNameReq').max(32, 'keyNameMax').optional(),
+  write: z.boolean().optional(),
+  confirm: z.enum(['ui', 'chat']).optional(),
+  extendDays: z.number().int('keyExtendInt').min(1, 'keyExtendRange').max(365, 'keyExtendRange').nullable().optional(),
+}).strict()
+  .refine((k) => Object.keys(k).length > 0, { message: 'nothingToChange' })
+  .refine((k) => k.confirm === undefined || k.write !== false, { message: 'keyConfirmNeedsWrite', path: ['confirm'] })

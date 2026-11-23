@@ -3,7 +3,8 @@ import { t } from '../i18n'
 import { onActivated, onMounted, ref } from 'vue'
 import { ApiError, api } from '../lib/api'
 import Icon from '../components/Icon.vue'
-import Soon from '../components/Soon.vue'
+import { copyText } from '../lib/clipboard'
+import { generatePassword } from '../lib/password-gen'
 import { loadMethods, providerName, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
 
 // My account (spec 006 S-1, S-11): who I am, the logins linked to me, my password.
@@ -18,6 +19,10 @@ const error = ref('')
 const notice = ref('')
 const busy = ref(false)
 const pw = ref({ current: '', next: '', again: '' })
+/** The server's minimum for a new password (spec 013 S-24); 8 until it answers, as before the policy. */
+const minLength = ref(8)
+/** A password made by 만들기, shown until the form is saved or cleared; it is sent only with the form. */
+const made = ref('')
 
 const fail = (e: unknown, fallback: string) => { error.value = e instanceof ApiError ? e.message : fallback }
 
@@ -27,6 +32,9 @@ async function load() {
     me.value = (await api<{ user: Me }>('GET', '/api/me')).user
     linked.value = await api<Linked[]>('GET', '/api/auth/list-accounts')
     methods.value = await loadMethods()
+    // The server checks the minimum again; without an answer the screen keeps the last one it knew.
+    const policy = await api<{ minLength: number }>('GET', '/api/password-policy').catch(() => null)
+    if (policy) minLength.value = policy.minLength
   } catch (e) {
     fail(e, t('account.loadFailed'))
   }
@@ -71,18 +79,27 @@ async function unlink(a: Linked) {
 async function changePassword() {
   error.value = ''
   notice.value = ''
-  if (pw.value.next.length < 8) return (error.value = t('account.pwShort'))
+  if (pw.value.next.length < minLength.value) return (error.value = t('security.pwShort', { min: minLength.value }))
   if (pw.value.next !== pw.value.again) return (error.value = t('account.pwMismatch'))
   busy.value = true
   try {
     await api('POST', '/api/auth/change-password', { currentPassword: pw.value.current, newPassword: pw.value.next, revokeOtherSessions: true })
     pw.value = { current: '', next: '', again: '' }
+    made.value = ''
     notice.value = t('account.pwChanged')
   } catch (e) {
     fail(e, t('account.pwFailed'))
   } finally {
     busy.value = false
   }
+}
+
+function generate() {
+  made.value = generatePassword()
+  pw.value = { ...pw.value, next: made.value, again: made.value }
+}
+async function copyMade() {
+  if (await copyText(made.value)) { notice.value = t('security.copied'); error.value = '' } else error.value = t('security.copyFailed')
 }
 
 const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle: 'medium' })
@@ -124,9 +141,13 @@ const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle
         <div class="ch"><h2>{{ t('account.changePw') }}</h2></div>
         <div class="fs">
           <div class="field"><label for="a-cur">{{ t('account.currentPw') }}</label><input id="a-cur" v-model="pw.current" class="in" type="password" autocomplete="current-password" required></div>
-          <div class="field"><label for="a-new">{{ t('account.newPw') }}</label><input id="a-new" v-model="pw.next" class="in" type="password" autocomplete="new-password" minlength="8" required></div>
+          <div class="field"><label for="a-new">{{ t('account.newPw') }}</label>
+            <div class="genrow"><input id="a-new" v-model="pw.next" class="in" type="password" autocomplete="new-password" :minlength="minLength" required><button class="btn" type="button" @click="generate">{{ t('security.generate') }}</button></div>
+            <span class="hint">{{ t('security.minLine', { min: minLength }) }}</span></div>
+          <div v-if="made && pw.next === made" class="field"><span class="lbl">{{ t('security.generated') }}</span>
+            <div class="genrow"><input class="in mono" readonly :value="made" :aria-label="t('security.generated')" @focus="($event.target as HTMLInputElement).select()"><button class="btn" type="button" @click="copyMade">{{ t('security.copy') }}</button></div>
+            <span class="hint">{{ t('security.generatedNote') }}</span></div>
           <div class="field"><label for="a-again">{{ t('account.newPwAgain') }}</label><input id="a-again" v-model="pw.again" class="in" type="password" autocomplete="new-password" required></div>
-          <div class="soonrow"><Soon class="btn sm">{{ t('account.pwPolicy') }}</Soon><Soon class="btn sm">{{ t('account.pwGenerate') }}</Soon></div>
         </div>
         <div class="cf"><span class="sp"></span><button class="btn sm pri" type="submit" :disabled="busy">{{ t('account.change') }}</button></div>
       </form>
@@ -151,5 +172,8 @@ const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle
 .fs .field{display:block}
 .fs .field > label{display:block;font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px}
 .in{height:40px}
-.soonrow{display:flex;gap:8px;flex-wrap:wrap}
+.genrow{display:flex;gap:8px;align-items:center}
+.genrow .in{flex:1;min-width:0}
+.fs .field .lbl{display:block;font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+.fs .hint{display:block;margin-top:4px}
 </style>

@@ -13,6 +13,8 @@ export interface KeyItem {
   createdAt: string | null
   expiresAt: string | null
   lastUsedAt: string | null
+  /** Requests in the key's current rate-limit window (the plugin's counter, 60 s). */
+  requestCount: number
 }
 export interface KeyList { keys: KeyItem[]; policy: { noExpiry: boolean }; max: number }
 export interface KeyPolicy { noExpiry: boolean; source: 'default' | 'db' | 'env'; locked: boolean; capped?: number }
@@ -21,6 +23,9 @@ export const listKeys = () => api<KeyList>('GET', '/api/keys')
 export interface NewKey { name: string; expiresInDays: number | null; write?: boolean; confirm?: 'ui' | 'chat' }
 /** `expiresInDays` null = no expiry (only while the server allows it). `confirm` goes with `write` only. */
 export const createKey = (k: NewKey) => api<{ key: string; item: KeyItem }>('POST', '/api/keys', k)
+/** spec 013 S-25: any of name, scope (write + confirm), and the expiry as now + extendDays (null = none, if allowed). */
+export interface KeyChange { name?: string; write?: boolean; confirm?: 'ui' | 'chat'; extendDays?: number | null }
+export const updateKey = (id: string, change: KeyChange) => api<{ item: KeyItem }>('PATCH', `/api/keys/${encodeURIComponent(id)}`, change)
 export const revokeKey = (id: string) => api<void>('DELETE', `/api/keys/${encodeURIComponent(id)}`)
 export const getKeyPolicy = () => api<KeyPolicy>('GET', '/api/admin/api-keys')
 export const setKeyPolicy = (noExpiry: boolean) => api<KeyPolicy>('PUT', '/api/admin/api-keys', { noExpiry })

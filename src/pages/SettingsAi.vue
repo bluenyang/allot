@@ -4,13 +4,13 @@ import EditSheet from '../components/EditSheet.vue'
 import Soon from '../components/Soon.vue'
 import { ApiError } from '../lib/api'
 import { lang, t } from '../i18n'
-import { countProposalsByKey, createKey, listKeys, revokeKey, type KeyItem } from '../lib/keys'
+import { countProposalsByKey, createKey, listKeys, revokeKey, updateKey, type KeyChange, type KeyItem } from '../lib/keys'
 import { copyText } from '../lib/clipboard'
 import { sessionScope } from '../lib/store'
 
 // 설정 › AI·연동 (spec 008 S-4, redrawn by spec 010 S-11): API keys for the MCP endpoint and how to connect.
-// A key's text is shown once, in the box after it is made; the server keeps only its hash. A key's name,
-// scope and expiry cannot be changed after it is made (no such route yet): those entries are 준비 중.
+// A key's text is shown once, in the box after it is made; the server keeps only its hash. Its name, scope and
+// expiry can be changed in the manage sheet (spec 013 S-25, PATCH /api/keys/:id); '연결된 앱 관리' stays 준비 중.
 const keys = ref<KeyItem[]>([])
 const noExpiry = ref(false)
 const max = ref(10)
@@ -125,7 +125,49 @@ async function make() {
 const managing = ref<KeyItem | null>(null)
 const confirming = ref(false)
 const manageError = ref('')
-const manage = (k: KeyItem) => { managing.value = k; confirming.value = false; manageError.value = '' }
+/** Which part of the manage sheet is open for a change. */
+const changing = ref<'name' | 'scope' | 'extend' | null>(null)
+const nameDraft = ref('')
+const scopeDraft = ref<{ write: boolean; confirm: 'ui' | 'chat' }>({ write: false, confirm: 'ui' })
+const manage = (k: KeyItem) => { managing.value = k; confirming.value = false; manageError.value = ''; changing.value = null }
+function startChange(what: 'name' | 'scope' | 'extend') {
+  const k = managing.value
+  if (!k) return
+  manageError.value = ''
+  changing.value = changing.value === what ? null : what
+  nameDraft.value = k.name
+  scopeDraft.value = { write: writes(k), confirm: k.confirm ?? 'ui' }
+}
+/** Send one change; the sheet and the list take the server's answer. */
+async function change(body: KeyChange, done: string | ((k: KeyItem) => string)) {
+  const k = managing.value
+  if (!k) return
+  manageError.value = ''
+  busy.value = true
+  const scope = sessionScope()
+  const gen = generation
+  try {
+    const r = await updateKey(k.id, body)
+    if (!scope.alive() || gen !== generation) return
+    managing.value = r.item
+    changing.value = null
+    notice.value = typeof done === 'string' ? done : done(r.item)
+    await refresh()
+  } catch (e) {
+    manageError.value = e instanceof ApiError ? e.message : t('security.updateFailed')
+  } finally {
+    busy.value = false
+  }
+}
+function saveName() {
+  const name = nameDraft.value.trim()
+  if (!name) return (manageError.value = t('settingsAi.needName'))
+  if (name.length > 32) return (manageError.value = t('settingsAi.nameMax'))
+  return change({ name }, (k) => t('security.renamed', { name: k.name }))
+}
+const saveScope = () => change(scopeDraft.value.write ? { write: true, confirm: scopeDraft.value.confirm } : { write: false }, t('security.scopeSaved'))
+const EXTEND = [30, 90, 365]
+const extend = (days: number | null) => change({ extendDays: days }, t('security.extended'))
 const closeManage = () => { managing.value = null; confirming.value = false }
 async function revoke() {
   const k = managing.value
@@ -271,19 +313,37 @@ const PROVIDERS = [['Anthropic Claude', 'AC'], ['OpenAI', 'OA'], ['Google Gemini
       :cancel-label="confirming ? t('settingsAi.revokeBack') : t('common.close')" :hint="confirming ? t('settingsAi.revokeFoot') : ''" @save="manageSave" @cancel="manageCancel">
       <template v-if="!confirming">
         <div class="field"><span class="lbl">{{ t('settingsAi.nameShort') }}</span>
-          <div class="cbrow"><span class="ro">{{ managing.name }}</span><Soon class="btn sm">{{ t('settingsAi.rename') }}</Soon></div></div>
+          <div v-if="changing !== 'name'" class="cbrow"><span class="ro">{{ managing.name }}</span><button class="btn sm" type="button" :disabled="busy" @click="startChange('name')">{{ t('settingsAi.rename') }}</button></div>
+          <div v-else class="cbrow"><input v-model="nameDraft" class="in grow" maxlength="32" autocomplete="off" :aria-label="t('settingsAi.nameShort')" @keydown.enter.prevent="saveName"><button class="btn sm pri" type="button" :disabled="busy" @click="saveName">{{ t('security.renameSave') }}</button><button class="btn sm ghost" type="button" @click="changing = null">{{ t('common.cancel') }}</button></div></div>
         <div class="field"><span class="lbl">{{ t('settingsAi.colKey') }}</span>
           <div class="cbrow"><code class="codebox key">{{ managing.start }}…</code></div>
           <span class="hint">{{ t('settingsAi.keyOnce') }}</span></div>
         <div class="field"><span class="lbl">{{ t('settingsAi.scopeLabel') }}</span>
-          <div class="cbrow"><span class="ro"><span class="pill" :class="writes(managing) ? 'ok' : 'mute'">{{ scope(managing) }}</span></span><Soon class="btn sm">{{ t('settingsAi.changeScope') }}</Soon></div>
+          <div class="cbrow"><span class="ro"><span class="pill" :class="writes(managing) ? 'ok' : 'mute'">{{ scope(managing) }}</span></span><button class="btn sm" type="button" :disabled="busy" :aria-expanded="changing === 'scope'" @click="startChange('scope')">{{ t('settingsAi.changeScope') }}</button></div>
+          <template v-if="changing === 'scope'">
+            <div class="choices sc" role="radiogroup" :aria-label="t('settingsAi.scopeLabel')">
+              <button type="button" role="radio" class="choice" :class="{ on: !scopeDraft.write }" :aria-checked="!scopeDraft.write" @click="scopeDraft.write = false"><b>{{ t('settingsAi.scopeRead') }}</b><small class="hint">{{ t('settingsAi.scopeReadDesc') }}</small></button>
+              <button type="button" role="radio" class="choice" :class="{ on: scopeDraft.write }" :aria-checked="scopeDraft.write" @click="scopeDraft.write = true"><b>{{ t('settingsAi.scopeWrite') }}</b><small class="hint">{{ t('settingsAi.scopeWriteDesc') }}</small></button>
+            </div>
+            <fieldset v-if="scopeDraft.write" class="field confirm">
+              <legend>{{ t('settingsAi.confirmLabel') }}</legend>
+              <label class="chk" style="border:0"><input v-model="scopeDraft.confirm" type="radio" name="m-confirm" value="ui"><span>{{ t('settingsAi.confirmUi') }}</span></label>
+              <label class="chk" style="border:0"><input v-model="scopeDraft.confirm" type="radio" name="m-confirm" value="chat"><span>{{ t('settingsAi.confirmChat') }}</span></label>
+              <p class="small muted" style="margin:4px 0 0">{{ scopeDraft.confirm === 'ui' ? t('settingsAi.confirmUiNote') : t('settingsAi.confirmChatNote') }}</p>
+            </fieldset>
+            <div class="cbrow"><button class="btn sm pri" type="button" :disabled="busy" @click="saveScope">{{ t('security.scopeSave') }}</button><button class="btn sm ghost" type="button" @click="changing = null">{{ t('common.cancel') }}</button></div>
+          </template>
           <span class="hint">{{ t('settingsAi.writeWarn') }}</span></div>
         <div class="field"><span class="lbl">{{ t('settingsAi.expiry') }}</span>
-          <div class="cbrow"><span class="ro">{{ t('settingsAi.expiresNow', { date: managing.expiresAt ? dateOf(managing.expiresAt) : t('common.none') }) }}</span><Soon class="btn sm">{{ t('settingsAi.extend') }}</Soon></div></div>
+          <div class="cbrow"><span class="ro">{{ t('settingsAi.expiresNow', { date: managing.expiresAt ? dateOf(managing.expiresAt) : t('common.none') }) }}</span><button class="btn sm" type="button" :disabled="busy" :aria-expanded="changing === 'extend'" @click="startChange('extend')">{{ t('settingsAi.extend') }}</button></div>
+          <template v-if="changing === 'extend'">
+            <div class="cbrow ext"><button v-for="d in EXTEND" :key="d" class="btn sm" type="button" :disabled="busy" @click="extend(d)">{{ t('security.extendBy', { n: d }) }}</button><button v-if="noExpiry" class="btn sm" type="button" :disabled="busy" @click="extend(null)">{{ t('security.extendNone') }}</button></div>
+            <span class="hint">{{ t('security.extendHint') }}</span><span v-if="!noExpiry" class="hint">{{ t('settingsAi.noExpiryOff') }}</span>
+          </template></div>
         <div v-if="writes(managing) && made" class="field"><span class="lbl">{{ t('settingsAi.writeProposals') }}</span>
           <span class="ro">{{ countText(made[managing.id] ?? 0) }}</span></div>
         <div class="field"><span class="lbl">{{ t('settingsAi.recent') }}</span>
-          <div class="cbrow"><Soon class="btn sm">{{ t('settingsAi.usage') }}</Soon></div></div>
+          <dl class="usage"><dt>{{ t('security.lastUsed') }}</dt><dd>{{ used(managing.lastUsedAt) }}</dd><dt>{{ t('security.requests') }}</dt><dd class="num">{{ managing.requestCount }}</dd></dl></div>
         <div class="danger-box">
           <span><b>{{ t('settingsAi.revokeTitle') }}</b>{{ t('settingsAi.revokeDesc') }}</span>
           <button class="btn sm bad" type="button" :aria-label="t('settingsAi.revokeLabel', { name: managing.name })" @click="confirming = true">{{ t('settingsAi.revoke') }}</button>
@@ -352,6 +412,11 @@ td b{font-weight:600}
 .confirm{border:0;padding:0;margin:0;min-width:0}
 .confirm legend{padding:0;margin-bottom:4px;font-size:13px}
 .warn{color:var(--neg-text);margin:6px 0 0}
+.sc{margin-top:8px}
+.ext{margin-top:8px}
+.usage{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+.usage dt{color:var(--subtle)}
+.usage dd{margin:0}
 .danger-box{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--neg-line);border-radius:var(--r-card);background:var(--neg-soft)}
 .danger-box span{flex:1;font-size:13px;color:var(--text-2)}
 .danger-box b{display:block;color:var(--neg-text)}

@@ -166,6 +166,16 @@ const ko = {
   keyMax: '키는 {max}개까지 만들 수 있어요.',
   keyCreateFailed: '키를 만들지 못했어요.',
   keyMissing: '없는 키예요.',
+  // password policy and API key management (spec 013 rc.3 W-20)
+  pwTooShort: '비밀번호는 {min}자 이상이어야 해요.',
+  loginLocked: '로그인 시도가 너무 많아요. {n}분 뒤에 다시 시도하세요.',
+  pwMinLengthRange: '최소 길이는 8~128 사이의 정수예요.',
+  pwAttemptsRange: '잠금 횟수는 3~20 사이의 정수예요.',
+  pwMinutesRange: '잠금 시간은 1~1440분 사이의 정수예요.',
+  lockMissing: '잠긴 이메일이 아니에요.',
+  keyExtendInt: '연장 일 수는 정수예요.',
+  keyExtendRange: '연장은 1~365일이에요.',
+  keyUpdateFailed: '키를 바꾸지 못했어요.',
 } as const
 
 export type MsgKey = keyof typeof ko
@@ -322,6 +332,15 @@ const en: Record<MsgKey, string> = {
   keyMax: 'You can create up to {max} keys.',
   keyCreateFailed: 'Could not create the key.',
   keyMissing: 'No such key.',
+  pwTooShort: 'The password must be at least {min} characters.',
+  loginLocked: 'Too many sign-in attempts. Try again in {n} min.',
+  pwMinLengthRange: 'The minimum length is a whole number from 8 to 128.',
+  pwAttemptsRange: 'The number of attempts is a whole number from 3 to 20.',
+  pwMinutesRange: 'The lock time is a whole number of minutes from 1 to 1440.',
+  lockMissing: 'This email is not locked.',
+  keyExtendInt: 'Days must be a whole number.',
+  keyExtendRange: 'An extension is 1 to 365 days.',
+  keyUpdateFailed: 'Could not change the key.',
 }
 
 const lists: Record<Lang, Record<MsgKey, string>> = { ko, en }

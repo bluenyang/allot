@@ -2,10 +2,17 @@
 //   GET    /api/keys        my keys (never the key or its hash) and the expiry policy
 //   POST   /api/keys        { name, expiresInDays?, write?, confirm? }  → { key, item }; `key` is in this response only.
 //                           write adds the write scope; confirm 'ui' (default) | 'chat' is where its proposals are
-//                           confirmed. Both are fixed when the key is made: no route changes a key.
+//                           confirmed.
+//   PATCH  /api/keys/:id    { name?, write?, confirm?, extendDays? } → { item } (spec 013 S-25): rename, change the scope
+//                           and the confirmation method (the create rules), or set the expiry to now + extendDays
+//                           (null = no expiry, only while the policy allows it). My key only; someone else's id is 404.
+//                           Moving a key's confirmation away from 'chat' moves its pending proposals to the screen too.
 //   DELETE /api/keys/:id    my key; someone else's id is 404
-// A key itself cannot reach these routes: it is no session, and the plugin's own HTTP paths are closed.
+// A key itself cannot reach these routes: it is no session, and the plugin's own HTTP paths are closed. The key text
+// and its hash never change; the scope and the metadata are set only by these server calls.
 import { and, count, eq, gt, isNull, or } from 'drizzle-orm'
+import { asUser, lockFor } from './db/scope'
+import * as t from './db/schema'
 import { Hono, type Context } from 'hono'
 import { loadKeyPolicy, applyExpiryCap } from './api-key-policy'
 import type { AppEnv } from './app-env'
@@ -32,6 +39,7 @@ interface PluginKey {
   createdAt: Date | string
   expiresAt?: Date | string | null
   lastRequest?: Date | string | null
+  requestCount?: number | null
 }
 
 const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null)
@@ -50,6 +58,8 @@ function item(k: PluginKey) {
   return {
     id: k.id, name: k.name ?? '', start: k.start ?? '', permissions: k.permissions ?? {}, confirm: confirmOf(k),
     createdAt: iso(k.createdAt), expiresAt: iso(k.expiresAt), lastUsedAt: iso(k.lastRequest),
+    // The plugin's counter: requests in its rate-limit window (60 s), counted from the first one after a quiet window.
+    requestCount: k.requestCount ?? 0,
   }
 }
 
@@ -122,4 +132,64 @@ keyRoutes.delete('/:id', async (c) => {
     throw e
   }
   return c.body(null, 204)
+})
+
+/** A JSON column as the plugin stores it (it may have been stringified twice by an older version). */
+function parsed<T>(raw: string | null): T | null {
+  let v: unknown = raw
+  for (let i = 0; i < 2 && typeof v === 'string'; i++) { try { v = JSON.parse(v) } catch { return null } }
+  return v && typeof v === 'object' ? v as T : null
+}
+
+keyRoutes.patch('/:id', body(v.keyUpdate), async (c) => {
+  const uid = uidOf(c)
+  const id = c.req.param('id')
+  const u = c.req.valid('json')
+  // Ownership in our own query first (the plugin checks it again): someone else's key, or an expired one, is not there.
+  const [row] = await db.select({ permissions: a.apikey.permissions, metadata: a.apikey.metadata, expiresAt: a.apikey.expiresAt })
+    .from(a.apikey).where(and(eq(a.apikey.id, id), eq(a.apikey.referenceId, uid)))
+  if (!row || (row.expiresAt && new Date(row.expiresAt).getTime() <= Date.now())) return c.json({ error: msg(c, 'keyMissing') }, 404)
+  if (u.extendDays === null && !(await loadKeyPolicy()).noExpiry) {
+    return c.json({ error: msg(c, 'keyNoExpiry'), path: 'extendDays' }, 400)
+  }
+  const permissions = parsed<Record<string, string[]>>(row.permissions) ?? {}
+  const before = confirmOf({ permissions, metadata: parsed<{ confirm?: unknown }>(row.metadata) })
+  const write = u.write ?? before !== null
+  // The create rule: a confirmation method belongs to a write key only.
+  if (u.confirm !== undefined && !write) return c.json({ error: msg(c, 'keyConfirmNeedsWrite'), path: 'confirm' }, 400)
+  const confirm = write ? (u.confirm ?? before ?? 'ui') : null
+  const scopeChanged = u.write !== undefined || u.confirm !== undefined
+  let updated
+  try {
+    // A server call (no request) with the session's user: the plugin refuses a key of another user as not found.
+    updated = await getAuth().api.updateApiKey({
+      body: {
+        keyId: id, userId: uid,
+        ...(u.name !== undefined ? { name: u.name } : {}),
+        ...(scopeChanged ? { permissions: { ...permissions, mcp: write ? ['read', 'write'] : ['read'] }, metadata: confirm ? { confirm } : {} } : {}),
+        ...(u.extendDays !== undefined ? { expiresIn: u.extendDays === null ? null : u.extendDays * DAY } : {}),
+      },
+    })
+  } catch (e) {
+    const status = (e as { statusCode?: number }).statusCode
+    if (status === 404) return c.json({ error: msg(c, 'keyMissing') }, 404)
+    console.warn(`api keys: update failed: ${(e as Error).message}`)
+    return c.json({ error: msg(c, 'keyUpdateFailed') }, 400)
+  }
+  // Proposals copy the method when they are made: the ones still waiting follow the key away from the chat.
+  if (before === 'chat' && confirm !== 'chat') {
+    await asUser(uid, async (q) => {
+      await lockFor(q, 'proposal', uid)
+      await q.update(t.mcpProposal).set({ confirm: 'ui' })
+        .where(and(eq(t.mcpProposal.userId, uid), eq(t.mcpProposal.keyId, id), eq(t.mcpProposal.status, 'pending')))
+    })
+  }
+  // A save that turned no-expiry keys off while this one was changed: give it its year too.
+  let shown = updated as PluginKey
+  if (u.extendDays === null && !(await loadKeyPolicy()).noExpiry) {
+    await applyExpiryCap()
+    const [r] = await db.select({ expiresAt: a.apikey.expiresAt }).from(a.apikey).where(eq(a.apikey.id, id))
+    shown = { ...shown, expiresAt: r?.expiresAt ?? null }
+  }
+  return c.json({ item: item(shown) })
 })

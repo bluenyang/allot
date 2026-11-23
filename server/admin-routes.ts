@@ -5,6 +5,10 @@
 //   POST   /api/admin/users/:id/role  { role }       — never the last active admin to 'user'
 //   POST   /api/admin/users/:id/ban   { reason? }    — not yourself, never the last active admin
 //   DELETE /api/admin/users/:id       { confirmEmail } — an account and all its data
+//   GET    /api/admin/password-policy   { policy, stored } (spec 013 S-24; nothing stored = the default)
+//   PUT    /api/admin/password-policy   the whole policy (S-26 ranges); turning the lockout off deletes the counts
+//   GET    /api/admin/login-locks       emails locked now, with until (A-37)
+//   DELETE /api/admin/login-locks/:email  unlock one
 // Listing, creation, approval, unban, passwords and sessions go through Better Auth's admin
 // plugin at /api/auth/admin/* (guarded in server/admin.ts).
 import { and, count, eq, ne, sql } from 'drizzle-orm'
@@ -13,6 +17,8 @@ import type { z } from 'zod'
 import { body } from './body'
 import { langOf, m, msg, MsgError, text, type Lang, type Msg } from './messages'
 import { loadKeyPolicy, saveNoExpiry } from './api-key-policy'
+import { listLocks, loadPasswordPolicy, savePasswordPolicy, unlock } from './password-policy'
+import { failureKey } from './password-rules'
 import { adminCanSignInWithout, isActiveAdmin, logAdmin } from './admin'
 import type { AppEnv } from './app-env'
 import { getAuthConfig, getOidcIssuer, reloadAuth, withAuthLock } from './auth'
@@ -68,6 +74,26 @@ adminRoutes.put('/api-keys', body(v.keyPolicy), async (c) => {
   logAdmin(uidOf(c), `api-keys noExpiry=${noExpiry} capped=${capped}`, 'api_keys')
   const p = await loadKeyPolicy()
   return c.json({ noExpiry: p.noExpiry, source: p.source, locked: p.source === 'env', capped })
+})
+
+// Password policy (spec 013 S-24, S-26, A-37). No env lock: it lives in the database only.
+adminRoutes.get('/password-policy', async (c) => c.json(await loadPasswordPolicy()))
+
+adminRoutes.put('/password-policy', body(v.passwordPolicy), async (c) => {
+  const p = c.req.valid('json')
+  await savePasswordPolicy(p, uidOf(c))
+  logAdmin(uidOf(c), `password-policy minLength=${p.minLength} lockout=${p.lockout.enabled ? `${p.lockout.attempts}x/${p.lockout.minutes}m` : 'off'}`, 'password')
+  return c.json(await loadPasswordPolicy())
+})
+
+adminRoutes.get('/login-locks', async (c) => c.json({ locks: await listLocks() }))
+
+adminRoutes.delete('/login-locks/:email', async (c) => {
+  const email = failureKey(c.req.param('email'))
+  if (!email || !(await unlock(email))) return c.json({ error: msg(c, 'lockMissing') }, 404)
+  // The email may belong to no account and is not written to the log: the row is the target.
+  logAdmin(uidOf(c), 'unlock-login', 'login_failure')
+  return c.body(null, 204)
 })
 
 type Update = z.infer<typeof v.providerUpdate>
