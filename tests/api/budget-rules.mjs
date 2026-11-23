@@ -97,6 +97,12 @@ try {
   const adj = await api('POST', '/api/month-adjusts', { ym: '2090-07', targetId: fx.json.id, amount: 1_000, reason: long })
   ok(adj.status === 201 && adj.json.reason === long, `a reason of 1,000 characters is taken → ${adj.status}`)
   if (adj.status === 201) made.push(['/api/month-adjusts', adj.json.id])
+  // one adjustment per month and target (S-26; user: "하나만 둠 (Recommended)"): a second is refused, the first can be changed
+  ok((await api('POST', '/api/month-adjusts', { ym: '2090-07', targetId: fx.json.id, amount: 2_000 })).status === 400, 'a second adjustment for the same month and target is refused')
+  if (adj.status === 201) {
+    const put = await api('PUT', `/api/month-adjusts/${adj.json.id}`, { ym: '2090-07', targetId: fx.json.id, amount: 3_000 })
+    ok(put.status === 200 && put.json.amount === 3_000, `the existing one is changed → ${put.status}`)
+  }
 
   // spec 013 rev 1 S-18: GET /api/changes takes a period, since (inclusive) and until (exclusive), as ISO times
   const t0 = new Date(Date.now() - 10 * 60_000).toISOString()
