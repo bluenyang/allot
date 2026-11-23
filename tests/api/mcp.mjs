@@ -21,22 +21,18 @@
 // Exit 0 only if every check passed. The login rate limit (5/min) is respected: one sign-in per user.
 import { createHash, randomBytes } from 'node:crypto'
 import postgres from 'postgres'
+import { arm, cleanupStep, disarm, failures, ok, settle, threw } from './lib/check.mjs'
 
 const mode = process.argv[2]
 if (!['auth', 'isolation', 'tools', 'write'].includes(mode)) throw new Error('usage: mcp.mjs auth|isolation|tools|write')
-let failed = 0
 const cleanups = [] // run in the final `finally` (rows made by id, deleted by id even if a check threw)
-// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// The first failed check stops the run (tests/api/lib/check.mjs; audit 0.1.7 rc.3 F-3): inside the main try it
 // throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
-class Stop extends Error {}
-let armed = false
-let stopped = false
-const ok = (cond, msg) => {
-  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
-  if (cond) return
-  failed++
-  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
-}
+/** One cleanup DELETE that never throws: a throw is counted and logged, a status other than 204 is logged (A-47). */
+const drop = (api, path) => cleanupStep(`DELETE ${path.replace(/\/[^/]+$/, '/<id>')}`, async () => {
+  const r = await api('DELETE', path)
+  return r.status === 204 ? undefined : r.status
+})
 const BASE = process.env.BASE ?? 'http://127.0.0.1:3000'
 const sql = postgres(process.env.DATABASE_URL, { max: 1 })
 const sha = (k) => createHash('sha256').update(k).digest('base64url')
@@ -85,7 +81,7 @@ async function insertKey(userId, over = {}) {
 const A = client()
 const sa = await A.signIn(process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD)
 ok(sa.status === 200, `A sign-in ${sa.status}`)
-if (failed) process.exit(1)
+if (failures()) process.exit(1)
 const aId = sa.json.user.id
 const made = []
 const skip = (msg) => console.log(`SKIP ${msg}`)
@@ -241,6 +237,8 @@ async function isolationMode() {
     }
     const key = await insertKey(id)
     const made_ = []
+    // registered before the first post, so a post that fails half-way still removes the rows made before it (A-47)
+    cleanups.push(async () => { for (const [path, rid] of [...made_].reverse()) await drop(api, `${path}/${rid}`) })
     const post = async (path, body) => {
       const r = await api('POST', path, body)
       if (r.status !== 201) throw new Error(`POST ${path} → ${r.status} ${r.text}`)
@@ -261,7 +259,6 @@ async function isolationMode() {
       rounds: [{ no: 1, date: `${thisMonth}-15`, amount: 16_500, state: 'left', edited: false }, { no: 2, date: `${calc0.addYm(thisMonth, 1)}-15`, amount: 16_500, state: 'left', edited: false }] })
     await post('/api/debts', { name: `${marker}-debt`, principal: 1000, rate: '1%', method: 'm', plan: 'p' })
     users[tag] = { id, api, key, marker, made: made_ }
-    cleanups.push(async () => { for (const [path, rid] of [...made_].reverse()) await api('DELETE', `${path}/${rid}`) })
   }
   const aExisting = { api: A, id: aId }
   await mk('A', aExisting)
@@ -750,7 +747,7 @@ async function writeMode() {
   ok(!failedCall(apRv) && await spCount() === 1 && await roundCount() === 1, `propose_revert of the delete brings the spending and its round back (${rvD.text?.slice(0, 80)})`)
   // clean up by id (W is deleted at the end too)
   for (const id of spendIds) await W('DELETE', `/api/spendings/${id}`)
-  cleanups.push(async () => { for (const id of spendIds) await W('DELETE', `/api/spendings/${id}`) })
+  cleanups.push(async () => { for (const id of spendIds) await drop(W, `/api/spendings/${id}`) })
 
   // ── spending isolation: both W and X own a spending with rounds while the cross-user checks run ──
   const iso = async (U, name) => {
@@ -760,7 +757,7 @@ async function writeMode() {
   }
   const wSpend = await iso(W, 'iso-w-spend')
   const xSpend = await iso(X, 'iso-x-spend')
-  cleanups.push(async () => { await W('DELETE', `/api/spendings/${wSpend}`); await X('DELETE', `/api/spendings/${xSpend}`) })
+  cleanups.push(async () => { await drop(W, `/api/spendings/${wSpend}`); await drop(X, `/api/spendings/${xSpend}`) })
   const wSpendSet = (await wSets())[0]
   ok(await spCount() === 1 && await roundCount() === 2 && !!wSpendSet?.id, "W's spending has two rounds and a change set")
   const text9 = async (k, name, args) => (await tool(k, name, args)).text
@@ -832,7 +829,7 @@ async function writeMode() {
     const ym2 = mjs.addYm(ymNow, 2)
     const todayStr = mjs.ymd(mjs.today())
     const made13 = { spendings: [], cards: [], targets: [], 'living-items': [], accounts: [] }
-    const drop13 = async () => { for (const r of ['spendings', 'cards', 'targets', 'living-items', 'accounts']) for (const id of made13[r].splice(0)) await W('DELETE', `/api/${r}/${id}`) }
+    const drop13 = async () => { for (const r of ['spendings', 'cards', 'targets', 'living-items', 'accounts']) for (const id of made13[r].splice(0)) await drop(W, `/api/${r}/${id}`) }
     cleanups.push(drop13)
     const ACC_CMA = { name: 'E2E-mcp-cma', role: 'saving', inflow: '', outflow: '', bank: 'E2E Bank', last4: '1234', kind: 'CMA', group: 'saving', amount: 300_000, goal: 6_000_000, annualLimit: 20_000_000 }
     const ACC_PAY = { name: 'E2E-mcp-pay', role: 'card', inflow: '', outflow: '', buffer: 1_000_000 }
@@ -956,6 +953,7 @@ async function writeMode() {
     const la2 = (await tool(kRead.key, 'list_accounts', {})).data
     ok(la2?.accounts?.find((a) => a.id === cma?.id)?.projection === null && la2.accounts.find((a) => a.id === pay?.id)?.buffer?.usedKrw === 0, 'list_accounts after the revert: no record, no buffer used')
     await drop13()
+    settle() // a delete that threw in drop13 stops the run here, after every delete was tried
     const st4 = await wState()
     ok(!st4.accounts.some((a) => a.name.startsWith('E2E-mcp-')) && !(st4.cards ?? []).some((c) => c.name.startsWith('E2E-mcp-')) && !(st4.livingItems ?? []).some((i) => i.name.startsWith('E2E-mcp-')) && !st4.targets.some((t) => t.name.startsWith('E2E-mcp-')),
       'the accounts, card, living item and target made here are gone')
@@ -968,23 +966,25 @@ async function writeMode() {
   await sqlW.end()
 }
 
-armed = true
+arm()
 try {
   if (mode === 'write') await writeMode()
   else if (mode === 'auth') await authMode()
   else if (mode === 'isolation') await isolationMode()
   else await toolsMode()
 } catch (e) {
-  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
+  threw(e)
 } finally {
-  stopped = true // the cleanup's own checks only report
-  for (const f of cleanups) await f().catch(() => {})
-  await sql`delete from apikey where name = 'v4'`.catch(() => {})
+  disarm() // the cleanup's own checks only report; each step runs even when one before it threw
+  for (const f of cleanups) await cleanupStep('a registered cleanup', f)
+  await cleanupStep("delete the 'v4' keys", async () => { await sql`delete from apikey where name = 'v4'` })
   for (const u of made) {
-    const r = await A('DELETE', `/api/admin/users/${u.id}`, { confirmEmail: u.email })
-    if (r.status !== 204) console.log(`cleanup: delete ${u.email} → ${r.status}`)
+    await cleanupStep(`delete ${u.email}`, async () => {
+      const r = await A('DELETE', `/api/admin/users/${u.id}`, { confirmEmail: u.email })
+      return r.status === 204 ? undefined : r.status
+    })
   }
-  await sql.end()
+  await cleanupStep('close the database connection', async () => { await sql.end() })
 }
-console.log(failed ? `${failed} FAILED` : 'all checks passed')
-process.exit(failed ? 1 : 0)
+console.log(failures() ? `${failures()} FAILED` : 'all checks passed')
+process.exit(failures() ? 1 : 0)

@@ -11,20 +11,11 @@
 import { createHash } from 'node:crypto'
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import postgres from 'postgres'
+import { arm, cleanupStep, disarm, failures, ok, threw } from './lib/check.mjs'
 
-let failed = 0
 let skipped = 0
-// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// The first failed check stops the run (tests/api/lib/check.mjs; audit 0.1.7 rc.3 F-3): inside the main try it
 // throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
-class Stop extends Error {}
-let armed = false
-let stopped = false
-const ok = (cond, msg) => {
-  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
-  if (cond) return
-  failed++
-  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
-}
 const skip = (msg) => { console.log(`SKIP ${msg}`); skipped++ }
 const BASE = process.env.BASE ?? 'http://localhost:15173'
 const sql = postgres(process.env.DATABASE_URL, { max: 1 })
@@ -66,7 +57,7 @@ const A = client()
 const U = client()
 const sa = await A.signIn(process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD)
 ok(sa.status === 200, `A sign-in ${sa.status}`)
-if (failed) process.exit(1)
+if (failures()) process.exit(1)
 
 const uEmail = `v2-${Date.now()}@example.com`
 let uDeleted = false
@@ -77,10 +68,10 @@ ok(created.status === 200, `create-user → ${created.status}`)
 const uId = created.json?.user?.id
 const su = await U.signIn(uEmail, uPw)
 ok(su.status === 200, `U sign-in ${su.status}`)
-if (failed) process.exit(1)
+if (failures()) process.exit(1)
 
 let policyChanged = false
-armed = true
+arm()
 try {
   // ── the policy and who may change it ──
   const p0 = await A('GET', '/api/admin/api-keys')
@@ -283,25 +274,16 @@ try {
   ok(nAfter === 0, `U's keys are gone with the account (${nAfter})`)
   ok((await mcp(A, left.json?.key)).status === 401, 'a deleted user\'s key → MCP 401')
 } catch (e) {
-  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
+  threw(e)
 } finally {
-  stopped = true // the cleanup's own checks only report
-  if (policyChanged) {
-    const r = await A('PUT', '/api/admin/api-keys', { noExpiry: false })
-    console.log(`restore policy OFF → ${r.status}`)
-  }
-  await sql`delete from apikey where name in ('first','y365','d1','admin-key','forever','use','old','left') and reference_id = ${uId ?? ''}`.catch(() => {})
+  disarm() // the cleanup's own checks only report; each step runs even when one before it threw
+  if (policyChanged) await cleanupStep('restore policy OFF', async () => (await A('PUT', '/api/admin/api-keys', { noExpiry: false })).status)
+  await cleanupStep("delete U's test keys", async () => { await sql`delete from apikey where name in ('first','y365','d1','admin-key','forever','use','old','left') and reference_id = ${uId ?? ''}` })
   // a run stopped before its own deletes still removes the admin's test key and the test user U (review rc3-10 R10-1;
   // the admin's key was found by the forced failure, test-rc3/rc3-forced-3.log)
-  if (aKeyId) {
-    const d = await A('DELETE', `/api/keys/${aKeyId}`).catch((e) => ({ status: `threw ${e?.message ?? e}` }))
-    console.log(`cleanup: delete the admin's test key → ${d.status}`)
-  }
-  if (uId && !uDeleted) {
-    const d = await A('DELETE', `/api/admin/users/${uId}`, { confirmEmail: uEmail }).catch((e) => ({ status: `threw ${e?.message ?? e}` }))
-    console.log(`cleanup: delete U → ${d.status}`)
-  }
-  await sql.end()
+  if (aKeyId) await cleanupStep("delete the admin's test key", async () => (await A('DELETE', `/api/keys/${aKeyId}`)).status)
+  if (uId && !uDeleted) await cleanupStep('delete U', async () => (await A('DELETE', `/api/admin/users/${uId}`, { confirmEmail: uEmail })).status)
+  await cleanupStep('close the database connection', async () => { await sql.end() })
 }
-console.log(failed ? `${failed} FAILED` : `all checks passed${skipped ? ` (${skipped} skipped)` : ''}`)
-process.exit(failed ? 1 : 0)
+console.log(failures() ? `${failures()} FAILED` : `all checks passed${skipped ? ` (${skipped} skipped)` : ''}`)
+process.exit(failures() ? 1 : 0)

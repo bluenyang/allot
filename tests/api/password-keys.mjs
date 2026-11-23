@@ -8,19 +8,10 @@
 // make one key expired. U is a fresh account (fake example.com), deleted at the end with its keys. The sign-in limit is
 // 5 a minute per address: sign-ins go in batches of 4 with a quiet minute between them. Exit 0 only if every check passed.
 import postgres from 'postgres'
+import { arm, cleanupStep, disarm, failures, ok, threw } from './lib/check.mjs'
 
-let failed = 0
-// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// The first failed check stops the run (tests/api/lib/check.mjs; audit 0.1.7 rc.3 F-3): inside the main try it
 // throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
-class Stop extends Error {}
-let armed = false
-let stopped = false
-const ok = (cond, msg) => {
-  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
-  if (cond) return
-  failed++
-  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
-}
 const BASE = process.env.BASE ?? 'http://allot-rc:3000'
 if (!/^http:\/\/(allot-rc:3000|127\.0\.0\.1:15174)$/.test(BASE)) { console.log(`refuse: BASE ${BASE} is not the test server`); process.exit(1) }
 if (!/\/allot_rc$/.test(process.env.DATABASE_URL ?? '')) { console.log('refuse: DATABASE_URL is not the test server database'); process.exit(1) }
@@ -88,14 +79,24 @@ const uPw8 = 'pk8chars'          // 8 characters: today's minimum
 const ghost = `pk-none-${stamp}@example.com` // no account
 let uId = null
 const keyIds = []
+// every other account this run makes, registered as soon as it exists: [id, email]; the finally block deletes what is
+// left, so a check that fails after a create (A-42 regressing: pk-11 is created) leaves no user behind (A-47)
+const users = []
+const madeUser = (r, email) => { if (r.json?.user?.id) users.push([r.json.user.id, email]); return r }
+const dropUser = async (r, email) => {
+  const id = r.json?.user?.id
+  if (!id) return
+  const d = await A('DELETE', `/api/admin/users/${id}`, { confirmEmail: email })
+  if (d.status === 204) users.splice(users.findIndex(([x]) => x === id), 1)
+}
 
 await resetPolicy()
 await sql`delete from login_failure`
 const sa = await signIn(A, process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD)
 ok(sa.status === 200, `admin sign-in → ${sa.status}`)
-if (failed) process.exit(1)
+if (failures()) process.exit(1)
 
-armed = true
+arm()
 try {
   // ── 1. nothing stored = today's behaviour ──
   const p0 = await A('GET', '/api/admin/password-policy')
@@ -103,9 +104,9 @@ try {
     `no policy stored: GET → ${p0.status} ${JSON.stringify(p0.json)}`)
   const pub0 = await A('GET', '/api/password-policy')
   ok(pub0.status === 200 && JSON.stringify(pub0.json) === JSON.stringify({ minLength: 8 }), `GET /api/password-policy → ${JSON.stringify(pub0.json)} (only the minimum)`)
-  const short5 = await A('POST', '/api/auth/admin/create-user', { email: `pk-five-${stamp}@example.com`, password: 'abcde', name: 'PK five', role: 'user' })
+  const short5 = madeUser(await A('POST', '/api/auth/admin/create-user', { email: `pk-five-${stamp}@example.com`, password: 'abcde', name: 'PK five', role: 'user' }), `pk-five-${stamp}@example.com`)
   ok(short5.status === 200, `no policy: admin create-user with a 5-character password is still taken (as before) → ${short5.status}`)
-  if (short5.json?.user?.id) await A('DELETE', `/api/admin/users/${short5.json.user.id}`, { confirmEmail: `pk-five-${stamp}@example.com` })
+  await dropUser(short5, `pk-five-${stamp}@example.com`)
   const cu = await A('POST', '/api/auth/admin/create-user', { email: uEmail, password: uPw8, name: 'PK user', role: 'user' })
   ok(cu.status === 200, `create U with an 8-character password → ${cu.status}`)
   uId = cu.json?.user?.id
@@ -149,11 +150,11 @@ try {
   ok(c11en.status === 400 && c11en.json?.message === 'The password must be at least 12 characters.', `the same in English → ${c11en.status} ${c11en.json?.message}`)
   const sp11 = await A('POST', '/api/auth/admin/set-user-password', { userId: uId, newPassword: 'eleven11111' })
   ok(sp11.status === 400 && sp11.json?.code === 'PASSWORD_TOO_SHORT', `admin set-user-password with 11 → ${sp11.status} ${sp11.json?.code}`)
-  const cr11 = await A('POST', '/api/auth/admin/create-user', { email: `pk-11-${stamp}@example.com`, password: 'eleven11111', name: 'PK 11', role: 'user' })
+  const cr11 = madeUser(await A('POST', '/api/auth/admin/create-user', { email: `pk-11-${stamp}@example.com`, password: 'eleven11111', name: 'PK 11', role: 'user' }), `pk-11-${stamp}@example.com`)
   ok(cr11.status === 400 && cr11.json?.code === 'PASSWORD_TOO_SHORT', `admin create-user with 11 (A-42) → ${cr11.status} ${cr11.json?.code}`)
-  const cr12 = await A('POST', '/api/auth/admin/create-user', { email: `pk-12-${stamp}@example.com`, password: 'twelve121212', name: 'PK 12', role: 'user' })
+  const cr12 = madeUser(await A('POST', '/api/auth/admin/create-user', { email: `pk-12-${stamp}@example.com`, password: 'twelve121212', name: 'PK 12', role: 'user' }), `pk-12-${stamp}@example.com`)
   ok(cr12.status === 200, `admin create-user with 12 → ${cr12.status}`)
-  if (cr12.json?.user?.id) await A('DELETE', `/api/admin/users/${cr12.json.user.id}`, { confirmEmail: `pk-12-${stamp}@example.com` })
+  await dropUser(cr12, `pk-12-${stamp}@example.com`)
   const old8 = await tryIn(uEmail, uPw8)
   ok(old8.status === 200, `an existing 8-character password still signs in under minimum 12 → ${old8.status}`)
   const c12 = await changePw(U, { currentPassword: uPw8, newPassword: 'twelve121212' })
@@ -282,20 +283,31 @@ try {
   }
   ok((await A('PATCH', '/api/keys/no-such-key', { name: 'x' })).status === 404, 'an unknown key id → 404')
 } catch (e) {
-  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
+  threw(e)
 } finally {
-  stopped = true // the cleanup's own checks only report
-  for (const [who, id] of keyIds) await who('DELETE', `/api/keys/${id}`).catch(() => null)
-  await sql`delete from apikey where name like 'PK-key%'`.catch(() => null)
-  if (uId) {
+  disarm() // the cleanup's own checks only report; each step runs even when one before it threw
+  // a proposal the write → read key still made (its refusal regressed: a pending PK-check, A-47) is rejected
+  await cleanupStep('reject pending proposals of the PK keys', async () => {
+    const pending = await A('GET', '/api/proposals?status=pending&limit=100')
+    for (const p of (Array.isArray(pending.json) ? pending.json : []).filter((x) => String(x.keyName).startsWith('PK-key'))) {
+      const r = await A('POST', `/api/proposals/${p.id}/reject`)
+      console.log(`cleanup: reject proposal ${p.id} (${p.keyName}) → ${r.status}`)
+    }
+  })
+  for (const [who, id] of keyIds) await cleanupStep('delete a PK key', async () => (await who('DELETE', `/api/keys/${id}`)).status)
+  await cleanupStep('delete the PK keys left in the database', async () => { await sql`delete from apikey where name like 'PK-key%'` })
+  for (const [id, email] of users) await cleanupStep(`delete ${email.split('@')[0]}`, async () => (await A('DELETE', `/api/admin/users/${id}`, { confirmEmail: email })).status)
+  if (uId) await cleanupStep('delete U', async () => {
     const d = await A('DELETE', `/api/admin/users/${uId}`, { confirmEmail: uEmail })
     ok(d.status === 204, `delete U → ${d.status}`)
-  }
-  await sql`delete from login_failure`
-  await resetPolicy()
-  const end = await A('GET', '/api/admin/password-policy')
-  ok(end.json?.stored === false && end.json?.policy?.minLength === 8 && end.json?.policy?.lockout?.enabled === false, `the policy is back to its default, not stored (${JSON.stringify(end.json)})`)
-  await sql.end()
+  })
+  await cleanupStep('delete the login failures', async () => { await sql`delete from login_failure` })
+  await cleanupStep('reset the policy', async () => { await resetPolicy() })
+  await cleanupStep('read the policy back', async () => {
+    const end = await A('GET', '/api/admin/password-policy')
+    ok(end.json?.stored === false && end.json?.policy?.minLength === 8 && end.json?.policy?.lockout?.enabled === false, `the policy is back to its default, not stored (${JSON.stringify(end.json)})`)
+  })
+  await cleanupStep('close the database connection', async () => { await sql.end() })
 }
-console.log(failed ? `FAIL: ${failed}` : 'ALL PASS (password-keys)')
-process.exit(failed ? 1 : 0)
+console.log(failures() ? `FAIL: ${failures()}` : 'ALL PASS (password-keys)')
+process.exit(failures() ? 1 : 0)
