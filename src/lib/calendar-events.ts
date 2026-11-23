@@ -1,7 +1,8 @@
 // What the month calendar shows (spec 007 S-11): our own dates, handed to FullCalendar as events.
 // Monthly dates after the weekend/holiday shift, subscription payments, scheduled plan changes and
-// the holidays of the sets that are on. Month-only events (PlanEvent.when = YYYY-MM) stay in the
-// timeline tab: putting them on the 1st would claim a date they do not have.
+// the holidays of the sets that are on. Month-only events (PlanEvent.when = YYYY-MM, a range) are not
+// put on the grid: putting them on the 1st would claim a date they do not have. The agenda lists them
+// apart, for every month of their range (`inMonth` in event-when.ts; spec 013 S-18).
 import { addYm, monthDates, parseDate, upcomingPayments, upcomingSpendRounds, ymd, ymOf, DAY } from './calc'
 import { enabledSets, holidaysIn } from './holidays'
 import { fmtMoney } from './display'

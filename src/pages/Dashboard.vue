@@ -14,6 +14,7 @@ import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
 import { manText, monthLong, monthShort, weekdayShort } from '../lib/format'
 import { t, lang } from '../i18n'
 import { offDays } from '../lib/holidays-lazy'
+import { whenShort } from '../lib/event-when'
 import {
   addYm, clusterDots, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymOf, ymRange,
 } from '../lib/calc'
@@ -371,7 +372,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
           <div class="card-hd"><h2>{{ t('dashboard.upcomingEvents') }}</h2><span class="aux">~ {{ horizon.replace('-', '. ') }}</span></div>
           <ul class="items">
             <li v-for="e in nextEvents" :key="e.id">
-              <span class="when ev">{{ e.when.slice(2).replace('-', '.') }}</span>
+              <span class="when ev">{{ whenShort(e.when) }}</span>
               <span class="grow">{{ e.title }}</span>
               <span class="pill" :class="pillCls(e.state)">{{ e.kind }}</span>
             </li>
@@ -508,7 +509,7 @@ tr.sum td.n{font-weight:700}
 .when{width:52px;flex:none;font:12px var(--f-mono);color:var(--muted)}
 .when.wide{width:auto;min-width:104px}
 .when.wide b{font-family:var(--f-sans, inherit);font-weight:700}
-.when.ev{width:64px}
+.when.ev{width:auto;min-width:64px;white-space:nowrap}
 .linkish{all:unset;cursor:pointer}
 .linkish:hover{text-decoration:underline}
 .linkish:focus-visible{outline:2px solid var(--primary-text);outline-offset:2px;border-radius:var(--r-ctl)}
