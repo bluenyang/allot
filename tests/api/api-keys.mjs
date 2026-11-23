@@ -114,9 +114,11 @@ try {
     rmSync('/tmp/v2-go', { force: true })
     writeFileSync('/tmp/v2-key.txt', raw)
     for (let i = 0; i < 240 && !existsSync('/tmp/v2-go'); i++) await new Promise((r) => setTimeout(r, 500))
-    ok(existsSync('/tmp/v2-go'), 'the dump step signalled it was done')
+    const signalled = existsSync('/tmp/v2-go')
+    // the raw key's file goes before the check, so a failed check cannot leave it behind (review rc3-10 R10-2)
     rmSync('/tmp/v2-key.txt', { force: true })
     rmSync('/tmp/v2-go', { force: true })
+    ok(signalled, 'the dump step signalled it was done')
   }
   const list = await U('GET', '/api/keys')
   const listed = list.json?.keys?.find((k) => k.id === c1.json?.item?.id)
