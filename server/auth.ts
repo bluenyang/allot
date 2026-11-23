@@ -5,6 +5,8 @@
 // admin saves the configuration, reloadAuth() builds a new instance and swaps it in. Sessions
 // live in the database and the secret does not change, so they stay valid across a reload.
 // As a second layer, a before-hook checks every sign-in path against the latest configuration.
+// The password policy (server/password-policy.ts) is checked in the same hooks: its minimum on every path that sets a
+// password, and the lockout of an email after failed password sign-ins.
 import { betterAuth } from 'better-auth'
 import { apiKey } from '@better-auth/api-key'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -18,6 +20,7 @@ import { EXTERNAL, loadAuthConfig, usable, type AuthConfig, type ProviderId } fr
 import { APP_RETURN_URLS } from './app-login'
 import { afterNewUser, makeValidateUserInfo, newUserFields, refusePending } from './auth-policy'
 import { m, MsgError, text, langOfCtx } from './messages'
+import { afterSignIn, guardPasswordPath } from './password-policy'
 import { fetchDiscovery, oidcProviders, socialProviders, type Discovery } from './providers'
 import { dropTokenUpdates, sealNewAccountTokens } from './token-crypto'
 import { db } from './db/client'
@@ -182,17 +185,25 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
         if (ctx.path.startsWith('/one-time-token/') && !APP_RETURN_URLS.length) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         if (CLOSED_PATHS.includes(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         const m = methodOf(ctx)
-        if (!m) return
+        // spec 013 S-24: the policy's minimum wherever a password is set (server/password-policy.ts).
+        if (!m) {
+          await guardPasswordPath(ctx)
+          return
+        }
         // Code flow only: a client-supplied ID token is never a way in.
         if (ctx.path === '/sign-in/social' && (ctx.body as { idToken?: unknown } | undefined)?.idToken) {
           throw deny('ID_TOKEN_SIGN_IN_DISABLED', text(langOfCtx(ctx), 'idTokenDisabled'))
         }
         const latest = currentConfig ?? cfg
         if (m === 'unknown' || !usable(latest, m)) throw deny('METHOD_DISABLED', text(langOfCtx(ctx), 'methodDisabled'))
+        // spec 013 A-37: a password sign-in of a locked email is refused before the password is checked.
+        if (m === 'password') await guardPasswordPath(ctx)
       }),
       // Admin actions: end sessions after a password reset, one log line per action.
+      // Password sign-ins: count a failure, clear the count on success (only while the lockout is on).
       after: createAuthMiddleware(async (ctx) => {
         await afterAdminPath(ctx as never)
+        await afterSignIn(ctx as never)
       }),
     },
     advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] } },
