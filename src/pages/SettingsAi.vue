@@ -7,6 +7,7 @@ import { lang, t } from '../i18n'
 import { countProposalsByKey, createKey, listKeys, revokeKey, updateKey, type KeyChange, type KeyItem } from '../lib/keys'
 import { copyText } from '../lib/clipboard'
 import { sessionScope } from '../lib/store'
+import { extendChoices } from '../lib/key-extend'
 
 // 설정 › AI·연동 (spec 008 S-4, redrawn by spec 010 S-11): API keys for the MCP endpoint and how to connect.
 // A key's text is shown once, in the box after it is made; the server keeps only its hash. Its name, scope and
@@ -167,6 +168,8 @@ function saveName() {
 }
 const saveScope = () => change(scopeDraft.value.write ? { write: true, confirm: scopeDraft.value.confirm } : { write: false }, t('security.scopeSaved'))
 const EXTEND = [30, 90, 365]
+/** The choices with the date each gives; one that ends sooner than the key does now is marked (review rc3-1 F-9). */
+const extendOpts = computed(() => extendChoices(EXTEND, managing.value?.expiresAt ?? null))
 const extend = (days: number | null) => change({ extendDays: days }, t('security.extended'))
 const closeManage = () => { managing.value = null; confirming.value = false }
 async function revoke() {
@@ -337,7 +340,7 @@ const PROVIDERS = [['Anthropic Claude', 'AC'], ['OpenAI', 'OA'], ['Google Gemini
         <div class="field"><span class="lbl">{{ t('settingsAi.expiry') }}</span>
           <div class="cbrow"><span class="ro">{{ t('settingsAi.expiresNow', { date: managing.expiresAt ? dateOf(managing.expiresAt) : t('common.none') }) }}</span><button class="btn sm" type="button" :disabled="busy" :aria-expanded="changing === 'extend'" @click="startChange('extend')">{{ t('settingsAi.extend') }}</button></div>
           <template v-if="changing === 'extend'">
-            <div class="cbrow ext"><button v-for="d in EXTEND" :key="d" class="btn sm" type="button" :disabled="busy" @click="extend(d)">{{ t('security.extendBy', { n: d }) }}</button><button v-if="noExpiry" class="btn sm" type="button" :disabled="busy" @click="extend(null)">{{ t('security.extendNone') }}</button></div>
+            <div class="cbrow ext"><button v-for="o in extendOpts" :key="o.days" class="btn sm" type="button" :disabled="busy" @click="extend(o.days)">{{ t('security.extendTo', { n: o.days, date: dateOf(o.at) }) }}<span v-if="o.shorter" class="shorter"> · {{ t('security.extendShorter') }}</span></button><button v-if="noExpiry" class="btn sm" type="button" :disabled="busy" @click="extend(null)">{{ t('security.extendNone') }}</button></div>
             <span class="hint">{{ t('security.extendHint') }}</span><span v-if="!noExpiry" class="hint">{{ t('settingsAi.noExpiryOff') }}</span>
           </template></div>
         <div v-if="writes(managing) && made" class="field"><span class="lbl">{{ t('settingsAi.writeProposals') }}</span>
@@ -414,6 +417,7 @@ td b{font-weight:600}
 .warn{color:var(--neg-text);margin:6px 0 0}
 .sc{margin-top:8px}
 .ext{margin-top:8px}
+.ext .shorter{color:var(--neg-text)}
 .usage{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
 .usage dt{color:var(--subtle)}
 .usage dd{margin:0}
