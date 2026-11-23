@@ -22,8 +22,9 @@ const ROUTES: Record<string, string> = {
   'GET /api/password-policy': 'The minimum length of a new password ({ minLength }).',
   'POST /api/app-login/ticket': 'A one-time sign-in link for a listed app URL ({ returnTo }).',
   'GET /api/docs': 'This page.',
-  'GET /api/keys': 'Your API keys (for MCP): name, scope, expiry, last use; never the key itself.',
+  'GET /api/keys': 'Your API keys (for MCP): name, scope, expiry, last use, requests in the last minute; never the key itself.',
   'POST /api/keys': 'Create an API key; the key is shown once in the answer.',
+  'PATCH /api/keys/:id': 'Change one of your API keys: name, scope (write, confirm) or expiry (extendDays from now; null = none, if allowed).',
   'DELETE /api/keys/:id': 'Delete an API key.',
   'GET /api/admin/providers': 'Admin: the sign-in providers and their settings.',
   'PUT /api/admin/providers/:id': 'Admin: change a sign-in provider.',
@@ -49,6 +50,7 @@ const ROUTES: Record<string, string> = {
 /** The request body of the routes that are not data resources. */
 const BODIES: Record<string, z.ZodType> = {
   'POST /api/keys': v.keyCreate,
+  'PATCH /api/keys/:id': v.keyUpdate,
   'PUT /api/admin/api-keys': v.keyPolicy,
   'PUT /api/admin/password-policy': v.passwordPolicy,
   'PUT /api/admin/providers/:id': v.providerUpdate,

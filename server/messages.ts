@@ -173,6 +173,9 @@ const ko = {
   pwAttemptsRange: '잠금 횟수는 3~20 사이의 정수예요.',
   pwMinutesRange: '잠금 시간은 1~1440분 사이의 정수예요.',
   lockMissing: '잠긴 이메일이 아니에요.',
+  keyExtendInt: '연장 일 수는 정수예요.',
+  keyExtendRange: '연장은 1~365일이에요.',
+  keyUpdateFailed: '키를 바꾸지 못했어요.',
 } as const
 
 export type MsgKey = keyof typeof ko
@@ -335,6 +338,9 @@ const en: Record<MsgKey, string> = {
   pwAttemptsRange: 'The number of attempts is a whole number from 3 to 20.',
   pwMinutesRange: 'The lock time is a whole number of minutes from 1 to 1440.',
   lockMissing: 'This email is not locked.',
+  keyExtendInt: 'Days must be a whole number.',
+  keyExtendRange: 'An extension is 1 to 365 days.',
+  keyUpdateFailed: 'Could not change the key.',
 }
 
 const lists: Record<Lang, Record<MsgKey, string>> = { ko, en }

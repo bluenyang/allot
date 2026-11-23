@@ -34,6 +34,18 @@ export const securityKo = {
     unlock: '잠금 풀기',
     unlockLabel: '{email} 잠금 풀기',
     unlocked: '{email} 잠금을 풀었어요.',
+    // API key management (S-25)
+    renameSave: '이름 저장',
+    renamed: "키 이름을 '{name}'(으)로 바꿨어요.",
+    scopeSave: '범위 저장',
+    scopeSaved: '키 범위를 바꿨어요.',
+    extendBy: '{n}일 연장',
+    extendNone: '만료 없음',
+    extendHint: '누른 때부터 그 날 수만큼으로 만료일이 바뀌어요.',
+    extended: '만료일을 바꿨어요.',
+    requests: '요청 수(최근 1분)',
+    lastUsed: '마지막 사용',
+    updateFailed: '키를 바꾸지 못했어요.',
   },
 } as const
 
