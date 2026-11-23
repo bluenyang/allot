@@ -12,7 +12,7 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'dateFormat').refine((s) =>
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s
 }, 'dateInvalid')
 const ym = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'monthFormat')
-// Bounds match the column types: integer, numeric(12,2), numeric(8,2), numeric(5,2).
+// Bounds match the column types: integer, numeric(12,2), numeric(8,2) (the USD settings rate), numeric(14,6) (listed and spending rates, A-43), numeric(5,2).
 const INT_MAX = 2_147_483_647
 const won = z.number().int().min(0).max(INT_MAX, 'amountTooBig')
 const day = z.number().int().min(1).max(31)
@@ -294,7 +294,7 @@ export const spending = z.object({
   if (x.cardId && x.payBy !== 'card') bad('cardId', 'cardOnlyCard')
   // any foreign currency carries its rate and buffer, as USD did (spec 013 S-23)
   if (x.currency !== 'KRW' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
-  // the columns are numeric(8,2) and numeric(5,2): what is stored must be what the rounds were worked out with
+  // the columns are numeric(14,6) and numeric(5,2) (A-43): what is stored must be what the rounds were worked out with
   if (!sixDecimals(x.fxRate)) bad('fxRate', 'spendFxDecimals')
   if (!twoDecimals(x.fxBuffer)) bad('fxBuffer', 'spendFxDecimals')
   if (x.currency !== 'KRW' ? x.fxBuffer === null : x.fxBuffer !== null) bad('fxBuffer', 'spendFx')

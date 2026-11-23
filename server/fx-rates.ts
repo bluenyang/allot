@@ -7,7 +7,7 @@
 export const FX_DEFAULT_URL = 'https://api.frankfurter.app'
 /** How long one rate request may take. */
 export const FX_TIMEOUT_MS = 10_000
-/** The rate column is numeric(8,2): KRW per unit, above 0 (spec 013 S-26). */
+/** The largest rate taken (KRW per unit, above 0; spec 013 S-26): the USD settings column is numeric(8,2), the list numeric(14,6). */
 const RATE_MAX = 999_999.99
 
 export type FetchFn = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>
