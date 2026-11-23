@@ -4,7 +4,7 @@
 //   pending   AI proposals, goal cards and maturity cards waiting on 대기 중인 변경
 //   pay       subscription charges and one-off spending rounds in the next `days` days (today included)
 //   budget    this month's remainder short, a yearly limit used 90% or more, a buffer short
-import { bufferGauge, monthMoney, parseDate, upcomingPayments, yearContribution, ymd, type AccountState } from './calc'
+import { bufferGauge, monthMoney, parseDate, priced, upcomingPayments, yearContribution, ymd, type AccountState } from './calc'
 import type { PayBy, SpendHow } from '../data/types'
 
 export type NoticeGroup = 'pending' | 'pay' | 'budget'
@@ -56,7 +56,7 @@ export function buildNotices(st: AccountState, today: string, off: ReadonlySet<s
   // ── charges and rounds from today to today + days ──
   const last = plusDays(today, days)
   const pay: Notice[] = []
-  for (const p of upcomingPayments(st.subscriptions, st.planChanges, st.settings, parseDate(today), days)) {
+  for (const p of upcomingPayments(st.subscriptions, st.planChanges, priced(st.settings, st.currencies), parseDate(today), days)) {
     const date = ymd(p.date)
     pay.push({ kind: 'charge', id: `charge:${p.sub.id}:${date}`, group: 'pay', path: '/spend/subs', date, dday: daysBetween(today, date), subscriptionId: p.sub.id, name: p.sub.name, amount: Math.round(p.krw) })
   }

@@ -6,7 +6,7 @@ import PageHeader from '../components/PageHeader.vue'
 import TransferChart from '../components/TransferChart.vue'
 import Seg from '../components/Seg.vue'
 import Icon from '../components/Icon.vue'
-import { store } from '../lib/store'
+import { pricedSettings, store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
@@ -38,7 +38,7 @@ const tabs = computed(() => [
 
 const firstLine = (s: string) => s.split('\n')[0] ?? ''
 const charge = (p: Plan) => p.currency === 'USD' ? `USD ${p.amount.toFixed(2)}${p.vat ? ` +${p.vat}%` : ''}` : `KRW ${num(p.amount)}`
-const monthly = (p: Plan) => (p.status === 'active' ? monthlyKrw(p, store.settings) : 0)
+const monthly = (p: Plan) => (p.status === 'active' ? monthlyKrw(p, pricedSettings()) : 0)
 
 // ---------- list ----------
 /** The next charge by the schedule the calendar and MCP use (no horizon: a first charge any distance away shows). */

@@ -1,8 +1,9 @@
 import { reactive } from 'vue'
 import type {
-  Account, AllocationTarget, Balance, Card, CheckItem, Debt, HolidaySet, Living, LivingItem, Phase, PlanChange, PlanEvent, Preferences, RemainderSplit, Settings,
-  MonthAdjust, Spending, Subscription,
+  Account, AllocationTarget, Balance, Card, CheckItem, Debt, ForeignCurrency, HolidaySet, Living, LivingItem, Phase, PlanChange, PlanEvent, Preferences, Priced,
+  RemainderSplit, ScheduleItem, Settings, MonthAdjust, Spending, Subscription,
 } from '../data/types'
+import { priced } from './calc'
 import { ApiError, api } from './api'
 import { t } from '../i18n'
 import { createSessionGuard, type Scope } from './session-guard'
@@ -18,6 +19,9 @@ export interface State {
   balances: Balance[]
   cards: Card[]
   monthAdjusts: MonthAdjust[]
+  /** Foreign currencies other than USD (spec 013 S-23) and the user's own monthly dates (S-22). */
+  currencies: ForeignCurrency[]
+  schedules: ScheduleItem[]
   targets: AllocationTarget[]
   subscriptions: Subscription[]
   planChanges: PlanChange[]
@@ -39,7 +43,7 @@ const empty = (): State => ({
   living: { ...DEFAULT_LIVING },
   preferences: { ...DEFAULT_PREFERENCES },
   targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [], spendings: [],
-  livingItems: [], balances: [], cards: [], monthAdjusts: [], pendingProposals: 0,
+  livingItems: [], balances: [], cards: [], monthAdjusts: [], currencies: [], schedules: [], pendingProposals: 0,
 })
 
 export const store = reactive<State>(empty())
@@ -105,6 +109,8 @@ export const RESOURCES = {
   balances: '/api/balances',
   cards: '/api/cards',
   monthAdjusts: '/api/month-adjusts',
+  currencies: '/api/currencies',
+  schedules: '/api/schedules',
 } as const
 
 /** Lists whose delete also changes other rows on the server (unlinks, spec 013 S-9, S-13): reload the state after one. */
@@ -177,10 +183,13 @@ export const removeChange = (id: string) => deleteItem('planChanges', id)
 export const upsertSpending = (s: Spending) => saveItem('spendings', s)
 export const removeSpending = (id: string) => deleteItem('spendings', id)
 
+/** The settings with the foreign currencies: what the subscription sums take (spec 013 S-23). */
+export const pricedSettings = (): Priced => priced(store.settings, store.currencies)
+
 /** Everything the app holds, for the JSON view in the 개발 tab. */
 export function exportJson(): string {
-  const { settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, debts, remainderSplit, preferences, holidaySets, spendings } = store
-  return JSON.stringify({ settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
+  const { settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, preferences, holidaySets, spendings } = store
+  return JSON.stringify({ settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
 }
 
 export const subName = (id: string) => store.subscriptions.find((s) => s.id === id)?.name ?? id

@@ -1,5 +1,5 @@
 import type {
-  Account, AllocationKind, AllocationTarget, Balance, BudgetGroup, Card, Currency, Cycle, DayShift, Living, LivingItem, MonthAdjust, PayBy, Phase, Plan, PlanChange,
+  Account, AllocationKind, AllocationTarget, Balance, BudgetGroup, Card, Currency, Cycle, DayShift, ForeignCurrency, Living, LivingItem, MonthAdjust, PayBy, Phase, Plan, PlanChange, Priced,
   RemainderSplit, Settings, SpendHow, Spending, SpendingRound, SpendInterval, SplitMode, Subscription,
 } from '../data/types'
 
@@ -19,6 +19,32 @@ export function ymOf(d: Date): string {
 export function today(): Date {
   const n = new Date()
   return new Date(n.getFullYear(), n.getMonth(), n.getDate())
+}
+/** The default time zone of "today" (spec 013 S-22). */
+export const DEFAULT_TIMEZONE = 'Asia/Seoul'
+/**
+ * The canonical spelling of an IANA time zone name this runtime knows ('asia/seoul' → 'Asia/Seoul'), or null for
+ * anything else, a UTC offset like '+09:00' included (spec 013 S-26: an IANA name).
+ */
+export function timeZoneName(tz: string): string | null {
+  if (typeof tz !== 'string' || !/^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+)*$/.test(tz)) return null
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone
+  } catch {
+    return null
+  }
+}
+/** Is `tz` an IANA time zone name this runtime knows (spec 013 S-26)? */
+export const isTimeZone = (tz: string): boolean => timeZoneName(tz) !== null
+/**
+ * Today's date in the time zone `tz` (spec 013 S-22), as a local midnight Date like today(); `now` for tests.
+ * An unknown or missing zone falls back to the default one.
+ */
+export function todayIn(tz: string | null | undefined, now: Date = new Date()): Date {
+  const zone = tz && isTimeZone(tz) ? tz : DEFAULT_TIMEZONE
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(now)
+  const n = (type: string) => Number(parts.find((p) => p.type === type)!.value)
+  return new Date(n('year'), n('month') - 1, n('day'))
 }
 export function addMonths(d: Date, n: number): Date {
   const y = d.getFullYear()
@@ -84,11 +110,25 @@ export function planAt(sub: Subscription, changes: PlanChange[], ym: string): Su
     .reduce<Subscription>((acc, c) => ({ ...acc, ...c.to }), { ...sub })
 }
 
-export function chargeKrw(p: Plan, s: Settings): number {
-  if (p.currency === 'USD') return p.amount * (1 + (p.vat || 0) / 100) * s.fxRate
-  return p.amount
+/** Settings and the foreign currencies together (spec 013 S-23): what the subscription sums take. */
+export const priced = (s: Settings, currencies: ForeignCurrency[] = []): Priced => ({ ...s, currencies })
+
+/**
+ * KRW per unit and the transfer buffer % of a currency (spec 013 S-23): 1 and 0 for KRW, the settings' for USD, the
+ * list's for any other code. A code that is not in the list (it cannot be saved, A-35) counts as rate 0.
+ */
+export function rateOf(code: Currency, s: Priced): { rate: number; buffer: number } {
+  if (code === 'KRW') return { rate: 1, buffer: 0 }
+  if (code === 'USD') return { rate: s.fxRate, buffer: s.fxBuffer }
+  const c = s.currencies.find((x) => x.code === code)
+  return c ? { rate: c.rate, buffer: c.buffer } : { rate: 0, buffer: 0 }
 }
-export function monthlyKrw(p: Plan, s: Settings): number {
+
+export function chargeKrw(p: Plan, s: Priced): number {
+  if (p.currency === 'KRW') return p.amount
+  return p.amount * (1 + (p.vat || 0) / 100) * rateOf(p.currency, s).rate
+}
+export function monthlyKrw(p: Plan, s: Priced): number {
   const k = chargeKrw(p, s)
   return p.cycle === 'yearly' ? k / 12 : k
 }
@@ -97,6 +137,8 @@ export interface TransferCalc {
   monthlySum: number
   yearlyMonthly: number
   usdMonthly: number
+  /** every foreign-currency item, USD included (spec 013 S-23) */
+  foreignMonthly: number
   buffer: number
   needed: number // 1,000원 올림
   transfer: number // 구독 이체 올림 단위로 올린 금액
@@ -104,10 +146,13 @@ export interface TransferCalc {
 }
 
 /** 구독료 통장 계산기와 같은 식. `extra`: one-off spending paid from the subscription account that month (spec 011 S-5), added before the round-ups. */
-export function transferAt(subs: Subscription[], changes: PlanChange[], s: Settings, ym: string, extra = 0): TransferCalc {
+export function transferAt(subs: Subscription[], changes: PlanChange[], s: Priced, ym: string, extra = 0): TransferCalc {
   let monthlySum = 0
   let yearlyMonthly = 0
   let usdMonthly = 0
+  let foreignMonthly = 0
+  // the monthly sum per foreign currency: each takes its own buffer % (USD: the settings' one, the same sum as before)
+  const byCode = new Map<string, number>()
   const items: TransferCalc['items'] = []
   for (const base of subs) {
     const p = planAt(base, changes, ym)
@@ -116,14 +161,19 @@ export function transferAt(subs: Subscription[], changes: PlanChange[], s: Setti
     if (p.cycle === 'yearly') yearlyMonthly += m
     else monthlySum += m
     if (p.currency === 'USD') usdMonthly += m
+    if (p.currency !== 'KRW') {
+      foreignMonthly += m
+      byCode.set(p.currency, (byCode.get(p.currency) ?? 0) + m)
+    }
     items.push({ sub: p, monthly: m })
   }
   items.sort((a, b) => b.monthly - a.monthly)
-  const buffer = (usdMonthly * s.fxBuffer) / 100
+  let buffer = 0
+  for (const [code, sum] of byCode) buffer += (sum * rateOf(code, s).buffer) / 100
   const raw = monthlySum + yearlyMonthly + buffer + extra
   const needed = Math.ceil(raw / 1000) * 1000
   const transfer = Math.ceil(needed / s.subRound) * s.subRound
-  return { monthlySum, yearlyMonthly, usdMonthly, buffer, needed, transfer, items }
+  return { monthlySum, yearlyMonthly, usdMonthly, foreignMonthly, buffer, needed, transfer, items }
 }
 
 /** 해당 월에 처음 발효되는 변경 목록. */
@@ -227,7 +277,7 @@ export function nextPayment(base: Subscription, changes: PlanChange[], from: Dat
   return null
 }
 
-export function upcomingPayments(subs: Subscription[], changes: PlanChange[], s: Settings, from: Date, days: number): Payment[] {
+export function upcomingPayments(subs: Subscription[], changes: PlanChange[], s: Priced, from: Date, days: number): Payment[] {
   const end = new Date(from.getFullYear(), from.getMonth(), from.getDate() + days)
   const out: Payment[] = []
   for (const base of subs) {
@@ -277,7 +327,7 @@ export interface LaterPayment {
  * that comes in), at most `max` rows (3), the soonest first. A subscription whose only payments
  * are the plain monthly ones it pays now is left out.
  */
-export function paysAfter31(subs: Subscription[], changes: PlanChange[], s: Settings, from: Date, max = 3): LaterPayment[] {
+export function paysAfter31(subs: Subscription[], changes: PlanChange[], s: Priced, from: Date, max = 3): LaterPayment[] {
   const start = dayPlus(from, 31)
   const end = dayPlus(from, 365)
   const out: LaterPayment[] = []
@@ -317,12 +367,13 @@ export interface Leftover {
  * (the app holds none). `off` holds the holidays for the day shift, as in `monthDates`.
  */
 export function leftoverAfterTransfer(
-  state: { subscriptions: Subscription[]; planChanges: PlanChange[]; settings: Settings },
+  state: { subscriptions: Subscription[]; planChanges: PlanChange[]; settings: Settings; currencies?: ForeignCurrency[] },
   ym: string,
   off: ReadonlySet<string> = new Set(),
   spendings: Spending[] = [],
 ): Leftover {
   const { subscriptions, planChanges, settings } = state
+  const s = priced(settings, state.currencies)
   const shift = settings.dayShift ?? 'none'
   const from = monthDay(ym, settings.transferDay, shift, off).date
   const nextStart = monthDay(addYm(ym, 1), settings.transferDay, shift, off).date
@@ -331,11 +382,11 @@ export function leftoverAfterTransfer(
   const to = last < from ? from : last
   // Ask for a few days more than the window, then cut by date: no clock arithmetic decides the edge.
   const span = Math.round((parseDate(to).getTime() - startD.getTime()) / DAY) + 3
-  const inWindow = upcomingPayments(subscriptions, planChanges, settings, startD, span).filter((p) => ymd(p.date) >= from && ymd(p.date) <= to)
+  const inWindow = upcomingPayments(subscriptions, planChanges, s, startD, span).filter((p) => ymd(p.date) >= from && ymd(p.date) <= to)
   // One-off rounds paid from the subscription account count as paid too (spec 011 S-5).
   const spent = liveRounds(spendings).filter((x) => x.spending.payBy === 'subs' && x.round.date >= from && x.round.date <= to)
   const paid = inWindow.reduce((a, p) => a + p.krw, 0) + spent.reduce((a, x) => a + x.round.amount, 0)
-  const transfer = transferAt(subscriptions, planChanges, settings, ym, spendingIn(spendings, ym).subs).transfer
+  const transfer = transferAt(subscriptions, planChanges, s, ym, spendingIn(spendings, ym).subs).transfer
   return { transfer, from, to, paid, count: inWindow.length + spent.length, left: transfer - paid }
 }
 
@@ -394,7 +445,7 @@ export function distributionAt(
   living: Living | LivingItem[],
   subs: Subscription[],
   changes: PlanChange[],
-  s: Settings,
+  s: Priced,
   spendRemainder = 0,
   spendSubs = 0,
   accounts: Account[] = [],
@@ -726,7 +777,7 @@ export interface SpendInput {
 
 /** The KRW principal of a spending: USD = amount × rate × (1 + buffer%), rounded to the won (S-3). */
 export function spendingKrw(amount: number, currency: Currency, s: Pick<Settings, 'fxRate' | 'fxBuffer'>): number {
-  return currency === 'USD' ? Math.round(amount * s.fxRate * (1 + s.fxBuffer / 100)) : amount
+  return currency !== 'KRW' ? Math.round(amount * s.fxRate * (1 + s.fxBuffer / 100)) : amount
 }
 
 /**
@@ -908,6 +959,8 @@ export interface MonthState {
   subscriptions: Subscription[]
   planChanges: PlanChange[]
   spendings?: Spending[]
+  /** foreign currencies other than USD (spec 013 S-23); none = USD and KRW only */
+  currencies?: ForeignCurrency[]
 }
 
 /**
@@ -919,10 +972,11 @@ export interface MonthState {
  */
 export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; phases?: Phase[] } = {}) {
   const spend = spendingIn(state.spendings ?? [], ym)
-  const transfer = transferAt(state.subscriptions, state.planChanges, state.settings, ym, spend.subs)
+  const s = priced(state.settings, state.currencies)
+  const transfer = transferAt(state.subscriptions, state.planChanges, s, ym, spend.subs)
   const dist = distributionAt(
     ym, opt.pay ?? state.settings.netPay, opt.phases ?? state.phases, state.targets, state.livingItems ?? state.living,
-    state.subscriptions, state.planChanges, state.settings, spend.remainder, spend.subs, state.accounts ?? [], state.monthAdjusts ?? [],
+    state.subscriptions, state.planChanges, s, spend.remainder, spend.subs, state.accounts ?? [], state.monthAdjusts ?? [],
   )
   return { transfer, dist, spend }
 }

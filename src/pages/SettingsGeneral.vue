@@ -6,7 +6,7 @@ import Soon from '../components/Soon.vue'
 import Switch from '../components/Switch.vue'
 import { applyPreference, lang, t, type Lang, type MessageKey } from '../i18n'
 import { showToast } from '../lib/toast'
-import { saveItem, savePreferences, saveSettings, sessionScope, status, store } from '../lib/store'
+import { pricedSettings, saveItem, savePreferences, saveSettings, sessionScope, status, store } from '../lib/store'
 import { runSteps } from '../lib/session-guard'
 import { useEditor } from '../lib/useEditor'
 import { dateText, money, moneyClass } from '../lib/format'
@@ -67,7 +67,7 @@ const fmt = computed(() => ({ amountUnit: store.preferences.amountUnit, negative
 
 // Preview: this month's upcoming payments in the chosen formats (the user's own data)
 const now = today()
-const preview = computed(() => upcomingPayments(store.subscriptions, store.planChanges, store.settings, now, 31).slice(0, 4))
+const preview = computed(() => upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), now, 31).slice(0, 4))
 const previewTotal = computed(() => preview.value.reduce((a, p) => a + p.krw, 0))
 const monthName = computed(() => new Date(2000, Number(ymOf(now).slice(5)) - 1, 1).toLocaleString(lang.value === 'en' ? 'en-US' : 'ko-KR', { month: 'long' }))
 

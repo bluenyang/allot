@@ -9,7 +9,7 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import MoneyInput from './MoneyInput.vue'
 import Seg from './Seg.vue'
 import { useEditor } from '../lib/useEditor'
-import { store } from '../lib/store'
+import { pricedSettings, store } from '../lib/store'
 import { cycleLabel, statusLabel } from '../lib/labels'
 import { fmtMoney } from '../lib/display'
 import { addYm, monthlyKrw, monthMoney, num, planAt, today, ymOf } from '../lib/calc'
@@ -86,7 +86,7 @@ const month = computed(() => (undated.value ? ymOf(now) : edit.value!.effective!
 // VAT is always there (it was before the redesign); it only counts for USD, which the hint says.
 const isUsd = computed(() => (edit.value?.to.currency ?? (sub.value ? planAt(sub.value, others.value, month.value).currency : undefined)) === 'USD')
 
-const mo = (p: Subscription) => (p.status === 'active' ? monthlyKrw(p, store.settings) : 0)
+const mo = (p: Subscription) => (p.status === 'active' ? monthlyKrw(p, pricedSettings()) : 0)
 /** Monthly amount of this subscription and the subscription transfer, without and with the change, in the month it applies (an undated one: this month). */
 const pv = computed(() => {
   const e = edit.value

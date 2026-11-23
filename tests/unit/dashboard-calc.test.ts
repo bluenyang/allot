@@ -3,10 +3,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
-import type { PlanChange, Settings, Subscription } from '../../src/data/types'
+import type { PlanChange, Priced, Settings, Subscription } from '../../src/data/types'
 import { clusterDots, leftoverAfterTransfer, nextPayment, paymentDates, paysAfter31, phaseNumbers, unallocated, upcomingPayments, ymd } from '../../src/lib/calc'
 
-const settings: Settings = { ...DEFAULT_SETTINGS, netPay: 3_000_000, transferDay: 26, subRound: 10_000, fxBuffer: 0 }
+const settings: Priced = { ...DEFAULT_SETTINGS, netPay: 3_000_000, transferDay: 26, subRound: 10_000, fxBuffer: 0, currencies: [] }
 let n = 0
 const sub = (over: Partial<Subscription>): Subscription => ({
   id: `s${++n}`, name: `S${n}`, category: 'tool', plan: 'Basic', amount: 10_000, currency: 'KRW', vat: 0, cycle: 'monthly',

@@ -108,6 +108,7 @@ for (const [path, resource] of [
   ['/checks', 'checks'], ['/accounts', 'accounts'], ['/debts', 'debts'], ['/remainder-split', 'remainder-split'],
   ['/holiday-sets', 'holiday-sets'], ['/targets', 'targets'], ['/spendings', 'spendings'],
   ['/living-items', 'living-items'], ['/balances', 'balances'], ['/cards', 'cards'], ['/month-adjusts', 'month-adjusts'], // spec 013
+  ['/currencies', 'currencies'], ['/schedules', 'schedules'], // spec 013 rc.3
 ] as const) crud(routes, path, resource)
 
 // ── Proposals from an AI key (spec 009 S-4, S-9): the screen confirms or rejects them (a session only) ──

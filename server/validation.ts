@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { ruleProblem } from '../src/lib/holidays'
 import { ROUND_MAX, roundsProblem } from '../src/lib/spending-rules'
+import { isTimeZone, timeZoneName } from '../src/lib/calc'
 import { m, type MsgKey } from './messages'
 
 /** A real calendar date (rejects 2031-02-30), YYYY-MM-DD. */
@@ -18,7 +19,8 @@ const day = z.number().int().min(1).max(31)
 const text = z.string().trim()
 const optText = z.string().trim().optional()
 
-export const currency = z.enum(['KRW', 'USD'])
+/** A currency code (spec 013 S-23, S-26): KRW, USD or a code in the user's list (that part is checked in the API). */
+export const currency = z.string().regex(/^[A-Z]{3}$/, 'currencyCode')
 export const cycle = z.enum(['monthly', 'yearly'])
 export const subStatus = z.enum(['active', 'cancelled', 'company'])
 export const payPath = z.enum(['direct', 'google', 'apple', 'telecom'])
@@ -37,6 +39,26 @@ export const settings = z.object({
   // The same for the split of the Savings and Investment menus (spec 013 S-3).
   savingSplit: z.enum(['amount', 'ratio']).optional(),
   investSplit: z.enum(['amount', 'ratio']).optional(),
+  // USD rate refreshed by the server (spec 013 S-23); left out = keep the saved value.
+  fxAuto: z.boolean().optional(),
+})
+
+/** A foreign currency other than USD (spec 013 S-23, S-26, A-35): rate above 0 like the USD one, buffer 0..100. */
+export const foreignCurrency = z.object({
+  code: currency.refine((c) => c !== 'KRW' && c !== 'USD', 'currencyBase'),
+  rate: z.number().positive().max(999_999.99),
+  buffer: z.number().min(0).max(100),
+  // left out = keep the saved value (off for a new one)
+  auto: z.boolean().optional(),
+})
+
+/** A monthly date of the user's own (spec 013 S-22, S-26, A-36). */
+export const scheduleItem = z.object({
+  name: text.min(1, 'nameReq'),
+  day,
+  accountId: text.min(1).nullable(),
+  direction: z.enum(['in', 'out']),
+  note: optText,
 })
 
 // ── Display settings and holiday sets (spec 007 S-7, S-8, S-9) ──
@@ -53,6 +75,8 @@ export const preferences = z.object({
   negative: z.enum(['minus', 'paren', 'red']),
   // Optional so a client that does not know it keeps the saved value (spec 008 S-9).
   language: z.enum(['ko', 'en']).nullable().optional(),
+  // IANA time zone (spec 013 S-22, S-26); left out = keep the saved one.
+  timezone: z.string().refine(isTimeZone, 'timezoneInvalid').transform((x) => timeZoneName(x)!).optional(),
 }).strict()
 
 const holidayRule = z.object({
@@ -266,11 +290,12 @@ export const spending = z.object({
     if (!x.refillFrom) bad('refillFrom', 'spendHow')
   } else if (x.refillFrom) bad('refillFrom', 'refillOnlyBuffer')
   if (x.cardId && x.payBy !== 'card') bad('cardId', 'cardOnlyCard')
-  if (x.currency === 'USD' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
+  // any foreign currency carries its rate and buffer, as USD did (spec 013 S-23)
+  if (x.currency !== 'KRW' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
   // the columns are numeric(8,2) and numeric(5,2): what is stored must be what the rounds were worked out with
   if (!twoDecimals(x.fxRate)) bad('fxRate', 'spendFxDecimals')
   if (!twoDecimals(x.fxBuffer)) bad('fxBuffer', 'spendFxDecimals')
-  if (x.currency === 'USD' ? x.fxBuffer === null : x.fxBuffer !== null) bad('fxBuffer', 'spendFx')
+  if (x.currency !== 'KRW' ? x.fxBuffer === null : x.fxBuffer !== null) bad('fxBuffer', 'spendFx')
   if (x.currency === 'KRW' && !Number.isInteger(x.amount)) bad('amount', 'spendKrwWhole')
   // Only a card installment carries a fee; only a split an interval.
   if (x.fee !== 0 && !(x.how === 'installment' && x.payBy === 'card')) bad('fee', 'spendHow')

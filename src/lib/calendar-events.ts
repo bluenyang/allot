@@ -6,7 +6,7 @@
 import { addYm, monthDates, parseDate, upcomingPayments, upcomingSpendRounds, ymd, ymOf, DAY } from './calc'
 import { enabledSets, holidaysIn } from './holidays'
 import { fmtMoney } from './display'
-import { store, subName } from './store'
+import { pricedSettings, store, subName } from './store'
 import type { HolidaySet } from '../data/types'
 import { t, type MessageKey } from '../i18n'
 import { roundSuffix } from './labels'
@@ -50,7 +50,7 @@ export function calendarEvents(from: string, to: string): CalEvent[] {
 
   const start = parseDate(from)
   const days = Math.round((parseDate(to).getTime() - start.getTime()) / DAY) - 1
-  for (const p of upcomingPayments(store.subscriptions, store.planChanges, store.settings, start, days)) {
+  for (const p of upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), start, days)) {
     out.push({ date: ymd(p.date), title: `${p.sub.name} ${fmtMoney(p.krw)}`, kind: 'sub', name: p.sub.name, krw: p.krw })
   }
   // A round still to pay of a one-off spending, with its name and "n/N회" (spec 011 S-8).

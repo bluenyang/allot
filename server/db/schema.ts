@@ -9,7 +9,11 @@ import { bigint, boolean, check, date, foreignKey, index, integer, jsonb, numeri
 import type { HolidayRule, Plan } from '../../src/data/types'
 import { user } from './auth-schema'
 
-export const currency = pgEnum('currency', ['KRW', 'USD'])
+/**
+ * A currency code (ISO 4217, three capitals; spec 013 S-23). KRW is the base, USD's rate is in `settings`, any other
+ * code needs a `foreign_currency` row (checked in the API). Was the enum `currency` ('KRW' | 'USD') up to 0.1.7-rc.2.
+ */
+const currencyCode = (name: string) => text(name)
 export const cycle = pgEnum('cycle', ['monthly', 'yearly'])
 export const subStatus = pgEnum('sub_status', ['active', 'cancelled', 'company'])
 export const payPath = pgEnum('pay_path', ['direct', 'google', 'apple', 'telecom'])
@@ -57,6 +61,11 @@ export const settings = pgTable('settings', {
   /** How the Savings and Investment menus split their total (spec 013 S-3). */
   savingSplit: text('saving_split').$type<'amount' | 'ratio'>().notNull().default('amount'),
   investSplit: text('invest_split').$type<'amount' | 'ratio'>().notNull().default('ratio'),
+  /** USD rate refreshed once a day from the public rate (spec 013 S-23); off = by hand, as before. */
+  fxAuto: boolean('fx_auto').notNull().default(false),
+  /** When the server last refreshed it, and why the last try failed (null after a success). Written by the server only. */
+  fxAutoAt: timestamp('fx_auto_at', { withTimezone: true, mode: 'string' }),
+  fxAutoError: text('fx_auto_error'),
 }, (t) => [
   userScoped(t.userId),
   check('settings_saving_split', sql`${t.savingSplit} in ('amount', 'ratio')`),
@@ -79,6 +88,8 @@ export const preference = pgTable('preference', {
   negative: text('negative').$type<'minus' | 'paren' | 'red'>().notNull().default('minus'),
   // Screen and message language (spec 008 S-9); null = follow the browser.
   language: text('language').$type<'ko' | 'en'>(),
+  /** IANA time zone of "today" and "this month" on the screen, the server and MCP (spec 013 S-22). */
+  timezone: text('timezone').notNull().default('Asia/Seoul'),
 }, (t) => [userScoped(t.userId)])
 
 /**
@@ -129,7 +140,7 @@ export const subscription = pgTable('subscription', {
   category: category('category').notNull(),
   plan: text('plan').notNull().default(''),
   amount: numeric('amount', { precision: 12, scale: 2, mode: 'number' }).notNull(),
-  currency: currency('currency').notNull(),
+  currency: currencyCode('currency').notNull(),
   vat: numeric('vat', { precision: 5, scale: 2, mode: 'number' }).notNull().default(0),
   cycle: cycle('cycle').notNull(),
   status: subStatus('status').notNull().default('active'),
@@ -141,6 +152,7 @@ export const subscription = pgTable('subscription', {
   userScoped(t.userId),
   unique('subscription_user_id_id').on(t.userId, t.id),
   check('subscription_amount_nonneg', sql`${t.amount} >= 0`),
+  check('subscription_currency_code', sql`${t.currency} ~ '^[A-Z]{3}$'`),
 ])
 
 export const planChange = pgTable('plan_change', {
@@ -274,6 +286,52 @@ export const card = pgTable('card', {
   check('card_billing_day', sql`${t.billingDay} is null or ${t.billingDay} between 1 and 31`),
 ])
 
+/**
+ * A monthly date of the user's own (spec 013 S-22, A-36): shown on the calendar and the schedule with the pay, transfer
+ * and billing days (moved like them on a weekend or holiday). Not part of any sum.
+ */
+export const scheduleItem = pgTable('schedule_item', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  name: text('name').notNull(),
+  day: smallint('day').notNull(),
+  accountId: text('account_id'),
+  /** in: money comes into the account · out: money goes out of it */
+  direction: text('direction').$type<'in' | 'out'>().notNull(),
+  note: text('note'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('schedule_item_user_id_id').on(t.userId, t.id),
+  foreignKey({ name: 'schedule_item_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
+  check('schedule_item_day', sql`${t.day} between 1 and 31`),
+  check('schedule_item_direction', sql`${t.direction} in ('in', 'out')`),
+])
+
+/**
+ * A foreign currency other than USD (spec 013 S-23, A-35; USD keeps its rate in `settings`): the rate (KRW per unit) and
+ * the buffer % used for subscriptions in that code, and whether the server refreshes the rate once a day.
+ */
+export const foreignCurrency = pgTable('foreign_currency', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  code: text('code').notNull(),
+  rate: numeric('rate', { precision: 8, scale: 2, mode: 'number' }).notNull(),
+  buffer: numeric('buffer', { precision: 5, scale: 2, mode: 'number' }).notNull().default(0),
+  auto: boolean('auto').notNull().default(false),
+  /** Written by the server only: the last refresh, and why the last try failed (null after a success). */
+  autoAt: timestamp('auto_at', { withTimezone: true, mode: 'string' }),
+  autoError: text('auto_error'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('foreign_currency_user_id_id').on(t.userId, t.id),
+  unique('foreign_currency_user_code').on(t.userId, t.code),
+  check('foreign_currency_code', sql`${t.code} ~ '^[A-Z]{3}$' and ${t.code} not in ('KRW', 'USD')`),
+  check('foreign_currency_rate_pos', sql`${t.rate} > 0`),
+  check('foreign_currency_buffer_range', sql`${t.buffer} >= 0 and ${t.buffer} <= 100`),
+])
+
 export const debt = pgTable('debt', {
   userId: owner(),
   id: text('id').primaryKey(),
@@ -298,7 +356,7 @@ export const spending = pgTable('spending', {
   category: text('category').notNull(),
   bought: date('bought', { mode: 'string' }).notNull(),
   amount: numeric('amount', { precision: 12, scale: 2, mode: 'number' }).notNull(),
-  currency: currency('currency').notNull(),
+  currency: currencyCode('currency').notNull(),
   fxRate: numeric('fx_rate', { precision: 8, scale: 2, mode: 'number' }),
   fxBuffer: numeric('fx_buffer', { precision: 5, scale: 2, mode: 'number' }),
   how: spendHow('how').notNull(),
@@ -318,6 +376,7 @@ export const spending = pgTable('spending', {
   check('spending_amount_nonneg', sql`${t.amount} >= 0`),
   check('spending_fee_nonneg', sql`${t.fee} >= 0`),
   check('spending_count_range', sql`${t.count} between 1 and 60`),
+  check('spending_currency_code', sql`${t.currency} ~ '^[A-Z]{3}$'`),
 ])
 
 /** A round of a spending: when and how much (KRW) is billed or paid. Written with its spending, never alone. */
@@ -433,7 +492,8 @@ export const remainderSplit = pgTable('remainder_split', {
 ])
 
 // ── Change sets: one write request = one set, like a commit (spec 005 S-3) ──
-export const actorKind = pgEnum('actor_kind', ['user', 'api_key'])
+/** system: the server itself (the daily rate refresh, spec 013 S-23). */
+export const actorKind = pgEnum('actor_kind', ['user', 'api_key', 'system'])
 export const changeOp = pgEnum('change_op', ['insert', 'update', 'delete'])
 
 export const changeSet = pgTable('change_set', {
@@ -549,10 +609,22 @@ export const authProvider = pgTable('auth_provider', {
 // ── Server-wide settings (spec 008 S-3): one row per setting; no user_id, so no row-level security
 // (like auth_provider). Env values win over these (server/api-key-policy.ts). ──
 export const appSetting = pgTable('app_setting', {
-  /** api_keys */
+  /** api_keys | password */
   id: text('id').primaryKey(),
-  /** api_keys: { noExpiry: boolean } */
+  /** api_keys: { noExpiry: boolean } · password: { minLength, lockout: { enabled, attempts, minutes } } (spec 013 S-24) */
   value: jsonb('value').$type<Record<string, unknown>>().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text('updated_by'),
-}, (t) => [check('app_setting_id', sql`${t.id} in ('api_keys')`)])
+}, (t) => [check('app_setting_id', sql`${t.id} in ('api_keys', 'password')`)])
+
+/**
+ * Failed password sign-ins per email (spec 013 S-24, A-37): only counted while the admin's lockout is on. Keyed by the
+ * email as typed (lower case), also for an email with no account, so the answer never tells whether one exists.
+ * A server table (no user_id, no row-level security), like app_setting.
+ */
+export const loginFailure = pgTable('login_failure', {
+  email: text('email').primaryKey(),
+  count: integer('count').notNull().default(0),
+  lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+})

@@ -4,7 +4,7 @@
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
   addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate,
-  phaseAt, planAt, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
+  phaseAt, planAt, priced, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
   type AccountState, type MonthDate,
   maturityAlerts, maturityAmount,
 } from '../../src/lib/calc'
@@ -12,7 +12,7 @@ import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 import { buildNotices, type Notice } from '../../src/lib/notices'
 import { search, type SearchKind } from '../../src/lib/search'
 import type {
-  Account, AllocationTarget, Balance, BudgetGroup, Card, CheckItem, Debt, HolidaySet, Living, LivingItem, MonthAdjust, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Spending,
+  Account, AllocationTarget, Balance, BudgetGroup, Card, CheckItem, Debt, ForeignCurrency, HolidaySet, Living, LivingItem, MonthAdjust, Phase, PlanChange, PlanEvent, RemainderSplit, ScheduleItem, Settings, Spending,
   SubStatus, Subscription,
 } from '../../src/data/types'
 import { maturityOf } from './maturity'
@@ -42,6 +42,10 @@ export interface Data {
   cards?: Card[]
   /** one month's amounts of targets (spec 013 S-14); absent = none */
   monthAdjusts?: MonthAdjust[]
+  /** foreign currencies other than USD (spec 013 S-23); absent = none */
+  currencies?: ForeignCurrency[]
+  /** the user's own monthly dates (spec 013 S-22); absent = none */
+  schedules?: ScheduleItem[]
 }
 
 const krw = (n: number) => Math.round(n)
@@ -62,7 +66,7 @@ function datesOf(d: Data, ym: string, off: ReadonlySet<string>) {
 /** Charges falling in month `ym`. */
 function paymentsIn(d: Data, ym: string) {
   const start = parseDate(firstOf(ym))
-  return upcomingPayments(d.subscriptions, d.planChanges, d.settings, start, lastDay(ym) - 1)
+  return upcomingPayments(d.subscriptions, d.planChanges, priced(d.settings, d.currencies), start, lastDay(ym) - 1)
     .filter((p) => ymOf(p.date) === ym)
     .map((p) => ({ date: ymd(p.date), subscriptionId: p.sub.id, name: p.sub.name, plan: p.sub.plan, amountKrw: krw(p.krw), cycle: p.sub.cycle }))
 }
@@ -95,7 +99,7 @@ function monthlyDelta(d: Data, c: PlanChange): number | null {
   if (!c.effective) return null
   const ym = c.effective.slice(0, 7)
   const sum = (changes: PlanChange[]) => {
-    const t = transferAt(d.subscriptions, changes, d.settings, ym)
+    const t = transferAt(d.subscriptions, changes, priced(d.settings, d.currencies), ym)
     return t.monthlySum + t.yearlyMonthly
   }
   return krw(sum(d.planChanges) - sum(d.planChanges.filter((x) => x.id !== c.id)))
@@ -227,8 +231,8 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
       vat: p.vat,
       cycle: p.cycle,
       status: p.status,
-      chargeKrw: krw(chargeKrw(p, d.settings)),
-      monthlyKrw: krw(monthlyKrw(p, d.settings)),
+      chargeKrw: krw(chargeKrw(p, priced(d.settings, d.currencies))),
+      monthlyKrw: krw(monthlyKrw(p, priced(d.settings, d.currencies))),
       nextPayment: next ? ymd(next) : null,
       payPath: base.path,
       receiptVerified: base.verified,

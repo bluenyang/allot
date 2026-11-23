@@ -10,7 +10,7 @@ import MoneyInput from './MoneyInput.vue'
 import Seg from './Seg.vue'
 import Tip from './Tip.vue'
 import { useEditor } from '../lib/useEditor'
-import { store } from '../lib/store'
+import { pricedSettings, store } from '../lib/store'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
 import { chargeKrw, monthlyKrw, num, planAt, usd, ymLabel } from '../lib/calc'
 import { wonText } from '../lib/format'
@@ -99,7 +99,7 @@ const overridden = computed(() => {
   return fields.length ? { fields, changes: applied } : null
 })
 const draft = computed(() => ({ ...edit.value!, amount: Number(edit.value!.amount) || 0, vat: Number(edit.value!.vat) || 0 }))
-const monthly = computed(() => wonText(monthlyKrw(draft.value, store.settings)) + (draft.value.cycle === 'yearly' ? ` ${t('subscriptions.yearOf', { amount: wonText(chargeKrw(draft.value, store.settings)) })}` : ''))
+const monthly = computed(() => wonText(monthlyKrw(draft.value, pricedSettings())) + (draft.value.cycle === 'yearly' ? ` ${t('subscriptions.yearOf', { amount: wonText(chargeKrw(draft.value, pricedSettings())) })}` : ''))
 const fx = computed(() => `₩${num(store.settings.fxRate)}`)
 
 function toCancelled() { edit.value!.status = 'cancelled' }

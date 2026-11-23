@@ -239,6 +239,20 @@
       "when": 1795395596438,
       "tag": "0033_force_rls_month_adjust",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795414830162,
+      "tag": "0034_rc3_settings_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1795414841750,
+      "tag": "0035_force_rls_rc3",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,8 @@
-export type Currency = 'KRW' | 'USD'
+/**
+ * A currency code (ISO 4217, three capitals; spec 013 S-23): 'KRW' (the base), 'USD' (its rate in Settings) or the code
+ * of a ForeignCurrency. Was 'KRW' | 'USD' up to 0.1.7-rc.2.
+ */
+export type Currency = string
 export type Cycle = 'monthly' | 'yearly'
 export type PayPath = 'direct' | 'google' | 'apple' | 'telecom'
 export type SubStatus = 'active' | 'cancelled' | 'company'
@@ -45,6 +49,35 @@ export interface Settings {
   /** How the Savings and Investment menus split their total (spec 013 S-3). */
   savingSplit?: SplitMode // default 'amount'
   investSplit?: SplitMode // default 'ratio'
+  /** USD rate refreshed once a day from the public rate (spec 013 S-23); off = by hand. */
+  fxAuto?: boolean
+  /** Written by the server only: the last refresh (ISO time) and why the last try failed. */
+  fxAutoAt?: string | null
+  fxAutoError?: string | null
+}
+
+/** A foreign currency other than USD (spec 013 S-23): KRW per unit and the buffer % for subscriptions in it. */
+export interface ForeignCurrency {
+  id: string
+  code: string
+  rate: number
+  buffer: number
+  auto: boolean
+  autoAt?: string | null
+  autoError?: string | null
+}
+
+/** The settings with the rates of every foreign currency: what the subscription sums need (spec 013 S-23). */
+export type Priced = Settings & { currencies: ForeignCurrency[] }
+
+/** A monthly date of the user's own on the calendar and the schedule (spec 013 S-22, A-36); not part of any sum. */
+export interface ScheduleItem {
+  id: string
+  name: string
+  day: number
+  accountId: string | null
+  direction: 'in' | 'out'
+  note?: string
 }
 
 export type SplitMode = 'amount' | 'ratio'
@@ -63,6 +96,8 @@ export interface Preferences {
   negative: 'minus' | 'paren' | 'red'
   /** Screen and message language (spec 008 S-9); null follows the browser. */
   language: 'ko' | 'en' | null
+  /** IANA time zone of "today" and "this month" (spec 013 S-22); default Asia/Seoul. */
+  timezone?: string
 }
 
 /**

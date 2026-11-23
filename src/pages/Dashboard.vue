@@ -4,7 +4,7 @@ import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
-import { saveItem, store, subName } from '../lib/store'
+import { pricedSettings, saveItem, store, subName } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { notReady, view } from '../lib/view'
 import { allocColor } from '../lib/colors'
@@ -43,13 +43,13 @@ const xfer = computed(() => monthNow.value.transfer)
 // What is due in the next 31 days: subscription charges and the rounds of one-off spendings (spec 011 S-8), by date.
 interface Pay { key: string; date: Date; name: string; sub: string; krw: number; dday: number }
 const pays = computed<Pay[]>(() => [
-  ...upcomingPayments(store.subscriptions, store.planChanges, store.settings, now, 31).map((p) => ({ key: p.sub.id + p.date.getTime(), date: p.date, name: p.sub.name, sub: p.sub.plan || '—', krw: p.krw, dday: p.dday })),
+  ...upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), now, 31).map((p) => ({ key: p.sub.id + p.date.getTime(), date: p.date, name: p.sub.name, sub: p.sub.plan || '—', krw: p.krw, dday: p.dday })),
   ...upcomingSpendRounds(store.spendings, now, 31).map((d) => ({ key: `${d.spending.id}-${d.round.no}`, date: d.date, name: d.spending.name, sub: roundSuffix(d.spending, d.round) || t('dashboard.spendOne'), krw: d.krw, dday: d.dday })),
 ].sort((a, b) => a.date.getTime() - b.date.getTime()))
 const paysSum = computed(() => pays.value.reduce((a, p) => a + p.krw, 0))
-const later = computed(() => paysAfter31(store.subscriptions, store.planChanges, store.settings, now))
+const later = computed(() => paysAfter31(store.subscriptions, store.planChanges, pricedSettings(), now))
 // The closest payment when nothing falls in the next 31 days.
-const nearest = computed(() => (pays.value.length ? null : upcomingPayments(store.subscriptions, store.planChanges, store.settings, now, 800)[0] ?? null))
+const nearest = computed(() => (pays.value.length ? null : upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), now, 800)[0] ?? null))
 const split = computed(() => (dist.value.remainderTarget ? splitRemainder(dist.value.remainder, store.remainderSplit) : []))
 const subsMonthly = computed(() => xfer.value.monthlySum + xfer.value.yearlyMonthly)
 // Active in the shown month, with scheduled plan changes applied (the same set as the monthly total).
@@ -189,7 +189,7 @@ function exportCsv() {
   const first = parseDate(`${m}-01`)
   const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate() - 1
   const due: { date: string; row: CsvCell[] }[] = []
-  for (const p of upcomingPayments(store.subscriptions, store.planChanges, store.settings, first, days)) {
+  for (const p of upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), first, days)) {
     due.push({ date: ymd(p.date), row: [H('secPay'), p.sub.name, H('kindSub'), ymd(p.date), wonCell(p.krw)] })
   }
   // every round of the month that counts (paid or to pay; not merged, not a cancelled spending's open round)
