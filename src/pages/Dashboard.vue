@@ -26,7 +26,8 @@ import {
 const AddRecord = defineAsyncComponent(() => import('../components/AddRecordModal.vue'))
 
 // 현황 (spec 007 S-4, redrawn by spec 010 S-6): the canvas dashboard on the data we have. Not in the
-// app yet (S-3): file export, a one-off payment record, the last sync — they are `Soon` or "—".
+// app yet (S-3): file export and the last sync — they are `Soon` or "—". '결제 추가' opens the spending add
+// editor (/spend/general?add) and the remainder's '관리' goes to the pay page's simulation (spec 013 S-16).
 // "고정 지출 추이" looks ahead six months (the past is not stored; the user approved the change on 2026-11-15).
 const now = today()
 // The month comes from the header's month switch (spec 007 S-15); payments stay "from today".
@@ -250,7 +251,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
             <div v-if="dist.remainderTarget" class="splitbar">
               <span class="sl">{{ t('dashboard.splitName', { name: dist.remainderTarget.name }) }}</span>
               <span v-for="x in split" :key="x.name" class="pill num whitepill">{{ x.name }} {{ fmtMoney(x.amount) }}</span>
-              <Soon class="manage" tag="span" :aria-label="`${t('dashboard.manageIn', { name: dist.remainderTarget.name })} (${t('common.soon')})`">{{ t('dashboard.manageIn', { name: dist.remainderTarget.name }) }}</Soon>
+              <RouterLink class="manage" to="/pay?tab=sim">{{ t('dashboard.manageIn', { name: dist.remainderTarget.name }) }}</RouterLink>
             </div>
             <div v-else class="splitbar">
               <span class="sl">{{ spare < 0 ? t('dashboard.short') : t('dashboard.spare') }}</span>
@@ -307,7 +308,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
             <div class="lb-bar" :class="{ over: left.left < 0 }"><div :style="{ width: `${leftPct}%` }"></div></div>
             <div class="lb-n"><span>{{ left.left < 0 ? t('dashboard.leftShort') : t('dashboard.leftRange', { from: mdShort(left.from), to: mdShort(left.to) }) }}</span><b class="num" :class="left.left < 0 ? 'neg' : 'pos'">{{ fmtMoney(left.left) }}</b></div>
             <div class="lb-a">
-              <Soon class="btn sm soon-sm" :aria-label="`${t('dashboard.addPayment')} (${t('common.soon')})`">{{ t('dashboard.addPayment') }}</Soon>
+              <RouterLink class="btn sm" to="/spend/general?add">{{ t('dashboard.addPayment') }}</RouterLink>
               <RouterLink class="btn sm ghost" to="/events">{{ t('dashboard.viewCalendar') }}</RouterLink>
             </div>
           </div>
@@ -453,7 +454,8 @@ tr.sum td.n{font-weight:700}
 .splitbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--border);background:var(--surface-2);border-radius:0 0 var(--r-card) var(--r-card);font-size:12px}
 .splitbar .sl{font-weight:600;color:var(--text-2)}
 .whitepill{background:var(--surface);border:1px solid var(--border);color:var(--text-2)}
-.manage{margin-left:auto;color:var(--primary-text);font-weight:600}
+.manage{margin-left:auto;color:var(--primary-text);font-weight:600;text-decoration:none}
+.manage:hover{text-decoration:underline}
 .trendcard{display:flex;flex-direction:column}
 .trend{display:flex;gap:12px;padding:16px 18px 14px;min-height:200px}
 .axis{display:flex;flex-direction:column;justify-content:space-between;font-size:11px;color:var(--subtle);text-align:right;font-variant-numeric:tabular-nums;padding-bottom:22px}
@@ -505,7 +507,6 @@ tr.sum td.n{font-weight:700}
 .lb-n .pos{color:var(--primary-text)}
 .lb-n .neg{color:var(--neg-text)}
 .lb-a{display:flex;gap:8px;margin-top:2px}
-.soon-sm{height:30px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-ctl);font-size:12px}
 .when{width:52px;flex:none;font:12px var(--f-mono);color:var(--muted)}
 .when.wide{width:auto;min-width:104px}
 .when.wide b{font-family:var(--f-sans, inherit);font-weight:700}
