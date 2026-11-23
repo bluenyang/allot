@@ -13,6 +13,8 @@ import RoundEditor from './RoundEditor.vue'
 import Seg from './Seg.vue'
 import Select from './Select.vue'
 import SpendEditor from './SpendEditor.vue'
+import { downloadCsv } from '../lib/csv'
+import { spendingCsvRows } from '../lib/spending-csv'
 
 // 할부 tab (spec 011 S-4, S-6, S-7): the installment and split spendings as a list with the one picked shown
 // beside it (stacked on a phone), three summary cards and the rounds table. Every number is worked out here
@@ -73,6 +75,10 @@ const shown = computed(() => items.value
     const p = a.last?.date ?? '', q = b.last?.date ?? ''
     return p < q ? 1 : p > q ? -1 : a.s.name.localeCompare(b.s.name)
   }))
+
+/** The page's CSV button (spec 013 S-17): the spendings shown with these filters, one row per round. */
+function exportCsv() { downloadCsv(`allot-spending-installments-${ym}.csv`, spendingCsvRows(shown.value.map((i) => i.s))) }
+defineExpose({ exportCsv })
 
 const picked = ref('')
 const sel = computed(() => shown.value.find((i) => i.s.id === picked.value) ?? shown.value[0])
