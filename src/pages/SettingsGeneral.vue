@@ -18,6 +18,8 @@ import type { HolidaySet, Preferences, Settings } from '../data/types'
 import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
 import Select from '../components/Select.vue'
 import { localToday } from '../lib/now'
+import { DEFAULT_TIMEZONE } from '../lib/calc'
+import { supportedZones, zoneOptions } from '../lib/timezones'
 
 // 설정 › 일반 (spec 010 S-11, canvas "설정"): five titled sections. 화면 and 표시 형식 save the moment
 // a choice is made (the session is noted when the save starts and checked before each later step,
@@ -157,6 +159,11 @@ const SCHEDS = [
   { id: 'billingDay', slot: 'billing', name: 'billingDay', use: 'billingUse', ids: 'g-bill' },
 ] as const
 
+// ── 시간대 (spec 013 S-22): saves at once like the other display choices ──
+const tzChoice = computed(() => store.preferences.timezone ?? DEFAULT_TIMEZONE)
+const tzOptions = computed(() => zoneOptions(store.preferences.timezone, supportedZones()))
+const pickZone = (tz: string) => saveNow({ timezone: tz }, undefined, t('schedule.tzSaved'))
+
 // ── 공휴일 ──
 const krRow = computed(() => store.holidaySets.find((s) => s.builtin === 'kr'))
 const krOn = computed(() => krRow.value?.enabled ?? true)
@@ -210,8 +217,8 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
           </div>
           <span class="hint">{{ g('themeDesc') }}</span></div>
         <div class="field"><label for="g-tz">{{ g('timezone') }}</label>
-          <Soon tag="div" class="soon-fld"><Select id="g-tz" disabled model-value="tz" :options="[{ value: 'tz', label: 'Asia/Seoul (UTC+09:00)' }]" /></Soon>
-          <span class="hint">{{ g('timezoneDesc') }}</span></div>
+          <Select id="g-tz" :model-value="tzChoice" :options="tzOptions" @update:model-value="pickZone" />
+          <span class="hint">{{ t('schedule.tzHint') }}</span></div>
       </div></section>
     </div>
 

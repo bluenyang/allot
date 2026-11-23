@@ -5,6 +5,8 @@ import type { Widen } from './ko'
 export const scheduleKo = {
   schedule: {
     title: '기준 일정',
+    tzHint: '화면의 "오늘"·"이번 달"과 AI 도구가 이 시간대를 따라요',
+    tzSaved: '시간대를 바꿨어요',
   },
 } as const
 

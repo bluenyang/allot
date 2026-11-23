@@ -4,5 +4,7 @@ import type { ScheduleMessages } from './schedule.ko'
 export const scheduleEn: ScheduleMessages = {
   schedule: {
     title: 'Own dates',
+    tzHint: '"Today" and "this month" on every screen and in the AI tools follow this time zone',
+    tzSaved: 'Time zone changed',
   },
 }
