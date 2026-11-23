@@ -336,48 +336,38 @@ test('(V-14 a, b) a new account starts light even on a dark OS; 선호 테마 ap
   }
 })
 
-test('(V-14 c) every page has the header bar; controls drawn from the design say they are not ready', async ({ page }) => {
+test('(V-14 c; spec 013 S-17, S-19, S-20) every page has the header bar; 마지막 동기화 is still 준비 중; 내보내기, search, the bell and CSV 내보내기 work now', async ({ page }) => {
   for (const r of ROUTES) {
     await page.goto(`/${r}`)
     await expect(page.locator('header.topbar'), `/${r}`).toBeVisible()
   }
   const notice = page.getByRole('status').filter({ hasText: '준비 중' })
   await page.goto('/')
-  // 내보내기 is 준비 중 (inert, spec 010 S-3); 기록 추가 opens the record modal
-  const exp = page.getByRole('button', { name: '내보내기 (준비 중)' })
-  await expect(exp).toHaveAttribute('aria-disabled', 'true')
-  await exp.click({ force: true })
-  await expect(notice).toHaveCount(0)
+  // 내보내기 was 준비 중 (spec 010 S-3) until rc.1; since spec 013 S-17 it saves the month as CSV (tests/e2e/rc2.spec.ts)
+  await expect(page.getByRole('button', { name: '내보내기 (준비 중)' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '내보내기', exact: true })).not.toHaveAttribute('aria-disabled', 'true')
   await page.getByRole('button', { name: '기록 추가', exact: true }).click()
   await expect(page.getByRole('form', { name: '기록 추가' })).toBeVisible()
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: '마지막 동기화 —' }).click()
   await expect(notice).toContainText('마지막 동기화')
-  // the header's search box and bell are `Soon`: inert, with no notice of their own
+  // the header's search box and bell were `Soon` until rc.1; since spec 013 S-19, S-20 they open the search and the list
   await page.reload()
-  // the page's own loading requests must be done before counting requests made by the controls
   await page.locator('header.ph h1').waitFor()
-  await page.waitForLoadState('networkidle')
   const head = page.locator('header.topbar')
-  const calls: string[] = []
-  page.on('request', (req) => { if (req.url().includes('/api/')) calls.push(req.url()) })
-  const url = page.url()
-  for (const name of ['검색 (준비 중)', '알림 (준비 중)']) {
-    const el = head.getByRole('button', { name })
-    await expect(el).toHaveAttribute('aria-disabled', 'true')
-    await el.click({ force: true })
-    await el.focus()
-    await page.keyboard.press('Enter')
-    await expect(notice).toHaveCount(0)
-  }
-  expect(page.url(), 'no navigation').toBe(url)
-  expect(calls, 'no request').toEqual([])
+  for (const name of ['검색 (준비 중)', '알림 (준비 중)']) await expect(head.getByRole('button', { name })).toHaveCount(0)
+  await head.getByRole('button', { name: '검색 열기 (Ctrl+K)' }).click()
+  await expect(page.getByRole('combobox', { name: '검색어' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('combobox', { name: '검색어' })).toBeHidden()
+  await head.getByRole('button', { name: /^알림 · 읽지 않음 \d+건$/ }).click()
+  await expect(page.getByRole('dialog', { name: '알림' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '알림' })).toBeHidden()
   await page.goto('/spend/subs')
-  // CSV 내보내기 is 준비 중 as well (spec 010 S-3, S-7): inert, no notice, no request
-  const csv = page.getByRole('button', { name: 'CSV 내보내기 (준비 중)' })
-  await expect(csv).toHaveAttribute('aria-disabled', 'true')
-  await csv.click({ force: true })
-  await expect(notice).toHaveCount(0)
+  // CSV 내보내기 was 준비 중 (spec 010 S-3, S-7) until rc.1; since spec 013 S-17 it downloads the list
+  await expect(page.getByRole('button', { name: 'CSV 내보내기 (준비 중)' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'CSV 내보내기', exact: true })).not.toHaveAttribute('aria-disabled', 'true')
 })
 
 // spec 010 V-8, V-9: the shell. Menu entries for features that do not exist yet are inert and have no route.
@@ -454,7 +444,9 @@ test.describe('(V-8, V-9) shell', () => {
     await page.locator('header.ph h1').waitFor()
     await expect(page.locator('header.topbar')).toBeHidden()
     await expect(page.locator('.mbar')).toBeVisible()
-    await expect(page.locator('.mbar').getByRole('button', { name: /검색/ })).toHaveAttribute('aria-disabled', 'true')
+    // the phone bar's search button opens the search since spec 013 S-19 (it was inert until rc.1)
+    await expect(page.locator('.mbar').getByRole('button', { name: '검색', exact: true })).not.toHaveAttribute('aria-disabled', 'true')
+    await expect(page.locator('.mbar').getByRole('button', { name: '검색', exact: true })).toHaveAttribute('aria-haspopup', 'dialog')
     const bar = page.getByRole('navigation', { name: '메뉴' }).last()
     await expect(bar.getByRole('link')).toContainText(['현황', '예산', '일정'])
     const more = bar.getByRole('button', { name: '더보기' })

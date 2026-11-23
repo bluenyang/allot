@@ -42,6 +42,7 @@ const ko = {
   accountBufferInUse: '이 통장 버퍼를 쓰는 지출이 있어요. 그 지출을 먼저 바꾸거나 지우세요.',
   cardBufferInUse: '이 카드로 버퍼를 쓰는 지출이 있어요. 그 지출을 먼저 바꾸거나 지우세요.',
   changeGone: '이 변경은 지금은 없는 표(예전 생활비)를 바꿔서 되돌릴 수 없어요.',
+  revertBuffer: "되돌리면 버퍼 사용 '{name}'의 카드에 결제 통장이 없어져요. 나중에 바뀐 변경이 있어 되돌릴 수 없어요.",
   beforeNotTime: 'before는 시각이어야 해요.',
   beforeBoth: 'before와 beforeId는 함께 보내야 해요.',
   changeNotFound: '변경 묶음을 찾을 수 없어요.',
@@ -50,6 +51,7 @@ const ko = {
   changeChild: '이후에 연결된 항목이 생겨서 되돌릴 수 없어요.',
   revertOverlap: "되돌리면 '{a}' 구간과 '{b}' 구간이 겹쳐요.",
   revertAmounts: '되돌리면 고정 대상이 아닌 곳에 구간 금액이 생겨요.',
+  revertAdjusts: '되돌리면 고정·저축 합계·투자 합계가 아닌 대상에 이번 달만 조정이 생겨요.',
   revertSpending: '되돌리면 "{name}"의 회차가 회차 수와 맞지 않게 돼요.',
   // proposals from an AI key (spec 009)
   proposalNotFound: '제안을 찾을 수 없어요.',
@@ -195,6 +197,7 @@ const en: Record<MsgKey, string> = {
   accountBufferInUse: "A spending uses this account's buffer. Change or delete that spending first.",
   cardBufferInUse: 'A spending uses a buffer through this card. Change or delete that spending first.',
   changeGone: 'This change touched a table that no longer exists (the old living costs), so it cannot be reverted.',
+  revertBuffer: "Reverting it would leave the buffer use '{name}' with a card that has no paying account. A later change depends on it, so it cannot be reverted.",
   beforeNotTime: 'before must be a timestamp.',
   beforeBoth: 'before and beforeId must be sent together.',
   changeNotFound: 'Change set not found.',
@@ -203,6 +206,7 @@ const en: Record<MsgKey, string> = {
   changeChild: 'Something was linked to it afterwards, so this cannot be reverted.',
   revertOverlap: "Reverting would make the '{a}' and '{b}' phases overlap.",
   revertAmounts: 'Reverting would leave a phase amount on a target that is not fixed.',
+  revertAdjusts: 'Reverting would leave a month adjustment on a target that is not fixed, the Savings total or the Investment total.',
   revertSpending: 'Reverting would leave the rounds of "{name}" not matching its count.',
   // proposals from an AI key (spec 009)
   proposalNotFound: 'Proposal not found.',

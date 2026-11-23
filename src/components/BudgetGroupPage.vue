@@ -6,20 +6,25 @@
 // offers to create it; the list still works and says it is not in the pay split yet. KPIs from the data rc.1
 // has (spec "범위 밖"): Savings = saved so far and in a year (balance records + projection, no interest) and the
 // way to the goals; Investment = sent this year (planned), the annual-limit use, the next transfer.
+// rc.2 (spec 013 rev 1): this month's adjustment of the menu's target (S-14) — the month reads it, and 총액 수정 offers
+// "이번 달만" (both splits) beside "구간 끝까지" (ratio split, as before); the second tab (S-15): Savings 만기 일정,
+// Investment 월별 기록.
 import { computed, ref } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import BudgetPage from './BudgetPage.vue'
 import BudgetItemEditor from './BudgetItemEditor.vue'
-import BudgetTotalEditor from './BudgetTotalEditor.vue'
+import BudgetAdjustEditor from './BudgetAdjustEditor.vue'
+import BudgetHistory from './BudgetHistory.vue'
+import BudgetMaturity from './BudgetMaturity.vue'
 import Seg from './Seg.vue'
 import { saveItem, saveSettings, store } from '../lib/store'
 import { showToast } from '../lib/toast'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { rateText } from '../lib/labels'
-import { addYm, groupAt, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, today, yearContribution, ymd, ymOf } from '../lib/calc'
+import { addYm, groupAt, groupValue, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, today, yearContribution, ymd, ymOf } from '../lib/calc'
 import {
-  accountLine, baseAmount, itemColor, limitTone, pctOf, shareOf, sumStatus, yearSent,
+  accountLine, adjustOf, adjustStart, baseAmount, itemColor, limitTone, monthPlans, pctOf, shareOf, sumStatus, yearSent,
   type BudgetCell, type BudgetKpi, type BudgetRow, type LimitTone, type Tone,
 } from '../lib/budget-page'
 import type { Account, BudgetGroup, SplitMode } from '../data/types'
@@ -32,12 +37,18 @@ const cat = computed(() => m('cat'))
 const now = ymOf(today())
 const todayStr = ymd(today())
 const year = Number(now.slice(0, 4))
-const g = computed(() => groupAt(props.group, store.accounts, store.phases, store.targets, store.settings, now))
+const g = computed(() => groupAt(props.group, store.accounts, store.phases, store.targets, store.settings, now, store.monthAdjusts))
 const items = computed(() => g.value.rows.map((r) => r.account))
 const phase = computed(() => phaseAt(store.phases, now))
 const numbers = computed(() => phaseNumbers(store.phases))
 const target = computed(() => g.value.target)
 const ratio = computed(() => g.value.mode === 'ratio')
+/** This month's adjustment of the menu's target (S-14) and the value it replaces. */
+const adjust = computed(() => (target.value ? adjustOf(store.monthAdjusts, now, target.value.id) : undefined))
+// in the ratio split the value it replaces is the phase's total, as the strip shows the total (review rc2-1 F-1)
+const adjustBase = computed(() => (adjust.value && target.value ? adjustStart(store, now, target.value).base : 0))
+/** What the target gets this month: the ratio split's total, or the items' sum (an adjustment of the amount split replaces it). */
+const targetValue = computed(() => (ratio.value ? g.value.total : groupValue(g.value, adjust.value)))
 /** Holidays for the dates and projections: from the oldest balance record of the menu's accounts to a year ahead. */
 const off = computed(() => {
   const ids = new Set(items.value.map((a) => a.id))
@@ -55,9 +66,10 @@ const cells = computed<BudgetCell[]>(() => {
   return [
     {
       label: t('budget.fromPay', { name: target.value?.name ?? m('targetName') }),
-      value: fmtMoney(g.value.total),
-      sub: ratio.value ? (p ? t('budget.total.nowLine', { n: numbers.value[p.id] ?? 0, phase: p.name }) : t('budget.total.noPhase')) : t('budget.itemsTotal'),
-      action: ratio.value && target.value ? { label: t('budget.editTotal'), aria: t('budget.editTotalOf', { cat: cat.value }) } : undefined,
+      value: fmtMoney(targetValue.value),
+      sub: adjust.value ? t('budget.adjustedSub', { amount: fmtMoney(adjustBase.value) })
+        : ratio.value ? (p ? t('budget.total.nowLine', { n: numbers.value[p.id] ?? 0, phase: p.name }) : t('budget.total.noPhase')) : t('budget.itemsTotal'),
+      action: target.value ? { label: t('budget.editTotal'), aria: t('budget.editTotalOf', { cat: cat.value }) } : undefined,
     },
     {
       label: t('budget.account'), value: a ? a.name : t('budget.notLinked'),
@@ -115,9 +127,9 @@ const kpis = computed<BudgetKpi[]>(() => {
   const limited = list.filter((a) => a.annualLimit !== null && a.annualLimit !== undefined)
   const tones = limited.map((a) => limitTone(paidThisYear.value.get(a.id) ?? 0, a.annualLimit!))
   const worst: LimitTone = tones.includes('over') ? 'over' : tones.includes('near') ? 'near' : 'ok'
-  const next = groupAt(props.group, store.accounts, store.phases, store.targets, store.settings, nextYm.value)
+  const next = groupAt(props.group, store.accounts, store.phases, store.targets, store.settings, nextYm.value, store.monthAdjusts)
   return [
-    { label: m('kpiYear'), value: fmtMoney(yearSent(props.group, store.accounts, store.phases, store.targets, store.settings, now)), sub: m('kpiYearSub', { m: Number(now.slice(5)) }) },
+    { label: m('kpiYear'), value: fmtMoney(yearSent(props.group, store.accounts, store.phases, store.targets, store.settings, now, store.monthAdjusts)), sub: m('kpiYearSub', { m: Number(now.slice(5)) }) },
     limited.length
       ? {
           label: m('kpiLimit'), value: m(worst === 'over' ? 'limitOver' : worst === 'near' ? 'limitNear' : 'limitOk'), tone: toneOf(worst), sub: m('kpiLimitSub', { n: limited.length }),
@@ -173,7 +185,9 @@ const total = computed(() => {
   const s = sumStatus(g.value, phase.value)
   const c = cat.value
   const [msg, tone]: [string, Tone] =
-    s.code === 'noTarget' ? [t('budget.status.noTarget', { cat: c }), 'warn']
+    // no item sends that month: nothing is spread and the target takes the adjustment itself (A-29; review rc2-3 F-1)
+    adjust.value && !ratio.value ? (g.value.sum > 0 ? [t('budget.status.adjusted', { amount: fmtMoney(adjust.value.amount) }), 'ok'] : [t('budget.status.adjustedNoItem', { amount: fmtMoney(adjust.value.amount) }), 'warn'])
+    : s.code === 'noTarget' ? [t('budget.status.noTarget', { cat: c }), 'warn']
     : s.code === 'noPhase' ? [t('budget.status.noPhase'), 'warn']
     : s.code === 'same' ? [t(s.ratio ? 'budget.status.sameRatio' : 'budget.status.same', { cat: c }), 'ok']
     : s.code === 'under' ? [t('budget.status.under', { amount: fmtMoney(s.amount) }), 'warn']
@@ -187,8 +201,18 @@ const total = computed(() => {
 // ---------- editors ----------
 /** undefined = closed, null = a new item. */
 const editing = ref<Account | null | undefined>(undefined)
-const openEdit = (id: string) => { editing.value = store.accounts.find((a) => a.id === id) ?? undefined }
+const editStep = ref(0)
+const openEdit = (id: string, step = 0) => { editStep.value = step; editing.value = store.accounts.find((a) => a.id === id) ?? undefined }
+const openNew = () => { editStep.value = 0; editing.value = null }
 const totalOpen = ref(false)
+
+// ---------- the second tab (S-15) ----------
+const tab = ref('list')
+const tabs = computed(() => [
+  { id: 'list', label: m('tabList'), icon: 'list' },
+  saving ? { id: 'maturity', label: t('budget.tabMaturity'), icon: 'events' } : { id: 'history', label: t('budget.tabHistory'), icon: 'chart' },
+])
+const plans = computed(() => (saving ? [] : monthPlans(store, 'invest', now)))
 </script>
 
 <template>
@@ -197,7 +221,8 @@ const totalOpen = ref(false)
     :cells="cells" :split-label="t('budget.split')" :kpis="kpis" :list-title="m('listTitle')" :sum-line="sumLine"
     :cols="{ name: m('colName'), amount: ratio ? t('budget.colRatioAmount') : t('budget.colAmount'), meta: m('colMeta'), prog: m('colProg') }"
     :rows="rows" :bar="bar" :gap="gap" :total="total" :note="m(ratio ? 'noteRatio' : 'noteAmount')"
-    @add="editing = null" @edit="openEdit" @action="totalOpen = true"
+    v-model:tab="tab" :tabs="tabs"
+    @add="openNew" @edit="openEdit" @action="totalOpen = true"
   >
     <template v-if="!target" #notice>
       <div class="notice" data-testid="no-target">
@@ -209,8 +234,16 @@ const totalOpen = ref(false)
       <Seg :model-value="g.mode" :options="splitOpts" :label="t('budget.split')" @update:model-value="setSplit" />
       <span class="hint">{{ m(ratio ? 'ratioHint' : 'amountHint') }}</span>
     </template>
-    <BudgetItemEditor v-if="editing !== undefined" :group="props.group" :initial="editing" :mode="g.mode" :total="g.total" @close="editing = undefined" />
-    <BudgetTotalEditor v-if="totalOpen && target" :group="props.group" :target="target" @close="totalOpen = false" />
+    <template #tab>
+      <BudgetMaturity v-if="saving" :items="items" @edit="openEdit($event, 1)" />
+      <BudgetHistory
+        v-else :title="t('budget.history.titleInvest')" :rows="plans" :now="now"
+        :cols="[t('budget.history.colMonth'), t('budget.history.colPlan'), t('budget.history.colSent'), t('budget.history.colDiff')]"
+        :note="target ? '' : t('budget.history.noTarget', { cat })"
+      />
+    </template>
+    <BudgetItemEditor v-if="editing !== undefined" :group="props.group" :initial="editing" :mode="g.mode" :total="g.total" :start-step="editStep" @close="editing = undefined" />
+    <BudgetAdjustEditor v-if="totalOpen && target" :target="target" :ym="now" total @close="totalOpen = false" />
   </BudgetPage>
 </template>
 

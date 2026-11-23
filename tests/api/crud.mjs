@@ -1,6 +1,7 @@
 // API check for spec 001 V-4, V-5, V-8 and spec 003 V-4: auth, CRUD on every resource, phase overlap, allocation targets;
 // spec 013 V-5: living items, the new account fields, balance records, cards, card and buffer-use spendings, one refused
-// and one accepted value per S-9 limit, the delete rules, and PUT /api/living writing the three coded items.
+// and one accepted value per S-9 limit, the delete rules, and PUT /api/living writing the three coded items;
+// spec 013 rev 1 (rc.2) V-14, V-15: a month adjustment and an account's `afterMaturity`, with the S-26 limits.
 //   BASE=http://<host>:15173 ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/crud.mjs [create|verify|cleanup]
 // Phases (each its own process, so a restart of the api can sit between them):
 //   create  — sign in, create/update a marker row in every resource, write the ids to tests/api/.state.json
@@ -206,6 +207,7 @@ if (phase === 'create') {
   const acc2 = {
     name: `${MARK}-acc`, role: '', inflow: '', outflow: '', bank: 'b', last4: '0123', kind: 'k', rate: '3.1%', term: '12m', buffer: 100_000, goal: 5_000_000,
     annualLimit: 20_000_000, group: 'saving', amount: 50_000, ratio: 0.25, from: '2090-01', stopFrom: '2090-06', goalAck: 4_000_000, note: MARK, amounts: { [ids.phase]: 60_000 },
+    afterMaturity: `${MARK}-after`,
   }
   ids.acc2 = await created('/api/accounts', acc2, { buffer: 150_000 })
   ids.balance = await created('/api/balances', { accountId: ids.acc2, date: '2090-01-05', amount: 1_000_000, note: MARK }, { amount: 1_100_000 })
@@ -217,6 +219,8 @@ if (phase === 'create') {
     rounds: [1, 2, 3].map((no) => ({ no, date: `2090-0${no + 1}-25`, amount: 100_000, state: 'left', edited: false })), ...over,
   })
   ids.bufSpend = await created('/api/spendings', buf(`${MARK}-buf`, ids.card), { refillFrom: '2090-02-26' })
+  // rc.2 (S-14): one month's amount of the fixed target
+  ids.adjust = await created('/api/month-adjusts', { ym: '2090-03', targetId: ids.target, amount: 7_000, reason: MARK }, { amount: 8_000 })
   const lv = (await api('GET', '/api/state')).json.livingItems.find((x) => x.code === 'food')
   ok(lv?.amount === 300_001, `PUT /api/living (above) changed the coded food item → ${lv?.amount}`)
 
@@ -279,6 +283,25 @@ if (phase === 'create') {
   await refused('/api/cards', { ...cd, billingDay: 32 }, 'billing day 32')
   await accepted('/api/cards', { ...cd, billingDay: 31 }, 'billing day 31', (j) => j.billingDay === 31)
   await refused('/api/cards', { ...cd, accountId: 'no-such-account' }, 'an account that does not exist')
+  // rc.2 (S-26): an adjustment amount is a whole won of 0 or more; its target is a fixed, Savings or Investment total
+  const ad = { ym: '2090-04', targetId: ids.target, amount: 0, reason: '' }
+  await accepted('/api/month-adjusts', ad, 'amount 0', (j) => j.amount === 0 && j.ym === '2090-04')
+  await refused('/api/month-adjusts', { ...ad, amount: -1 }, 'amount -1')
+  await refused('/api/month-adjusts', { ...ad, amount: 1.5 }, 'amount 1.5')
+  await refused('/api/month-adjusts', { ...ad, amount: 2_147_483_648 }, 'amount 2^31')
+  await accepted('/api/month-adjusts', { ...ad, amount: 2_147_483_647 }, 'amount 2^31-1', (j) => j.amount === 2_147_483_647)
+  await refused('/api/month-adjusts', { ...ad, ym: '2090-13' }, 'ym 2090-13')
+  // the reason: S-26 sets no limit on it (review rc2-1 F-4; checked in tests/api/budget-rules.mjs)
+  await accepted('/api/month-adjusts', { ...ad, reason: m200 }, 'a reason of 200 characters', (j) => j.reason === m200)
+  for (const kind of ['living', 'subscriptions', 'remainder']) {
+    const tg = before.json.targets.find((x) => x.kind === kind)
+    if (tg) await refused('/api/month-adjusts', { ...ad, targetId: tg.id }, `a '${kind}' target`)
+  }
+  await refused('/api/month-adjusts', { ...ad, targetId: 'no-such-target' }, 'a target that does not exist')
+  // rc.2 (S-26): afterMaturity is free text of up to 200 characters
+  await accepted('/api/accounts', { ...ac, group: 'saving', afterMaturity: m200 }, 'afterMaturity of 200 characters', (j) => j.afterMaturity === m200)
+  await refused('/api/accounts', { ...ac, group: 'saving', afterMaturity: m201 }, 'afterMaturity of 201 characters')
+  await accepted('/api/accounts', ac, 'no afterMaturity (the 0.1.7-rc.1 body)', (j) => (j.afterMaturity ?? '') === '')
   // spendings (S-9): a buffer use needs a card that has a paying account, by card, no fee, a refill start
   const noAcc = await api('POST', '/api/cards', { ...cd, name: `${MARK}-noacc` })
   ok(noAcc.status === 201, `POST a card without an account → ${noAcc.status}`)
@@ -438,8 +461,12 @@ if (phase === 'verify' || phase === 'cleanup') {
     ok(find('spendings', ids.cardSpend)?.cardId === ids.card && find('spendings', ids.cardSpend)?.note === 'n2', 'card lump sum with its card persisted')
     const bs = find('spendings', ids.bufSpend)
     ok(bs?.how === 'buffer' && bs.payBy === 'card' && bs.cardId === ids.card && bs.refillFrom === '2090-02-26' && bs.fee === 0 && bs.rounds.length === 3 && bs.rounds.every((r) => r.amount === 100_000), 'buffer use persisted')
+    // rc.2 V-14, V-15
+    const adj = find('monthAdjusts', ids.adjust)
+    ok(adj?.ym === '2090-03' && adj.targetId === ids.target && adj.amount === 8_000 && adj.reason === MARK, `month adjustment persisted ${adj ? '' : '(missing)'}`)
+    ok(a2?.afterMaturity === `${MARK}-after`, `afterMaturity persisted (${a2?.afterMaturity})`)
   } else {
-    for (const [path, id] of [['/api/spendings', ids.bufSpend], ['/api/spendings', ids.cardSpend], ['/api/cards', ids.card], ['/api/balances', ids.balance], ['/api/living-items', ids.livingItem], ['/api/accounts', ids.acc2]]) {
+    for (const [path, id] of [['/api/month-adjusts', ids.adjust], ['/api/spendings', ids.bufSpend], ['/api/spendings', ids.cardSpend], ['/api/cards', ids.card], ['/api/balances', ids.balance], ['/api/living-items', ids.livingItem], ['/api/accounts', ids.acc2]]) {
       if (!id) continue
       try {
         const d = await api('DELETE', `${path}/${id}`)

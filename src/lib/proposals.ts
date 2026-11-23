@@ -167,6 +167,8 @@ export const rowLabel = (c: RowChange) => {
   const r = c.after ?? c.before ?? {}
   if (c.table === 'plan_change' && typeof r.subId === 'string') return subName(r.subId)
   if (c.table === 'phase_amount') return `${phaseName(String(r.phaseId))} · ${targetName(String(r.targetId))}`
+  // a month adjustment: its target and month (spec 013 S-14, review rc2-1 F-3)
+  if (c.table === 'month_adjust') return `${targetName(String(r.targetId))} · ${monthLabel(String(r.ym))}`
   const name = r.name ?? r.text ?? r.title ?? r.label
   return typeof name === 'string' && name ? name : ''
 }
@@ -201,6 +203,8 @@ export function worded(field: string, v: unknown, row?: Record<string, unknown> 
     // spec 013 money fields (review 2 F-8)
     case 'deposit': case 'buffer': case 'goal': case 'annualLimit': case 'goalAck': return typeof v === 'number' ? fmtMoney(v) : String(v)
     case 'vat': return `${String(v)}%`
+    case 'targetId': return targetName(String(v))
+    case 'ym': return typeof v === 'string' && /^\d{4}-\d{2}$/.test(v) ? monthLabel(v) : String(v)
     case 'verified': return v ? t('pending.verifiedYes') : t('pending.verifiedNo')
     case 'done': return v ? t('pending.doneYes') : t('pending.doneNo')
     case 'nextDate': case 'effective': return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? fmtDate(v) : String(v)

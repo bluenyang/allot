@@ -214,7 +214,7 @@ interface ListResource {
   lock?: boolean
   /** `optional` fields left out of an update keep their stored value instead of being cleared (spec 013 S-11). */
   keepOmitted?: boolean
-  /** Locks taken (in the global order) before the first write, besides the table's own. */
+  /** Locks a list of operations takes up front (in the global order), besides the table's own; a single write takes them where it needs them. */
   alsoLocks?: string[]
   toRow?: (input: never) => Record<string, unknown>
   /** Same transaction, after the row is written; returns extra fields for the response (e.g. phase amounts). */
@@ -287,6 +287,19 @@ export const RESOURCES = {
     onDelete: async (q, rec, uid, id) => {
       await unlink(q, rec, uid, t.card, t.card.accountId, id)
       await unlink(q, rec, uid, t.allocationTarget, t.allocationTarget.accountId, id)
+    },
+  }),
+  // One month's amount of a target (spec 013 S-14): fixed, saving and invest targets only. The check holds the
+  // allocation_target lock (as writeAmounts), so a target cannot change kind between the check and the write; a list of
+  // operations takes it up front (alsoLocks, in the global order; review rc2-1 F-8).
+  'month-adjusts': list(t.monthAdjust, v.monthAdjust, {
+    optional: ['reason'],
+    alsoLocks: ['allocation_target'],
+    toRow: (x) => ({ ...x, reason: x.reason || null }),
+    check: async (q, uid, x) => {
+      await lockFor(q, 'allocation_target', uid)
+      const [tg] = await q.select({ kind: t.allocationTarget.kind }).from(t.allocationTarget).where(and(eq(t.allocationTarget.userId, uid), eq(t.allocationTarget.id, x.targetId)))
+      return tg && !(AMOUNT_KINDS as readonly string[]).includes(tg.kind) ? m('amountsTargetsOnly') : null
     },
   }),
   balances: list(t.accountBalance, v.balance, {
@@ -380,7 +393,7 @@ export const resourceOf = (name: string): ListResource | SingleResource | Living
     : Object.hasOwn(SINGLES, name) ? SINGLES[name as keyof typeof SINGLES] : undefined)
 
 /** What an AI may change (spec 009 S-2, spec 013 S-10): not debts, holiday sets or display settings. */
-export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings', 'living-items', 'accounts', 'balances', 'cards'] as const
+export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings', 'living-items', 'accounts', 'balances', 'cards', 'month-adjusts'] as const
 export const AI_SINGLES = ['settings', 'living'] as const
 export type AiResource = (typeof AI_LISTS)[number] | (typeof AI_SINGLES)[number]
 export const AI_RESOURCES: readonly string[] = [...AI_LISTS, ...AI_SINGLES]
@@ -399,7 +412,7 @@ function locksOf(op: Op): string[] {
   if (r.kind === 'living') return ['data', 'living']
   if (r.kind === 'single') return ['data', r.lockName]
   const name = getTableName(r.table)
-  return r.lock ? ['data', name, ...(r.alsoLocks ?? [])] : ['data']
+  return ['data', ...(r.lock ? [name] : []), ...(r.alsoLocks ?? [])]
 }
 
 /** Apply one validated operation (`data` already parsed with the resource's schema). Throws Rejected for a rule it breaks. */

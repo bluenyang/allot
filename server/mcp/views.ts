@@ -3,15 +3,20 @@
 // so the AI and the screen see the same numbers. No database here: the unit tests run without one.
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
-  addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, goalMonth, groupAt, lastBalance, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate,
+  addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate,
   phaseAt, planAt, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
   type AccountState, type MonthDate,
+  maturityAlerts, maturityAmount,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
+import { buildNotices, type Notice } from '../../src/lib/notices'
+import { search, type SearchKind } from '../../src/lib/search'
 import type {
-  Account, AllocationTarget, Balance, BudgetGroup, Card, CheckItem, Debt, HolidaySet, Living, LivingItem, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Spending,
+  Account, AllocationTarget, Balance, BudgetGroup, Card, CheckItem, Debt, HolidaySet, Living, LivingItem, MonthAdjust, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Spending,
   SubStatus, Subscription,
 } from '../../src/data/types'
+import { maturityOf } from './maturity'
+import { whenSpan } from '../../src/lib/event-when'
 
 /** The part of GET /api/state the tools read. */
 export interface Data {
@@ -35,6 +40,8 @@ export interface Data {
   balances?: Balance[]
   /** cards (spec 013 S-13); absent = none */
   cards?: Card[]
+  /** one month's amounts of targets (spec 013 S-14); absent = none */
+  monthAdjusts?: MonthAdjust[]
 }
 
 const krw = (n: number) => Math.round(n)
@@ -94,6 +101,25 @@ function monthlyDelta(d: Data, c: PlanChange): number | null {
   return krw(sum(d.planChanges) - sum(d.planChanges.filter((x) => x.id !== c.id)))
 }
 
+/**
+ * The month adjustments of month `ym` (spec 013 S-14), each with the amount it replaces: a fixed target's phase amount, or a
+ * Savings / Investment target's split (amount split: the items added up, which the adjustment is spread over in proportion;
+ * ratio split: the phase amount the items share, which the adjustment replaces as that month's total).
+ */
+function adjustsIn(d: Data, ym: string) {
+  const phase = phaseAt(d.phases, ym)
+  return (d.monthAdjusts ?? []).filter((a) => a.ym === ym).map((a) => {
+    const t = d.targets.find((x) => x.id === a.targetId)
+    const group = t?.kind === 'saving' || t?.kind === 'invest' ? t.kind : null
+    const g = group ? groupAt(group, d.accounts, d.phases, d.targets, d.settings, ym) : null
+    const planned = g ? (g.mode === 'amount' ? g.sum : g.total) : (phase?.amounts[a.targetId] ?? 0)
+    return {
+      id: a.id, month: a.ym, targetId: a.targetId, target: t?.name ?? null, kind: t?.kind ?? null,
+      amountKrw: krw(a.amount), plannedKrw: krw(planned), ...(a.reason ? { reason: a.reason } : {}),
+    }
+  })
+}
+
 export function overview(d: Data, ym: string) {
   const off = offDays(d, ym, ym)
   // One-off spendings are in the month's transfer and remainder (spec 011 S-5).
@@ -126,6 +152,8 @@ export function overview(d: Data, ym: string) {
       subscriptionsKrw: dist.subscriptions,
     },
     remainderSplit: split.map((s) => ({ id: s.id, name: s.name, code: s.code, ratio: s.ratio, amountKrw: s.amount })),
+    /** the month's adjustments (spec 013 S-14): they replace the target's phase amount that month (already in distribution) */
+    monthAdjusts: adjustsIn(d, ym),
     payments: paymentsIn(d, ym),
     spendingRounds: spendRoundsIn(d, ym),
     planChanges: changesIn(d.planChanges, ym).map((c) => changeView(c, d)),
@@ -232,8 +260,14 @@ export function allocation(d: Data) {
   }
 }
 
-/** A plan event's `when` is YYYY-MM or YYYY-MM~MM (to a later month of the same year). */
-const eventMonths = (when: string) => ({ from: when.slice(0, 7), to: when.length > 7 ? `${when.slice(0, 4)}-${when.slice(8, 10)}` : when.slice(0, 7) })
+/**
+ * The months of a plan event's `when`: YYYY-MM, YYYY-MM~MM (to a later month of the same year) or YYYY-MM~YYYY-MM (into a
+ * later year, spec 013 S-18). A range whose end is before its start counts as its start month only, as the screens show it.
+ */
+// The span of an event's `when`: the screens' rule (src/lib/event-when.ts `whenSpan`); an unreadable value is its first month.
+export function eventMonths(when: string): { from: string; to: string } {
+  return whenSpan(when) ?? { from: when.slice(0, 7), to: when.slice(0, 7) }
+}
 
 export function schedule(d: Data, from: string, months: number) {
   const list: string[] = Array.from({ length: months }, (_, i) => addYm(from, i))
@@ -249,7 +283,7 @@ export function schedule(d: Data, from: string, months: number) {
       planChanges: changesIn(d.planChanges, ym).map((c) => changeView(c, d)),
       planEvents: d.events
         .filter((e) => { const r = eventMonths(e.when); return r.from <= ym && ym <= r.to })
-        .map((e) => ({ id: e.id, when: e.when, kind: e.kind, title: e.title, state: e.state })),
+        .map((e) => { const r = eventMonths(e.when); return { id: e.id, when: e.when, from: r.from, to: r.to, kind: e.kind, title: e.title, state: e.state } }),
     })),
     checkItems: d.checks.map((c) => ({ id: c.id, text: c.text, done: c.done })),
     holidays: holidaysIn(enabledSets(d.holidaySets), firstOf(from), `${last}-${String(lastDay(last)).padStart(2, '0')}`)
@@ -262,7 +296,8 @@ const phaseList = (amounts: Record<string, number> | undefined) => Object.entrie
 
 /** The Savings or Investment menu in a month, as groupAt() works it out (S-3, S-4). */
 function groupView(d: Data, group: BudgetGroup, ym: string) {
-  const g = groupAt(group, d.accounts, d.phases, d.targets, d.settings, ym)
+  const g = groupAt(group, d.accounts, d.phases, d.targets, d.settings, ym, d.monthAdjusts ?? [])
+  const adjust = g.target ? (d.monthAdjusts ?? []).find((a) => a.ym === ym && a.targetId === g.target!.id) : undefined
   return {
     mode: g.mode,
     target: g.target ? { id: g.target.id, name: g.target.name, accountId: g.target.accountId ?? null } : null,
@@ -287,7 +322,39 @@ function groupView(d: Data, group: BudgetGroup, ym: string) {
     })),
     sumKrw: krw(g.sum),
     ratioSum: g.ratioSum,
+    /** what the target gets that month: the items added up (an amount split's adjustment is spread over them; spec 013 S-14, review rc2-1 F-2) */
+    targetKrw: krw(groupValue(g, adjust)),
+    /** this month's adjustment of the target (amount split: spread over the items by amount; ratio split: the total the items share), or null */
+    adjustment: adjust ? { id: adjust.id, amountKrw: krw(adjust.amount), ...(adjust.reason ? { reason: adjust.reason } : {}) } : null,
   }
+}
+
+/**
+ * The savings maturity schedule (spec 013 S-15): every Savings item whose term reads N개월 / N months / YYYY-MM까지 and that has a
+ * from month (maturity.ts). Expected (calc maturityAmount) = with a balance record, the projected balance at the end of the
+ * month before the maturity month; else what the pay split sends the item from its from month up to that month (0 without a
+ * Savings target; review rc2-1 F-10). `state` is relative to month `ym`: past, due (that month) or upcoming.
+ */
+export function maturitySchedule(d: Data, ym: string) {
+  const st = accountState(d)
+  return d.accounts.filter((a) => a.group === 'saving').flatMap((a) => {
+    const m = maturityOf(a)
+    if (!m) return []
+    // the screens' rule (calc maturityAmount): the projected balance before the maturity month, or what the plan sends
+    const rec = lastBalance(st.balances, a.id)
+    const recYm = rec?.date.slice(0, 7)
+    const lo = recYm && recYm < m.month ? recYm : m.month
+    const got = maturityAmount(a, st, offDays(d, lo, m.month), { ym: m.month, months: m.months })
+    return [{
+      accountId: a.id, name: a.name, bank: a.bank ?? '', term: a.term ?? '', from: a.from ?? null, stopFrom: a.stopFrom ?? null,
+      maturityMonth: m.month, months: m.months, monthlyKrw: krw(a.amount ?? 0),
+      expectedKrw: krw(got.amount),
+      /** projection: the projected balance; amount: what the plan sends from `from` to the maturity month */
+      basis: got.projected ? 'projection' as const : 'amount' as const,
+      afterMaturity: a.afterMaturity ?? '',
+      state: m.month < ym ? 'past' as const : m.month === ym ? 'due' as const : 'upcoming' as const,
+    }]
+  }).sort((x, y) => (x.maturityMonth < y.maturityMonth ? -1 : x.maturityMonth > y.maturityMonth ? 1 : 0))
 }
 
 /**
@@ -319,6 +386,10 @@ export function budget(d: Data, ym: string) {
     })),
     remainderKrw: krw(dist.remainder),
     unallocatedKrw: krw(unallocated(dist)),
+    /** the month's adjustments (spec 013 S-14) */
+    monthAdjusts: adjustsIn(d, ym),
+    /** the savings maturity schedule (spec 013 S-15) */
+    maturity: maturitySchedule(d, ym),
   }
 }
 
@@ -362,6 +433,9 @@ export function accountList(d: Data, now: Date, months = 12) {
         kind: a.kind ?? '',
         rate: a.rate ?? '',
         term: a.term ?? '',
+        /** the month the term matures (spec 013 S-15: N개월 / N months / YYYY-MM까지 with a from month), else null */
+        maturityMonth: maturityOf(a)?.month ?? null,
+        afterMaturity: a.afterMaturity ?? '',
         group: a.group ?? null,
         amountKrw: krw(a.amount ?? 0),
         ratio: a.ratio ?? null,
@@ -392,5 +466,57 @@ export function accountList(d: Data, now: Date, months = 12) {
       }
     }),
     cards: st.cards.map(cardOut),
+  }
+}
+
+// ---------- search and notifications (spec 013 S-19, S-20) ----------
+/** search: the same matching as the header search (src/lib/search.ts), with each row's page in the app. */
+export function searchView(d: Data, query: string, kinds?: readonly SearchKind[]) {
+  const results = search({ ...d, spendings: d.spendings ?? [], livingItems: d.livingItems ?? [], cards: d.cards ?? [] }, query, kinds)
+    .map((h) => ({ kind: h.kind, id: h.id, name: h.name, ...(h.note ? { note: h.note } : {}), matched: h.field, page: h.path }))
+  return { query, count: results.length, results }
+}
+
+const won = (n: number) => `${Math.round(n).toLocaleString('en-US')} KRW`
+const when = (dday: number) => (dday <= 0 ? 'today' : dday === 1 ? 'tomorrow' : `in ${dday} days`)
+/** One sentence in English for a notification (the bell writes its own in the screen language). */
+export function noticeText(n: Notice): string {
+  switch (n.kind) {
+    case 'proposals': return `${n.count} AI proposal(s) wait for the user's confirmation under Pending changes.`
+    case 'goals': return `${n.count} account(s) reached their goal; the user decides under Pending changes whether to stop sending.`
+    case 'maturities': return `${n.count} savings item(s) reached maturity and still send; the user decides under Pending changes whether to stop sending.`
+    case 'charge': return `${n.name} is charged ${won(n.amount)} on ${n.date} (${when(n.dday)}).`
+    case 'round': return `Round ${n.round}/${n.of} of ${n.name}: ${won(n.amount)} on ${n.date} (${when(n.dday)}).`
+    case 'remainderShort': return `The remainder of ${n.month} is short by ${won(-n.remainder)}.`
+    case 'yearLimit': return `${n.name} has ${won(n.contribution)} of its ${won(n.limit)} yearly limit for ${n.year}${n.over ? ' (over the limit)' : ' (90% or more)'}.`
+    case 'bufferShort': return `The buffer of ${n.name} (${won(n.buffer)}) is short: buffer uses took ${won(n.used)}, ${won(-n.left)} more than it holds.`
+  }
+}
+
+/**
+ * list_notifications: what the bell lists on `now` (src/lib/notices.ts) — pending proposals (`proposals`, counted by the
+ * caller), goal cards and maturity cards (a Savings item due this month or past that still sends; the "keep sending"
+ * choice is kept in the user's browser and cannot be seen here, so a maturity kept there is listed until it is stopped;
+ * review rc2-1 F-5), the charges and rounds of the next three days, this month's remainder short, a yearly limit used 90%
+ * or more, a buffer short — each with a sentence. The read marks are the browser's and are not here.
+ */
+export function notificationList(d: Data, now: Date, proposals: number) {
+  const st = accountState(d)
+  const today = ymd(now)
+  const ym = ymOf(now)
+  const firstRec = st.balances.map((b) => b.date.slice(0, 7)).sort()[0]
+  const jan = `${ym.slice(0, 4)}-01`
+  const off = offDays(d, firstRec && firstRec < jan ? firstRec : jan, addYm(ym, 3))
+  const goals = goalAlerts(st, today, off)
+  const due = maturityAlerts(st, today, off)
+  const list = buildNotices(st, today, off, { proposals, goalAccounts: goals.map((g) => g.account.id), maturities: due.map((m) => `${m.account.id}@${m.month}`) })
+  return {
+    date: today,
+    notifications: list.map((n) => ({
+      ...n,
+      ...(n.kind === 'goals' ? { accounts: goals.map((g) => ({ accountId: g.account.id, name: g.account.name, goalMonth: g.month, stopFrom: g.stopFrom })) } : {}),
+      ...(n.kind === 'maturities' ? { accounts: due.map((m) => ({ accountId: m.account.id, name: m.account.name, maturityMonth: m.month, stopFrom: m.stopFrom })) } : {}),
+      message: noticeText(n),
+    })),
   }
 }

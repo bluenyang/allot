@@ -13,7 +13,7 @@ export const currency = pgEnum('currency', ['KRW', 'USD'])
 export const cycle = pgEnum('cycle', ['monthly', 'yearly'])
 export const subStatus = pgEnum('sub_status', ['active', 'cancelled', 'company'])
 export const payPath = pgEnum('pay_path', ['direct', 'google', 'apple', 'telecom'])
-export const category = pgEnum('category', ['ai', 'telecom', 'content', 'tool', 'insurance', 'life'])
+export const category = pgEnum('category', ['ai', 'telecom', 'content', 'tool', 'insurance', 'life', 'other'])
 export const spendHow = pgEnum('spend_how', ['lump', 'installment', 'split', 'buffer'])
 export const payBy = pgEnum('pay_by', ['card', 'salary', 'subs'])
 export const spendInterval = pgEnum('spend_interval', ['monthly', 'biweekly', 'custom'])
@@ -222,6 +222,8 @@ export const bankAccount = pgTable('bank_account', {
   stopFrom: ym('stop_from'),
   goalAck: integer('goal_ack'),
   note: text('note'),
+  /** Where the money goes at maturity (free text; spec 013 S-15). */
+  afterMaturity: text('after_maturity').notNull().default(''),
 }, (t) => [
   unique('bank_account_user_id_id').on(t.userId, t.id),
   userScoped(t.userId),
@@ -393,6 +395,27 @@ export const accountPhaseAmount = pgTable('account_phase_amount', {
   foreignKey({ name: 'account_phase_amount_phase_fk', columns: [t.userId, t.phaseId], foreignColumns: [phase.userId, phase.id] }).onDelete('cascade'),
   foreignKey({ name: 'account_phase_amount_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }).onDelete('cascade'),
   check('account_phase_amount_nonneg', sql`${t.amount} >= 0`),
+])
+
+/**
+ * One month's amount of one target, in place of its phase amount for that month only (spec 013 S-14): fixed,
+ * saving and invest targets (checked in the API). Deleting the target deletes it.
+ */
+export const monthAdjust = pgTable('month_adjust', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  ym: ym('ym').notNull(),
+  targetId: text('target_id').notNull(),
+  amount: integer('amount').notNull(),
+  reason: text('reason'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('month_adjust_user_id_id').on(t.userId, t.id),
+  unique('month_adjust_user_ym_target').on(t.userId, t.ym, t.targetId),
+  foreignKey({ name: 'month_adjust_target_fk', columns: [t.userId, t.targetId], foreignColumns: [allocationTarget.userId, allocationTarget.id] }).onDelete('cascade'),
+  check('month_adjust_amount_nonneg', sql`${t.amount} >= 0`),
+  check('month_adjust_ym', sql`${t.ym} ~ '^[0-9]{4}-[0-9]{2}$'`),
 ])
 
 /** How the remainder is split (the last item takes what is left). */

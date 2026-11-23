@@ -10,6 +10,7 @@ import { t, lang } from '../i18n'
 import { monthShort } from '../lib/format'
 import type { Debt, EventState, PlanEvent } from '../data/types'
 import Select from '../components/Select.vue'
+import { whenShort, whenYears } from '../lib/event-when'
 
 // 일정 (spec 010 S-9): three views in one page — the calendar with the month's agenda, the month plan
 // (timeline) and the debts. The calendar and the two editors load when they are needed (spec 007 S-11,
@@ -25,8 +26,10 @@ const tabs = computed(() => [
   { id: 'debt', label: t('timeline.tabDebt'), count: store.debts.length || undefined },
 ])
 
-/** A month cell: 03 → 3월 / Mar; a range 03~05 → 03~05월 / Mar~May. */
+/** A month cell: 03 → 3월 / Mar; a range 03~05 → 03~05월 / Mar~May; a range into a later year → 26.11~27.02 (spec 013 S-18). */
+const crossYear = (when: string) => /^\d{4}-\d{2}~\d{4}-\d{2}$/.test(when)
 const whenMonth = (when: string) => {
+  if (crossYear(when)) return whenShort(when)
   const m = when.slice(5).split('~')
   return t('timeline.monthOf', { m: (lang.value === 'en' ? m.map((x) => monthShort(Number(x))) : m).join('~') })
 }
@@ -36,10 +39,8 @@ const hideDone = ref(false)
 const filtered = computed(() => store.events.filter((e) => (!kind.value || e.kind === kind.value) && (!hideDone.value || e.state !== 'done')))
 const years = computed(() => {
   const map = new Map<string, PlanEvent[]>()
-  for (const e of filtered.value) {
-    const y = e.when.slice(0, 4)
-    map.set(y, [...(map.get(y) ?? []), e])
-  }
+  // an event shows under every year its range covers (spec 013 S-18), in the order the years first appear
+  for (const e of filtered.value) for (const y of whenYears(e.when)) map.set(y, [...(map.get(y) ?? []), e])
   return [...map.entries()]
 })
 const isFiltered = computed(() => !!kind.value || hideDone.value)
@@ -77,7 +78,7 @@ const firstLine = (s: string) => s.split('\n')[0] ?? ''
         <h3 class="yr mono">{{ y }}</h3>
         <ul class="evl">
           <li v-for="e in list" :key="e.id">
-            <span class="when mono">{{ whenMonth(e.when) }}</span>
+            <span class="when mono" :class="{ wide: crossYear(e.when) }">{{ whenMonth(e.when) }}</span>
             <button type="button" class="evt" :aria-label="t('common.editLabel', { name: e.title })" @click="evEd = { item: e }"><span class="pill tag">{{ eventKindLabel(e.kind) }}</span>{{ e.title }}</button>
             <button type="button" class="pill st" :class="CLS[e.state]" :aria-label="stateAria(e.state)" @click="saveItem('events', { ...e, state: NEXT[e.state] }).catch(() => {})">{{ stateLabel(e.state) }}</button>
           </li>
@@ -135,6 +136,7 @@ const firstLine = (s: string) => s.split('\n')[0] ?? ''
 .evl li{display:flex;align-items:center;gap:16px;padding:12px 18px;border-bottom:1px solid var(--divider)}
 .evl li:hover{background:var(--surface-2)}
 .when{width:72px;flex:none;font-size:13px;color:var(--muted)}
+.when.wide{width:auto;min-width:72px;white-space:nowrap}
 .evt{all:unset;box-sizing:border-box;flex:1;min-width:0;display:flex;align-items:center;gap:8px;min-height:36px;font-size:14px;cursor:pointer;overflow-wrap:anywhere}
 .evt:hover{text-decoration:underline}
 .evt:focus-visible,.st:focus-visible{outline:2px solid var(--primary-text);outline-offset:2px;border-radius:var(--r-ctl)}
@@ -155,5 +157,6 @@ const firstLine = (s: string) => s.split('\n')[0] ?? ''
   .mlist{display:block}
   .evl li{padding:12px 16px;gap:12px}
   .when{width:56px}
+  .when.wide{width:auto;min-width:56px}
 }
 </style>

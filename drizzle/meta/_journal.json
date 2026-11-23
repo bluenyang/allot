@@ -225,6 +225,20 @@
       "when": 1795387260116,
       "tag": "0031_balance_deposit",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795395585434,
+      "tag": "0032_rc2_adjust_maturity_other",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795395596438,
+      "tag": "0033_force_rls_month_adjust",
+      "breakpoints": true
     }
   ]
 }

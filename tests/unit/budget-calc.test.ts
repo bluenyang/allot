@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  bufferGauge, distributionAt, goalAlerts, goalMonth, groupAt, livingAt, monthMoney, nextTransferYm, planRounds, projectAccount, spendingIn, yearContribution,
+  bufferGauge, distributionAt, goalAlerts, goalMonth, groupAt, groupValue, itemSent, livingAt, monthMoney, nextTransferYm, planRounds, projectAccount, spendingIn, spreadOver, yearContribution,
   type AccountState,
 } from '../../src/lib/calc'
 import type { Account, AllocationTarget, Card, LivingItem, Phase, Settings, Spending } from '../../src/data/types'
@@ -200,4 +200,88 @@ test('review 2 F-2: a remainder account still counts its buffer use: the bill ou
   assert.deepEqual([dec.inflow, dec.outflow, dec.end], [3_000_000, 300_000, 2_700_000])
   // the 이번 달 column counts the same money in (review 3 F-2)
   assert.equal(accountMonthIn(pay, st, '2026-12'), 3_000_000)
+})
+
+test('rc.2 S-14: a month adjustment replaces a target amount for that month only', () => {
+  const targets: AllocationTarget[] = [...T, { id: 'ti', name: 'Invest', kind: 'invest' }, { id: 'ts', name: 'Savings', kind: 'saving' }]
+  const accounts = [acc('x', { group: 'invest', ratio: 0.5 }), acc('y', { group: 'invest', ratio: 0.5 }), acc('cma', { group: 'saving', amount: 300_000 })]
+  const adj = [
+    { id: 'a1', ym: '2026-06', targetId: 'tf', amount: 50_000 },
+    { id: 'a2', ym: '2026-06', targetId: 'ti', amount: 400_000 },
+    { id: 'a3', ym: '2026-06', targetId: 'ts', amount: 100_000 },
+  ]
+  const at = (ym: string) => distributionAt(ym, S.netPay, [P1, P2], targets, [], [], [], S, 0, 0, accounts, adj)
+  const row = (ym: string, k: string) => at(ym).rows.find((r) => r.key === k)?.amount ?? 0
+  assert.equal(row('2026-06', 'tf'), 50_000)
+  assert.equal(row('2026-07', 'tf'), 200_000)
+  // a ratio split: the adjustment is the month's total, split over the items
+  assert.equal(row('2026-06', 'ti'), 400_000)
+  assert.deepEqual(groupAt('invest', accounts, [P1, P2], targets, S, '2026-06', adj).rows.map((r) => r.amount), [200_000, 200_000])
+  assert.equal(row('2026-07', 'ti'), 1_000_000)
+  // an amount split: the target gets the adjustment that month, spread over its items (review rc2-1 F-2)
+  assert.equal(row('2026-06', 'ts'), 100_000)
+  assert.deepEqual(groupAt('saving', accounts, [P1, P2], targets, S, '2026-06', adj).rows.map((r) => r.amount), [100_000])
+  assert.equal(row('2026-07', 'ts'), 300_000)
+  // monthMoney reads them from the state
+  const st = state({ targets, accounts, monthAdjusts: adj })
+  assert.equal(monthMoney(st, '2026-06').dist.rows.find((r) => r.key === 'tf')!.amount, 50_000)
+})
+
+test('review rc2-1 F-2: spreadOver shares a total by the amounts, rounded down, the last non-zero part takes the rest', () => {
+  assert.deepEqual(spreadOver([300_000, 100_000], 100_000), [75_000, 25_000])
+  assert.deepEqual(spreadOver([100_000, 100_000, 100_000], 100_000), [33_333, 33_333, 33_334])
+  // a zero part stays 0 and does not take the rest, wherever it is
+  assert.deepEqual(spreadOver([100_000, 200_000, 0], 100_001), [33_333, 66_668, 0])
+  assert.deepEqual(spreadOver([0, 50_000], 7), [0, 7])
+  // 0 spreads to all zeros; more than the sum spreads up
+  assert.deepEqual(spreadOver([300_000, 100_000], 0), [0, 0])
+  assert.deepEqual(spreadOver([300_000, 100_000], 800_000), [600_000, 200_000])
+  // a sum of 0: nothing to spread over
+  assert.deepEqual(spreadOver([0, 0], 100_000), [0, 0])
+  assert.deepEqual(spreadOver([], 100_000), [])
+  // large amounts stay exact
+  assert.deepEqual(spreadOver([9_000_000_000_000, 1], 9_000_000_000_001), [9_000_000_000_000, 1])
+})
+
+test('review rc2-1 F-2: an amount-split adjustment is spread over the items, so itemSent, projections, limits and goals follow it', () => {
+  const targets: AllocationTarget[] = [...T, { id: 'ts', name: 'Savings', kind: 'saving' }]
+  const accounts = [
+    acc('a', { group: 'saving', amount: 300_000, annualLimit: 3_600_000 }),
+    acc('b', { group: 'saving', amount: 100_000 }),
+    acc('late', { group: 'saving', amount: 500_000, from: '2026-07' }),
+  ]
+  const monthAdjusts = [{ id: 'm1', ym: '2026-06', targetId: 'ts', amount: 100_000 }]
+  const st = state({ targets, accounts, monthAdjusts })
+  const g = groupAt('saving', accounts, st.phases, targets, S, '2026-06', monthAdjusts)
+  // 'late' does not send in June: the adjustment goes to a and b only
+  assert.deepEqual(g.rows.map((r) => r.amount), [75_000, 25_000, 0])
+  assert.equal(g.sum, 100_000)
+  assert.equal(groupValue(g, monthAdjusts[0]), g.sum)
+  assert.equal(monthMoney(st, '2026-06').dist.rows.find((r) => r.key === 'ts')!.amount, 100_000)
+  assert.equal(itemSent(accounts[0]!, st, '2026-06'), 75_000)
+  assert.equal(itemSent(accounts[0]!, st, '2026-07'), 300_000)
+  // the projection and the yearly contribution read the spread amount in June
+  const withRec = { ...st, balances: [{ id: 'b1', accountId: 'a', date: '2026-05-31', amount: 1_000_000 }] }
+  assert.deepEqual(projectAccount(accounts[0]!, withRec, none, '2026-06', 2)!.map((m) => [m.inflow, m.end]), [[75_000, 1_075_000], [300_000, 1_375_000]])
+  const full = state({ targets, accounts })
+  assert.equal(yearContribution(accounts[0]!, full, none, 2026) - yearContribution(accounts[0]!, st, none, 2026), 225_000)
+  // a sum of 0 (no item sends that month): no item gets it, the target does, as before
+  const none0 = [{ id: 'm2', ym: '2026-06', targetId: 'ts', amount: 80_000 }]
+  const st0 = state({ targets, accounts: [accounts[2]!], monthAdjusts: none0 })
+  const g0 = groupAt('saving', st0.accounts, st0.phases, targets, S, '2026-06', none0)
+  assert.deepEqual([g0.rows.map((r) => r.amount), g0.sum, groupValue(g0, none0[0])], [[0], 0, 80_000])
+  assert.equal(monthMoney(st0, '2026-06').dist.rows.find((r) => r.key === 'ts')!.amount, 80_000)
+  assert.equal(itemSent(accounts[2]!, st0, '2026-06'), 0)
+})
+
+test('review rc2-2 F-1: a maturity amount follows the share of an amount-split adjustment over all items', async () => {
+  const { maturityAmount, maturityOf } = await import('../../src/lib/calc')
+  const targets: AllocationTarget[] = [...T, { id: 'ts', name: 'Savings', kind: 'saving' }]
+  const a = acc('a', { group: 'saving', amount: 300_000, term: '6개월', from: '2026-01' })
+  const b = acc('b', { group: 'saving', amount: 100_000, from: '2026-01' })
+  // 2026-03: the target gets 200,000 that month only → spread over A and B by 300,000 : 100,000
+  const st = state({ targets, accounts: [a, b], monthAdjusts: [{ id: 'x', ym: '2026-03', targetId: 'ts', amount: 200_000 }] })
+  const m = maturityOf(a)!
+  // Jan, Feb, Apr, May, Jun at 300,000 and Mar at ⌊300,000 × 200,000 ÷ 400,000⌋ = 150,000
+  assert.equal(maturityAmount(a, st, none, m).amount, 5 * 300_000 + 150_000)
 })

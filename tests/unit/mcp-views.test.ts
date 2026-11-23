@@ -2,11 +2,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  bufferGauge, distributionAt, goalMonth, groupAt, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate, planAt, planRounds, projectAccount, transferAt,
+  bufferGauge, distributionAt, goalAlerts, goalMonth, groupAt, groupValue, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate, planAt, planRounds, projectAccount, transferAt,
   upcomingPayments, yearContribution, ymd, type AccountState,
 } from '../../src/lib/calc'
 import type { Account, LivingItem, Spending, Subscription } from '../../src/data/types'
-import { accountList, allocation, budget, overview, planChangeList, schedule, spendingList, subscriptionList, type Data } from '../../server/mcp/views'
+import { accountList, allocation, budget, eventMonths, maturitySchedule, notificationList, overview, planChangeList, schedule, searchView, spendingList, subscriptionList, type Data } from '../../server/mcp/views'
+import { maturityOf } from '../../server/mcp/maturity'
+import { buildNotices } from '../../src/lib/notices'
+import { search } from '../../src/lib/search'
 
 const sub = (over: Partial<Subscription> & { id: string; name: string }): Subscription => ({
   category: 'tool', plan: 'basic', amount: 10_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active',
@@ -404,4 +407,146 @@ test('get_allocation: the new target kinds with their account, and each account\
   assert.deepEqual(a.accounts.map((x) => x.group), ['saving', 'invest', 'invest', null, null])
   // the fields it had stay
   assert.deepEqual(Object.keys(allocation(data).accounts[0]!), ['id', 'name', 'role', 'inflow', 'outflow', 'group'])
+})
+
+// ── spec 013 rev 1: month adjustments, maturity, events across years, search, notifications (S-14, S-15, S-18..S-20) ──
+test('get_overview and get_budget: the month adjustments, worked out by calc.ts, and only in their month', () => {
+  const ad: Data = {
+    ...bd,
+    monthAdjusts: [
+      { id: 'm1', ym: '2026-11', targetId: 't-fix', amount: 50_000, reason: 'E2E once' },
+      { id: 'm2', ym: '2026-11', targetId: 't-sav', amount: 300_000 },
+      { id: 'm3', ym: '2026-11', targetId: 't-inv', amount: 500_000 },
+    ],
+  }
+  const o = overview(ad, '2026-11')
+  const { dist } = monthMoney(ad, '2026-11')
+  assert.deepEqual(o.distribution.rows.map((r) => [r.targetId, r.amountKrw]), dist.rows.map((r) => [r.key, r.amount]))
+  assert.equal(o.distribution.rows.find((r) => r.targetId === 't-fix')!.amountKrw, 50_000)
+  assert.equal(o.distribution.rows.find((r) => r.targetId === 't-sav')!.amountKrw, 300_000)
+  // a ratio split's adjustment is the month's total: the items share 500,000 (60% and the IRP not yet)
+  assert.equal(o.distribution.rows.find((r) => r.targetId === 't-inv')!.amountKrw, 300_000)
+  assert.deepEqual(o.monthAdjusts, [
+    { id: 'm1', month: '2026-11', targetId: 't-fix', target: 'Emergency', kind: 'fixed', amountKrw: 50_000, plannedKrw: 200_000, reason: 'E2E once' },
+    { id: 'm2', month: '2026-11', targetId: 't-sav', target: 'Savings', kind: 'saving', amountKrw: 300_000, plannedKrw: 500_000 },
+    { id: 'm3', month: '2026-11', targetId: 't-inv', target: 'Investment', kind: 'invest', amountKrw: 500_000, plannedKrw: 1_000_000 },
+  ])
+  // 3,000,000 − living 330,000 − savings 300,000 − investment 300,000 − fixed 50,000
+  assert.equal(o.distribution.remainderKrw, 2_020_000)
+  const b = budget(ad, '2026-11')
+  assert.equal(b.remainderKrw, 2_020_000)
+  assert.deepEqual(b.monthAdjusts, o.monthAdjusts)
+  const inv = groupAt('invest', ad.accounts, ad.phases, ad.targets, ad.settings, '2026-11', ad.monthAdjusts)
+  assert.equal(b.invest.totalKrw, 500_000)
+  assert.deepEqual(b.invest.items.map((i) => i.monthKrw), inv.rows.map((r) => r.amount))
+  assert.equal(b.invest.targetKrw, inv.sum)
+  assert.deepEqual(b.invest.adjustment, { id: 'm3', amountKrw: 500_000 })
+  const sav = groupAt('saving', ad.accounts, ad.phases, ad.targets, ad.settings, '2026-11', ad.monthAdjusts)
+  // an amount split spreads the adjustment over its items by their amounts (review rc2-1 F-2): the one item gets it all
+  assert.equal(b.saving.sumKrw, 300_000)
+  assert.deepEqual(b.saving.items.map((i) => i.monthKrw), sav.rows.map((r) => r.amount))
+  assert.deepEqual(b.saving.items.map((i) => [i.amountKrw, i.monthKrw]), [[500_000, 300_000]])
+  assert.equal(b.saving.targetKrw, groupValue(sav, ad.monthAdjusts![1]))
+  assert.equal(b.saving.targetKrw, 300_000)
+  assert.equal(b.targets.find((t) => t.targetId === 't-sav')!.amountKrw, 300_000)
+  // the next month is as planned
+  const dec = budget(ad, '2026-12')
+  assert.deepEqual(dec.monthAdjusts, [])
+  assert.equal(dec.saving.adjustment, null)
+  assert.equal(dec.remainderKrw, budget(bd, '2026-12').remainderKrw)
+  assert.deepEqual(overview(ad, '2026-12').distribution, overview(bd, '2026-12').distribution)
+})
+
+test('maturity: the term forms, and the savings schedule with its expected amount', () => {
+  assert.deepEqual(maturityOf({ term: '12개월', from: '2026-03' }), { month: '2027-03', months: 12 })
+  assert.deepEqual(maturityOf({ term: ' 6 months ', from: '2026-11' }), { month: '2027-05', months: 6 })
+  assert.deepEqual(maturityOf({ term: '1 Month', from: '2026-11' }), { month: '2026-12', months: 1 })
+  assert.deepEqual(maturityOf({ term: '2027-06까지', from: '2026-12' }), { month: '2027-06', months: 6 })
+  assert.equal(maturityOf({ term: '12개월', from: null }), null, 'no from month: no maturity')
+  assert.equal(maturityOf({ term: '자유', from: '2026-01' }), null)
+  assert.equal(maturityOf({ term: '0개월', from: '2026-01' }), null)
+  assert.equal(maturityOf({ term: '', from: '2026-01' }), null)
+  const md: Data = {
+    ...bd,
+    accounts: [
+      acc('cma', { ...bd.accounts[0]!, term: '3개월', from: '2026-10', afterMaturity: 'E2E to living' }),
+      acc('dep', { group: 'saving', amount: 100_000, term: '2027-04까지', from: '2026-10' }),
+      acc('free', { group: 'saving', amount: 100_000, term: 'open' }),
+      acc('isa', { group: 'invest', ratio: 0.6, term: '12개월', from: '2026-01' }),
+    ],
+  }
+  const m = maturitySchedule(md, '2027-01')
+  assert.deepEqual(m.map((x) => [x.accountId, x.maturityMonth, x.months, x.basis, x.state]), [['cma', '2027-01', 3, 'projection', 'due'], ['dep', '2027-04', 6, 'amount', 'upcoming']])
+  // the CMA has a balance record: the screens' rule (calc maturityAmount) — the projected balance at the end of the month
+  // before maturity, so the transfer of the maturity month is not counted (10,000,000 on Nov 1, 500,000 a month in: Nov, Dec)
+  const st: AccountState = { ...md, balances: md.balances!, cards: md.cards! }
+  assert.equal(m[0]!.expectedKrw, projectAccount(md.accounts[0]!, st, none, '2026-12', 1)!.find((r) => r.ym === '2026-12')!.end)
+  assert.equal(m[0]!.expectedKrw, 11_000_000)
+  assert.equal(m[0]!.afterMaturity, 'E2E to living')
+  assert.equal(m[1]!.expectedKrw, 600_000, 'no record: the monthly amount × the months')
+  assert.equal(maturitySchedule(md, '2027-02')[0]!.state, 'past')
+  assert.deepEqual(budget(md, '2027-01').maturity, m)
+  const l = accountList(md, new Date(2026, 10, 21))
+  assert.deepEqual(l.accounts.map((a) => a.maturityMonth), ['2027-01', '2027-04', null, '2027-01'])
+  assert.equal(l.accounts[0]!.afterMaturity, 'E2E to living')
+})
+
+test('get_schedule: an event into a later year is in every month of its range, the old forms as before', () => {
+  assert.deepEqual(eventMonths('2026-11'), { from: '2026-11', to: '2026-11' })
+  assert.deepEqual(eventMonths('2026-11~12'), { from: '2026-11', to: '2026-12' })
+  assert.deepEqual(eventMonths('2026-11~2027-02'), { from: '2026-11', to: '2027-02' })
+  // a reversed range is its start month only, as the screens show it
+  assert.deepEqual(eventMonths('2026-11~09'), { from: '2026-11', to: '2026-11' })
+  assert.deepEqual(eventMonths('2027-03~2026-12'), { from: '2027-03', to: '2027-03' })
+  const ev: Data = { ...data, events: [...data.events, { id: 'e3', when: '2026-12~2027-02', kind: '세금', title: 'E2E-Across', state: 'todo' }] }
+  const s = schedule(ev, '2026-11', 5)
+  assert.deepEqual(s.months.map((m) => m.planEvents.map((e) => e.id).sort()), [['e2'], ['e1', 'e2', 'e3'], ['e3'], ['e3'], []])
+  const back = schedule({ ...data, events: [{ id: 'r1', when: '2027-01~2026-12', kind: '세금', title: 'E2E-Back', state: 'todo' }] }, '2026-11', 4)
+  assert.deepEqual(back.months.map((m) => m.planEvents.map((e) => e.id)), [[], [], ['r1'], []])
+  assert.deepEqual(s.months[2]!.planEvents[0], { id: 'e3', when: '2026-12~2027-02', from: '2026-12', to: '2027-02', kind: '세금', title: 'E2E-Across', state: 'todo' })
+  // the old forms answer as before (with their months)
+  assert.deepEqual(schedule(data, '2026-11', 3).months.map((m) => m.planEvents.map((e) => e.id).sort()), [['e2'], ['e1', 'e2'], []])
+})
+
+test('search: the same matching as the header search, with each row\'s page', () => {
+  const sd: Data = { ...bd, subscriptions: [sub({ id: 's1', name: 'E2E Insurance', note: 'family' })], events: data.events, checks: data.checks }
+  const r = searchView(sd, 'e2e-c')
+  const want = search({ ...sd, spendings: sd.spendings!, livingItems: sd.livingItems!, cards: sd.cards! }, 'e2e-c')
+  assert.deepEqual(r.results.map((x) => [x.kind, x.id, x.matched, x.page]), want.map((h) => [h.kind, h.id, h.field, h.path]))
+  assert.deepEqual(r.results.map((x) => [x.kind, x.id]), [['account', 'cma'], ['card', 'c1']])
+  assert.equal(r.count, 2)
+  assert.deepEqual(searchView(sd, 'FAMILY').results, [{ kind: 'subscription', id: 's1', name: 'E2E Insurance', note: 'family', matched: 'note', page: '/spend/subs' }])
+  assert.deepEqual(searchView(sd, 'e2e-c', ['card']).results.map((x) => x.id), ['c1'])
+  assert.deepEqual(searchView(sd, '  ').results, [])
+})
+
+test('list_notifications: the bell\'s list with a sentence each, goal cards and proposals from the caller', () => {
+  const now = new Date(2026, 11, 22) // 2026-12-22: the buffer refill of Dec 25 is in three days
+  const nd: Data = {
+    ...bd,
+    accounts: bd.accounts.map((a) => (a.id === 'cma' ? { ...a, annualLimit: 6_500_000 } : a)),
+    subscriptions: [sub({ id: 's1', name: 'E2E Sub', nextDate: '2026-12-24' })],
+  }
+  const l = notificationList(nd, now, 2)
+  assert.equal(l.date, '2026-12-22')
+  const st: AccountState = { ...nd, balances: nd.balances!, cards: nd.cards! }
+  const goals = goalAlerts(st, '2026-12-22', none)
+  const want = buildNotices(st, '2026-12-22', none, { proposals: 2, goalAccounts: goals.map((g) => g.account.id) })
+  assert.deepEqual(l.notifications.map((n) => n.id), want.map((n) => n.id))
+  assert.deepEqual(l.notifications.map((n) => n.kind), ['proposals', 'goals', 'charge', 'round', 'yearLimit'])
+  assert.deepEqual((l.notifications[1] as { accounts?: unknown }).accounts, goals.map((g) => ({ accountId: g.account.id, name: g.account.name, goalMonth: g.month, stopFrom: g.stopFrom })))
+  assert.ok(l.notifications.every((n) => n.message.length > 0))
+  assert.match(l.notifications[2]!.message, /E2E Sub is charged 10,000 KRW on 2026-12-24 \(in 2 days\)/)
+  assert.match(l.notifications[3]!.message, /^Round 1\/2 of E2E-PC: 200,000 KRW on 2026-12-25/)
+  // nothing waits: no pending notices
+  assert.deepEqual(notificationList({ ...nd, accounts: nd.accounts.map((a) => ({ ...a, goal: null })) }, now, 0).notifications.filter((n) => n.group === 'pending'), [])
+  // a Savings item due this month that still sends is a maturity card, stopped from the next transfer (Dec 26; review rc2-1 F-5);
+  // a stopped one is not
+  const due: Data = { ...nd, accounts: [...nd.accounts.map((a) => ({ ...a, goal: null })), acc('dep', { group: 'saving', amount: 100_000, term: '12개월', from: '2025-12' })] }
+  const md = notificationList(due, now, 0).notifications.filter((n) => n.group === 'pending')
+  assert.deepEqual(md.map((n) => [n.kind, n.id]), [['maturities', 'maturities:dep@2026-12']])
+  assert.deepEqual((md[0] as { accounts?: unknown }).accounts, [{ accountId: 'dep', name: 'E2E-dep', maturityMonth: '2026-12', stopFrom: '2026-12' }])
+  assert.match(md[0]!.message, /1 savings item\(s\) reached maturity/)
+  const stopped: Data = { ...due, accounts: due.accounts.map((a) => (a.id === 'dep' ? { ...a, stopFrom: '2027-01' } : a)) }
+  assert.deepEqual(notificationList(stopped, now, 0).notifications.filter((n) => n.group === 'pending'), [])
 })

@@ -17,5 +17,9 @@ export const goalsEn: GoalsMessages = {
     stopped: 'Stopped sending to {name} from {ym}',
     kept: 'Still sending to {name}. You will be asked again if the goal changes',
     toHistory: 'History',
+    maturityTitle: 'Maturity',
+    maturityBody: '{name} matures in {ym}. Stop sending to this account?',
+    maturityHint: 'Stopping makes this product’s amount 0 from {ym}; it stays in the remainder. You can revert it in History. Keep sending is remembered in this browser only.',
+    maturityKept: 'Still sending to {name}. Remembered in this browser only',
   },
 }

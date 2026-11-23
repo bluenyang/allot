@@ -12,7 +12,7 @@ export const OWNED: OwnedTable[] = [
   t.settings, t.subscription, t.phase, t.bankAccount, t.card, t.allocationTarget, t.planEvent,
   t.checkItem, t.debt, t.remainderSplit, t.planChange, t.phaseAmount,
   t.preference, t.holidaySet, t.mcpProposal, t.spending, t.spendingRound,
-  t.livingItem, t.livingPhaseAmount, t.accountPhaseAmount, t.accountBalance,
+  t.livingItem, t.livingPhaseAmount, t.accountPhaseAmount, t.accountBalance, t.monthAdjust,
 ]
 
 /** Moved with the data when an account is replaced: the data tables, then the change history. */

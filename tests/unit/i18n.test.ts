@@ -110,7 +110,7 @@ test('the screen language: the account first, else the browser (en… = English,
 
 test('keys built from data exist for every value (categories, kinds, states, tables…)', () => {
   const families: Record<string, string[]> = {
-    'label.category': ['ai', 'telecom', 'content', 'tool', 'insurance', 'life'],
+    'label.category': ['ai', 'telecom', 'content', 'tool', 'insurance', 'life', 'other'],
     'label.path': ['direct', 'google', 'apple', 'telecom'],
     'label.status': ['active', 'cancelled', 'company'],
     'label.cycle': ['monthly', 'yearly'],
@@ -127,7 +127,8 @@ test('keys built from data exist for every value (categories, kinds, states, tab
     'shell.pages': ['home', 'spend', 'pay', 'events', 'history', 'settings', 'admin', 'dev'],
     'calendar.kind': ['pay', 'transfer', 'billing', 'sub', 'change', 'holiday'],
     'history.table': ['settings', 'living', 'subscription', 'plan_change', 'phase', 'plan_event', 'check_item', 'bank_account', 'debt', 'allocation_target', 'phase_amount', 'remainder_split', 'preference', 'holiday_set',
-      'living_item', 'living_phase_amount', 'account_phase_amount', 'account_balance', 'card', 'spending', 'spending_round'],
+      'living_item', 'living_phase_amount', 'account_phase_amount', 'account_balance', 'card', 'spending', 'spending_round', 'month_adjust'],
+    'pending.fields': ['ym', 'targetId', 'amount', 'reason', 'afterMaturity'],
     'history.op': ['insert', 'update', 'delete'],
     'admin.admission': ['seed', 'admin', 'approval', 'rule', 'bootstrap'],
     'admin.signup': ['closed', 'approval', 'rules'],

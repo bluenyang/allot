@@ -105,7 +105,9 @@ test('(S-1, V-6) the 구독 tab keeps the four views and the summary of the old 
   await go(page, 'subs')
   for (const name of ['목록', '전환 미리보기', '변경 일정', '이체액 계산']) await expect(page.getByRole('tab', { name: new RegExp(`^${name}`) })).toBeVisible()
   await expect(page.getByLabel('구독 요약')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'CSV 내보내기 (준비 중)' })).toHaveCount(1)
+  // CSV 내보내기 was 준비 중 until rc.1; since spec 013 S-17 it is a working button (tests/e2e/rc2.spec.ts reads the file)
+  await expect(page.getByRole('button', { name: 'CSV 내보내기', exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'CSV 내보내기', exact: true })).not.toHaveAttribute('aria-disabled', 'true')
 })
 
 test('(S-5) the reflection card: a salary-account one-off comes off the remainder; a subscription-account one-off adds to the transfer', async ({ page, request }) => {

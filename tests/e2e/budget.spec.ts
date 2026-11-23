@@ -238,9 +238,9 @@ test('(V-8, S-3) 저축: the target made from the page; amount and ratio split; 
     // 총액 수정: the phase amount of the target; items are total × ratio, rounded to 1,000
     await page.getByRole('button', { name: '저축 총액 수정' }).click()
     const tot = sheet(page, '저축 총액 수정')
-    await tot.locator('#bt-amount').fill('1000000')
-    await expect(tot.getByTestId('total-preview')).toContainText(`${MARK}-s1 · 33.33%333,000원`)
-    await expect(tot.getByTestId('total-preview')).toContainText(`${MARK}-s3 · 33.34%333,000원`)
+    await tot.locator('#ad-amount').fill('1000000')
+    await expect(tot.getByTestId('adjust-preview')).toContainText(`${MARK}-s1 · 33.33%333,000원`)
+    await expect(tot.getByTestId('adjust-preview')).toContainText(`${MARK}-s3 · 33.34%333,000원`)
     await saveSheet(page, '저축 총액 수정')
     const ph1 = (await state(request)).phases.find((p) => p.id === phase0!.id)!
     expect(ph1.amounts[targetId], '총액 수정 writes the phase amount').toBe(1_000_000)
@@ -260,13 +260,13 @@ test('(V-8, S-3) 저축: the target made from the page; amount and ratio split; 
     // over: rounding up past the total
     await menu(page, '저축')
     await page.getByRole('button', { name: '저축 총액 수정' }).click()
-    await sheet(page, '저축 총액 수정').locator('#bt-amount').fill('1001500')
+    await sheet(page, '저축 총액 수정').locator('#ad-amount').fill('1001500')
     await saveSheet(page, '저축 총액 수정')
     for (const id of made) await expect(page.getByTestId(`item-${id}`)).toContainText('= ₩334,000 / 월')
     await expect(statusLine(page), 'over').toHaveText('₩500 넘쳐요 · 월급 분배의 저축 총액을 늘리거나 항목을 줄이세요')
     // same: 1,500,000 splits exactly
     await page.getByRole('button', { name: '저축 총액 수정' }).click()
-    await sheet(page, '저축 총액 수정').locator('#bt-amount').fill('1500000')
+    await sheet(page, '저축 총액 수정').locator('#ad-amount').fill('1500000')
     await saveSheet(page, '저축 총액 수정')
     await expect(statusLine(page), 'same').toHaveText('비율 합계 100% · 월급 분배의 저축 금액과 같아요')
     // the ratio sum off 100%: under and over (a warning only; the save goes through)
@@ -331,7 +331,7 @@ test('(V-8, S-3, S-5) 투자: the target made from the page; an ISA account by r
     expect(isa).toMatchObject({ group: 'invest', kind: 'ISA', ratio: 0.5, annualLimit: 20_000_000, from: ym, amount: 0 })
 
     await page.getByRole('button', { name: '투자 총액 수정' }).click()
-    await sheet(page, '투자 총액 수정').locator('#bt-amount').fill('500000')
+    await sheet(page, '투자 총액 수정').locator('#ad-amount').fill('500000')
     await saveSheet(page, '투자 총액 수정')
     expect((await state(request)).phases.find((p) => p.id === phase0!.id)!.amounts[targetId]).toBe(500_000)
     await expect(page.getByTestId(`item-${isa.id}`)).toContainText('= ₩250,000 / 월')

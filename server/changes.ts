@@ -3,7 +3,7 @@
 // new set). Recording is in the app, not in triggers, so the rows are stored exactly as the
 // API reads them and the revert writes them back through the same rules.
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, getTableName, inArray, lt, or, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, getTableName, gte, inArray, lt, or, sql, type SQL } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type { Db } from './db/client'
 import { hasIdentity, OWNED, type OwnedTable } from './db/owned'
@@ -120,6 +120,8 @@ export async function lockAll(q: Db, uid: string) {
  */
 export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
   await lockAll(q, uid)
+  // the buffer uses already without a paying card: the revert is refused only for one it breaks (review rc2-1 F-7)
+  const looseBefore = await looseBuffers(q, uid)
   const [set] = await q.select().from(t.changeSet).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id))).for('update')
   if (!set) throw new NotFound(m('changeNotFound'))
   if (set.revertedBy) throw new Conflict(m('changeReverted'), 'change_set', { id })
@@ -153,7 +155,7 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
       await rec.record(table, log.rowKey, 'update', current, written as Row)
     }
   }
-  await checkRules(q, uid)
+  await checkRules(q, uid, looseBefore)
   if (rec.id) await q.update(t.changeSet).set({ revertedBy: rec.id }).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id)))
 }
 
@@ -173,7 +175,7 @@ const GONE = new Set(['living'])
 const CHILDREN = new Map<PgTable, [OwnedTable, PgColumn][]>([
   [t.subscription, [[t.planChange, t.planChange.subId]]],
   [t.phase, [[t.phaseAmount, t.phaseAmount.phaseId], [t.livingPhaseAmount, t.livingPhaseAmount.phaseId], [t.accountPhaseAmount, t.accountPhaseAmount.phaseId]]],
-  [t.allocationTarget, [[t.phaseAmount, t.phaseAmount.targetId]]],
+  [t.allocationTarget, [[t.phaseAmount, t.phaseAmount.targetId], [t.monthAdjust, t.monthAdjust.targetId]]],
   [t.spending, [[t.spendingRound, t.spendingRound.spendingId]]],
   [t.livingItem, [[t.livingPhaseAmount, t.livingPhaseAmount.itemId]]],
   [t.bankAccount, [[t.accountBalance, t.accountBalance.accountId], [t.accountPhaseAmount, t.accountPhaseAmount.accountId]]],
@@ -189,8 +191,23 @@ async function hasChildren(q: Db, uid: string, table: PgTable, key: RowKey) {
   return false
 }
 
-/** The API's own rules, over the user's whole data (the database checks the rest). */
-async function checkRules(q: Db, uid: string) {
+/**
+ * The buffer uses (spec 013 S-8) whose card is gone or has no paying account, as a save refuses them, and their names. A
+ * save keeps them valid, but rc.1 had no revert check, so data may already hold such a row.
+ */
+async function looseBuffers(q: Db, uid: string): Promise<Map<string, string>> {
+  const buffers = await q.select({ id: t.spending.id, name: t.spending.name, cardId: t.spending.cardId }).from(t.spending)
+    .where(and(eq(t.spending.userId, uid), eq(t.spending.how, 'buffer')))
+  if (!buffers.length) return new Map()
+  const cards = await q.select({ id: t.card.id, accountId: t.card.accountId }).from(t.card).where(eq(t.card.userId, uid))
+  return new Map(buffers.filter((s) => !cards.find((c) => c.id === s.cardId)?.accountId).map((s) => [s.id, s.name]))
+}
+
+/**
+ * The API's own rules, over the user's whole data (the database checks the rest). `looseBefore` are the buffer uses that
+ * had no paying card before the revert: only a buffer use the revert leaves without one refuses it.
+ */
+async function checkRules(q: Db, uid: string, looseBefore: ReadonlyMap<string, string>) {
   const phases = await q.select().from(t.phase).where(eq(t.phase.userId, uid))
   const end = (x: string | null) => x ?? '9999-12'
   for (const [i, a] of phases.entries()) {
@@ -204,6 +221,15 @@ async function checkRules(q: Db, uid: string) {
       .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), inArray(t.allocationTarget.kind, ['fixed', 'saving', 'invest'])))
     if (fixed.length !== ids.length) throw new RuleBroken(m('revertAmounts'))
   }
+  // A month adjustment keeps a fixed, saving or invest target, as a save does (spec 013 S-14, S-26; review rc2-1 F-8,
+  // user: "거부하도록 고침 (Recommended)").
+  const adjusts = await q.select({ targetId: t.monthAdjust.targetId }).from(t.monthAdjust).where(eq(t.monthAdjust.userId, uid))
+  if (adjusts.length) {
+    const ids = [...new Set(adjusts.map((a) => a.targetId))]
+    const ok = await q.select({ id: t.allocationTarget.id }).from(t.allocationTarget)
+      .where(and(eq(t.allocationTarget.userId, uid), inArray(t.allocationTarget.id, ids), inArray(t.allocationTarget.kind, ['fixed', 'saving', 'invest'])))
+    if (ok.length !== ids.length) throw new RuleBroken(m('revertAdjusts'))
+  }
   // Spendings: the same rule a save keeps for the rounds against count and how (src/lib/spending-rules.ts).
   const spendings = await q.select().from(t.spending).where(eq(t.spending.userId, uid))
   if (spendings.length) {
@@ -213,6 +239,11 @@ async function checkRules(q: Db, uid: string) {
         throw new RuleBroken(m('revertSpending', { name: s.name }))
       }
     }
+    // A buffer use keeps a card with a paying account (spec 013 S-8, S-9; review 2 F-6, user: "거부하도록 고침 (Recommended)"):
+    // refused when the revert makes one newly invalid, not for one that was so already (review rc2-1 F-7).
+    for (const [sid, name] of await looseBuffers(q, uid)) {
+      if (!looseBefore.has(sid)) throw new RuleBroken(m('revertBuffer', { name }))
+    }
   }
 }
 
@@ -220,9 +251,12 @@ async function checkRules(q: Db, uid: string) {
 /** A page cursor: the last set shown (its time and id; sets are ordered by both). */
 export interface Cursor { at: string; id: string }
 
-export async function listSets(q: Db, uid: string, before: Cursor | undefined, limit: number) {
+/** A period of the history (spec 013 S-18): `since` and `until` are ISO times, either may be left out. */
+export interface Period { since?: string; until?: string }
+
+export async function listSets(q: Db, uid: string, before: Cursor | undefined, limit: number, period: Period = {}) {
   const cs = t.changeSet
-  const mine = eq(cs.userId, uid)
+  const mine = and(eq(cs.userId, uid), period.since ? gte(cs.at, period.since) : undefined, period.until ? lt(cs.at, period.until) : undefined)!
   const where = before ? and(mine, or(lt(cs.at, before.at), and(eq(cs.at, before.at), lt(cs.id, before.id)))) : mine
   const sets = await q.select().from(cs).where(where).orderBy(desc(cs.at), desc(cs.id)).limit(limit)
   return withLogs(q, uid, sets)

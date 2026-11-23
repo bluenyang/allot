@@ -107,7 +107,7 @@ for (const [path, resource] of [
   ['/subscriptions', 'subscriptions'], ['/plan-changes', 'plan-changes'], ['/phases', 'phases'], ['/events', 'events'],
   ['/checks', 'checks'], ['/accounts', 'accounts'], ['/debts', 'debts'], ['/remainder-split', 'remainder-split'],
   ['/holiday-sets', 'holiday-sets'], ['/targets', 'targets'], ['/spendings', 'spendings'],
-  ['/living-items', 'living-items'], ['/balances', 'balances'], ['/cards', 'cards'], // spec 013
+  ['/living-items', 'living-items'], ['/balances', 'balances'], ['/cards', 'cards'], ['/month-adjusts', 'month-adjusts'], // spec 013
 ] as const) crud(routes, path, resource)
 
 // ── Proposals from an AI key (spec 009 S-4, S-9): the screen confirms or rejects them (a session only) ──
@@ -171,7 +171,11 @@ routes.get('/changes', async (c) => {
   if (at && Number.isNaN(Date.parse(at))) return c.json({ error: msg(c, 'beforeNotTime') }, 400)
   if (!!at !== !!id) return c.json({ error: msg(c, 'beforeBoth') }, 400)
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50) || 50, 1), 200)
-  return c.json(await asUser(uid, (q) => listSets(q, uid, at && id ? { at, id } : undefined, limit)))
+  // a period (spec 013 S-18): since (inclusive) and until (exclusive), ISO times
+  const since = c.req.query('since') || undefined
+  const until = c.req.query('until') || undefined
+  if ((since && Number.isNaN(Date.parse(since))) || (until && Number.isNaN(Date.parse(until)))) return c.json({ error: msg(c, 'beforeNotTime') }, 400)
+  return c.json(await asUser(uid, (q) => listSets(q, uid, at && id ? { at, id } : undefined, limit, { since, until })))
 })
 
 routes.get('/changes/:id', async (c) => {

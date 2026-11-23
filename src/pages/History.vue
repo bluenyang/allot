@@ -4,19 +4,21 @@ import PageHeader from '../components/PageHeader.vue'
 import EditSheet from '../components/EditSheet.vue'
 import Icon from '../components/Icon.vue'
 import Seg from '../components/Seg.vue'
-import Soon from '../components/Soon.vue'
+import DateInput from '../components/DateInput.vue'
 import { fmtDate } from '../lib/display'
 import { weekdayShort } from '../lib/format'
 import { showToast } from '../lib/toast'
-import { computed, onActivated, onMounted, ref } from 'vue'
+import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
 import Select from '../components/Select.vue'
+import { PERIOD_KINDS, periodBounds, periodQuery, type PeriodKind } from '../lib/history-period'
 
 // Change history (spec 005 S-3, restyled by spec 010 S-9): one save = one change set, newest first, grouped by
 // day. A set can be reverted like a commit: the opposite change is saved as a new set (also a revert can be
 // reverted again, D-10). The server refuses when a row changed since (409) or a rule would break (400); the
-// modal shows the reason and stays open. The filters (who, item type) work on the sets loaded so far.
+// modal shows the reason and stays open. The filters (who, item type) work on the sets loaded so far; the period
+// (spec 013 S-18) goes to the server (`since`/`until`, KST days) and the paging goes on inside it.
 interface Change {
   id: number
   tableName: string
@@ -51,19 +53,31 @@ const more = ref(true)
 const error = ref('')
 const PAGE = 30
 
+// ---------- period (server side) ----------
+const period = ref<PeriodKind>('all')
+const pFrom = ref('')
+const pTo = ref('')
+const periodOpts = computed(() => PERIOD_KINDS.map((id) => ({ value: id, label: t(`history.periodOpt.${id}` as MessageKey) })))
+watch([period, pFrom, pTo], () => { void load() })
+
+// Only the answer to the latest request is shown (a period changed twice quickly answers out of order).
+let seq = 0
 async function load(reset = true) {
+  const mine = ++seq
   busy.value = true
   error.value = ''
   try {
     const last = sets.value.at(-1)
     const before = !reset && last ? `&before=${encodeURIComponent(last.at)}&beforeId=${encodeURIComponent(last.id)}` : ''
-    const page = await api<ChangeSet[]>('GET', `/api/changes?limit=${PAGE}${before}`)
+    const range = periodQuery(periodBounds(period.value, new Date(), pFrom.value, pTo.value))
+    const page = await api<ChangeSet[]>('GET', `/api/changes?limit=${PAGE}${range}${before}`)
+    if (mine !== seq) return
     sets.value = reset ? page : [...sets.value, ...page]
     more.value = page.length === PAGE
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : t('history.loadFailed')
+    if (mine === seq) error.value = e instanceof ApiError ? e.message : t('history.loadFailed')
   } finally {
-    busy.value = false
+    if (mine === seq) busy.value = false
   }
 }
 onMounted(() => load())
@@ -87,6 +101,8 @@ const label = (c: Change) => {
   const r = c.after ?? c.before ?? {}
   if (c.tableName === 'plan_change' && typeof r.subId === 'string') return subLabel(r.subId)
   if (c.tableName === 'phase_amount') return `${phaseName(String(r.phaseId))} · ${targetName(String(r.targetId))}`
+  // a month adjustment: its target and month (spec 013 S-14, review rc2-1 F-3)
+  if (c.tableName === 'month_adjust') return `${targetName(String(r.targetId))} · ${String(r.ym)}`
   const name = r.name ?? r.text ?? r.title ?? r.label ?? r.note
   return typeof name === 'string' && name ? name : Object.values(c.rowKey).join(' · ')
 }
@@ -110,12 +126,14 @@ const fields = (c: Change) => {
     .filter((f) => c.op !== 'update' || JSON.stringify(f.b) !== JSON.stringify(f.a))
 }
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
+/** A field's value: an allocation target by its name (a month adjustment's or a phase amount's target; review rc2-1 F-3), else as stored. */
+const valueOf = (k: string, v: unknown) => (k === 'targetId' && typeof v === 'string' ? targetName(v) : show(v))
 const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : t('history.you'))
 
 // ---------- filters ----------
 const actor = ref<'all' | 'me' | 'ai'>('all')
 const kind = ref('')
-const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending']
+const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending', 'month_adjust']
 /** The remainder split's rows are named after what the remainder target is, not a fixed word (spec 010 S-9). */
 const kindOpts = computed(() => KIND_IDS.map((id) => ({ id, label: id === 'remainder_split' ? t('history.kindRemainder') : tableName(id) })))
 const byKind = computed(() => sets.value.filter((s) => !kind.value || s.changes.some((c) => c.tableName === kind.value)))
@@ -180,7 +198,12 @@ async function revert() {
         <Seg v-model="actor" :options="actorOpts" :label="t('history.actorFilter')" />
         <span class="vr" aria-hidden="true"></span>
         <Select v-model="kind" class="fsel" :aria-label="t('history.kindFilter')" :options="[{ value: '', label: t('history.kindAll') }, ...kindOpts.map((o) => ({ value: o.id, label: o.label }))]" />
-        <Soon tag="span" class="period">{{ t('history.period') }}</Soon>
+        <Select v-model="period" class="fsel" :aria-label="t('history.period')" :options="periodOpts" />
+        <span v-if="period === 'custom'" class="prange">
+          <DateInput v-model="pFrom" clearable :aria-label="t('history.periodFrom')" />
+          <span aria-hidden="true" class="muted">~</span>
+          <DateInput v-model="pTo" clearable :aria-label="t('history.periodTo')" />
+        </span>
         <span class="hint cn">{{ t('history.count', { n: shown.length }) }}</span>
       </div>
 
@@ -209,8 +232,8 @@ async function revert() {
                   <tbody>
                     <tr v-for="f in fields(c)" :key="f.k">
                       <th scope="row">{{ f.k }}</th>
-                      <td class="bef">{{ c.op === 'insert' ? '—' : show(f.b) }}</td>
-                      <td class="aft">{{ c.op === 'delete' ? '—' : show(f.a) }}</td>
+                      <td class="bef">{{ c.op === 'insert' ? '—' : valueOf(f.k, f.b) }}</td>
+                      <td class="aft">{{ c.op === 'delete' ? '—' : valueOf(f.k, f.a) }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -220,7 +243,7 @@ async function revert() {
           </li>
         </template>
       </ul>
-      <div v-if="!sets.length && !busy" class="none"><b>{{ t('history.empty') }}</b></div>
+      <div v-if="!sets.length && !busy" class="none"><b>{{ period === 'all' ? t('history.empty') : t('history.emptyPeriod') }}</b></div>
       <div v-else-if="sets.length && !shown.length && more" class="none" data-more><b>{{ t('history.emptyLoaded') }}</b><span class="hint">{{ t('history.emptyLoadedHint') }}</span></div>
       <div v-else-if="sets.length && !shown.length" class="none"><b>{{ t('history.emptyFiltered') }}</b><span class="hint">{{ t('history.emptyFilteredHint') }}</span></div>
       <div v-if="more && sets.length" class="mr"><button class="btn sm" type="button" :disabled="busy" @click="load(false)">{{ t('history.more') }}</button></div>
@@ -245,6 +268,7 @@ async function revert() {
 .fbar .in{width:auto;height:34px;font-size:13px}
 .vr{width:1px;height:24px;background:var(--border)}
 .fbar .cn{margin-left:auto}
+.prange{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
 .chgs{list-style:none;margin:0;padding:0}
 .day{display:flex;align-items:center;gap:8px;padding:8px 18px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--subtle)}
 .chg{border-bottom:1px solid var(--divider)}

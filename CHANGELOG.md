@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.7-rc.2 — unreleased
+
+Budget and screen features that were "coming soon". Spec 013 revision 1 (`.agents/intent/013_budget-and-soon/spec.md`, S-14 to S-21). Migrations 0032 and 0033 (a table for one month's adjustments, a column for where a savings product's money goes at maturity, the subscription category "other").
+
+### Added
+- **This month only** (이번 달만 조정): on the Salary allocation simulation, a fixed, Savings total or Investment total row can be adjusted for one month (quick ±5만 / ±10만, an optional reason), or to the end of its phase as before; "조정 되돌리기" removes it. A ratio-split total's adjustment is that month's total, split by the ratios; an amount-split one is spread over that month's items in proportion. The Savings and Investment "총액 수정" offers the same "이번 달만". One adjustment per month and target.
+- **Savings maturities** (만기 일정): products whose term reads "N개월" / "N months" / "YYYY-MM까지" / "until YYYY-MM" (with a start month) show their maturity month, the expected amount (the projected balance before maturity, or what the plan sends) and where the money goes then ("만기 후"). A maturity this month or past asks on Pending changes whether to stop sending (stop is saved; keep sending is remembered in this browser).
+- **By month** (월별 기록) on Living and Investment: the planned amount of the last six months and this one (actual amounts come with statements in 0.1.9).
+- **Overview**: "결제 추가" opens the spending add dialog; the remainder's "관리" opens the simulation tab; "내보내기" downloads this month's summary as CSV.
+- **CSV** of the Spending General and Installments tabs (one row per round) and of the Subscriptions list (as filtered), made in the browser (UTF-8 with BOM for Excel).
+- **Events across a year**: a schedule event may run into a later year (stored as `YYYY-MM~YYYY-MM`; the old forms are unchanged) and shows in every month of its range.
+- **Subscription category "기타"** (other).
+- **Change history period**: this month, the last 3 months, all, or chosen dates (`GET /api/changes?since=&until=`).
+- **Search** (the header box, ⌘K / Ctrl+K): subscriptions, spendings, living items, accounts, cards, targets, events and check items by name and memo; a result opens its page.
+- **Notifications** (the bell): pending changes (AI proposals, goal and maturity cards), payments and rounds in the next 3 days, a short remainder this month, a yearly limit at 90% or more, a short buffer; read marks are kept in this browser.
+- **API docs** (`/api/docs`, signed in): the REST routes with their request bodies and the MCP tools.
+- **MCP**: new read tools `search` and `list_notifications`; `get_overview` and `get_budget` show the month's adjustments and `get_budget` the savings maturities; `list_changes` takes `since` / `until`; `get_schedule` shows events across years; `propose_changes` takes month adjustments and `afterMaturity`.
+
+### Changed
+- Reverting a change set is refused when it would leave a buffer use's card without a paying account (newly), or a month adjustment on a target that cannot have one.
+- The change history and the proposal cards name month adjustments.
+
+### Still coming (0.1.7-rc.3)
+Time zone, extra base schedules, a list of currencies and automatic exchange rates, password policy and generation, API key rename / scope / expiry / usage. Connected apps move to 0.1.12 (MCP over OAuth); the base currency stays KRW.
+
 ## 0.1.7-rc.1 — 2026-11-23
 
 The budget core: Living, Savings and Investment menus, accounts with balances, goals and limits, cards, and paying a card purchase from an account's buffer, with MCP tools. Intent 013 (`.agents/intent/013_budget-and-soon/`). The database gains five tables and new columns (migrations 0028 to 0031); the old living row becomes living items.

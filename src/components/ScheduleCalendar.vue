@@ -2,6 +2,8 @@
 // 일정 달력 탭 (spec 010 S-9, EV-5..21): the month grid in a card with its own header strip, and the month's
 // agenda beside it. On a phone the grid is not drawn: a month bar (big previous / next buttons, no "오늘"
 // button — D-3) and the agenda stay. Loaded only when the tab opens (the calendar code is heavy).
+// The month plans (events with a 시기, no date) whose range covers the shown month head the agenda, also when the
+// range runs into a later year (spec 013 S-18); they are not put on a day of the grid.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import CalendarView from './CalendarView.vue'
 import Icon from './Icon.vue'
@@ -11,6 +13,9 @@ import type { CalKind } from '../lib/calendar-events'
 import { fmtMoney } from '../lib/display'
 import { monthLong, weekdayShort } from '../lib/format'
 import { lang, t } from '../i18n'
+import { store } from '../lib/store'
+import { eventKindLabel } from '../lib/labels'
+import { inMonth } from '../lib/event-when'
 
 const now = today()
 const nowYm = ymOf(now)
@@ -37,6 +42,7 @@ const rows = computed(() => events.value.map((e) => {
   const text = e.kind === 'sub' || e.kind === 'spend' ? (e.name ?? e.title) : e.title.startsWith(label) ? e.title.slice(label.length).trim() : e.title
   return { key: `${e.date}-${e.kind}-${e.title}`, day: d.getDate(), wd: weekdayShort(d), dow: d.getDay(), kind: e.kind as CalKind, label, text, amount: (e.kind === 'sub' || e.kind === 'spend') && e.krw !== undefined ? fmtMoney(e.krw) : '', past: e.date < todayIso }
 }))
+const plans = computed(() => store.events.filter((e) => inMonth(e.when, ym.value)))
 const subTotal = computed(() => events.value.reduce((n, e) => n + (e.kind === 'sub' ? e.krw ?? 0 : 0), 0))
 const subsLabel = computed(() => (ym.value === nowYm ? t('timeline.subsThisMonth') : t('timeline.subsOfMonth', { month: lang.value === 'en' ? monthLong(monthNum.value) : monthNum.value })))
 const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
@@ -66,8 +72,16 @@ const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
     <section class="card agenda" :aria-label="t('timeline.agendaTitle', { month: lang === 'en' ? monthLong(monthNum) : monthNum })">
       <div class="card-hd">
         <h2>{{ t('timeline.agendaTitle', { month: lang === 'en' ? monthLong(monthNum) : monthNum }) }}</h2>
-        <span class="aux num">{{ t('timeline.agendaCount', { n: rows.length }) }}</span>
+        <span class="aux num">{{ t('timeline.agendaCount', { n: rows.length + plans.length }) }}</span>
       </div>
+      <ul v-if="plans.length" class="ag plans" :aria-label="t('timeline.agendaPlans')">
+        <li class="ph" aria-hidden="true">{{ t('timeline.agendaPlans') }}</li>
+        <li v-for="e in plans" :key="e.id" :class="{ past: e.state === 'done' }" data-kind="plan">
+          <span class="dt"><small>{{ t('timeline.planWhole') }}</small></span>
+          <span class="tx"><span class="pill tag">{{ eventKindLabel(e.kind) }}</span> <span class="tt">{{ e.title }}</span></span>
+          <span class="hint st">{{ t(`timeline.state.${e.state}`) }}</span>
+        </li>
+      </ul>
       <ul class="ag">
         <li v-for="r in rows" :key="r.key" :class="{ past: r.past }" :data-kind="r.kind">
           <span class="dt" :class="dowCls(r.dow)"><b class="num">{{ r.day }}</b><small>{{ r.wd }}</small></span>
@@ -75,7 +89,7 @@ const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
           <b v-if="r.amount" class="amt num">{{ r.amount }}</b>
         </li>
       </ul>
-      <p v-if="!rows.length" class="empty">{{ t('timeline.agendaEmpty') }}</p>
+      <p v-if="!rows.length && !plans.length" class="empty">{{ t('timeline.agendaEmpty') }}</p>
       <div class="agf"><span>{{ subsLabel }}</span><b class="num">{{ fmtMoney(subTotal) }}</b></div>
     </section>
   </div>
@@ -93,6 +107,9 @@ const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
 .ag{list-style:none;margin:0;padding:0;flex:1}
 .ag li{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--divider)}
 .ag li.past{opacity:.6}
+.ag.plans{flex:none}
+.ag .ph{padding:6px 16px;font-size:12px;font-weight:600;color:var(--subtle);background:var(--surface-2)}
+.ag .st{font-size:12px;white-space:nowrap}
 .dt{width:40px;display:flex;flex-direction:column;align-items:center;line-height:1.2;color:var(--text-2);flex:none}
 .dt b{font-size:16px}
 .dt small{font-size:11px}

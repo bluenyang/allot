@@ -22,7 +22,7 @@ export const currency = z.enum(['KRW', 'USD'])
 export const cycle = z.enum(['monthly', 'yearly'])
 export const subStatus = z.enum(['active', 'cancelled', 'company'])
 export const payPath = z.enum(['direct', 'google', 'apple', 'telecom'])
-export const category = z.enum(['ai', 'telecom', 'content', 'tool', 'insurance', 'life'])
+export const category = z.enum(['ai', 'telecom', 'content', 'tool', 'insurance', 'life', 'other'])
 
 export const settings = z.object({
   netPay: won,
@@ -140,7 +140,8 @@ export const phase = z.object({
 }).refine((p) => p.to === null || p.to >= p.from, { message: 'phaseEndEarly', path: ['to'] })
 
 export const planEvent = z.object({
-  when: z.string().regex(/^\d{4}-\d{2}(~\d{2})?$/, 'ymRange'),
+  // YYYY-MM, YYYY-MM~MM, and a range into a later year YYYY-MM~YYYY-MM (spec 013 S-18)
+  when: z.string().regex(/^\d{4}-\d{2}(~(\d{4}-)?\d{2})?$/, 'ymRange'),
   kind: text.min(1),
   title: text.min(1),
   state: z.enum(['done', 'doing', 'todo']),
@@ -169,6 +170,7 @@ export const account = z.object({
   from: ym.nullable().optional(),
   stopFrom: ym.nullable().optional(),
   goalAck: won.nullable().optional(),
+  afterMaturity: z.string().trim().max(200).optional(),
   note: memo,
   amounts: phaseAmounts.optional(),
 }).superRefine((x, ctx) => {
@@ -178,6 +180,14 @@ export const account = z.object({
       ctx.addIssue({ code: 'custom', path: ['group'], message: 'groupOnly' })
     }
   }
+})
+
+export const monthAdjust = z.object({
+  ym,
+  targetId: text.min(1),
+  amount: won,
+  // text with no maximum: S-26 states no limit for it (review rc2-1 F-4)
+  reason: text.nullable().optional(),
 })
 
 export const balance = z.object({

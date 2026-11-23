@@ -4,6 +4,8 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
 import MoreSheet from './components/MoreSheet.vue'
+import NoticeBell from './components/NoticeBell.vue'
+import SearchDialog from './components/SearchDialog.vue'
 import Soon from './components/Soon.vue'
 import Toast from './components/Toast.vue'
 import { api } from './lib/api'
@@ -48,8 +50,8 @@ const pendingN = computed(() => store.pendingProposals + goalCount.value)
 const PATH: Record<string, string> = { home: '/', spend: '/spend/general', settings: '/settings/general' }
 const pathOf = (id: string) => PATH[id] ?? `/${id}`
 
-// ── Header bar (spec 010 S-4): where you are (the overview: its month and phase), search and
-// notifications as drawn (not there yet → `Soon`). No light/dark switch: the theme is chosen in Settings (D-10).
+// ── Header bar (spec 010 S-4): where you are (the overview: its month and phase), search (spec 013 S-19) and
+// notifications (S-20). No light/dark switch: the theme is chosen in Settings (D-10).
 const GROUP_OF: Record<string, MessageKey> = { spend: 'shell.groupBudget', pay: 'shell.groupBudget', living: 'shell.groupBudget', saving: 'shell.groupBudget', invest: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
 const crumbPage = computed(() => (route.value.page === 'settings'
   ? t(`settings.tabs.${['general', 'theme', 'ai', 'security'].includes(route.value.sub) ? route.value.sub : 'general'}` as MessageKey)
@@ -79,6 +81,22 @@ const onWide = (e: MediaQueryListEvent) => { if (e.matches) moreOpen.value = fal
 onMounted(() => wide.addEventListener('change', onWide))
 onBeforeUnmount(() => wide.removeEventListener('change', onWide))
 const toastAction = () => { const f = toast.onAction; hideToast(); f?.() }
+
+// ── Search (spec 013 S-19): the header box, the phone bar's button, and ⌘K / Ctrl+K from anywhere.
+const searchOpen = ref(false)
+const onSearchKey = (e: KeyboardEvent) => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    // not over an open editor or confirmation: leaving its page from the search would drop what is typed there
+    if (!searchOpen.value && document.querySelector('[role="dialog"],[role="alertdialog"]')) return
+    searchOpen.value = true
+  }
+}
+onMounted(() => window.addEventListener('keydown', onSearchKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onSearchKey))
+watch(route, () => { searchOpen.value = false })
+/** The API docs (spec 013 S-21): a page the server makes, for a signed-in user. */
+const API_DOCS = '/api/docs'
 
 // ── Sidebar width and folding (spec 007 S-20): drag or arrow keys on the edge, double-click for the default.
 const side = ref<HTMLElement | null>(null)
@@ -159,8 +177,8 @@ const onGripKey = (e: KeyboardEvent) => {
         <span class="logo" aria-hidden="true">A</span>
         <b>{{ label(route.page) }}</b>
         <span class="sp"></span>
-        <Soon class="tb" :pill="false" :aria-label="soonName(t('shell.search'))" :title="soonName(t('shell.search'))"><Icon name="search" :stroke="2" /></Soon>
-        <Soon class="tb" :pill="false" :aria-label="soonName(t('shell.notifications'))" :title="soonName(t('shell.notifications'))"><Icon name="bell" /></Soon>
+        <button class="tb" type="button" :aria-label="t('shell.search')" :title="t('shell.search')" aria-haspopup="dialog" @click="searchOpen = true"><Icon name="search" :stroke="2" /></button>
+        <NoticeBell />
       </div>
       <header class="topbar">
         <div v-if="route.page === 'home'" class="monthnav">
@@ -175,10 +193,10 @@ const onGripKey = (e: KeyboardEvent) => {
           <template v-else><span>{{ t(GROUP_OF[route.page]!) }}</span><span aria-hidden="true">/</span><b>{{ crumbPage }}</b></template>
         </nav>
         <span class="sp"></span>
-        <Soon class="search" :aria-label="soonName(t('shell.search'))">
+        <button class="search" type="button" :aria-label="t('shell.searchOpen')" aria-haspopup="dialog" @click="searchOpen = true">
           <Icon name="search" :stroke="2" /><span class="st">{{ t('shell.searchPlaceholder') }}</span><span class="kbds" aria-hidden="true"><kbd class="kbd">Ctrl</kbd><kbd class="kbd">K</kbd></span>
-        </Soon>
-        <Soon class="tb" :pill="false" :aria-label="soonName(t('shell.notifications'))" :title="soonName(t('shell.notifications'))"><Icon name="bell" /></Soon>
+        </button>
+        <NoticeBell />
       </header>
       <Toast v-if="toast.message" :message="toast.message" :action-label="toast.actionLabel || undefined" :error="toast.error" :dismissible="toast.error" @action="toastAction" @dismiss="hideToast" />
       <main class="main">
@@ -191,7 +209,7 @@ const onGripKey = (e: KeyboardEvent) => {
           <a :href="REPO" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a :href="REPO + '/releases'" target="_blank" rel="noopener noreferrer">{{ t('shell.changelog') }}</a>
           <a :href="REPO + '/issues'" target="_blank" rel="noopener noreferrer">{{ t('shell.issues') }}</a>
-          <Soon tag="span" class="fsoon">{{ t('shell.apiDocs') }}</Soon>
+          <a :href="API_DOCS" target="_blank" rel="noopener">{{ t('shell.apiDocs') }}</a>
         </nav>
         <div class="where">{{ t('shell.dataNote') }}</div>
       </footer>
@@ -204,6 +222,7 @@ const onGripKey = (e: KeyboardEvent) => {
       <button class="mi" :class="{ on: moreOn }" type="button" aria-haspopup="dialog" :aria-expanded="moreOpen" @click="moreOpen = true"><Icon name="more" />{{ t('shell.tabs.more') }}</button>
     </nav>
     <MoreSheet v-model="moreOpen" :name="me?.name ?? ''" :email="me?.email ?? ''" :admin="isAdmin" :pending="pendingN" @logout="logout" />
+    <SearchDialog v-model="searchOpen" :admin="isAdmin" />
   </div>
 </template>
 
@@ -239,19 +258,20 @@ const onGripKey = (e: KeyboardEvent) => {
 .monthnav .btn svg{width:16px;height:16px}
 .monthnav .ml{font-weight:700;padding:0 10px;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
 .phasebadge{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin-left:8px;font-size:12px;color:var(--muted);padding:2px 8px;border:1px solid var(--border);border-radius:var(--r-badge);background:var(--surface-2)}
-/* search box and bell: drawn as in the design, inert for now (`Soon`) */
+/* search box (spec 013 S-19) */
 .search{display:flex;align-items:center;gap:8px;height:36px;padding:0 8px 0 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface-2);flex:0 20 320px;min-width:0;max-width:100%;color:var(--subtle);overflow:hidden}
-.search:hover{background:var(--surface-2);color:var(--subtle)}
+.search:hover{background:var(--surface-2);color:var(--text-2);border-color:var(--border-strong)}
+.search{font:inherit;cursor:pointer;text-align:left}
 .search svg{width:16px;height:16px;flex:none}
 .search .st{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .search .kbds{display:inline-flex;gap:3px;flex:none}
 /* A narrow content column (small window or a wide sidebar): the hints (keys, 준비 중 pill) go first, then the box becomes its icon (review 22) */
-@container col (max-width: 720px){ .search .kbds,.search :deep(.soon-pill){display:none} }
-@container col (max-width: 600px){ .search{flex:none;width:36px;padding:0;justify-content:center} .search .st,.search :deep(.soon-pill){display:none} }
+@container col (max-width: 720px){ .search .kbds{display:none} }
+@container col (max-width: 600px){ .search{flex:none;width:36px;padding:0;justify-content:center} .search .st{display:none} }
 .tb{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface);color:var(--text-2);flex:none}
-.tb:hover{background:var(--surface);color:var(--text-2)}
+.tb{cursor:pointer}
+.tb:hover{background:var(--surface-2);color:var(--text)}
 .tb svg{width:18px;height:18px}
 .col .main{flex:1;width:100%}
-.foot-bar .fsoon{color:var(--subtle)}
 @media (max-width:760px){.col .main{padding-bottom:16px}}
 </style>

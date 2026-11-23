@@ -6,7 +6,8 @@
 // IRP fill an empty annual limit), 이름, 은행, 계좌 끝 4자리 (4 digits or empty: the API says why it refuses
 // other text). Step 2: amount split → 매달 보낼 금액 and 구간별 금액 (optional); ratio split → the share of the
 // total in % (stored as percent / 100, 2 decimals of the percent); Savings: 금리, 기간, 목표 금액; Investment:
-// 연 납입 한도; both: 언제부터, 메모. Delete asks first (the API deletes the account's balance records and phase
+// 연 납입 한도; both: 언제부터, 메모. rc.2 (S-15): Savings also 만기 후 (optional free text, `afterMaturity`; the 만기 일정
+// tab opens the editor on step 2 with `startStep`). Delete asks first (the API deletes the account's balance records and phase
 // amounts too, and the store reloads).
 import { computed, ref, watch } from 'vue'
 import { t, type MessageKey } from '../i18n'
@@ -22,7 +23,11 @@ import { chipOf, chipValue, fromChoice, fromOf, percentOfRatio, ratioAmount, rat
 import { wonText } from '../lib/format'
 import type { Account, BudgetGroup, SplitMode } from '../data/types'
 
-const props = defineProps<{ group: BudgetGroup; initial: Account | null; mode: SplitMode; /** this month's total of the menu (ratio split) */ total: number }>()
+const props = defineProps<{
+  group: BudgetGroup; initial: Account | null; mode: SplitMode; /** this month's total of the menu (ratio split) */ total: number
+  /** the step it opens on (0 = the first) */
+  startStep?: number
+}>()
 const emit = defineEmits<{ close: [] }>()
 
 const now = ymOf(today())
@@ -39,8 +44,9 @@ const cat = t(`budget.${props.group}.cat` as MessageKey)
 const blank = (): Account => ({
   id: '', name: '', role: '', inflow: '', outflow: '', bank: '', last4: '', kind: '', rate: '', term: '', buffer: 0, goal: null, annualLimit: null,
   group: props.group, amount: (props.mode === 'amount' ? '' : 0) as number, ratio: null, from: addYm(now, 1), stopFrom: null, goalAck: null, note: '', amounts: {},
+  afterMaturity: '',
 })
-const step = ref(0)
+const step = ref(props.startStep ?? 0)
 function validate(x: Account) {
   if (!x.name.trim()) { step.value = 0; return t('budget.editor.needName') }
   if (props.mode === 'amount' && typeof x.amount !== 'number') { step.value = 1; return t('budget.editor.needAmount') }
@@ -51,6 +57,7 @@ open(props.initial ?? undefined)
 if (edit.value) {
   edit.value.note ??= ''
   edit.value.amounts ??= {}
+  if (saving) edit.value.afterMaturity ??= ''
   edit.value.group = props.group
 }
 watch(edit, (v) => { if (!v) emit('close') })
@@ -212,6 +219,11 @@ async function confirmDelete() {
               <button v-for="k in terms" :key="k.id" type="button" role="radio" class="chip" :class="{ on: termPick.id === k.id }" :aria-checked="termPick.id === k.id ? 'true' : 'false'" @click="pickTerm(k.id)">{{ k.label }}</button>
             </div>
             <input v-if="termPick.id === 'other'" v-model="termPick.text" class="in" autocomplete="off" :aria-label="t('budget.editor.termOther')" :placeholder="t('budget.editor.termPh')">
+          </div>
+          <div class="field">
+            <label for="bi-after">{{ t('budget.editor.afterMaturity') }} <span class="opt">{{ t('common.optional') }}</span></label>
+            <input id="bi-after" v-model="edit.afterMaturity" class="in" autocomplete="off" :placeholder="t('budget.editor.afterMaturityPh')" aria-describedby="bi-after-h">
+            <span id="bi-after-h" class="hint">{{ t('budget.editor.afterMaturityHint') }}</span>
           </div>
           <div class="field">
             <div class="lrow"><label for="bi-goal">{{ t('budget.editor.goal') }} <span class="opt">{{ t('common.optional') }}</span></label><Tip :text="t('budget.editor.goalTip')" /></div>

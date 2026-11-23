@@ -71,7 +71,7 @@ test('(V-14 a) DateInput: typed from the keyboard, picked in the calendar, Escap
   expect(await readDate(e.getByRole('group', { name: '다음 결제일' }))).toBe('2031-02-11')
 })
 
-test('(V-14 b) MonthInput: typed, picked in the card, cleared; the end month card is limited to the start month\'s year; the stored string is YYYY-MM', async ({ page, request }) => {
+test('(V-14 b) MonthInput: typed, picked in the card, cleared; the end month card may go to another year (spec 013 S-18); the stored string is YYYY-MM', async ({ page, request }) => {
   await go(page, 'events', '타임라인')
   await page.getByRole('button', { name: '이벤트 추가', exact: true }).click()
   const s = sheet(page, '이벤트 추가')
@@ -85,13 +85,14 @@ test('(V-14 b) MonthInput: typed, picked in the card, cleared; the end month car
   await to.fill('2031-2')
   await to.blur()
   await expect(to).toHaveValue('2031-02')
-  // the card of the end month: year 2031 only (the year arrows are limited), the chosen month selected
+  // the card of the end month: the chosen month selected; since spec 013 S-18 a range may end in another year, so the
+  // year arrows are not limited to the start month's year any more (they were until rc.1)
   await s.getByRole('button', { name: '달력 열기' }).nth(1).click()
   const card = page.locator('.dp-pop.mp')
   await expect(card).toBeVisible()
   await expect(card.locator('[data-reka-month-picker-cell-trigger][data-selected]')).toHaveAttribute('data-value', /^2031-02/)
-  await expect(card.getByRole('button', { name: '이전 해' })).toBeDisabled()
-  await expect(card.getByRole('button', { name: '다음 해' })).toBeDisabled()
+  await expect(card.getByRole('button', { name: '이전 해' })).toBeEnabled()
+  await expect(card.getByRole('button', { name: '다음 해' })).toBeEnabled()
   await expect(card.locator('[data-reka-month-picker-cell-trigger]')).toHaveCount(12)
   await card.locator('[data-reka-month-picker-cell-trigger][data-value^="2031-06"]').click()
   await expect(card).toBeHidden()
