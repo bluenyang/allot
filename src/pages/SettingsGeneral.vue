@@ -18,8 +18,11 @@ import type { HolidaySet, Preferences, Settings } from '../data/types'
 import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
 import Select from '../components/Select.vue'
 import { localToday } from '../lib/now'
+import ScheduleItemEditor from '../components/ScheduleItemEditor.vue'
 import { DEFAULT_TIMEZONE } from '../lib/calc'
 import { supportedZones, zoneOptions } from '../lib/timezones'
+import { scheduleItemsIn } from '../lib/schedule-items'
+import type { ScheduleItem } from '../data/types'
 
 // 설정 › 일반 (spec 010 S-11, canvas "설정"): five titled sections. 화면 and 표시 형식 save the moment
 // a choice is made (the session is noted when the save starts and checked before each later step,
@@ -159,10 +162,20 @@ const SCHEDS = [
   { id: 'billingDay', slot: 'billing', name: 'billingDay', use: 'billingUse', ids: 'g-bill' },
 ] as const
 
-// ── 시간대 (spec 013 S-22): saves at once like the other display choices ──
+// ── 시간대 and the user's own monthly dates (spec 013 S-22, A-36) ──
+// The zone saves at once like the other display choices; the own dates are rows of their own (EditSheet + useEditor),
+// listed under the three fixed days with this month's date after the same shift (the draft's shift rule).
 const tzChoice = computed(() => store.preferences.timezone ?? DEFAULT_TIMEZONE)
 const tzOptions = computed(() => zoneOptions(store.preferences.timezone, supportedZones()))
 const pickZone = (tz: string) => saveNow({ timezone: tz }, undefined, t('schedule.tzSaved'))
+const itemEdit = ref<{ item: ScheduleItem | null } | null>(null)
+const openItem = (item: ScheduleItem | null) => { itemEdit.value = { item } }
+const accountName = (id: string | null) => (id ? store.accounts.find((a) => a.id === id)?.name ?? '—' : t('schedule.noAccount'))
+const ownItems = computed(() => {
+  const list = d.value.dayShift === 'none' ? [] : aroundMonth.value
+  if (!list) return store.schedules.map((item) => ({ item, at: null }))
+  return scheduleItemsIn(store.schedules, ym, d.value.dayShift, new Set(list.map((h) => h.date)))
+})
 
 // ── 공휴일 ──
 const krRow = computed(() => store.holidaySets.find((s) => s.builtin === 'kr'))
@@ -273,7 +286,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
     </div>
 
     <div class="set">
-      <div class="set-h"><h2>{{ g('schedule') }}</h2><p>{{ g('scheduleDesc') }}</p><Soon class="btn sm">{{ g('addSchedule') }}</Soon></div>
+      <div class="set-h"><h2>{{ g('schedule') }}</h2><p>{{ g('scheduleDesc') }}</p><button class="btn sm" type="button" @click="openItem(null)">{{ g('addSchedule') }}</button></div>
       <form class="card" :aria-label="g('scheduleForm')" novalidate @submit.prevent="save">
         <ul class="sched">
           <li v-for="s in SCHEDS" :key="s.id">
@@ -284,6 +297,16 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
             <div class="s2">
               <span>{{ g('monthly') }}</span>
               <span class="dayin"><input :id="s.ids" v-model.number="d[s.id]" type="number" min="1" max="31" :aria-label="g(s.name)"><span>{{ g('dayUnit') }}</span></span>
+            </div>
+          </li>
+          <li v-for="x in ownItems" :key="x.item.id" class="own" :data-dir="x.item.direction">
+            <div class="s1"><b>{{ x.item.name }}</b><span class="pill dir" :class="x.item.direction">{{ t(`schedule.kind.${x.item.direction}`) }}</span>
+              <small class="hint grow">{{ t('schedule.monthlyN', { n: x.item.day }) }} · {{ accountName(x.item.accountId) }}<template v-if="x.item.note"> · {{ x.item.note }}</template></small>
+              <span v-if="x.at" class="thism">{{ g('thisMonth') }} <b class="num" :class="{ moved: x.at.shifted }">{{ md(x.at.date) }}</b><template v-if="x.at.unresolved"> {{ g('noBizDay') }}</template><template v-else-if="x.at.shifted"> · {{ g(x.at.shifted === 'before' ? 'moveBefore' : 'moveAfter') }}</template></span>
+              <span v-else class="thism">{{ g('loadingHolidays') }}</span>
+            </div>
+            <div class="s2">
+              <button class="btn sm ghost" type="button" :aria-label="t('schedule.editLabel', { name: x.item.name })" @click="openItem(x.item)">{{ g('edit') }}</button>
             </div>
           </li>
           <li>
@@ -325,6 +348,8 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
         </div>
       </section>
     </div>
+
+    <ScheduleItemEditor v-if="itemEdit" :initial="itemEdit.item" @close="itemEdit = null" />
 
     <EditSheet v-if="fxEdit" :title="t('settings.general.fxEditTitle', { code: 'USD' })" :desc="g('fxEditDesc')" :error="fxError" :busy="fxBusy" :hint="fxFoot" @save="saveFx" @cancel="fxEdit = null">
       <div class="field"><span id="fx-mode" class="lbl">{{ g('fxMode') }}</span>
@@ -413,6 +438,10 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 .dayin input{flex:1;min-width:0;height:100%;border:0;outline:0;padding:0 6px 0 10px;text-align:right;color:var(--text);background:transparent;font-variant-numeric:tabular-nums}
 .dayin span{font-size:13px;color:var(--subtle)}
 .dayin:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
+.sched li.own{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+.sched li.own .s1{flex:1;min-width:0}
+.pill.dir.in{color:var(--primary-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--primary-line)}
+.pill.dir.out{color:var(--neg-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--neg-line)}
 .cf{flex-wrap:wrap}
 .err{color:var(--neg-text)}
 .hol{gap:12px}

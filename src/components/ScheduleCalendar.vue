@@ -40,7 +40,8 @@ const rows = computed(() => events.value.map((e) => {
   const d = parseDate(e.date)
   const label = kindLabel(e.kind)
   // the pill says the kind; the text is what is left of the title (a holiday's own name, a subscription's name)
-  const text = e.kind === 'sub' || e.kind === 'spend' ? (e.name ?? e.title) : e.title.startsWith(label) ? e.title.slice(label.length).trim() : e.title
+  // an own date (in / out) keeps its whole title: its name and the shift note (spec 013 S-22)
+  const text = e.kind === 'in' || e.kind === 'out' ? e.title : e.kind === 'sub' || e.kind === 'spend' ? (e.name ?? e.title) : e.title.startsWith(label) ? e.title.slice(label.length).trim() : e.title
   return { key: `${e.date}-${e.kind}-${e.title}`, day: d.getDate(), wd: weekdayShort(d), dow: d.getDay(), kind: e.kind as CalKind, label, text, amount: (e.kind === 'sub' || e.kind === 'spend') && e.krw !== undefined ? fmtMoney(e.krw) : '', past: e.date < todayIso }
 }))
 const plans = computed(() => store.events.filter((e) => inMonth(e.when, ym.value)))
@@ -123,6 +124,8 @@ const dowCls = (dow: number) => (dow === 6 ? 'sat' : dow === 0 ? 'sun' : '')
 .pill.k-sub{color:var(--accent-text);background:var(--accent-soft)}
 .pill.k-spend{color:var(--primary-text);background:var(--primary-soft)}
 .pill.k-change{color:var(--accent-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--accent-line)}
+.pill.k-in{color:var(--primary-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--primary-line)}
+.pill.k-out{color:var(--neg-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--neg-line)}
 .pill.k-holiday{color:var(--neg-text);background:var(--neg-soft)}
 .agf{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);font-size:13px}
 .agf span{color:var(--muted)}
