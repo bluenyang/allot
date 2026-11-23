@@ -17,6 +17,7 @@ import type {
 } from '../../src/data/types'
 import { maturityOf } from './maturity'
 import { whenSpan } from '../../src/lib/event-when'
+import { scheduleItemsIn } from '../../src/lib/schedule-items'
 
 /** The part of GET /api/state the tools read. */
 export interface Data {
@@ -284,6 +285,10 @@ export function schedule(d: Data, from: string, months: number) {
     months: list.map((ym) => ({
       month: ym,
       dates: datesOf(d, ym, off),
+      // the user's own monthly dates (spec 013 S-22, A-36), moved off weekends and holidays like the dates above; no amount
+      ownDates: scheduleItemsIn(d.schedules ?? [], ym, d.settings.dayShift, off).map(({ item, at }) => ({
+        id: item.id, name: item.name, day: item.day, ...dateOf(at), accountId: item.accountId, direction: item.direction, ...(item.note ? { note: item.note } : {}),
+      })),
       payments: paymentsIn(d, ym),
       spendingRounds: spendRoundsIn(d, ym),
       planChanges: changesIn(d.planChanges, ym).map((c) => changeView(c, d)),
