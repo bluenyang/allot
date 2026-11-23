@@ -4,7 +4,6 @@ import { computed, onActivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import Icon from '../components/Icon.vue'
 import Seg from '../components/Seg.vue'
-import Soon from '../components/Soon.vue'
 import SubTabs from '../components/SubTabs.vue'
 import { ApiError, api } from '../lib/api'
 import { copyText } from '../lib/clipboard'
@@ -12,6 +11,7 @@ import { sessionScope } from '../lib/store'
 import type { Scope } from '../lib/session-guard'
 import { lang, t, type MessageKey } from '../i18n'
 import { getKeyPolicy, setKeyPolicy, type KeyPolicy } from '../lib/keys'
+import { generatePassword } from '../lib/password-gen'
 
 // Admin (spec 006 S-3, S-8): accounts and login methods. Account details only; nobody's
 // financial data is shown or reachable here. The server checks every action again.
@@ -61,8 +61,11 @@ interface UserEdit { user: User | null; email: string; name: string; role: 'admi
 const statusOf = (u: User): Status => (u.banned ? 'banned' : u.status)
 const edit = ref<UserEdit | null>(null)
 const editError = ref('')
+/** A password made by 만들기 in the user sheet, shown with a copy button; it is sent only when the sheet is saved. */
+const made = ref('')
 function openUser(u?: User) {
   editError.value = ''
+  made.value = ''
   edit.value = u ? { user: u, email: u.email, name: u.name, role: u.role, status: statusOf(u), password: '', typePw: false, confirm: '', asking: false }
     : { user: null, email: '', name: '', role: 'user', status: 'active', password: '', typePw: false, confirm: '', asking: false }
 }
@@ -102,13 +105,13 @@ async function saveUser() {
   if (!e.user) {
     if (!/^\S+@\S+\.\S+$/.test(e.email.trim())) return (editError.value = t('admin.checkEmail'))
     if (!e.name.trim()) return (editError.value = t('admin.needName'))
-    if (e.password && e.password.length < 8) return (editError.value = t('admin.tempPwShort'))
+    if (e.password && e.password.length < pwMin.value) return (editError.value = t('security.tempPwShort', { min: pwMin.value }))
     return act((step) => step(() => api('POST', '/api/auth/admin/create-user', {
       email: e.email.trim(), name: e.name.trim(), role: e.role, ...(e.password ? { password: e.password } : {}),
     })), e.password ? t('admin.created') : t('admin.createdLink'))
   }
   const u = e.user
-  if (e.typePw && e.password && e.password.length < 8) return (editError.value = t('account.pwShort'))
+  if (e.typePw && e.password && e.password.length < pwMin.value) return (editError.value = t('security.pwShort', { min: pwMin.value }))
   const from = statusOf(u)
   if (e.status === 'banned' && from !== 'banned' && !confirm(t('admin.confirmBan', { email: u.email }))) return
   let done = t('settings.general.saved')
@@ -137,6 +140,46 @@ const stateOptions = (u: User) => [
   { id: 'banned', label: t('admin.statusBanned'), disabled: u.id === meId.value },
 ]
 const stateHint = (s: Status) => t(`admin.stateHint.${s}` as MessageKey)
+/** 만들기 (spec 013 S-24): a password made in the browser, filled into the sheet's password field and shown. */
+function makePassword() {
+  if (!edit.value) return
+  made.value = generatePassword()
+  edit.value.typePw = true
+  edit.value.password = made.value
+}
+async function copyMade() {
+  if (await copyText(made.value)) say(t('security.copied'))
+  else error.value = t('security.copyFailed')
+}
+
+// ── password policy (spec 013 S-24, S-26, A-37) ──
+interface PwPolicy { minLength: number; lockout: { enabled: boolean; attempts: number; minutes: number } }
+interface Lock { email: string; until: string; count: number }
+const pwPolicy = ref<{ policy: PwPolicy; stored: boolean } | null>(null)
+const pwDraft = ref<PwPolicy | null>(null)
+const locks = ref<Lock[]>([])
+/** The minimum the screen checks before sending (the server checks again); 8 before the policy answers, as before. */
+const pwMin = computed(() => pwPolicy.value?.policy.minLength ?? 8)
+async function loadPwPolicy() {
+  pwPolicy.value = await api<{ policy: PwPolicy; stored: boolean }>('GET', '/api/admin/password-policy')
+}
+async function loadLocks() {
+  locks.value = (await api<{ locks: Lock[] }>('GET', '/api/admin/login-locks')).locks
+}
+const fmtAt = (at: string) => new Date(at).toLocaleString(lang.value === 'en' ? 'en-US' : 'ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+async function unlockEmail(l: Lock) {
+  busy.value = true
+  peditError.value = ''
+  try {
+    await api('DELETE', `/api/admin/login-locks/${encodeURIComponent(l.email)}`)
+    await loadLocks()
+    say(t('security.unlocked', { email: l.email }))
+  } catch (err) {
+    peditError.value = err instanceof ApiError ? err.message : t('admin.saveFailed')
+  } finally {
+    busy.value = false
+  }
+}
 
 // ── login methods ──
 const providers = ref<Provider[]>([])
@@ -163,6 +206,11 @@ const current = () => providers.value.find((p) => p.id === pedit.value?.id)
 function openProvider(p: Provider) {
   peditError.value = ''
   pstep.value = 0
+  if (p.id === 'password') {
+    const cur = pwPolicy.value?.policy
+    pwDraft.value = cur ? { minLength: cur.minLength, lockout: { ...cur.lockout } } : null
+    loadLocks().catch((err) => { peditError.value = err instanceof ApiError ? err.message : t('admin.loadFailed') })
+  }
   pedit.value = {
     id: p.id, enabled: p.values.enabled, signup: p.values.signup, name: p.values.name, clientId: p.values.clientId,
     discoveryUrl: p.values.discoveryUrl, scopes: p.values.scopes.join(' '), groupsClaim: p.values.groupsClaim,
@@ -199,13 +247,19 @@ async function saveProvider() {
     if (can('clientSecret') && e.secret) body.clientSecret = e.secret
     else if (can('clientSecret') && e.dropSecret) body.clientSecret = null
   }
-  if (!Object.keys(body).length) return (pedit.value = null)
+  // The password sheet also holds the policy: it is saved when it changed (also when it is still the unsaved default).
+  const policy = p.id === 'password' && pwDraft.value && pwPolicy.value
+    && JSON.stringify(pwDraft.value) !== JSON.stringify(pwPolicy.value.policy) ? pwDraft.value : null
+  if (!Object.keys(body).length && !policy) return (pedit.value = null)
   busy.value = true
   peditError.value = ''
   try {
-    await api('PUT', `/api/admin/providers/${p.id}`, body)
-    await loadProviders()
-    say(t('admin.providerSaved', { name: TITLE(p.id) }))
+    if (Object.keys(body).length) {
+      await api('PUT', `/api/admin/providers/${p.id}`, body)
+      await loadProviders()
+    }
+    if (policy) pwPolicy.value = await api<{ policy: PwPolicy; stored: boolean }>('PUT', '/api/admin/password-policy', policy)
+    say(Object.keys(body).length ? t('admin.providerSaved', { name: TITLE(p.id) }) : t('security.policySaved'))
     pedit.value = null
   } catch (err) {
     peditError.value = err instanceof ApiError ? err.message : t('admin.saveFailed')
@@ -236,7 +290,7 @@ async function toggleNoExpiry(e: Event) {
 async function load() {
   try {
     meId.value = (await api<{ user: { id: string } }>('GET', '/api/me')).user.id
-    await Promise.all([loadUsers(), loadProviders(), getKeyPolicy().then((p) => { keyPolicy.value = p })])
+    await Promise.all([loadUsers(), loadProviders(), getKeyPolicy().then((p) => { keyPolicy.value = p }), loadPwPolicy()])
   } catch (e) {
     fail(e, t('admin.loadFailed'))
   }
@@ -279,10 +333,15 @@ onActivated(load)
         <div class="field"><span id="u-role" class="lbl">{{ t('admin.role') }}</span>
           <Seg :options="ROLES" :model-value="edit.role" labelledby="u-role" @update:model-value="edit.role = $event" />
           <span class="hint">{{ roleHint(edit.role) }}</span></div>
-        <div v-if="edit.typePw" class="field"><label for="u-pw">{{ t('admin.tempPw') }}</label><input id="u-pw" v-model="edit.password" class="in" type="password" autocomplete="new-password" :placeholder="t('admin.tempPwPh')"><span class="hint">{{ t('admin.tempPwNote') }}</span></div>
+        <div v-if="edit.typePw" class="field"><label for="u-pw">{{ t('admin.tempPw') }}</label>
+          <div class="cbrow"><input id="u-pw" v-model="edit.password" class="in" type="password" autocomplete="new-password" :placeholder="t('admin.tempPwPh')"><button class="btn" type="button" @click="makePassword">{{ t('security.generate') }}</button></div>
+          <span class="hint">{{ t('admin.tempPwNote') }}</span></div>
         <div v-else class="field">
-          <div class="pwbox"><span>{{ t('admin.noPwBox') }}</span><button class="btn sm ghost" type="button" @click="edit.typePw = true">{{ t('admin.pickPw') }}</button><Soon class="btn sm ghost">{{ t('admin.autoPw') }}</Soon></div>
+          <div class="pwbox"><span>{{ t('admin.noPwBox') }}</span><button class="btn sm ghost" type="button" @click="edit.typePw = true">{{ t('admin.pickPw') }}</button><button class="btn sm ghost" type="button" @click="makePassword">{{ t('admin.autoPw') }}</button></div>
           <span class="hint">{{ t('admin.noPwHint') }}</span></div>
+        <div v-if="made && edit.typePw && edit.password === made" class="field"><span class="lbl">{{ t('security.generated') }}</span>
+          <div class="cbrow"><input class="in mono" readonly :value="made" :aria-label="t('security.generated')" @focus="($event.target as HTMLInputElement).select()"><button class="btn" type="button" @click="copyMade">{{ t('security.copy') }}</button></div>
+          <span class="hint">{{ t('security.generatedNote') }}</span></div>
       </EditSheet>
 
       <EditSheet v-if="edit && edit.user" :title="edit.user.email" :desc="t('admin.userSub', { via: ADMISSION(edit.user.admission), date: fmt(edit.user.createdAt) })" :error="editError" :busy="busy"
@@ -294,8 +353,13 @@ onActivated(load)
           <Seg :options="stateOptions(edit.user)" :model-value="edit.status" labelledby="ue-st" @update:model-value="edit.status = $event" />
           <span class="hint">{{ stateHint(edit.status) }}</span></div>
         <div class="field acts"><button class="btn" type="button" :disabled="busy" @click="endSessions(edit.user)">{{ t('admin.endSessions') }}</button></div>
-        <div v-if="edit.typePw" class="field"><label for="ue-pw">{{ t('admin.newPw') }}</label><input id="ue-pw" v-model="edit.password" class="in" type="password" autocomplete="new-password"><span class="hint">{{ t('admin.newPwHint') }}</span></div>
-        <div v-else class="field acts"><Soon class="btn">{{ t('admin.makePw') }}</Soon><button class="btn ghost" type="button" @click="edit.typePw = true">{{ t('admin.typePw') }}</button></div>
+        <div v-if="edit.typePw" class="field"><label for="ue-pw">{{ t('admin.newPw') }}</label>
+          <div class="cbrow"><input id="ue-pw" v-model="edit.password" class="in" type="password" autocomplete="new-password"><button class="btn" type="button" @click="makePassword">{{ t('security.generate') }}</button></div>
+          <span class="hint">{{ t('admin.newPwHint') }}</span></div>
+        <div v-else class="field acts"><button class="btn" type="button" @click="makePassword">{{ t('admin.makePw') }}</button><button class="btn ghost" type="button" @click="edit.typePw = true">{{ t('admin.typePw') }}</button></div>
+        <div v-if="made && edit.typePw && edit.password === made" class="field"><span class="lbl">{{ t('security.generated') }}</span>
+          <div class="cbrow"><input class="in mono" readonly :value="made" :aria-label="t('security.generated')" @focus="($event.target as HTMLInputElement).select()"><button class="btn" type="button" @click="copyMade">{{ t('security.copy') }}</button></div>
+          <span class="hint">{{ t('security.generatedNote') }}</span></div>
         <div class="dbox">
           <span><b>{{ t('admin.deleteTitle') }}</b>{{ t('admin.deleteNote') }}</span>
           <button class="btn sm bad" type="button" :disabled="edit.user.id === meId" @click="edit.asking = true">{{ t('admin.delete') }}</button>
@@ -340,9 +404,32 @@ onActivated(load)
           <span class="swin hd"><input type="checkbox" role="switch" :aria-label="t('admin.turnOnLabel', { name: TITLE(pedit.id) })" :checked="pedit.enabled" :disabled="locked(current()!, 'enabled')" @change="pedit.enabled = ($event.target as HTMLInputElement).checked"><span></span></span>
         </template>
         <template v-if="pedit.id === 'password'">
-          <div class="field"><span class="lbl">{{ t('admin.pwPolicyTitle') }}</span>
-            <div class="acts"><Soon class="btn sm">{{ t('admin.pwMinLen') }}</Soon><Soon class="btn sm">{{ t('admin.pwLock') }}</Soon><Soon class="btn sm">{{ t('admin.pwSignup') }}</Soon></div></div>
           <p class="small muted" style="margin:0">{{ t('admin.pwOffNote') }}</p>
+          <template v-if="pwDraft">
+            <div class="field"><span class="lbl">{{ t('admin.pwPolicyTitle') }}</span>
+              <p v-if="pwPolicy && !pwPolicy.stored" class="note">{{ t('security.defaultNote') }}</p></div>
+            <div class="field"><label for="pp-min">{{ t('security.minLength') }}</label>
+              <input id="pp-min" v-model.number="pwDraft.minLength" class="in num" type="number" inputmode="numeric" min="8" max="128" step="1">
+              <span class="hint">{{ t('security.minLengthHint') }}</span></div>
+            <div class="field"><span class="lbl">{{ t('security.signupRule') }}</span>
+              <span class="hint">{{ t('security.signupRuleHint') }}</span></div>
+            <label class="swrow">
+              <span><b>{{ t('security.lockout') }}</b><span class="hint">{{ t('security.lockoutHint') }}</span></span>
+              <span class="swin"><input v-model="pwDraft.lockout.enabled" type="checkbox" role="switch" :aria-label="t('security.lockout')"><span></span></span>
+            </label>
+            <div v-if="pwDraft.lockout.enabled" class="pair">
+              <div class="field"><label for="pp-att">{{ t('security.attempts') }}</label>
+                <input id="pp-att" v-model.number="pwDraft.lockout.attempts" class="in num" type="number" inputmode="numeric" min="3" max="20" step="1"><span class="hint">{{ t('security.attemptsHint') }}</span></div>
+              <div class="field"><label for="pp-min2">{{ t('security.minutes') }}</label>
+                <input id="pp-min2" v-model.number="pwDraft.lockout.minutes" class="in num" type="number" inputmode="numeric" min="1" max="1440" step="1"><span class="hint">{{ t('security.minutesHint') }}</span></div>
+            </div>
+            <div class="field"><span class="lbl">{{ t('security.locks') }}</span>
+              <ul v-if="locks.length" class="locks">
+                <li v-for="l in locks" :key="l.email"><span class="le"><b>{{ l.email }}</b><small class="hint">{{ t('security.lockedUntil', { date: fmtAt(l.until) }) }}</small></span>
+                  <button class="btn sm" type="button" :disabled="busy" :aria-label="t('security.unlockLabel', { email: l.email })" @click="unlockEmail(l)">{{ t('security.unlock') }}</button></li>
+              </ul>
+              <span v-else class="hint">{{ t('security.locksNone') }}</span></div>
+          </template>
         </template>
         <template v-else-if="pstep === 0">
           <div v-if="pedit.id === 'oidc'" class="field"><label for="p-disc">discovery URL</label><input id="p-disc" v-model="pedit.discoveryUrl" class="in mono" type="url" placeholder="https://…/.well-known/openid-configuration" :disabled="locked(current()!, 'discoveryUrl')"><span class="hint">{{ t('admin.discoveryHint') }}</span></div>
@@ -414,6 +501,14 @@ onActivated(load)
 .p1 h2{margin:0;font-size:15px;font-weight:600}
 .pcard .btn{align-self:flex-start}
 .grow{flex-grow:1}
+.swrow{display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field .hint{display:block;margin-top:4px}
+.cbrow .in{flex:1;min-width:0}
+.locks{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:var(--r-card)}
+.locks li{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--divider)}
+.locks li:last-child{border-bottom:0}
+.le{flex:1;min-width:0;display:flex;flex-direction:column;overflow-wrap:anywhere}
 .cbrow{display:flex;gap:8px;align-items:center}
 .codebox{display:flex;align-items:center;flex:1;min-width:0;min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--r-ctl);background:var(--surface-2);font:12px var(--f-mono);overflow-x:auto;white-space:nowrap}
 .choices{display:flex;flex-direction:column;gap:8px}

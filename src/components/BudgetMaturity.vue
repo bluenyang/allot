@@ -8,14 +8,15 @@ import { computed } from 'vue'
 import { t } from '../i18n'
 import { fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
-import { addYm, lastBalance, maturityAmount, maturityOf, today, ymLabel, ymOf } from '../lib/calc'
+import { addYm, lastBalance, maturityAmount, maturityOf, ymLabel, ymOf } from '../lib/calc'
 import { store } from '../lib/store'
 import type { Account } from '../data/types'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ items: Account[] }>()
 const emit = defineEmits<{ edit: [id: string] }>()
 
-const now = ymOf(today())
+const now = ymOf(localToday())
 const read = computed(() => props.items.map((a) => ({ a, m: maturityOf(a) })))
 const unread = computed(() => read.value.filter((x) => !x.m).map((x) => x.a.name))
 /** Holidays from the earliest balance record of a listed item to the month after the last maturity (none without a shift). */

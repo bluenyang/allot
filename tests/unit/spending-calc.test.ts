@@ -6,9 +6,9 @@ import {
   distributionAt, leftoverAfterTransfer, monthMoney, monthlyKrw, num, payOffEarly, planAt, planRounds, replan, spendState, upcomingSpendRounds, spendingIn, spendingKrw, transferAt,
 } from '../../src/lib/calc'
 import type { Distribution, TransferCalc } from '../../src/lib/calc'
-import type { AllocationTarget, Living, Phase, PlanChange, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
+import type { AllocationTarget, Living, Phase, PlanChange, Priced, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
 
-const S: Settings = { netPay: 3_000_000, fxRate: 1380, fxBuffer: 3, payDay: 25, transferDay: 1, billingDay: 16, subRound: 10_000, dayShift: 'none' }
+const S: Priced = { netPay: 3_000_000, fxRate: 1380, fxBuffer: 3, payDay: 25, transferDay: 1, billingDay: 16, subRound: 10_000, dayShift: 'none', currencies: [] }
 const none: ReadonlySet<string> = new Set()
 const dates = (r: SpendingRound[]) => r.map((x) => x.date)
 const amounts = (r: SpendingRound[]) => r.map((x) => x.amount)
@@ -169,7 +169,7 @@ function transferBefore(subs: Subscription[], changes: PlanChange[], s: Settings
   for (const base of subs) {
     const p = planAt(base, changes, ym)
     if (p.status !== 'active') continue
-    const m = monthlyKrw(p, s)
+    const m = monthlyKrw(p, { ...s, currencies: [] })
     if (p.cycle === 'yearly') yearlyMonthly += m
     else monthlySum += m
     if (p.currency === 'USD') usdMonthly += m
@@ -180,7 +180,7 @@ function transferBefore(subs: Subscription[], changes: PlanChange[], s: Settings
   const raw = monthlySum + yearlyMonthly + buffer
   const needed = Math.ceil(raw / 1000) * 1000
   const transfer = Math.ceil(needed / s.subRound) * s.subRound
-  return { monthlySum, yearlyMonthly, usdMonthly, buffer, needed, transfer, items }
+  return { monthlySum, yearlyMonthly, usdMonthly, foreignMonthly: usdMonthly, buffer, needed, transfer, items }
 }
 function distributionBefore(ym: string, netPay: number, phases: Phase[], targets: AllocationTarget[], living: Living, subs: Subscription[], changes: PlanChange[], s: Settings): Distribution {
   const phase = phases.find((p) => p.from <= ym && (p.to === null || ym <= p.to)) ?? null
@@ -213,7 +213,7 @@ test('V-3 (a): without spendings, transferAt and distributionAt equal the pre-ch
   const rnd = rng(20261121)
   const int = (lo: number, hi: number) => lo + Math.floor(rnd() * (hi - lo + 1))
   for (let k = 0; k < 200; k++) {
-    const s: Settings = { netPay: int(1_500_000, 6_000_000), fxRate: int(1000, 1600), fxBuffer: int(0, 8), payDay: 25, transferDay: int(1, 28), billingDay: 16, subRound: [1000, 5000, 10_000, 50_000][int(0, 3)]!, dayShift: 'none' }
+    const s: Priced = { netPay: int(1_500_000, 6_000_000), fxRate: int(1000, 1600), fxBuffer: int(0, 8), payDay: 25, transferDay: int(1, 28), billingDay: 16, subRound: [1000, 5000, 10_000, 50_000][int(0, 3)]!, dayShift: 'none', currencies: [] }
     const subs: Subscription[] = Array.from({ length: int(0, 8) }, (_, i) => {
       const usdPlan = rnd() < 0.5
       return {

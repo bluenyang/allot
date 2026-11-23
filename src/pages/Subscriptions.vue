@@ -6,15 +6,17 @@ import PageHeader from '../components/PageHeader.vue'
 import TransferChart from '../components/TransferChart.vue'
 import Seg from '../components/Seg.vue'
 import Icon from '../components/Icon.vue'
-import { store } from '../lib/store'
+import { pricedSettings, store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, today, usd, ymd, ymOf, ymRange } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, ymd, ymOf, ymRange } from '../lib/calc'
+import { chargeLabel, fxAmount } from '../lib/currency'
 import type { Category, Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
 import { downloadCsv, wonCell, type CsvCell } from '../lib/csv'
+import { localToday } from '../lib/now'
 
 // The editors load when one is opened: the first screen stays small.
 const SubEditor = defineAsyncComponent(() => import('../components/SubEditor.vue'))
@@ -23,7 +25,7 @@ const PlanChangeEditor = defineAsyncComponent(() => import('../components/PlanCh
 // 구독 (spec 010 S-7): four summary cards, four views in one card, a two-step editor for a subscription
 // and one for a plan change. The CSV export (spec 013 S-17) writes the list as it is filtered.
 const tab = ref('list')
-const now = today()
+const now = localToday()
 const ym = ref(ymOf(now))
 const PATH_IDS = ['direct', 'google', 'apple', 'telecom'] as const
 /** The category filter: the six and 기타 (`other`, spec 013 S-18). */
@@ -37,8 +39,8 @@ const tabs = computed(() => [
 ])
 
 const firstLine = (s: string) => s.split('\n')[0] ?? ''
-const charge = (p: Plan) => p.currency === 'USD' ? `USD ${p.amount.toFixed(2)}${p.vat ? ` +${p.vat}%` : ''}` : `KRW ${num(p.amount)}`
-const monthly = (p: Plan) => (p.status === 'active' ? monthlyKrw(p, store.settings) : 0)
+const charge = (p: Plan) => chargeLabel(p, num)
+const monthly = (p: Plan) => (p.status === 'active' ? monthlyKrw(p, pricedSettings()) : 0)
 
 // ---------- list ----------
 /** The next charge by the schedule the calendar and MCP use (no horizon: a first charge any distance away shows). */
@@ -61,6 +63,8 @@ const active = computed(() => rows.value.filter((r) => r.p.status === 'active'))
 const unverified = computed(() => active.value.filter((r) => !r.p.verified))
 const yearlyCount = computed(() => active.value.filter((r) => r.p.cycle === 'yearly').length)
 const usdCount = computed(() => active.value.filter((r) => r.p.currency === 'USD').length)
+/** Active items in a foreign currency other than USD (spec 013 S-23): then the buffer line is each currency's own buffer. */
+const otherForeign = computed(() => active.value.some((r) => r.p.currency !== 'KRW' && r.p.currency !== 'USD'))
 
 const status = ref<'all' | 'active' | 'company' | 'cancelled'>('active')
 const cat = ref('')
@@ -160,7 +164,8 @@ function describe(c: PlanChange) {
   const to = c.to
   const parts: string[] = []
   if (to.plan) parts.push(firstLine(to.plan))
-  if (to.amount != null) parts.push((to.currency ?? base?.currency) === 'USD' ? usd(to.amount) : wonText(to.amount))
+  const code = to.currency ?? base?.currency
+  if (to.amount != null) parts.push(code && code !== 'KRW' ? fxAmount(code, to.amount) : wonText(to.amount))
   if (to.cycle) parts.push(cycleLabel(to.cycle))
   if (to.status) parts.push(statusLabel(to.status))
   return parts.join(' · ')
@@ -189,7 +194,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
     m, title: `${t('subscriptions.ymTitle', { y: m.slice(0, 4), m: Number(m.slice(5, 7)) })}${changesIn(store.planChanges, m).length ? ` ${t('subscriptions.withChange')}` : ''}`,
     lines: [
       { k: t('subscriptions.monthlyTotal'), v: fmtMoney(x.monthlySum + x.yearlyMonthly) },
-      { k: t('subscriptions.fxBuffer', { pct: store.settings.fxBuffer }), v: `+${fmtMoney(x.buffer)}` },
+      { k: otherForeign.value ? t('currency.fxBufferEach') : t('subscriptions.fxBuffer', { pct: store.settings.fxBuffer }), v: `+${fmtMoney(x.buffer)}` },
       ...(spendSubs(m) > 0 ? [{ k: t('subscriptions.spendLine'), v: `+${fmtMoney(spendSubs(m))}` }] : []),
       { k: t('subscriptions.neededTransfer'), v: fmtMoney(x.needed) },
       { k: t('subscriptions.roundTo', { unit: fmtMoney(store.settings.subRound), name: subsName.value }), v: fmtMoney(x.transfer), strong: true },

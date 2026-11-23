@@ -4,19 +4,27 @@ import EditSheet from '../components/EditSheet.vue'
 import Seg from '../components/Seg.vue'
 import Soon from '../components/Soon.vue'
 import Switch from '../components/Switch.vue'
-import { applyPreference, lang, t, type Lang, type MessageKey } from '../i18n'
+import { applyPreference, lang, t, te, type Lang, type MessageKey } from '../i18n'
 import { showToast } from '../lib/toast'
-import { saveItem, savePreferences, saveSettings, sessionScope, status, store } from '../lib/store'
+import { deleteItem, pricedSettings, saveCurrency, saveItem, savePreferences, saveSettings, sessionScope, status, store } from '../lib/store'
+import { api } from '../lib/api'
+import { COMMON_CODES, currencyUses, normalCode, rateNum } from '../lib/currency'
 import { runSteps } from '../lib/session-guard'
 import { useEditor } from '../lib/useEditor'
 import { dateText, money, moneyClass } from '../lib/format'
 import { holidayList } from '../lib/holidays-lazy'
 import { BUILTIN_SETS } from '../data/holidays-kr'
 import { holidayName, setName } from '../lib/holiday-names'
-import { addYm, monthDates, today, upcomingPayments, ymOf } from '../lib/calc'
-import type { HolidaySet, Preferences, Settings } from '../data/types'
+import { addYm, monthDates, upcomingPayments, ymOf } from '../lib/calc'
+import type { ForeignCurrency, HolidaySet, Preferences, Settings } from '../data/types'
 import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
 import Select from '../components/Select.vue'
+import { localToday } from '../lib/now'
+import ScheduleItemEditor from '../components/ScheduleItemEditor.vue'
+import { DEFAULT_TIMEZONE } from '../lib/calc'
+import { supportedZones, zoneOptions } from '../lib/timezones'
+import { scheduleItemsIn } from '../lib/schedule-items'
+import type { ScheduleItem } from '../data/types'
 
 // 설정 › 일반 (spec 010 S-11, canvas "설정"): five titled sections. 화면 and 표시 형식 save the moment
 // a choice is made (the session is noted when the save starts and checked before each later step,
@@ -66,27 +74,62 @@ const pickFormat = (patch: Partial<Preferences>) => saveNow(patch, undefined, g(
 const fmt = computed(() => ({ amountUnit: store.preferences.amountUnit, negative: store.preferences.negative, dateFormat: store.preferences.dateFormat }))
 
 // Preview: this month's upcoming payments in the chosen formats (the user's own data)
-const now = today()
-const preview = computed(() => upcomingPayments(store.subscriptions, store.planChanges, store.settings, now, 31).slice(0, 4))
+const now = localToday()
+const preview = computed(() => upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), now, 31).slice(0, 4))
 const previewTotal = computed(() => preview.value.reduce((a, p) => a + p.krw, 0))
 const monthName = computed(() => new Date(2000, Number(ymOf(now).slice(5)) - 1, 1).toLocaleString(lang.value === 'en' ? 'en-US' : 'ko-KR', { month: 'long' }))
 
-// ── 통화: the exchange rate (USD) is edited in a dialog ──
-const usdUses = computed(() => store.subscriptions.filter((s) => s.currency === 'USD').length)
-interface FxDraft { fxRate: number; fxBuffer: number }
+// ── 통화 (spec 013 S-23, A-35, A-39): KRW is the base (fixed); USD keeps its rate in the settings, the other codes are the
+// currency list. One dialog edits either: USD saves the settings (fxRate, fxBuffer, fxAuto), a list code saves its row. ──
+const c = (k: string, vars?: Record<string, string | number>) => t(`currency.${k}` as MessageKey, vars)
+/** A row of the list: USD (id null) or a listed currency. */
+interface FxRow { id: string | null; code: string; rate: number; buffer: number; auto: boolean; autoAt?: string | null; autoError?: string | null }
+const fxRows = computed<FxRow[]>(() => [
+  { id: null, code: 'USD', rate: store.settings.fxRate, buffer: store.settings.fxBuffer, auto: !!store.settings.fxAuto, autoAt: store.settings.fxAutoAt, autoError: store.settings.fxAutoError },
+  ...store.currencies.map((x) => ({ id: x.id, code: x.code, rate: x.rate, buffer: x.buffer, auto: x.auto, autoAt: x.autoAt, autoError: x.autoError })),
+])
+/** The currency's name in the screen language (from the browser's own list), else the code. */
+function curName(code: string) {
+  try { return new Intl.DisplayNames([lang.value === 'en' ? 'en' : 'ko'], { type: 'currency' }).of(code) ?? code } catch { return code }
+}
+function usesText(code: string) {
+  const u = currencyUses(code, store.subscriptions, store.planChanges, store.spendings)
+  if (!u.subs && !u.spendings) return g('fxNoUses')
+  if (!u.spendings) return c('usesSubs', { n: u.subs })
+  if (!u.subs) return c('usesSpendings', { n: u.spendings })
+  return c('uses', u)
+}
+const atText = (iso: string) => new Date(iso).toLocaleString(lang.value === 'en' ? 'en-US' : 'ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: store.preferences.timezone || undefined })
+function whyText(e: string) {
+  const http = /^http_(\d+)$/.exec(e)
+  if (http) return c('why.http', { status: http[1]! })
+  return te(`currency.why.${e}`) ? c(`why.${e}`) : e
+}
+function modeText(r: FxRow) {
+  if (!r.auto) return c('manual')
+  if (r.autoError) return c('autoFailed')
+  return r.autoAt ? c('autoAt', { at: atText(r.autoAt) }) : c('autoNever')
+}
+const rateText = (r: FxRow) => c('rate', { rate: rateNum(r.rate), code: r.code })
+
+interface FxDraft { id: string | null; isNew: boolean; code: string; fxRate: number; fxBuffer: number; auto: boolean; /** the rate this tab had when the sheet opened */ tabRate: number | null }
 const fxEdit = ref<FxDraft | null>(null)
 const fxError = ref('')
 const fxBusy = ref(false)
-const openFx = () => { fxEdit.value = { fxRate: store.settings.fxRate, fxBuffer: store.settings.fxBuffer }; fxError.value = '' }
-async function saveFx() {
-  const f = fxEdit.value
-  if (!f) return
-  if (!(f.fxRate > 0)) return (fxError.value = g('badFx'))
-  if (!(f.fxBuffer >= 0 && f.fxBuffer <= 100)) return (fxError.value = g('badBuffer'))
+const fxModes = computed(() => [{ id: 'auto', label: g('fxAuto') }, { id: 'manual', label: g('fxManual') }])
+function openFx(r?: FxRow) {
+  fxEdit.value = r
+    ? { id: r.id, isNew: false, code: r.code, fxRate: r.rate, fxBuffer: r.buffer, auto: r.auto, tabRate: r.rate }
+    : { id: '', isNew: true, code: '', fxRate: 0, fxBuffer: store.settings.fxBuffer, auto: false, tabRate: null }
+  fxError.value = ''
+}
+const fxIsUsd = computed(() => fxEdit.value?.id === null)
+const fxCode = computed(() => (fxEdit.value ? normalCode(fxEdit.value.code) || '—' : ''))
+async function fxRun(fn: () => Promise<unknown>) {
   fxBusy.value = true
   fxError.value = ''
   try {
-    await saveSettings({ fxRate: f.fxRate, fxBuffer: f.fxBuffer })
+    await fn()
     fxEdit.value = null
   } catch (e) {
     fxError.value = (e as Error).message || status.error
@@ -94,7 +137,37 @@ async function saveFx() {
     fxBusy.value = false
   }
 }
+async function saveFx() {
+  const f = fxEdit.value
+  if (!f) return
+  if (!(f.fxRate > 0)) return (fxError.value = g('badFx'))
+  if (!(f.fxBuffer >= 0 && f.fxBuffer <= 100)) return (fxError.value = g('badBuffer'))
+  if (f.id === null) return fxRun(() => saveSettings({ fxRate: f.fxRate, fxBuffer: f.fxBuffer, fxAuto: f.auto }))
+  const row: ForeignCurrency = { id: f.id, code: normalCode(f.code), rate: f.fxRate, buffer: f.fxBuffer, auto: f.auto }
+  return fxRun(() => saveCurrency(row, f.tabRate)) // the API checks the code (S-26) and a rename of a code in use (A-35)
+}
+const removeFx = () => { const id = fxEdit.value?.id; if (id) void fxRun(() => deleteItem('currencies', id)) }
 const fxFoot = computed(() => (fxEdit.value && fxEdit.value.fxRate > 0 ? t('settings.general.fxFoot', { rate: money(fxEdit.value.fxRate * (1 + (fxEdit.value.fxBuffer || 0) / 100), { ...fmt.value, amountUnit: 'won' }) }) : ''))
+
+// "지금 갱신": the signed-in user's automatic rates now (POST /api/currencies/refresh); the store takes the answer.
+const anyAuto = computed(() => fxRows.value.some((r) => r.auto))
+const refreshing = ref(false)
+async function refreshFx() {
+  const scope = sessionScope()
+  refreshing.value = true
+  try {
+    const r = await api<{ settings: Settings; currencies: ForeignCurrency[]; off: boolean }>('POST', '/api/currencies/refresh')
+    scope.ifCurrent(() => {
+      store.settings = r.settings
+      store.currencies = r.currencies
+      showToast(r.off ? c('refreshOff') : c('refreshed'), r.off ? { error: true } : undefined)
+    })
+  } catch (e) {
+    if (scope.alive()) showToast((e as Error).message || status.error, { error: true })
+  } finally {
+    refreshing.value = false
+  }
+}
 
 // ── 기준 일정: edited as a copy ──
 type Sched = Pick<Settings, 'payDay' | 'transferDay' | 'billingDay' | 'dayShift'>
@@ -156,6 +229,21 @@ const SCHEDS = [
   { id: 'billingDay', slot: 'billing', name: 'billingDay', use: 'billingUse', ids: 'g-bill' },
 ] as const
 
+// ── 시간대 and the user's own monthly dates (spec 013 S-22, A-36) ──
+// The zone saves at once like the other display choices; the own dates are rows of their own (EditSheet + useEditor),
+// listed under the three fixed days with this month's date after the same shift (the draft's shift rule).
+const tzChoice = computed(() => store.preferences.timezone ?? DEFAULT_TIMEZONE)
+const tzOptions = computed(() => zoneOptions(store.preferences.timezone, supportedZones()))
+const pickZone = (tz: string) => saveNow({ timezone: tz }, undefined, t('schedule.tzSaved'))
+const itemEdit = ref<{ item: ScheduleItem | null } | null>(null)
+const openItem = (item: ScheduleItem | null) => { itemEdit.value = { item } }
+const accountName = (id: string | null) => (id ? store.accounts.find((a) => a.id === id)?.name ?? '—' : t('schedule.noAccount'))
+const ownItems = computed(() => {
+  const list = d.value.dayShift === 'none' ? [] : aroundMonth.value
+  if (!list) return store.schedules.map((item) => ({ item, at: null }))
+  return scheduleItemsIn(store.schedules, ym, d.value.dayShift, new Set(list.map((h) => h.date)))
+})
+
 // ── 공휴일 ──
 const krRow = computed(() => store.holidaySets.find((s) => s.builtin === 'kr'))
 const krOn = computed(() => krRow.value?.enabled ?? true)
@@ -209,8 +297,8 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
           </div>
           <span class="hint">{{ g('themeDesc') }}</span></div>
         <div class="field"><label for="g-tz">{{ g('timezone') }}</label>
-          <Soon tag="div" class="soon-fld"><Select id="g-tz" disabled model-value="tz" :options="[{ value: 'tz', label: 'Asia/Seoul (UTC+09:00)' }]" /></Soon>
-          <span class="hint">{{ g('timezoneDesc') }}</span></div>
+          <Select id="g-tz" :model-value="tzChoice" :options="tzOptions" @update:model-value="pickZone" />
+          <span class="hint">{{ t('schedule.tzHint') }}</span></div>
       </div></section>
     </div>
 
@@ -246,17 +334,20 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
     <div class="set">
       <div class="set-h"><h2>{{ g('sectionCurrency') }}</h2><p>{{ g('sectionCurrencyDesc') }}</p></div>
       <section class="card"><div class="fs">
-        <div class="field"><label for="g-cur">{{ g('baseCurrency') }}</label>
-          <Soon tag="div" class="soon-fld"><Select id="g-cur" disabled model-value="krw" :options="[{ value: 'krw', label: g('krw') }]" /></Soon>
-          <span class="hint">{{ g('baseCurrencyDesc') }}</span></div>
+        <div class="field"><span id="g-cur" class="lbl">{{ g('baseCurrency') }}</span>
+          <div class="basecur" aria-labelledby="g-cur">{{ c('baseFixed') }}</div>
+          <span class="hint">{{ c('baseNote') }}</span></div>
         <div class="field">
-          <div class="lrow"><span class="lbl">{{ g('otherCurrencies') }}</span><Soon class="btn sm">{{ g('addFx') }}</Soon></div>
+          <div class="lrow"><span class="lbl">{{ g('otherCurrencies') }}</span>
+            <span class="lbtns"><button v-if="anyAuto" class="btn sm ghost" type="button" :disabled="refreshing" @click="refreshFx">{{ refreshing ? c('refreshing') : c('refresh') }}</button>
+              <button class="btn sm" type="button" @click="openFx()">{{ g('addFx') }}</button></span></div>
           <ul class="fxlist" :aria-label="g('otherCurrencies')">
-            <li>
-              <span class="code">USD</span>
-              <span class="fxn"><b>{{ g('usd') }}</b><small class="hint">{{ usdUses ? t('settings.general.fxUses', { n: usdUses }) : g('fxNoUses') }} · {{ t('settings.general.fxBuffer', { n: store.settings.fxBuffer }) }}</small></span>
-              <span class="fxr"><b class="num">{{ t('settings.general.fxRate', { rate: store.settings.fxRate }) }}</b><small class="hint">{{ g('fxManual') }}</small></span>
-              <button class="btn sm ghost" type="button" :aria-label="t('settings.general.fxEditLabel', { code: 'USD' })" @click="openFx">{{ g('edit') }}</button>
+            <li v-for="r in fxRows" :key="r.id ?? 'USD'">
+              <span class="code">{{ r.code }}</span>
+              <span class="fxn"><b>{{ r.code === 'USD' ? g('usd') : curName(r.code) }}</b><small class="hint">{{ usesText(r.code) }} · {{ t('settings.general.fxBuffer', { n: r.buffer }) }}</small></span>
+              <span class="fxr"><b class="num">{{ rateText(r) }}</b><small class="hint" :class="{ err: r.auto && r.autoError }" :title="r.auto && r.autoError ? c('autoFailedWhy', { why: whyText(r.autoError) }) : undefined">{{ modeText(r) }}</small></span>
+              <button class="btn sm ghost" type="button" :aria-label="c('editLabel', { code: r.code })" @click="openFx(r)">{{ g('edit') }}</button>
+              <small v-if="r.auto && r.autoError" class="hint err fxwhy" role="status">{{ c('autoFailedWhy', { why: whyText(r.autoError) }) }}</small>
             </li>
           </ul>
           <span class="hint">{{ g('fxHint') }}</span>
@@ -265,7 +356,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
     </div>
 
     <div class="set">
-      <div class="set-h"><h2>{{ g('schedule') }}</h2><p>{{ g('scheduleDesc') }}</p><Soon class="btn sm">{{ g('addSchedule') }}</Soon></div>
+      <div class="set-h"><h2>{{ g('schedule') }}</h2><p>{{ g('scheduleDesc') }}</p><button class="btn sm" type="button" @click="openItem(null)">{{ g('addSchedule') }}</button></div>
       <form class="card" :aria-label="g('scheduleForm')" novalidate @submit.prevent="save">
         <ul class="sched">
           <li v-for="s in SCHEDS" :key="s.id">
@@ -276,6 +367,16 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
             <div class="s2">
               <span>{{ g('monthly') }}</span>
               <span class="dayin"><input :id="s.ids" v-model.number="d[s.id]" type="number" min="1" max="31" :aria-label="g(s.name)"><span>{{ g('dayUnit') }}</span></span>
+            </div>
+          </li>
+          <li v-for="x in ownItems" :key="x.item.id" class="own" :data-dir="x.item.direction">
+            <div class="s1"><b>{{ x.item.name }}</b><span class="pill dir" :class="x.item.direction">{{ t(`schedule.kind.${x.item.direction}`) }}</span>
+              <small class="hint grow">{{ t('schedule.monthlyN', { n: x.item.day }) }} · {{ accountName(x.item.accountId) }}<template v-if="x.item.note"> · {{ x.item.note }}</template></small>
+              <span v-if="x.at" class="thism">{{ g('thisMonth') }} <b class="num" :class="{ moved: x.at.shifted }">{{ md(x.at.date) }}</b><template v-if="x.at.unresolved"> {{ g('noBizDay') }}</template><template v-else-if="x.at.shifted"> · {{ g(x.at.shifted === 'before' ? 'moveBefore' : 'moveAfter') }}</template></span>
+              <span v-else class="thism">{{ g('loadingHolidays') }}</span>
+            </div>
+            <div class="s2">
+              <button class="btn sm ghost" type="button" :aria-label="t('schedule.editLabel', { name: x.item.name })" @click="openItem(x.item)">{{ g('edit') }}</button>
             </div>
           </li>
           <li>
@@ -318,12 +419,20 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
       </section>
     </div>
 
-    <EditSheet v-if="fxEdit" :title="t('settings.general.fxEditTitle', { code: 'USD' })" :desc="g('fxEditDesc')" :error="fxError" :busy="fxBusy" :hint="fxFoot" @save="saveFx" @cancel="fxEdit = null">
+    <ScheduleItemEditor v-if="itemEdit" :initial="itemEdit.item" @close="itemEdit = null" />
+
+    <EditSheet v-if="fxEdit" :title="fxEdit.isNew ? c('addTitle') : t('settings.general.fxEditTitle', { code: fxEdit.code })" :desc="g('fxEditDesc')" :error="fxError" :busy="fxBusy" :hint="fxFoot"
+      :can-delete="!fxEdit.isNew && !fxIsUsd" :delete-name="fxEdit.code" @save="saveFx" @cancel="fxEdit = null" @delete="removeFx">
+      <div v-if="!fxIsUsd" class="field"><label for="fx-code">{{ c('code') }} <span class="req">*</span></label>
+        <input id="fx-code" v-model="fxEdit.code" class="in mono" list="fx-codes" autocomplete="off" placeholder="EUR" @blur="fxEdit.code = normalCode(fxEdit.code)">
+        <datalist id="fx-codes"><option v-for="k in COMMON_CODES" :key="k" :value="k">{{ curName(k) }}</option></datalist>
+        <span class="hint">{{ c('codeHint') }}</span></div>
       <div class="field"><span id="fx-mode" class="lbl">{{ g('fxMode') }}</span>
-        <div class="seg fxseg" role="group" aria-labelledby="fx-mode"><Soon tag="span" class="segsoon">{{ g('fxAuto') }}</Soon><button type="button" aria-pressed="true">{{ g('fxManual') }}</button></div>
-        <span class="hint">{{ g('fxManualHint') }}</span></div>
-      <div class="field"><label for="g-fx">USD → KRW</label><input id="g-fx" v-model.number="fxEdit.fxRate" class="in num" type="number" step="any" min="0"></div>
+        <Seg class="fxseg" :options="fxModes" :model-value="fxEdit.auto ? 'auto' : 'manual'" labelledby="fx-mode" @update:model-value="fxEdit.auto = $event === 'auto'" />
+        <span class="hint">{{ fxEdit.auto ? (fxIsUsd ? c('autoHint') : `${c('autoHint')} ${c('autoUnknownHint')}`) : g('fxManualHint') }}</span></div>
+      <div class="field"><label for="g-fx">{{ c('rateLabel', { code: fxCode }) }}</label><input id="g-fx" v-model.number="fxEdit.fxRate" class="in num" type="number" step="any" min="0"><span class="hint">{{ c('rateHint', { code: fxCode }) }}</span></div>
       <div class="field"><label for="g-buf">{{ g('buffer') }}</label><input id="g-buf" v-model.number="fxEdit.fxBuffer" class="in num" type="number" step="any" min="0" max="100"><span class="hint">{{ g('fxNote') }}</span></div>
+      <p v-if="!fxEdit.isNew && !fxIsUsd" class="hint">{{ c('deleteHint') }}</p>
     </EditSheet>
 
     <EditSheet v-if="setEd.item.value" :key="setEd.item.value.id || 'new'" v-model:step="step" :title="setEd.item.value.id ? g('setEditTitle') : g('setAddTitle')" :error="setEd.error.value" :busy="setEd.busy.value"
@@ -405,6 +514,10 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 .dayin input{flex:1;min-width:0;height:100%;border:0;outline:0;padding:0 6px 0 10px;text-align:right;color:var(--text);background:transparent;font-variant-numeric:tabular-nums}
 .dayin span{font-size:13px;color:var(--subtle)}
 .dayin:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
+.sched li.own{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+.sched li.own .s1{flex:1;min-width:0}
+.pill.dir.in{color:var(--primary-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--primary-line)}
+.pill.dir.out{color:var(--neg-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--neg-line)}
 .cf{flex-wrap:wrap}
 .err{color:var(--neg-text)}
 .hol{gap:12px}
@@ -420,7 +533,9 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 .rule legend{padding:0 6px;font-size:12px;font-weight:600;color:var(--subtle)}
 .rule .rm{align-self:flex-start}
 .addrule{align-self:flex-start;border-style:dashed}
-.fxseg :deep(.segsoon){display:inline-flex}
+.basecur{display:flex;align-items:center;height:40px;padding:0 12px;border:1px solid var(--border);border-radius:var(--r-ctl);background:var(--surface-2);font-size:14px;color:var(--text-2)}
+.lbtns{display:flex;gap:6px;flex-wrap:wrap}
+.fxwhy{flex-basis:100%;margin:0}
 @media (max-width:760px){
   .set{grid-template-columns:1fr;gap:12px;padding:18px 0}
   .cf{flex-wrap:nowrap}

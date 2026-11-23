@@ -1,8 +1,9 @@
 import { reactive } from 'vue'
 import type {
-  Account, AllocationTarget, Balance, Card, CheckItem, Debt, HolidaySet, Living, LivingItem, Phase, PlanChange, PlanEvent, Preferences, RemainderSplit, Settings,
-  MonthAdjust, Spending, Subscription,
+  Account, AllocationTarget, Balance, Card, CheckItem, Debt, ForeignCurrency, HolidaySet, Living, LivingItem, Phase, PlanChange, PlanEvent, Preferences, Priced,
+  RemainderSplit, ScheduleItem, Settings, MonthAdjust, Spending, Subscription,
 } from '../data/types'
+import { priced } from './calc'
 import { ApiError, api } from './api'
 import { t } from '../i18n'
 import { createSessionGuard, type Scope } from './session-guard'
@@ -18,6 +19,9 @@ export interface State {
   balances: Balance[]
   cards: Card[]
   monthAdjusts: MonthAdjust[]
+  /** Foreign currencies other than USD (spec 013 S-23) and the user's own monthly dates (S-22). */
+  currencies: ForeignCurrency[]
+  schedules: ScheduleItem[]
   targets: AllocationTarget[]
   subscriptions: Subscription[]
   planChanges: PlanChange[]
@@ -39,7 +43,7 @@ const empty = (): State => ({
   living: { ...DEFAULT_LIVING },
   preferences: { ...DEFAULT_PREFERENCES },
   targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [], spendings: [],
-  livingItems: [], balances: [], cards: [], monthAdjusts: [], pendingProposals: 0,
+  livingItems: [], balances: [], cards: [], monthAdjusts: [], currencies: [], schedules: [], pendingProposals: 0,
 })
 
 export const store = reactive<State>(empty())
@@ -105,6 +109,8 @@ export const RESOURCES = {
   balances: '/api/balances',
   cards: '/api/cards',
   monthAdjusts: '/api/month-adjusts',
+  currencies: '/api/currencies',
+  schedules: '/api/schedules',
 } as const
 
 /** Lists whose delete also changes other rows on the server (unlinks, spec 013 S-9, S-13): reload the state after one. */
@@ -113,22 +119,25 @@ export type ListKey = keyof typeof RESOURCES
 
 /** Create (no id) or replace an item; returns the saved item. */
 export function saveItem<K extends ListKey>(key: K, item: State[K][number]): Promise<State[K][number]> {
-  return save(async (s) => {
-    const { id, ...body } = item as { id: string }
-    const saved = await api<{ id: string }>(id ? 'PUT' : 'POST', id ? `${RESOURCES[key]}/${id}` : RESOURCES[key], body)
-    s.ifCurrent(() => {
-      // the list is read now, after the answer: the store may have been loaded again meanwhile
-      const list = store[key] as { id: string }[]
-      const i = list.findIndex((x) => x.id === saved.id)
-      if (i >= 0) list[i] = saved
-      else list.push(saved)
-      // Mirrors the server: a target whose kind takes no phase amounts loses them (spec 013 S-3).
-      if (key === 'targets' && !['fixed', 'saving', 'invest'].includes((saved as { kind?: string }).kind ?? '')) {
-        for (const p of store.phases) delete p.amounts[saved.id]
-      }
-    })
-    return saved as State[K][number]
+  return save((s) => putItem(s, key, item))
+}
+
+/** saveItem's request and store update, inside a caller's session scope. */
+async function putItem<K extends ListKey>(s: Scope, key: K, item: State[K][number]): Promise<State[K][number]> {
+  const { id, ...body } = item as { id: string }
+  const saved = await api<{ id: string }>(id ? 'PUT' : 'POST', id ? `${RESOURCES[key]}/${id}` : RESOURCES[key], body)
+  s.ifCurrent(() => {
+    // the list is read now, after the answer: the store may have been loaded again meanwhile
+    const list = store[key] as { id: string }[]
+    const i = list.findIndex((x) => x.id === saved.id)
+    if (i >= 0) list[i] = saved
+    else list.push(saved)
+    // Mirrors the server: a target whose kind takes no phase amounts loses them (spec 013 S-3).
+    if (key === 'targets' && !['fixed', 'saving', 'invest'].includes((saved as { kind?: string }).kind ?? '')) {
+      for (const p of store.phases) delete p.amounts[saved.id]
+    }
   })
+  return saved as State[K][number]
 }
 
 export function deleteItem(key: ListKey, id: string) {
@@ -147,10 +156,41 @@ export function deleteItem(key: ListKey, id: string) {
   })
 }
 
+/**
+ * Does a settings save need the server's USD rate first? While the daily refresh may write `fxRate` (fxAuto on, spec 013
+ * S-23), a save that leaves the rate as this tab last saw it must not put back an older rate (review rc3-1 F-7).
+ */
+export const needsServerRate = (local: Settings, patch: Partial<Settings>): boolean =>
+  (local.fxAuto || patch.fxAuto === true) && (patch.fxRate === undefined || patch.fxRate === local.fxRate)
+
 export function saveSettings(patch: Partial<Settings> = {}) {
   return save(async (s) => {
-    const saved = await api<Settings>('PUT', '/api/settings', { ...store.settings, ...patch })
+    const body = { ...store.settings, ...patch }
+    // the rate the server holds now (it may have refreshed since this tab loaded); the user's own rate goes as typed
+    if (needsServerRate(store.settings, patch)) body.fxRate = (await api<State>('GET', '/api/state')).settings.fxRate
+    if (!s.alive()) return
+    const saved = await api<Settings>('PUT', '/api/settings', body)
     s.ifCurrent(() => { store.settings = saved })
+  })
+}
+
+/**
+ * Save a listed currency (spec 013 S-23). While its 자동 is on and the user left the rate as this tab had it, send the rate
+ * the server holds now: the daily refresh may have changed it since the tab loaded (review rc3-2 N-2, like the USD rate in
+ * saveSettings). A rate the user typed goes as typed; the server still takes any rate.
+ */
+export function saveCurrency(row: ForeignCurrency, tabRate: number | null): Promise<ForeignCurrency | undefined> {
+  // one session scope for the read and the save, like saveSettings (review rc3-3 N-4): a sign-out between them sends nothing
+  return save(async (s) => {
+    let body = row
+    // auto on now or before this save (turning it off without touching the rate keeps the refreshed one, review rc3-3 N-3)
+    const wasAuto = !!store.currencies.find((c) => c.id === row.id)?.auto
+    if (row.id && (row.auto || wasAuto) && tabRate !== null && row.rate === tabRate) {
+      const now = (await api<State>('GET', '/api/state')).currencies.find((c) => c.id === row.id)
+      if (!s.alive()) return undefined
+      if (now) body = { ...row, rate: now.rate }
+    }
+    return putItem(s, 'currencies', body)
   })
 }
 
@@ -177,10 +217,13 @@ export const removeChange = (id: string) => deleteItem('planChanges', id)
 export const upsertSpending = (s: Spending) => saveItem('spendings', s)
 export const removeSpending = (id: string) => deleteItem('spendings', id)
 
+/** The settings with the foreign currencies: what the subscription sums take (spec 013 S-23). */
+export const pricedSettings = (): Priced => priced(store.settings, store.currencies)
+
 /** Everything the app holds, for the JSON view in the 개발 tab. */
 export function exportJson(): string {
-  const { settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, debts, remainderSplit, preferences, holidaySets, spendings } = store
-  return JSON.stringify({ settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
+  const { settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, preferences, holidaySets, spendings } = store
+  return JSON.stringify({ settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
 }
 
 export const subName = (id: string) => store.subscriptions.find((s) => s.id === id)?.name ?? id

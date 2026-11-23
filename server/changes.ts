@@ -11,11 +11,14 @@ import * as t from './db/schema'
 import { lockFor } from './db/scope'
 import { m, MsgError, type Msg } from './messages'
 import { roundsProblem } from '../src/lib/spending-rules'
+import { plain, same, stillAsLogged, userColumns } from './row-compare'
 
 export type RowKey = Record<string, string>
+export { same, stillAsLogged }
 type Row = Record<string, unknown>
 
-export interface Actor { kind: 'user' | 'api_key'; id: string }
+/** Who made a set: the user, an AI key, or the server itself (the daily rate refresh, spec 013 S-23). */
+export interface Actor { kind: 'user' | 'api_key' | 'system'; id: string }
 
 /** One row change as the recorder saw it. */
 export interface Collected { table: string; key: RowKey; op: 'insert' | 'update' | 'delete'; before: Row | null; after: Row | null }
@@ -56,16 +59,6 @@ export class Recorder {
       before: before ? plain(before) : null, after: after ? plain(after) : null,
     })
   }
-}
-
-/** JSON-safe copy (what jsonb will hold), so comparisons see the same values. */
-const plain = (r: Row): Row => JSON.parse(JSON.stringify(r)) as Row
-
-/** Same row content, key order ignored. The owner is not content (data can move to another account). */
-export function same(a: Row | null | undefined, b: Row | null | undefined): boolean {
-  if (!a || !b) return !a && !b
-  const norm = (r: Row) => JSON.stringify(Object.keys(r).filter((k) => k !== 'userId').sort().map((k) => [k, r[k]]))
-  return norm(plain(a)) === norm(plain(b))
 }
 
 // ── Row keys ──
@@ -122,6 +115,7 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
   await lockAll(q, uid)
   // the buffer uses already without a paying card: the revert is refused only for one it breaks (review rc2-1 F-7)
   const looseBefore = await looseBuffers(q, uid)
+  const unpricedBefore = await unpricedCodes(q, uid)
   const [set] = await q.select().from(t.changeSet).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id))).for('update')
   if (!set) throw new NotFound(m('changeNotFound'))
   if (set.revertedBy) throw new Conflict(m('changeReverted'), 'change_set', { id })
@@ -134,7 +128,7 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
     if (!table) throw new Error(`unknown table in change log: ${log.tableName}`)
     const current = await readRow(q, table, uid, log.rowKey)
     const expected = log.op === 'delete' ? null : log.after
-    if (!same(current, expected)) {
+    if (!stillAsLogged(current, expected)) {
       throw new Conflict(m('changeLater'), log.tableName, log.rowKey)
     }
     if (log.op === 'insert') {
@@ -145,17 +139,17 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
       await q.delete(table).where(whereKey(table, uid, log.rowKey))
       await rec.record(table, log.rowKey, 'delete', current, null)
     } else if (log.op === 'delete') {
-      const row = { ...log.before!, userId: uid }
+      const row = { ...userColumns(log.before!), userId: uid }
       const ins = hasIdentity(table) ? q.insert(table).overridingSystemValue() : q.insert(table)
       const [written] = await ins.values(row as never).returning()
       await rec.record(table, log.rowKey, 'insert', null, written as Row)
     } else {
-      const { userId: _u, seq: _s, ...set } = log.before! // seq is an identity: never updated
+      const { userId: _u, seq: _s, ...set } = userColumns(log.before!) // seq is an identity: never updated
       const [written] = await q.update(table).set(set as never).where(whereKey(table, uid, log.rowKey)).returning()
       await rec.record(table, log.rowKey, 'update', current, written as Row)
     }
   }
-  await checkRules(q, uid, looseBefore)
+  await checkRules(q, uid, looseBefore, unpricedBefore)
   if (rec.id) await q.update(t.changeSet).set({ revertedBy: rec.id }).where(and(eq(t.changeSet.userId, uid), eq(t.changeSet.id, id)))
 }
 
@@ -164,7 +158,7 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
  * reverting the insert of a row they point at is a conflict, like a child (review 1 F-11).
  */
 const LINKS = new Map<PgTable, [OwnedTable, PgColumn][]>([
-  [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId]]],
+  [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId], [t.scheduleItem, t.scheduleItem.accountId]]],
   [t.card, [[t.spending, t.spending.cardId]]],
 ])
 
@@ -204,10 +198,34 @@ async function looseBuffers(q: Db, uid: string): Promise<Map<string, string>> {
 }
 
 /**
- * The API's own rules, over the user's whole data (the database checks the rest). `looseBefore` are the buffer uses that
- * had no paying card before the revert: only a buffer use the revert leaves without one refuses it.
+ * The currency codes a subscription, a plan change or a spending uses that cannot be priced: not KRW or USD and not in the
+ * currency list (spec 013 S-23). A save never makes one; a revert could (A-40).
  */
-async function checkRules(q: Db, uid: string, looseBefore: ReadonlyMap<string, string>) {
+async function unpricedCodes(q: Db, uid: string): Promise<Set<string>> {
+  const used = new Set<string>()
+  for (const r of await q.selectDistinct({ c: t.subscription.currency }).from(t.subscription).where(eq(t.subscription.userId, uid))) used.add(r.c)
+  for (const r of await q.selectDistinct({ c: t.spending.currency }).from(t.spending).where(eq(t.spending.userId, uid))) used.add(r.c)
+  for (const r of await q.selectDistinct({ c: sql<string | null>`${t.planChange.to}->>'currency'` }).from(t.planChange).where(eq(t.planChange.userId, uid))) {
+    if (r.c) used.add(r.c)
+  }
+  used.delete('KRW')
+  used.delete('USD')
+  if (!used.size) return used
+  const listed = await q.select({ code: t.foreignCurrency.code }).from(t.foreignCurrency).where(eq(t.foreignCurrency.userId, uid))
+  for (const l of listed) used.delete(l.code)
+  return used
+}
+
+/**
+ * The API's own rules, over the user's whole data (the database checks the rest). `looseBefore` are the buffer uses that
+ * had no paying card before the revert: only a buffer use the revert leaves without one refuses it. `unpricedBefore` are
+ * the currency codes that could not be priced before it, the same way (A-40).
+ */
+async function checkRules(q: Db, uid: string, looseBefore: ReadonlyMap<string, string>, unpricedBefore: ReadonlySet<string>) {
+  // Every currency in use stays priced, as a save keeps it (spec 013 S-23, A-40, user: "거부 (Recommended)").
+  for (const code of await unpricedCodes(q, uid)) {
+    if (!unpricedBefore.has(code)) throw new RuleBroken(m('revertCurrency', { code }))
+  }
   const phases = await q.select().from(t.phase).where(eq(t.phase.userId, uid))
   const end = (x: string | null) => x ?? '9999-12'
   for (const [i, a] of phases.entries()) {

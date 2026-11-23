@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { store } from '../lib/store'
 import { fmtMoney } from '../lib/display'
-import { monthMoney, today, ymLabel, ymOf } from '../lib/calc'
+import { monthMoney, ymLabel, ymOf } from '../lib/calc'
 import Icon from '../components/Icon.vue'
 import PageHeader from '../components/PageHeader.vue'
 import PageLoadError from '../components/PageLoadError.vue'
@@ -13,6 +13,7 @@ import SpendEditor from '../components/SpendEditor.vue'
 import SpendInstallments from '../components/SpendInstallments.vue'
 import SubTabs from '../components/SubTabs.vue'
 import Tip from '../components/Tip.vue'
+import { localToday } from '../lib/now'
 
 // 지출 (spec 011 S-1, S-5, S-7): one-off spending, installments and subscriptions under one menu. The
 // page owns the title, the month's reflection card, the three tabs and each tab's add button. The 구독 tab
@@ -37,7 +38,7 @@ const tabs = computed(() => [
 ])
 
 // ---------- the month's reflection (S-5): all numbers come from monthMoney ----------
-const ym = ymOf(today())
+const ym = ymOf(localToday())
 const month = computed(() => {
   const now = monthMoney(store, ym)
   const none = monthMoney({ ...store, spendings: [] }, ym) // the same month without any one-off spending
@@ -47,7 +48,7 @@ const month = computed(() => {
   const names = list.map((x) => x.name)
   const first = list[0]
   const itemText = !names.length ? ''
-    : names.length === 1 ? t('spending.itemOne', { name: names[0]! }) + (first && first.currency === 'USD' ? t('spending.itemUsd', { amount: first.amount.toFixed(2) }) : '')
+    : names.length === 1 ? t('spending.itemOne', { name: names[0]! }) + (first && first.currency !== 'KRW' ? t('currency.itemFx', { code: first.currency, amount: first.amount.toFixed(2) }) : '')
     : t('spending.itemMany', { name: names[0]!, n: names.length - 1 })
   const rem = now.dist.remainder
   const out = now.spend.remainder

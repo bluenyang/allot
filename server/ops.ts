@@ -4,7 +4,7 @@
 // and kind rules, same change-set records. An operation is { resource, action, id?, data? };
 // `data` is the resource's request body. Call everything here inside asUser(uid, …).
 import { randomUUID } from 'node:crypto'
-import { and, eq, inArray, isNotNull, ne } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import { getTableName } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
@@ -145,6 +145,30 @@ async function bufferUses(q: Db, uid: string, cardIds: string[]) {
   return !!hit
 }
 
+/**
+ * Is `code` a currency the user can price (spec 013 S-23, A-35)? KRW and USD always; any other code needs a row in the
+ * currency list. Every write holds the user's `data` lock, so a currency cannot go between this check and the write.
+ */
+async function currencyProblem(q: Db, uid: string, code: string | undefined): Promise<Msg | null> {
+  if (code === undefined || code === 'KRW' || code === 'USD') return null
+  const [hit] = await q.select({ id: t.foreignCurrency.id }).from(t.foreignCurrency)
+    .where(and(eq(t.foreignCurrency.userId, uid), eq(t.foreignCurrency.code, code))).limit(1)
+  return hit ? null : m('currencyUnknown', { code })
+}
+
+/** Does a subscription, a plan change or a spending use `code` (spec 013 A-35)? */
+async function currencyUsed(q: Db, uid: string, code: string): Promise<boolean> {
+  const [s] = await q.select({ id: t.subscription.id }).from(t.subscription)
+    .where(and(eq(t.subscription.userId, uid), eq(t.subscription.currency, code))).limit(1)
+  if (s) return true
+  const [c] = await q.select({ id: t.planChange.id }).from(t.planChange)
+    .where(and(eq(t.planChange.userId, uid), sql`${t.planChange.to}->>'currency' = ${code}`)).limit(1)
+  if (c) return true
+  const [p] = await q.select({ id: t.spending.id }).from(t.spending)
+    .where(and(eq(t.spending.userId, uid), eq(t.spending.currency, code))).limit(1)
+  return !!p
+}
+
 /** The three coded living items as the old living row (spec 013 S-2): what /api/state answers as `living`. */
 export async function livingOf(q: Db, uid: string) {
   const rows = await q.select().from(t.livingItem).where(and(eq(t.livingItem.userId, uid), isNotNull(t.livingItem.code)))
@@ -246,10 +270,14 @@ const list = <T extends ListTable, S extends z.ZodType>(table: T, schema: S, o: 
 export const RESOURCES = {
   subscriptions: list(t.subscription, v.subscription, {
     optional: ['note'],
+    // KRW, USD or a code in the currency list (spec 013 S-23).
+    check: (q, uid, x) => currencyProblem(q, uid, x.currency),
     // KRW items carry no VAT (the same rule the editor applied before).
     toRow: (s) => ({ ...s, vat: s.currency === 'KRW' ? 0 : s.vat, note: s.note || null }),
   }),
-  'plan-changes': list(t.planChange, v.planChange),
+  'plan-changes': list(t.planChange, v.planChange, {
+    check: (q, uid, x) => currencyProblem(q, uid, x.to.currency),
+  }),
   phases: list(t.phase, v.phase, {
     optional: ['note'],
     lock: true,
@@ -287,6 +315,7 @@ export const RESOURCES = {
     onDelete: async (q, rec, uid, id) => {
       await unlink(q, rec, uid, t.card, t.card.accountId, id)
       await unlink(q, rec, uid, t.allocationTarget, t.allocationTarget.accountId, id)
+      await unlink(q, rec, uid, t.scheduleItem, t.scheduleItem.accountId, id)
     },
   }),
   // One month's amount of a target (spec 013 S-14): fixed, saving and invest targets only. The check holds the
@@ -320,6 +349,28 @@ export const RESOURCES = {
     toRow: ({ amounts: _a, ...x }) => ({ ...x, note: x.note || null }),
     afterWrite: (q, rec, uid, id, x) => writeItemAmounts(q, rec, uid, t.livingPhaseAmount, id, x.amounts),
   }),
+  // Foreign currencies other than USD (spec 013 S-23, A-35): one row per code; a code that a subscription, a plan change
+  // or a spending uses cannot go (delete) or be renamed (update). `auto` left out keeps the saved value.
+  currencies: list(t.foreignCurrency, v.foreignCurrency, {
+    optional: ['auto'],
+    keepOmitted: true,
+    check: async (q, uid, x, id) => {
+      if (!id) return null
+      const [old] = await q.select({ code: t.foreignCurrency.code }).from(t.foreignCurrency)
+        .where(and(eq(t.foreignCurrency.userId, uid), eq(t.foreignCurrency.id, id)))
+      return old && old.code !== x.code && (await currencyUsed(q, uid, old.code)) ? m('currencyInUse', { code: old.code }) : null
+    },
+    beforeDelete: async (q, uid, id) => {
+      const [old] = await q.select({ code: t.foreignCurrency.code }).from(t.foreignCurrency)
+        .where(and(eq(t.foreignCurrency.userId, uid), eq(t.foreignCurrency.id, id)))
+      return old && (await currencyUsed(q, uid, old.code)) ? m('currencyInUse', { code: old.code }) : null
+    },
+  }),
+  // The user's own monthly dates (spec 013 S-22, A-36).
+  schedules: list(t.scheduleItem, v.scheduleItem, {
+    optional: ['note'],
+    toRow: (x) => ({ ...x, note: x.note || null }),
+  }),
   debts: list(t.debt, v.debt),
   'remainder-split': list(t.remainderSplit, v.remainderSplit),
   'holiday-sets': list(t.holidaySet, v.holidaySet),
@@ -335,6 +386,8 @@ export const RESOURCES = {
     // A buffer use is paid from its card's account (S-8): the card must have one. A card change on
     // update that leaves `cardId` out keeps the stored card, so check that one.
     check: async (q, uid, x, id) => {
+      const unknown = await currencyProblem(q, uid, x.currency)
+      if (unknown) return unknown
       if (x.how !== 'buffer') return null
       let cardId = x.cardId
       if (cardId === undefined && id) {
@@ -393,7 +446,7 @@ export const resourceOf = (name: string): ListResource | SingleResource | Living
     : Object.hasOwn(SINGLES, name) ? SINGLES[name as keyof typeof SINGLES] : undefined)
 
 /** What an AI may change (spec 009 S-2, spec 013 S-10): not debts, holiday sets or display settings. */
-export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings', 'living-items', 'accounts', 'balances', 'cards', 'month-adjusts'] as const
+export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings', 'living-items', 'accounts', 'balances', 'cards', 'month-adjusts', 'currencies', 'schedules'] as const
 export const AI_SINGLES = ['settings', 'living'] as const
 export type AiResource = (typeof AI_LISTS)[number] | (typeof AI_SINGLES)[number]
 export const AI_RESOURCES: readonly string[] = [...AI_LISTS, ...AI_SINGLES]

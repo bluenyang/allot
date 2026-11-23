@@ -4,18 +4,19 @@ import { t } from '../i18n'
 import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort } from '../lib/format'
-import { num, spendState, spendingIn, today, ymOf, ymd, type SpendStateName } from '../lib/calc'
+import { num, spendState, spendingIn, ymOf, ymd, type SpendStateName } from '../lib/calc'
 import type { PayBy, Spending } from '../data/types'
 import Seg from './Seg.vue'
 import Select from './Select.vue'
 import SpendEditor from './SpendEditor.vue'
 import { downloadCsv } from '../lib/csv'
 import { spendingCsvRows } from '../lib/spending-csv'
+import { localToday } from '../lib/now'
 
 // 일반 tab (spec 011 S-6, S-7): the lump-sum spendings as a table (a card list on the phone), three summary
 // cards, filters. Everything shown is worked out here from the store through calc.ts: the state by `spendState`,
 // the month sums by `spendingIn`. The edit button opens SpendEditor (W-7).
-const now = today()
+const now = localToday()
 const nowYmd = ymd(now)
 const ym = ymOf(now)
 const OFF = new Set<string>() // `spendState` reads the holiday set only when a spending has no live round; a lump always has one
@@ -26,7 +27,8 @@ const round = (s: Spending) => s.rounds.find((r) => r.state !== 'merged') ?? s.r
 const krw = (s: Spending) => s.rounds.filter((r) => r.state !== 'merged').reduce((a, r) => a + r.amount, 0)
 const mon = (d: string) => monthShort(Number(d.slice(5, 7)))
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
-const orig = (s: Spending) => (s.currency === 'USD' ? `USD ${s.amount.toFixed(2)}` : `KRW ${num(s.amount)}`)
+// a foreign amount by its own code (spec 013 S-23): "USD 12.50", "EUR 8.00"
+const orig = (s: Spending) => (s.currency !== 'KRW' ? `${s.currency} ${s.amount.toFixed(2)}` : `KRW ${num(s.amount)}`)
 const payName = (p: PayBy) => t(`spending.gen.pay.${p}` as 'spending.gen.pay.card')
 /** A card lump sum names its card when it has one (spec 013 S-13). */
 const cardLump = (s: Spending) => {

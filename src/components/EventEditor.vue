@@ -10,14 +10,15 @@ import Seg from './Seg.vue'
 import { useEditor } from '../lib/useEditor'
 import { DEFAULT_EVENT_KIND, EVENT_KINDS, eventKindLabel } from '../lib/labels'
 import { WHEN_RE, composeWhen, whenParts, type WhenMode } from '../lib/event-when'
-import { today, ymOf } from '../lib/calc'
+import { ymOf } from '../lib/calc'
 import type { EventState, PlanEvent } from '../data/types'
 import MonthInput from './MonthInput.vue'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ initial: PlanEvent | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const now = ymOf(today())
+const now = ymOf(localToday())
 const blank = (): PlanEvent => ({ id: '', when: now, kind: DEFAULT_EVENT_KIND, title: '', state: 'todo' })
 const parts = ref(whenParts(props.initial?.when ?? now))
 

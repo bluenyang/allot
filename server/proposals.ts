@@ -16,7 +16,7 @@ import type { Data } from './mcp/views'
 import { AI_LISTS, AI_SINGLES, applyOps, constraintMessage, OpInvalid, OpRejected, parseOp, Rejected, RESOURCES, SINGLES, type Op } from './ops'
 import { hashState, monthPreview } from './preview'
 import { readState } from './state'
-import { addYm, today, ymOf } from '../src/lib/calc'
+import { addYm, todayIn, ymOf } from '../src/lib/calc'
 
 /** Operations in one proposal, and proposals waiting per user. */
 export const MAX_OPS = 20
@@ -207,7 +207,8 @@ export async function propose(uid: string, key: KeyInfo, input: ProposeInput): P
   }
   if (!rows.length || !before || !after) throw new ProposalError('invalid', m('proposalNoEffect'))
 
-  const ym = ymOf(today())
+  // this month in the user's time zone (spec 013 S-22)
+  const ym = ymOf(todayIn(before.preferences?.timezone))
   const preview = {
     rows: rows.map((r) => ({ table: r.table, op: r.op, key: r.key, before: stripRow(r.before), after: stripRow(r.after) })),
     months: [ym, addYm(ym, 1)].map((x) => monthPreview(before!, after!, x)),

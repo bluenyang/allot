@@ -11,6 +11,7 @@ import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
 import type { AppEnv } from './app-env'
 import { routes } from './routes'
 import { msg } from './messages'
+import { loadPasswordPolicy } from './password-policy'
 
 /**
  * The client IP that the login rate limit counts by (Better Auth reads only CLIENT_IP_HEADER).
@@ -65,6 +66,9 @@ app.use('*', async (c, next) => {
 })
 
 app.get('/me', (c) => c.json({ user: c.get('session').user }))
+
+// spec 013 S-24: the minimum length of a new password, for any signed-in user (nothing else of the policy).
+app.get('/password-policy', async (c) => c.json({ minLength: (await loadPasswordPolicy()).policy.minLength }))
 
 // spec 013 S-21: the API documentation, a page for the signed-in user (server/docs.ts), listing this app's routes.
 // No script on it: the policy allows inline styles only.

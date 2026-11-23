@@ -184,7 +184,7 @@ test('keys: a write key chooses its confirmation method when it is made (spec 00
   expect(made?.confirm).toBe('chat')
 })
 
-test('keys: the list says how many write proposals each key made; what cannot change yet is 준비 중 (S-3, S-11)', async ({ page, request, baseURL }) => {
+test('keys: the list says how many write proposals each key made; its changes in the sheet are real (S-3, S-11; spec 013 S-25)', async ({ page, request, baseURL }) => {
   // the page-wide summary counts every proposal ever made on this account: read it first, expect one more
   await openAi(page)
   const summary = page.locator('.sum').filter({ hasText: '쓰기 제안' })
@@ -197,16 +197,11 @@ test('keys: the list says how many write proposals each key made; what cannot ch
   const manage = sheet(page, `${NAME}-n 키`)
   await expect(manage.getByText('1건')).toBeVisible()
   await expect(summary.locator('b.num')).toHaveText(String(before + 1))
-  // 이름 바꾸기, 범위 바꾸기, 만료 연장, 사용 기록: shown, inert, no request
-  await page.waitForLoadState('networkidle') // the proposal count may still be paging
-  const calls: string[] = []
-  page.on('request', (r) => { if (r.url().includes('/api/')) calls.push(r.url()) })
-  for (const n of ['이름 바꾸기', '범위 바꾸기', '만료 연장', '사용 기록 보기']) {
-    const el = manage.getByRole('button', { name: `${n} (준비 중)` })
-    await expect(el).toHaveAttribute('aria-disabled', 'true')
-    await el.click({ force: true })
-  }
-  expect(calls).toEqual([])
+  // 이름 바꾸기, 범위 바꾸기, 만료 연장 and the usage line are real since 0.1.7-rc.3 (spec 013 S-25; their changes are
+  // tested in rc3.spec.ts): no 준비 중 entry is left in the sheet.
+  for (const n of ['이름 바꾸기', '범위 바꾸기', '만료 연장']) await expect(manage.getByRole('button', { name: n, exact: true })).toBeEnabled()
+  await expect(manage.locator('[aria-disabled="true"]')).toHaveCount(0)
+  await expect(manage.locator('dl.usage')).toContainText('요청 수(최근 1분)')
   await manage.getByRole('button', { name: '닫기', exact: true }).last().click()
   await expect(manage).toBeHidden()
   const rejects = (await (await request.get('/api/proposals?status=pending')).json()) as { id: string; keyName: string }[]

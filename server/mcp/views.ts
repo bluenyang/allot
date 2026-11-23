@@ -4,7 +4,7 @@
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
   addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate,
-  phaseAt, planAt, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
+  phaseAt, planAt, priced, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
   type AccountState, type MonthDate,
   maturityAlerts, maturityAmount,
 } from '../../src/lib/calc'
@@ -12,11 +12,12 @@ import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 import { buildNotices, type Notice } from '../../src/lib/notices'
 import { search, type SearchKind } from '../../src/lib/search'
 import type {
-  Account, AllocationTarget, Balance, BudgetGroup, Card, CheckItem, Debt, HolidaySet, Living, LivingItem, MonthAdjust, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Spending,
+  Account, AllocationTarget, Balance, BudgetGroup, Card, CheckItem, Debt, ForeignCurrency, HolidaySet, Living, LivingItem, MonthAdjust, Phase, PlanChange, PlanEvent, RemainderSplit, ScheduleItem, Settings, Spending,
   SubStatus, Subscription,
 } from '../../src/data/types'
 import { maturityOf } from './maturity'
 import { whenSpan } from '../../src/lib/event-when'
+import { scheduleItemsIn } from '../../src/lib/schedule-items'
 
 /** The part of GET /api/state the tools read. */
 export interface Data {
@@ -42,6 +43,12 @@ export interface Data {
   cards?: Card[]
   /** one month's amounts of targets (spec 013 S-14); absent = none */
   monthAdjusts?: MonthAdjust[]
+  /** foreign currencies other than USD (spec 013 S-23); absent = none */
+  currencies?: ForeignCurrency[]
+  /** the user's own monthly dates (spec 013 S-22); absent = none */
+  schedules?: ScheduleItem[]
+  /** the display settings: their time zone is the user's "today" (spec 013 S-22) */
+  preferences?: { timezone?: string }
 }
 
 const krw = (n: number) => Math.round(n)
@@ -62,7 +69,7 @@ function datesOf(d: Data, ym: string, off: ReadonlySet<string>) {
 /** Charges falling in month `ym`. */
 function paymentsIn(d: Data, ym: string) {
   const start = parseDate(firstOf(ym))
-  return upcomingPayments(d.subscriptions, d.planChanges, d.settings, start, lastDay(ym) - 1)
+  return upcomingPayments(d.subscriptions, d.planChanges, priced(d.settings, d.currencies), start, lastDay(ym) - 1)
     .filter((p) => ymOf(p.date) === ym)
     .map((p) => ({ date: ymd(p.date), subscriptionId: p.sub.id, name: p.sub.name, plan: p.sub.plan, amountKrw: krw(p.krw), cycle: p.sub.cycle }))
 }
@@ -95,7 +102,7 @@ function monthlyDelta(d: Data, c: PlanChange): number | null {
   if (!c.effective) return null
   const ym = c.effective.slice(0, 7)
   const sum = (changes: PlanChange[]) => {
-    const t = transferAt(d.subscriptions, changes, d.settings, ym)
+    const t = transferAt(d.subscriptions, changes, priced(d.settings, d.currencies), ym)
     return t.monthlySum + t.yearlyMonthly
   }
   return krw(sum(d.planChanges) - sum(d.planChanges.filter((x) => x.id !== c.id)))
@@ -120,6 +127,18 @@ function adjustsIn(d: Data, ym: string) {
   })
 }
 
+/**
+ * The foreign currencies (spec 013 S-23, A-39): USD from the settings, then the currency list; each with its rate (KRW per
+ * unit), buffer %, whether the server refreshes it daily, and that refresh's last time and failure.
+ */
+export function currencyList(d: Data) {
+  const s = d.settings
+  return [
+    { code: 'USD', rate: s.fxRate, buffer: s.fxBuffer, auto: !!s.fxAuto, autoAt: s.fxAutoAt ?? null, autoError: s.fxAutoError ?? null },
+    ...(d.currencies ?? []).map((c) => ({ id: c.id, code: c.code, rate: c.rate, buffer: c.buffer, auto: c.auto, autoAt: c.autoAt ?? null, autoError: c.autoError ?? null })),
+  ]
+}
+
 export function overview(d: Data, ym: string) {
   const off = offDays(d, ym, ym)
   // One-off spendings are in the month's transfer and remainder (spec 011 S-5).
@@ -128,11 +147,15 @@ export function overview(d: Data, ym: string) {
   return {
     month: ym,
     settings: d.settings,
+    /** KRW is the base; these are the foreign currencies with their rates (spec 013 S-23) */
+    currencies: currencyList(d),
     dates: datesOf(d, ym, off),
     subscriptionTransfer: {
       monthlyKrw: krw(xfer.monthlySum),
       yearlyAsMonthlyKrw: krw(xfer.yearlyMonthly),
       usdAsMonthlyKrw: krw(xfer.usdMonthly),
+      /** every foreign-currency item, USD included (spec 013 S-23) */
+      foreignAsMonthlyKrw: krw(xfer.foreignMonthly),
       fxBufferKrw: krw(xfer.buffer),
       neededKrw: xfer.needed,
       transferKrw: xfer.transfer,
@@ -180,7 +203,7 @@ export function spendingList(d: Data, now: Date, filter: SpendFilter = {}) {
       bought: sp.bought,
       amount: sp.amount,
       currency: sp.currency,
-      ...(sp.currency === 'USD' ? { fxRate: sp.fxRate, fxBuffer: sp.fxBuffer } : {}),
+      ...(sp.currency !== 'KRW' ? { fxRate: sp.fxRate, fxBuffer: sp.fxBuffer } : {}),
       principalKrw: krw(spendingKrw(sp.amount, sp.currency, { fxRate: sp.fxRate ?? d.settings.fxRate, fxBuffer: sp.fxBuffer ?? d.settings.fxBuffer })),
       feeKrw: krw(sp.fee),
       how: sp.how,
@@ -227,8 +250,8 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
       vat: p.vat,
       cycle: p.cycle,
       status: p.status,
-      chargeKrw: krw(chargeKrw(p, d.settings)),
-      monthlyKrw: krw(monthlyKrw(p, d.settings)),
+      chargeKrw: krw(chargeKrw(p, priced(d.settings, d.currencies))),
+      monthlyKrw: krw(monthlyKrw(p, priced(d.settings, d.currencies))),
       nextPayment: next ? ymd(next) : null,
       payPath: base.path,
       receiptVerified: base.verified,
@@ -278,6 +301,10 @@ export function schedule(d: Data, from: string, months: number) {
     months: list.map((ym) => ({
       month: ym,
       dates: datesOf(d, ym, off),
+      // the user's own monthly dates (spec 013 S-22, A-36), moved off weekends and holidays like the dates above; no amount
+      ownDates: scheduleItemsIn(d.schedules ?? [], ym, d.settings.dayShift, off).map(({ item, at }) => ({
+        id: item.id, name: item.name, day: item.day, ...dateOf(at), accountId: item.accountId, direction: item.direction, ...(item.note ? { note: item.note } : {}),
+      })),
       payments: paymentsIn(d, ym),
       spendingRounds: spendRoundsIn(d, ym),
       planChanges: changesIn(d.planChanges, ym).map((c) => changeView(c, d)),

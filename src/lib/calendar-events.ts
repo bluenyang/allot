@@ -1,22 +1,24 @@
 // What the month calendar shows (spec 007 S-11): our own dates, handed to FullCalendar as events.
-// Monthly dates after the weekend/holiday shift, subscription payments, scheduled plan changes and
+// Monthly dates after the weekend/holiday shift (the three fixed ones and the user's own), subscription payments, scheduled plan changes and
 // the holidays of the sets that are on. Month-only events (PlanEvent.when = YYYY-MM, a range) are not
 // put on the grid: putting them on the 1st would claim a date they do not have. The agenda lists them
 // apart, for every month of their range (`inMonth` in event-when.ts; spec 013 S-18).
 import { addYm, monthDates, parseDate, upcomingPayments, upcomingSpendRounds, ymd, ymOf, DAY } from './calc'
 import { enabledSets, holidaysIn } from './holidays'
 import { fmtMoney } from './display'
-import { store, subName } from './store'
+import { pricedSettings, store, subName } from './store'
 import type { HolidaySet } from '../data/types'
 import { t, type MessageKey } from '../i18n'
 import { roundSuffix } from './labels'
 import { holidayName } from './holiday-names'
+import { scheduleItemsIn } from './schedule-items'
 
-export type CalKind = 'pay' | 'transfer' | 'billing' | 'sub' | 'spend' | 'change' | 'holiday'
-/** `name` and `krw` are set for subscription payments and spending rounds (the agenda shows the amount apart from the name). */
+/** 'in' and 'out': the user's own monthly dates (spec 013 S-22), by the way the money goes. */
+export type CalKind = 'pay' | 'transfer' | 'billing' | 'in' | 'out' | 'sub' | 'spend' | 'change' | 'holiday'
+/** `name` and `krw` are set for subscription payments and spending rounds (the agenda shows the amount apart from the name); `name` also for an own date. */
 export interface CalEvent { date: string; title: string; kind: CalKind; name?: string; krw?: number }
 
-export const kindLabel = (kind: CalKind) => t(`calendar.kind.${kind}` as MessageKey)
+export const kindLabel = (kind: CalKind) => t((kind === 'in' || kind === 'out' ? `schedule.kind.${kind}` : `calendar.kind.${kind}`) as MessageKey)
 
 /** Holidays of the given sets (those that are on), between two YYYY-MM-DD dates (inclusive). */
 export const holidaysBetween = (sets: HolidaySet[], from: string, to: string) => holidaysIn(enabledSets(sets), from, to)
@@ -46,11 +48,15 @@ export function calendarEvents(from: string, to: string): CalEvent[] {
     for (const [kind, x] of [['pay', d.pay], ['transfer', d.transfer], ['billing', d.billing]] as const) {
       if (x.date >= from && x.date <= last) out.push({ date: x.date, title: kindLabel(kind) + moved(x), kind })
     }
+    // The user's own dates, moved by the same rule (spec 013 S-22): the title is the name, the kind says in or out.
+    for (const { item, at } of scheduleItemsIn(store.schedules, ym, store.settings.dayShift, off)) {
+      if (at.date >= from && at.date <= last) out.push({ date: at.date, title: item.name + moved(at), kind: item.direction, name: item.name })
+    }
   }
 
   const start = parseDate(from)
   const days = Math.round((parseDate(to).getTime() - start.getTime()) / DAY) - 1
-  for (const p of upcomingPayments(store.subscriptions, store.planChanges, store.settings, start, days)) {
+  for (const p of upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), start, days)) {
     out.push({ date: ymd(p.date), title: `${p.sub.name} ${fmtMoney(p.krw)}`, kind: 'sub', name: p.sub.name, krw: p.krw })
   }
   // A round still to pay of a one-off spending, with its name and "n/N회" (spec 011 S-8).
@@ -61,6 +67,6 @@ export function calendarEvents(from: string, to: string): CalEvent[] {
   for (const c of store.planChanges) {
     if (c.effective && c.effective >= from && c.effective <= last) out.push({ date: c.effective, title: t('calendar.changeOf', { name: subName(c.subId) }), kind: 'change' })
   }
-  const order: CalKind[] = ['holiday', 'pay', 'transfer', 'billing', 'change', 'sub', 'spend']
+  const order: CalKind[] = ['holiday', 'pay', 'transfer', 'billing', 'in', 'out', 'change', 'sub', 'spend']
   return out.sort((a, b) => (a.date === b.date ? order.indexOf(a.kind) - order.indexOf(b.kind) : a.date < b.date ? -1 : 1))
 }

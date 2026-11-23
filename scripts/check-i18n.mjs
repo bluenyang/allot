@@ -11,6 +11,9 @@ const ALLOWED = new Set([
   'src/i18n/budget.ko.ts', // spec 013: the Korean messages of the budget pages, accounts and goal cards
   'src/i18n/accounts.ko.ts',
   'src/i18n/goals.ko.ts',
+  'src/i18n/schedule.ko.ts', // spec 013 rc.3: time zone and own dates, currencies, password and keys
+  'src/i18n/currency.ko.ts',
+  'src/i18n/security.ko.ts',
   'src/i18n/en.ts', // the native name of the Korean language in the language list
   'src/data/holidays-kr.ts', // the built-in holidays (names are data) and their English names
   'src/data/types.ts', // EventKind: the stored Korean kinds

@@ -26,7 +26,17 @@ const mode = process.argv[2]
 if (!['auth', 'isolation', 'tools', 'write'].includes(mode)) throw new Error('usage: mcp.mjs auth|isolation|tools|write')
 let failed = 0
 const cleanups = [] // run in the final `finally` (rows made by id, deleted by id even if a check threw)
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
 const BASE = process.env.BASE ?? 'http://127.0.0.1:3000'
 const sql = postgres(process.env.DATABASE_URL, { max: 1 })
 const sha = (k) => createHash('sha256').update(k).digest('base64url')
@@ -694,9 +704,9 @@ async function writeMode() {
   const t0 = pt.data?.preview?.months?.[0]
   ok(!failedCall(pt) && t0.neededKrw.after - t0.neededKrw.before >= 40_000 && t0.neededKrw.after - t0.neededKrw.before < 41_000 && t0.transferKrw.after >= t0.transferKrw.before && t0.remainderKrw.after <= t0.remainderKrw.before, `the preview's needed amount is 40,000 higher (rounded up to 1,000) (${t0?.neededKrw?.before} → ${t0?.neededKrw?.after}), the transfer ${t0?.transferKrw?.before} → ${t0?.transferKrw?.after}`)
   ok((await W('POST', `/api/proposals/${pt.data.proposalId}/reject`)).status === 204, 'rejected: the subscription-account proposal')
-  // rules of the screen apply: a round count that does not fit, a USD amount with a long rate
+  // rules of the screen apply: a round count that does not fit, a USD amount with a rate past 6 decimals (A-43)
   const bad1 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 1000, { count: 2 }) }] })
-  const bad2 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 10, { currency: 'USD', fxRate: 1300.123, fxBuffer: 2 }) }] })
+  const bad2 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 10, { currency: 'USD', fxRate: 1300.1234567, fxBuffer: 2 }) }] })
   ok(failedCall(bad1) && failedCall(bad2) && !/spendFx|spendHow|spendRounds/.test(bad1.text + bad2.text), `spending rules reach the AI in English (${(bad1.error?.message ?? bad1.text).slice(0, 80)} | ${(bad2.error?.message ?? bad2.text).slice(0, 80)})`)
   // the user confirms on the screen
   const apS = await W('POST', `/api/proposals/${ps.data.proposalId}/apply`)
@@ -958,12 +968,16 @@ async function writeMode() {
   await sqlW.end()
 }
 
+armed = true
 try {
   if (mode === 'write') await writeMode()
   else if (mode === 'auth') await authMode()
   else if (mode === 'isolation') await isolationMode()
   else await toolsMode()
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
 } finally {
+  stopped = true // the cleanup's own checks only report
   for (const f of cleanups) await f().catch(() => {})
   await sql`delete from apikey where name = 'v4'`.catch(() => {})
   for (const u of made) {

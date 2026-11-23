@@ -35,10 +35,11 @@ import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
 import { kindDetail } from '../lib/labels'
 import { adjustable, adjustOf, adjustPreview } from '../lib/budget-page'
-import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, today, ymLabel, ymOf, type AllocRow } from '../lib/calc'
+import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, ymLabel, ymOf, type AllocRow } from '../lib/calc'
 import type { Account, AllocationKind, Card, AllocationTarget, BudgetGroup, Settings } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
+import { localToday } from '../lib/now'
 
 const tab = ref('phases')
 const tabs = computed(() => [
@@ -58,7 +59,7 @@ function tabFromQuery() {
 tabFromQuery()
 onActivated(tabFromQuery)
 watch(() => route.query.tab, tabFromQuery)
-const now = ymOf(today())
+const now = ymOf(localToday())
 // The month's distribution with its one-off spendings (spec 011 S-5); `pay` is a value tried on this screen.
 const dist = (ym: string, pay = store.settings.netPay) => monthMoney(store, ym, { pay }).dist
 

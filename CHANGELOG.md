@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.1.7-rc.3 — 2026-11-23
+
+Settings and security features that were "coming soon". Spec 013 revision 1 (`.agents/intent/013_budget-and-soon/spec.md`, S-22 to S-26, A-35 to A-45). Migrations 0034, 0035 and 0036 (the time zone preference, a table for one's own monthly dates, a table of foreign currencies, the automatic refresh columns of the settings, a table of failed sign-ins; the currency of subscriptions, plan changes and spendings becomes a three-letter code — the stored `KRW` and `USD` values are unchanged).
+
+### Added
+- **Time zone** (Settings › General): any IANA time zone, shown with its UTC offset (default Asia/Seoul). "Today" and "this month" on every screen, and in the MCP tools and proposals, follow it.
+- **Own monthly dates** (기준 일정 추가): a monthly date of one's own besides the pay, transfer and card billing days — name, day (1–31), account (optional), money in or out, memo; no amount, and not part of the distribution or the transfer. Listed with this month's date after the weekend/holiday shift, and shown on the 일정 calendar and agenda. MCP: `get_schedule` lists them (`ownDates`); `propose_changes` takes `schedules`.
+- **Currency list** (Settings › General › 통화): currencies besides KRW and USD (ISO 4217 code, rate in KRW per unit, buffer %), added, edited and deleted there. USD keeps its rate and buffer in the settings, as before. Subscriptions, plan changes and spendings take any listed code; the pickers keep KRW and USD. A currency that a subscription, plan change or spending uses cannot be deleted or renamed; KRW and USD cannot be added to the list. MCP: `get_overview` lists the currencies; `propose_changes` takes `currencies`.
+- **Automatic exchange rates**: per currency (USD too), "자동" lets the server update the rate once a day from the public ECB rates (Frankfurter), and "지금 갱신" does it at once (`POST /api/currencies/refresh`). Off by default. A changed rate is one change set by "자동 갱신" in the change history and can be reverted. A code the service does not have, or a failed request, keeps the rate and shows the last failure. `ALLOT_FX_URL` names another rate service and `ALLOT_FX_REFRESH=off` switches the refresh off for the server.
+- **Base currency**: stays KRW; the settings say so ("원화 고정") instead of "coming soon".
+- **Password policy** (Admin › 로그인 방식 › 비밀번호): a minimum length (8–128; default 8, as before) for every new password — change password, the admin's set password and, once a policy is saved, the admin's create account — and an optional lockout (off by default; after 3–20 failed sign-ins to one email, that email is refused for 1–1440 minutes, the same answer for an email with no account). The admin sees the locked emails and unlocks them. An existing shorter password still signs in. `GET /api/password-policy` gives the minimum to the screens.
+- **Password generator**: "만들기" on the account's new password and the admin's account and password fields fills 20 random characters made in the browser, with a copy button; nothing is sent before saving.
+- **API key management** (Settings › AI·연동): rename a key, change its scope (read ↔ write, with the confirmation method), extend its expiry by 30, 90 or 365 days from now (no expiry when the policy allows it), and see its last use and request count (`PATCH /api/keys/:id`). An expired key or someone else's key is not found (404).
+- **API docs**: the new routes (own dates, currencies, rate refresh, key changes, password policy, sign-in locks).
+
+### Changed
+- Reverting a change set is refused when it would leave a subscription, plan change or spending with a currency that is not in the list.
+- Exchange rates of listed currencies and of spendings keep up to six decimals (migration 0036), so a small unit such as VND is not rounded to two; a spending's rate takes up to six decimals (was two). USD's settings rate is unchanged.
+- The server keeps each answer of the rate service for a few minutes (a failure for one), shared by "지금 갱신" and the daily refresh.
+
+- The change history names the currency and own-date tables and their fields, shows field names for every table, and names the automatic refresh as its actor.
+- A pending AI proposal stays valid after a rate refresh that changes no rate.
+
+### Fixed
+- Change sets saved before this release for the settings or the display settings can be reverted again (the new columns made them read as changed later).
+
+### Not in 0.1.7
+Connected apps (OAuth) come with 0.1.12 (MCP over OAuth); statements, the AI assistant and model connections stay "coming soon".
+
 ## 0.1.7-rc.2 — 2026-11-23
 
 Budget and screen features that were "coming soon". Spec 013 revision 1 (`.agents/intent/013_budget-and-soon/spec.md`, S-14 to S-21). Migrations 0032 and 0033 (a table for one month's adjustments, a column for where a savings product's money goes at maturity, the subscription category "other").

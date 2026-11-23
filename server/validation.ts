@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { ruleProblem } from '../src/lib/holidays'
 import { ROUND_MAX, roundsProblem } from '../src/lib/spending-rules'
+import { isTimeZone, timeZoneName } from '../src/lib/calc'
 import { m, type MsgKey } from './messages'
 
 /** A real calendar date (rejects 2031-02-30), YYYY-MM-DD. */
@@ -11,14 +12,15 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'dateFormat').refine((s) =>
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s
 }, 'dateInvalid')
 const ym = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'monthFormat')
-// Bounds match the column types: integer, numeric(12,2), numeric(8,2), numeric(5,2).
+// Bounds match the column types: integer, numeric(12,2), numeric(8,2) (the USD settings rate), numeric(14,6) (listed and spending rates, A-43), numeric(5,2).
 const INT_MAX = 2_147_483_647
 const won = z.number().int().min(0).max(INT_MAX, 'amountTooBig')
 const day = z.number().int().min(1).max(31)
 const text = z.string().trim()
 const optText = z.string().trim().optional()
 
-export const currency = z.enum(['KRW', 'USD'])
+/** A currency code (spec 013 S-23, S-26): KRW, USD or a code in the user's list (that part is checked in the API). */
+export const currency = z.string().regex(/^[A-Z]{3}$/, 'currencyCode')
 export const cycle = z.enum(['monthly', 'yearly'])
 export const subStatus = z.enum(['active', 'cancelled', 'company'])
 export const payPath = z.enum(['direct', 'google', 'apple', 'telecom'])
@@ -37,6 +39,26 @@ export const settings = z.object({
   // The same for the split of the Savings and Investment menus (spec 013 S-3).
   savingSplit: z.enum(['amount', 'ratio']).optional(),
   investSplit: z.enum(['amount', 'ratio']).optional(),
+  // USD rate refreshed by the server (spec 013 S-23); left out = keep the saved value.
+  fxAuto: z.boolean().optional(),
+})
+
+/** A foreign currency other than USD (spec 013 S-23, S-26, A-35): rate above 0 like the USD one, buffer 0..100. */
+export const foreignCurrency = z.object({
+  code: currency.refine((c) => c !== 'KRW' && c !== 'USD', 'currencyBase'),
+  rate: z.number().positive().max(999_999.99),
+  buffer: z.number().min(0).max(100),
+  // left out = keep the saved value (off for a new one)
+  auto: z.boolean().optional(),
+})
+
+/** A monthly date of the user's own (spec 013 S-22, S-26, A-36). */
+export const scheduleItem = z.object({
+  name: text.min(1, 'nameReq'),
+  day,
+  accountId: text.min(1).nullable(),
+  direction: z.enum(['in', 'out']),
+  note: optText,
 })
 
 // ── Display settings and holiday sets (spec 007 S-7, S-8, S-9) ──
@@ -53,6 +75,8 @@ export const preferences = z.object({
   negative: z.enum(['minus', 'paren', 'red']),
   // Optional so a client that does not know it keeps the saved value (spec 008 S-9).
   language: z.enum(['ko', 'en']).nullable().optional(),
+  // IANA time zone (spec 013 S-22, S-26); left out = keep the saved one.
+  timezone: z.string().refine(isTimeZone, 'timezoneInvalid').transform((x) => timeZoneName(x)!).optional(),
 }).strict()
 
 const holidayRule = z.object({
@@ -237,6 +261,8 @@ export const MAX_ROUNDS = 120
 
 /** A value that is exactly its own 2-decimal rounding (3.46, 1380.25), so what the numeric(_,2) column stores is what was typed. */
 export const twoDecimals = (n: number | null) => n === null || Math.round(n * 100) / 100 === n
+/** At most 6 decimals: a spending's exchange rate, numeric(14,6) (review rc3-1 F-2, A-43). */
+export const sixDecimals = (n: number | null) => n === null || Math.round(n * 1e6) / 1e6 === n
 
 export const spending = z.object({
   name: text.min(1, 'nameReq'),
@@ -266,11 +292,12 @@ export const spending = z.object({
     if (!x.refillFrom) bad('refillFrom', 'spendHow')
   } else if (x.refillFrom) bad('refillFrom', 'refillOnlyBuffer')
   if (x.cardId && x.payBy !== 'card') bad('cardId', 'cardOnlyCard')
-  if (x.currency === 'USD' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
-  // the columns are numeric(8,2) and numeric(5,2): what is stored must be what the rounds were worked out with
-  if (!twoDecimals(x.fxRate)) bad('fxRate', 'spendFxDecimals')
+  // any foreign currency carries its rate and buffer, as USD did (spec 013 S-23)
+  if (x.currency !== 'KRW' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
+  // the columns are numeric(14,6) and numeric(5,2) (A-43): what is stored must be what the rounds were worked out with
+  if (!sixDecimals(x.fxRate)) bad('fxRate', 'spendFxDecimals')
   if (!twoDecimals(x.fxBuffer)) bad('fxBuffer', 'spendFxDecimals')
-  if (x.currency === 'USD' ? x.fxBuffer === null : x.fxBuffer !== null) bad('fxBuffer', 'spendFx')
+  if (x.currency !== 'KRW' ? x.fxBuffer === null : x.fxBuffer !== null) bad('fxBuffer', 'spendFx')
   if (x.currency === 'KRW' && !Number.isInteger(x.amount)) bad('amount', 'spendKrwWhole')
   // Only a card installment carries a fee; only a split an interval.
   if (x.fee !== 0 && !(x.how === 'installment' && x.payBy === 'card')) bad('fee', 'spendHow')
@@ -330,3 +357,30 @@ export const keyCreate = z.object({
 
 /** PUT /api/admin/api-keys */
 export const keyPolicy = z.object({ noExpiry: z.boolean() }).strict()
+
+// ── Password policy and API key management (spec 013 rc.3 W-20: S-24, S-25, S-26) ──
+const wholeIn = (lo: number, hi: number, msg: MsgKey) => z.number(msg).int(msg).min(lo, msg).max(hi, msg)
+
+/** PUT /api/admin/password-policy — the whole policy (S-26: minimum 8..128, attempts 3..20, minutes 1..1440). */
+export const passwordPolicy = z.object({
+  minLength: wholeIn(8, 128, 'pwMinLengthRange'),
+  lockout: z.object({
+    enabled: z.boolean(),
+    attempts: wholeIn(3, 20, 'pwAttemptsRange'),
+    minutes: wholeIn(1, 1440, 'pwMinutesRange'),
+  }).strict(),
+}).strict()
+
+/**
+ * PATCH /api/keys/:id — any of: `name` (the key name rule), `write` (true: read + write proposals, false: read only),
+ * `confirm` (for a write key, as at create), `extendDays` (the expiry becomes now + that many days; null = no expiry,
+ * only while the server allows it). `write: false` with `confirm` is refused like at create.
+ */
+export const keyUpdate = z.object({
+  name: z.string().trim().min(1, 'keyNameReq').max(32, 'keyNameMax').optional(),
+  write: z.boolean().optional(),
+  confirm: z.enum(['ui', 'chat']).optional(),
+  extendDays: z.number().int('keyExtendInt').min(1, 'keyExtendRange').max(365, 'keyExtendRange').nullable().optional(),
+}).strict()
+  .refine((k) => Object.keys(k).length > 0, { message: 'nothingToChange' })
+  .refine((k) => k.confirm === undefined || k.write !== false, { message: 'keyConfirmNeedsWrite', path: ['confirm'] })

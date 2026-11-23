@@ -12,13 +12,17 @@ import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
 import Select from '../components/Select.vue'
-import { PERIOD_KINDS, periodBounds, periodQuery, type PeriodKind } from '../lib/history-period'
+import { DEFAULT_TIMEZONE, isTimeZone } from '../lib/calc'
+import { byActor, type ActorFilter } from '../lib/history-actor'
+import { dayIn, PERIOD_KINDS, periodBounds, periodQuery, type PeriodKind } from '../lib/history-period'
+import { fieldName, tableName } from '../lib/proposals'
 
 // Change history (spec 005 S-3, restyled by spec 010 S-9): one save = one change set, newest first, grouped by
 // day. A set can be reverted like a commit: the opposite change is saved as a new set (also a revert can be
 // reverted again, D-10). The server refuses when a row changed since (409) or a rule would break (400); the
 // modal shows the reason and stays open. The filters (who, item type) work on the sets loaded so far; the period
-// (spec 013 S-18) goes to the server (`since`/`until`, KST days) and the paging goes on inside it.
+// (spec 013 S-18) goes to the server (`since`/`until`, days in the user's time zone, S-22) and the paging goes on
+// inside it. The day headings and the times are in that zone too (review rc3-1 F-4).
 interface Change {
   id: number
   tableName: string
@@ -30,7 +34,8 @@ interface Change {
 interface ChangeSet {
   id: string
   at: string
-  actorKind: 'user' | 'api_key'
+  /** system: the server's daily rate refresh (spec 013 S-23) */
+  actorKind: 'user' | 'api_key' | 'system'
   /** The AI key's name when an AI key made the set (spec 009). */
   actorLabel: string | null
   method: string
@@ -40,7 +45,6 @@ interface ChangeSet {
   changes: Change[]
 }
 
-const tableName = (name: string) => { const k = `history.table.${name}`; return te(k) ? t(k as MessageKey) : name }
 const OP = { insert: 'insert', update: 'update', delete: 'delete' } as const
 /** What the opposite change was, for a set that reverts another. */
 const WAS = { insert: 'delete', delete: 'insert', update: 'update' } as const
@@ -69,7 +73,7 @@ async function load(reset = true) {
   try {
     const last = sets.value.at(-1)
     const before = !reset && last ? `&before=${encodeURIComponent(last.at)}&beforeId=${encodeURIComponent(last.id)}` : ''
-    const range = periodQuery(periodBounds(period.value, new Date(), pFrom.value, pTo.value))
+    const range = periodQuery(periodBounds(period.value, new Date(), pFrom.value, pTo.value, store.preferences.timezone))
     const page = await api<ChangeSet[]>('GET', `/api/changes?limit=${PAGE}${range}${before}`)
     if (mine !== seq) return
     sets.value = reset ? page : [...sets.value, ...page]
@@ -84,8 +88,11 @@ onMounted(() => load())
 onActivated(() => load())
 
 const locale = () => (lang.value === 'en' ? 'en-US' : 'ko-KR')
-const timeOf = (at: string) => new Date(at).toLocaleTimeString(locale(), { timeStyle: 'short' })
-const dayKey = (at: string) => { const d = new Date(at); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+const zone = () => { const tz = store.preferences.timezone; return tz && isTimeZone(tz) ? tz : DEFAULT_TIMEZONE }
+const timeOf = (at: string) => new Date(at).toLocaleTimeString(locale(), { timeStyle: 'short', timeZone: zone() })
+const dayKey = (at: string) => dayIn(new Date(at), store.preferences.timezone)
+/** The day `YYYY-MM-DD` as a local midnight Date, for the date and weekday words. */
+const dayDate = (key: string) => { const [y, m, d] = key.split('-').map(Number); return new Date(y!, m! - 1, d!) }
 /** A subscription's name, also when it has been deleted since (taken from the loaded history). */
 const subLabel = (id: string) => {
   if (store.subscriptions.some((x) => x.id === id)) return subName(id)
@@ -128,28 +135,28 @@ const fields = (c: Change) => {
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
 /** A field's value: an allocation target by its name (a month adjustment's or a phase amount's target; review rc2-1 F-3), else as stored. */
 const valueOf = (k: string, v: unknown) => (k === 'targetId' && typeof v === 'string' ? targetName(v) : show(v))
-const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : t('history.you'))
+const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : s.actorKind === 'system' ? t('currency.system') : t('history.you'))
 
 // ---------- filters ----------
-const actor = ref<'all' | 'me' | 'ai'>('all')
+const actor = ref<ActorFilter>('all')
 const kind = ref('')
-const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending', 'month_adjust']
+const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending', 'month_adjust', 'foreign_currency', 'schedule_item']
 /** The remainder split's rows are named after what the remainder target is, not a fixed word (spec 010 S-9). */
 const kindOpts = computed(() => KIND_IDS.map((id) => ({ id, label: id === 'remainder_split' ? t('history.kindRemainder') : tableName(id) })))
 const byKind = computed(() => sets.value.filter((s) => !kind.value || s.changes.some((c) => c.tableName === kind.value)))
 const actorOpts = computed(() => [
-  { id: 'all', label: t('history.actorAll'), count: byKind.value.length },
-  { id: 'me', label: t('history.actorMe'), count: byKind.value.filter((s) => s.actorKind === 'user').length },
-  { id: 'ai', label: t('history.actorAi'), count: byKind.value.filter((s) => s.actorKind === 'api_key').length },
+  { id: 'all', label: t('history.actorAll'), count: byActor(byKind.value, 'all').length },
+  { id: 'me', label: t('history.actorMe'), count: byActor(byKind.value, 'me').length },
+  { id: 'ai', label: t('history.actorAi'), count: byActor(byKind.value, 'ai').length },
 ])
-const shown = computed(() => byKind.value.filter((s) => actor.value === 'all' || (actor.value === 'ai') === (s.actorKind === 'api_key')))
+const shown = computed(() => byActor(byKind.value, actor.value))
 const days = computed(() => {
   const out: { key: string; head: string; sets: ChangeSet[] }[] = []
   for (const s of shown.value) {
     const k = dayKey(s.at)
     const last = out.at(-1)
     if (last?.key === k) last.sets.push(s)
-    else out.push({ key: k, head: `${fmtDate(new Date(s.at))} (${weekdayShort(new Date(s.at))})`, sets: [s] })
+    else out.push({ key: k, head: `${fmtDate(dayDate(k))} (${weekdayShort(dayDate(k))})`, sets: [s] })
   }
   return out
 })
@@ -231,7 +238,7 @@ async function revert() {
                   <thead><tr><th scope="col">{{ t('history.colField') }}</th><th scope="col">{{ t('history.colBefore') }}</th><th scope="col">{{ t('history.colAfter') }}</th></tr></thead>
                   <tbody>
                     <tr v-for="f in fields(c)" :key="f.k">
-                      <th scope="row">{{ f.k }}</th>
+                      <th scope="row" :title="f.k">{{ fieldName(f.k, c.tableName) }}</th>
                       <td class="bef">{{ c.op === 'insert' ? '—' : valueOf(f.k, f.b) }}</td>
                       <td class="aft">{{ c.op === 'delete' ? '—' : valueOf(f.k, f.a) }}</td>
                     </tr>

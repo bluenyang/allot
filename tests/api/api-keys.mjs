@@ -14,7 +14,17 @@ import postgres from 'postgres'
 
 let failed = 0
 let skipped = 0
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
 const skip = (msg) => { console.log(`SKIP ${msg}`); skipped++ }
 const BASE = process.env.BASE ?? 'http://localhost:15173'
 const sql = postgres(process.env.DATABASE_URL, { max: 1 })
@@ -59,6 +69,8 @@ ok(sa.status === 200, `A sign-in ${sa.status}`)
 if (failed) process.exit(1)
 
 const uEmail = `v2-${Date.now()}@example.com`
+let uDeleted = false
+let aKeyId = null // the admin's test key while it exists (a stopped run removes it in the cleanup)
 const uPw = 'v2-first-pass-1'
 const created = await A('POST', '/api/auth/admin/create-user', { email: uEmail, password: uPw, name: 'V2 user', role: 'user' })
 ok(created.status === 200, `create-user → ${created.status}`)
@@ -68,6 +80,7 @@ ok(su.status === 200, `U sign-in ${su.status}`)
 if (failed) process.exit(1)
 
 let policyChanged = false
+armed = true
 try {
   // ── the policy and who may change it ──
   const p0 = await A('GET', '/api/admin/api-keys')
@@ -102,9 +115,11 @@ try {
     rmSync('/tmp/v2-go', { force: true })
     writeFileSync('/tmp/v2-key.txt', raw)
     for (let i = 0; i < 240 && !existsSync('/tmp/v2-go'); i++) await new Promise((r) => setTimeout(r, 500))
-    ok(existsSync('/tmp/v2-go'), 'the dump step signalled it was done')
+    const signalled = existsSync('/tmp/v2-go')
+    // the raw key's file goes before the check, so a failed check cannot leave it behind (review rc3-10 R10-2)
     rmSync('/tmp/v2-key.txt', { force: true })
     rmSync('/tmp/v2-go', { force: true })
+    ok(signalled, 'the dump step signalled it was done')
   }
   const list = await U('GET', '/api/keys')
   const listed = list.json?.keys?.find((k) => k.id === c1.json?.item?.id)
@@ -154,10 +169,16 @@ try {
   await bad({ name: 'x', write: true, confirm: 'both' }, 'an unknown confirmation method')
   await bad({ name: 'x', write: 'yes' }, 'write that is not a boolean')
   await bad({ name: 'x', write: true, metadata: { confirm: 'chat' } }, 'metadata in the body')
-  for (const [method, body] of [['PUT', { name: 'x' }], ['PATCH', { write: true }], ['PATCH', { confirm: 'chat' }]]) {
-    const r = await U(method, `/api/keys/${w1.json?.item?.id}`, body)
-    ok(r.status === 404 || r.status === 405, `${method} /api/keys/:id → ${r.status} (no way to change a key)`)
+  // Since 0.1.7-rc.3 a key is changed with PATCH and its own fields only (spec 013 S-25; tests/api/password-keys.mjs
+  // checks them): there is still no PUT, and PATCH takes no permissions or metadata of the plugin.
+  const put = await U('PUT', `/api/keys/${w1.json?.item?.id}`, { name: 'x' })
+  ok(put.status === 404 || put.status === 405, `PUT /api/keys/:id → ${put.status} (no such route)`)
+  for (const body of [{ metadata: { confirm: 'chat' } }, { permissions: { mcp: ['read', 'write'] } }]) {
+    const r = await U('PATCH', `/api/keys/${w1.json?.item?.id}`, body)
+    ok(r.status === 400, `PATCH /api/keys/:id ${JSON.stringify(body)} → ${r.status} (not a field of the key change)`)
   }
+  const kept = await U('PATCH', `/api/keys/${w1.json?.item?.id}`, { write: true })
+  ok(kept.status === 200 && kept.json?.item?.confirm === 'ui', `PATCH { write: true } on a write key keeps its method → ${kept.status} ${kept.json?.item?.confirm}`)
   const still = ((await U('GET', '/api/keys')).json?.keys ?? []).find((k) => k.id === w1.json?.item?.id)
   ok(still?.confirm === 'ui' && still?.permissions?.mcp?.includes('write'), 'the key is unchanged after those attempts')
   for (const r of [w1, w2, w3]) await U('DELETE', `/api/keys/${r.json?.item?.id}`)
@@ -179,6 +200,7 @@ try {
 
   // ── someone else's key; a key is no session ──
   const aKey = await A('POST', '/api/keys', { name: 'admin-key', expiresInDays: 30 })
+  aKeyId = aKey.json?.item?.id ?? null
   ok(aKey.status === 201, `A creates a key → ${aKey.status}`)
   const stolen = await U('DELETE', `/api/keys/${aKey.json?.item?.id}`)
   ok(stolen.status === 404, `U deletes A's key id → ${stolen.status} (want 404)`)
@@ -193,6 +215,7 @@ try {
   }
   ok((await A('GET', '/api/keys')).json.keys.length === 1, 'those requests created nothing')
   await A('DELETE', `/api/keys/${aKey.json?.item?.id}`)
+  aKeyId = null
 
   // ── the plugin's own paths are closed ──
   for (const [method, path, body] of [
@@ -254,16 +277,30 @@ try {
   const [{ n: nBefore }] = await sql`select count(*)::int as n from apikey where reference_id = ${uId}`
   ok(nBefore >= 1, `U has ${nBefore} key(s) before the account is deleted`)
   const gone = await A('DELETE', `/api/admin/users/${uId}`, { confirmEmail: uEmail })
+  if (gone.status === 204) uDeleted = true
   ok(gone.status === 204, `admin deletes U → ${gone.status}`)
   const [{ n: nAfter }] = await sql`select count(*)::int as n from apikey where reference_id = ${uId}`
   ok(nAfter === 0, `U's keys are gone with the account (${nAfter})`)
   ok((await mcp(A, left.json?.key)).status === 401, 'a deleted user\'s key → MCP 401')
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
 } finally {
+  stopped = true // the cleanup's own checks only report
   if (policyChanged) {
     const r = await A('PUT', '/api/admin/api-keys', { noExpiry: false })
     console.log(`restore policy OFF → ${r.status}`)
   }
   await sql`delete from apikey where name in ('first','y365','d1','admin-key','forever','use','old','left') and reference_id = ${uId ?? ''}`.catch(() => {})
+  // a run stopped before its own deletes still removes the admin's test key and the test user U (review rc3-10 R10-1;
+  // the admin's key was found by the forced failure, test-rc3/rc3-forced-3.log)
+  if (aKeyId) {
+    const d = await A('DELETE', `/api/keys/${aKeyId}`).catch((e) => ({ status: `threw ${e?.message ?? e}` }))
+    console.log(`cleanup: delete the admin's test key → ${d.status}`)
+  }
+  if (uId && !uDeleted) {
+    const d = await A('DELETE', `/api/admin/users/${uId}`, { confirmEmail: uEmail }).catch((e) => ({ status: `threw ${e?.message ?? e}` }))
+    console.log(`cleanup: delete U → ${d.status}`)
+  }
   await sql.end()
 }
 console.log(failed ? `${failed} FAILED` : `all checks passed${skipped ? ` (${skipped} skipped)` : ''}`)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { authClient } from '../lib/auth-client'
-import { t } from '../i18n'
+import { lang, t } from '../i18n'
 import { loadMethods, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
 
 /** Opened by a mobile app (#app-login): after signing in, the browser goes back to the app. */
@@ -24,11 +24,14 @@ onMounted(async () => {
 async function submit() {
   err.value = ''
   busy.value = true
-  const { error } = await authClient.signIn.email({ email: email.value.trim(), password: password.value })
+  // The language goes along so a lockout answer (spec 013 A-37) comes in the screen's language.
+  const { error } = await authClient.signIn.email({ email: email.value.trim(), password: password.value }, { headers: { 'accept-language': lang.value } })
   busy.value = false
   if (!error) return
   err.value =
-    error.status === 429 ? t('login.tooMany')
+    // spec 013 A-37: the server's lockout answer names the minutes left, the same for any email.
+    error.code === 'LOGIN_LOCKED' && error.message ? error.message
+    : error.status === 429 ? t('login.tooMany')
     : error.status === 401 ? t('login.wrong')
     : error.code === 'BANNED_USER' ? t('login.banned')
     : error.code === 'PENDING_APPROVAL' ? t('login.pending')

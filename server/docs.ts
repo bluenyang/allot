@@ -19,11 +19,14 @@ const ROUTES: Record<string, string> = {
   'GET /api/auth-methods': 'The sign-in methods the login screen offers (ids and names); no session needed.',
   'ALL /api/mcp': 'The MCP endpoint (Streamable HTTP, JSON responses): Authorization: Bearer <API key>, no session. Its tools are listed below.',
   'GET /api/me': 'The signed-in user (name, email, role).',
+  'GET /api/password-policy': 'The minimum length of a new password ({ minLength }).',
   'POST /api/app-login/ticket': 'A one-time sign-in link for a listed app URL ({ returnTo }).',
   'GET /api/docs': 'This page.',
-  'GET /api/keys': 'Your API keys (for MCP): name, scope, expiry, last use; never the key itself.',
+  'POST /api/currencies/refresh': 'Refresh your automatic exchange rates now (spec 013 S-23); answers { settings, currencies, off }. A code the rate service cannot give keeps its rate and shows why.',
+  'GET /api/keys': 'Your API keys (for MCP): name, scope, expiry, last use, requests in the last minute; never the key itself.',
   'POST /api/keys': 'Create an API key; the key is shown once in the answer.',
   'DELETE /api/keys/:id': 'Delete an API key.',
+  'PATCH /api/keys/:id': 'Change an API key: { name?, write?, confirm?: "ui" | "chat", extendDays? } — rename it, switch read and write-proposal scope, move where its proposals are confirmed, or extend its expiry within the server policy.',
   'GET /api/admin/providers': 'Admin: the sign-in providers and their settings.',
   'PUT /api/admin/providers/:id': 'Admin: change a sign-in provider.',
   'GET /api/admin/api-keys': 'Admin: the API key policy.',
@@ -31,6 +34,10 @@ const ROUTES: Record<string, string> = {
   'POST /api/admin/users/:id/role': 'Admin: change a user\'s role.',
   'POST /api/admin/users/:id/ban': 'Admin: ban a user (signs them out everywhere).',
   'DELETE /api/admin/users/:id': 'Admin: delete a user and all their data (confirmed with their email).',
+  'GET /api/admin/password-policy': 'Admin: the password policy (minimum length, lockout) and whether one is stored.',
+  'PUT /api/admin/password-policy': 'Admin: change the password policy.',
+  'GET /api/admin/login-locks': 'Admin: the emails locked now after failed sign-ins, with until when.',
+  'DELETE /api/admin/login-locks/:email': 'Admin: unlock an email.',
   'GET /api/state': 'Everything the app shows (settings, lists in insertion order) and the number of pending proposals.',
   'GET /api/proposals': 'AI proposals, newest first, with their previews: ?status=pending|applied|rejected|expired|stale|handled&limit=&before=&beforeId=.',
   'GET /api/proposals/:id': 'One AI proposal.',
@@ -44,11 +51,19 @@ const ROUTES: Record<string, string> = {
 /** The request body of the routes that are not data resources. */
 const BODIES: Record<string, z.ZodType> = {
   'POST /api/keys': v.keyCreate,
+  'PATCH /api/keys/:id': v.keyUpdate,
   'PUT /api/admin/api-keys': v.keyPolicy,
+  'PUT /api/admin/password-policy': v.passwordPolicy,
   'PUT /api/admin/providers/:id': v.providerUpdate,
   'POST /api/admin/users/:id/role': v.userRole,
   'POST /api/admin/users/:id/ban': v.userBan,
   'DELETE /api/admin/users/:id': v.userDelete,
+}
+
+/** What a data resource holds, where its name alone does not say it; added to its create line. */
+const RESOURCE_NOTES: Partial<Record<ListName, string>> = {
+  schedules: 'Your own monthly dates (spec 013 S-22): name, day 1..31, accountId or null, direction in or out, note; no amount.',
+  currencies: 'Foreign currencies other than KRW and USD (spec 013 S-23): code, rate, buffer 0..100, auto; one in use by a subscription, plan change or spending cannot be deleted or renamed. The USD rate is in the settings (fxRate, fxBuffer, fxAuto).',
 }
 
 const SINGLE_PATHS = { '/api/settings': 'settings', '/api/living': 'living', '/api/preferences': 'preferences' } as const
@@ -66,7 +81,7 @@ export function describeRoute(r: RouteInfo): string | null {
   if (r.method === 'PUT' && r.path in SINGLE_PATHS) return `Replace the ${SINGLE_PATHS[r.path as keyof typeof SINGLE_PATHS]} record (the whole record; body below).`
   const res = resourceOf(r.path)
   if (!res) return null
-  if (r.method === 'POST' && !res.item) return `Create a ${res.name} row; the server assigns the id and answers with the row (body below).`
+  if (r.method === 'POST' && !res.item) return `Create a ${res.name} row; the server assigns the id and answers with the row (body below).${RESOURCE_NOTES[res.name] ? ` ${RESOURCE_NOTES[res.name]}` : ''}`
   if (r.method === 'PUT' && res.item) return `Replace a ${res.name} row (the whole row; body below).`
   if (r.method === 'DELETE' && res.item) return `Delete a ${res.name} row.`
   return null

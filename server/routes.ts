@@ -18,6 +18,7 @@ import { langOf, msg } from './messages'
 import { applyOp, RESOURCES, Rejected, singleSchema, type ListName, type SingleName } from './ops'
 import { applyProposal, getProposal, listProposals, pendingCount, ProposalError, proposalText, rejectProposal, type ProposalStatus } from './proposals'
 import { readState } from './state'
+import { fxRoutes } from './fx-routes'
 
 function pgCode(e: unknown): string | undefined {
   const err = e as { code?: string; cause?: { code?: string } }
@@ -108,7 +109,9 @@ for (const [path, resource] of [
   ['/checks', 'checks'], ['/accounts', 'accounts'], ['/debts', 'debts'], ['/remainder-split', 'remainder-split'],
   ['/holiday-sets', 'holiday-sets'], ['/targets', 'targets'], ['/spendings', 'spendings'],
   ['/living-items', 'living-items'], ['/balances', 'balances'], ['/cards', 'cards'], ['/month-adjusts', 'month-adjusts'], // spec 013
+  ['/currencies', 'currencies'], ['/schedules', 'schedules'], // spec 013 rc.3
 ] as const) crud(routes, path, resource)
+routes.route('/', fxRoutes) // spec 013 S-23: POST /api/currencies/refresh (server/fx-routes.ts)
 
 // ── Proposals from an AI key (spec 009 S-4, S-9): the screen confirms or rejects them (a session only) ──
 //   GET  /api/proposals?status=pending|handled|…&limit=100&before=<createdAt>&beforeId=<id>   newest first, with their previews;

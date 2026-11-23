@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   bufferGauge, distributionAt, goalAlerts, goalMonth, groupAt, groupValue, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate, planAt, planRounds, projectAccount, transferAt,
   upcomingPayments, yearContribution, ymd, type AccountState,
+  priced,
 } from '../../src/lib/calc'
 import type { Account, LivingItem, Spending, Subscription } from '../../src/data/types'
 import { accountList, allocation, budget, eventMonths, maturitySchedule, notificationList, overview, planChangeList, schedule, searchView, spendingList, subscriptionList, type Data } from '../../server/mcp/views'
@@ -50,11 +51,11 @@ const data: Data = {
 test('overview matches calc.ts for the same data, this month and three months on', () => {
   for (const ym of ['2026-11', '2027-02']) {
     const o = overview(data, ym)
-    const x = transferAt(data.subscriptions, data.planChanges, data.settings, ym)
+    const x = transferAt(data.subscriptions, data.planChanges, priced(data.settings), ym)
     assert.equal(o.subscriptionTransfer.transferKrw, x.transfer)
     assert.equal(o.subscriptionTransfer.neededKrw, x.needed)
     assert.equal(o.subscriptionTransfer.monthlyKrw, Math.round(x.monthlySum))
-    const dist = distributionAt(ym, data.settings.netPay, data.phases, data.targets, data.living, data.subscriptions, data.planChanges, data.settings)
+    const dist = distributionAt(ym, data.settings.netPay, data.phases, data.targets, data.living, data.subscriptions, data.planChanges, priced(data.settings))
     assert.deepEqual(o.distribution.rows.map((r) => [r.targetId, r.amountKrw]), dist.rows.map((r) => [r.key, Math.round(r.amount)]))
     assert.equal(o.distribution.remainderKrw, Math.round(dist.remainder))
     // pay = net pay minus everything: the rows add up to the net pay
@@ -80,7 +81,7 @@ test('overview: a plan change shows in its month and moves the transfer', () => 
 
 test('overview: payments of the month are the ones calc.ts finds in that month', () => {
   const o = overview(data, '2026-11')
-  const calc = upcomingPayments(data.subscriptions, data.planChanges, data.settings, parseDate('2026-11-01'), 29).filter((p) => ymd(p.date).startsWith('2026-11'))
+  const calc = upcomingPayments(data.subscriptions, data.planChanges, priced(data.settings), parseDate('2026-11-01'), 29).filter((p) => ymd(p.date).startsWith('2026-11'))
   assert.deepEqual(o.payments.map((p) => [p.date, p.subscriptionId, p.amountKrw]), calc.map((p) => [ymd(p.date), p.sub.id, Math.round(p.krw)]))
   assert.ok(o.payments.length >= 2)
   assert.ok(o.payments.every((p) => p.date.startsWith('2026-11')))
@@ -91,7 +92,7 @@ test('subscription list: plan at this month, monthly KRW, next payment, status f
   const all = subscriptionList(data, now)
   assert.equal(all.subscriptions.length, 4)
   const s2 = all.subscriptions.find((s) => s.id === 's2')!
-  assert.equal(s2.monthlyKrw, Math.round(monthlyKrw(planAt(data.subscriptions[1]!, data.planChanges, '2026-11'), data.settings)))
+  assert.equal(s2.monthlyKrw, Math.round(monthlyKrw(planAt(data.subscriptions[1]!, data.planChanges, '2026-11'), priced(data.settings))))
   assert.equal(s2.nextPayment, ymd(nextPayment(data.subscriptions[1]!, data.planChanges, now)!))
   assert.equal(all.subscriptions.find((s) => s.id === 's4')!.nextPayment, null, 'a cancelled subscription has no next payment')
   assert.deepEqual(subscriptionList(data, now, 'cancelled').subscriptions.map((s) => s.id), ['s4'])
@@ -116,7 +117,7 @@ test('subscription list: the next payment follows the plan in force, as the scre
   assert.equal(row.nextPayment, '2026-11-20')
   const sched = schedule(d, '2026-11', 1).months[0]!.payments.filter((x) => x.subscriptionId === 'x1').map((x) => x.date)
   assert.equal(sched[0], row.nextPayment)
-  assert.equal(ymd(upcomingPayments(d.subscriptions, d.planChanges, d.settings, now, 400)[1]!.date), '2027-11-20')
+  assert.equal(ymd(upcomingPayments(d.subscriptions, d.planChanges, priced(d.settings), now, 400)[1]!.date), '2027-11-20')
 })
 
 test('plan change list: dated first by date, undated last, with the monthly delta', () => {
@@ -163,7 +164,7 @@ test('overview: one-off spendings are in the transfer and the remainder, with th
   assert.equal(base.distribution.spendingKrw, 0)
   assert.equal(o.distribution.spendingKrw, 100_000)
   assert.equal(o.subscriptionTransfer.spendingKrw, 50_000)
-  const x = transferAt(data.subscriptions, data.planChanges, data.settings, '2026-12', 50_000)
+  const x = transferAt(data.subscriptions, data.planChanges, priced(data.settings), '2026-12', 50_000)
   assert.equal(o.subscriptionTransfer.transferKrw, x.transfer)
   assert.equal(o.subscriptionTransfer.neededKrw, x.needed)
   assert.equal(o.distribution.remainderKrw, base.distribution.remainderKrw - 100_000 - (x.transfer - base.subscriptionTransfer.transferKrw))
@@ -549,4 +550,22 @@ test('list_notifications: the bell\'s list with a sentence each, goal cards and 
   assert.match(md[0]!.message, /1 savings item\(s\) reached maturity/)
   const stopped: Data = { ...due, accounts: due.accounts.map((a) => (a.id === 'dep' ? { ...a, stopFrom: '2027-01' } : a)) }
   assert.deepEqual(notificationList(stopped, now, 0).notifications.filter((n) => n.group === 'pending'), [])
+})
+
+// ── spec 013 S-23: the currencies in the overview, and items in a listed code ──
+test('overview lists USD from the settings and the currency list; a subscription in a listed code is priced by its rate', () => {
+  const eur = { id: 'fc1', code: 'EUR', rate: 1500, buffer: 2, auto: true, autoAt: '2026-11-23T00:00:00.000Z', autoError: null }
+  const d: Data = { ...data, settings: { ...data.settings, fxAuto: false }, currencies: [eur], subscriptions: [...data.subscriptions, sub({ id: 's5', name: 'Sub Five', amount: 10, currency: 'EUR' })] }
+  const o = overview(d, '2026-11')
+  assert.deepEqual(o.currencies, [
+    { code: 'USD', rate: 1400, buffer: 5, auto: false, autoAt: null, autoError: null },
+    { id: 'fc1', code: 'EUR', rate: 1500, buffer: 2, auto: true, autoAt: '2026-11-23T00:00:00.000Z', autoError: null },
+  ])
+  const five = subscriptionList(d, NOW).subscriptions.find((x) => x.id === 's5')!
+  assert.equal(five.currency, 'EUR')
+  assert.equal(five.chargeKrw, 15_000)
+  const x = transferAt(d.subscriptions, d.planChanges, priced(d.settings, d.currencies), '2026-11')
+  assert.equal(o.subscriptionTransfer.foreignAsMonthlyKrw, Math.round(x.foreignMonthly))
+  assert.equal(o.subscriptionTransfer.fxBufferKrw, Math.round(x.buffer))
+  assert.equal(overview(data, '2026-11').currencies.length, 1)
 })

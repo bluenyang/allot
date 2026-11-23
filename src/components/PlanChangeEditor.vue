@@ -8,19 +8,22 @@ import EditSheet from './EditSheet.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import MoneyInput from './MoneyInput.vue'
 import Seg from './Seg.vue'
+import CurrencyPick from './CurrencyPick.vue'
+import { chargeLabel, currencyCodes } from '../lib/currency'
 import { useEditor } from '../lib/useEditor'
-import { store } from '../lib/store'
+import { pricedSettings, store } from '../lib/store'
 import { cycleLabel, statusLabel } from '../lib/labels'
 import { fmtMoney } from '../lib/display'
-import { addYm, monthlyKrw, monthMoney, num, planAt, today, ymOf } from '../lib/calc'
+import { addYm, monthlyKrw, monthMoney, num, planAt, ymOf } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
 import Select from './Select.vue'
 import DateInput from './DateInput.vue'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ initial: PlanChange | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const now = today()
+const now = localToday()
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const blank = (): PlanChange => ({ id: '', subId: store.subscriptions[0]?.id ?? '', effective: `${addYm(ymOf(now), 1)}-01`, to: {}, note: '' })
 function validate(c: PlanChange) {
@@ -39,7 +42,8 @@ const askDel = ref(false)
 const isNew = !props.initial
 const steps = computed(() => [t('subscriptions.stepTarget'), t('subscriptions.stepNewPlan')])
 const keep = () => ({ id: '', label: t('subscriptions.unchanged') })
-const currencyOpts = computed(() => [keep(), { id: 'KRW', label: 'KRW' }, { id: 'USD', label: 'USD' }])
+// 그대로, KRW, USD and every listed code (spec 013 S-23); the stored code stays an option
+const currencyOpts = computed(() => [keep(), ...currencyCodes(store.currencies, props.initial?.to.currency).map((id) => ({ id, label: id }))])
 const cycleOpts = computed(() => [keep(), ...(['monthly', 'yearly'] as const).map((id) => ({ id, label: cycleLabel(id) }))])
 const statusOpts = computed(() => [keep(), ...(['active', 'company', 'cancelled'] as const).map((id) => ({ id, label: statusLabel(id) }))])
 
@@ -56,7 +60,7 @@ const effective = computed({
 function toggleUndated(on: boolean) {
   edit.value!.effective = on ? null : `${addYm(ymOf(now), 1)}-01`
 }
-const chargeText = (p: Plan) => (p.currency === 'USD' ? `USD ${p.amount.toFixed(2)}${p.vat ? ` +${p.vat}%` : ''}` : `KRW ${num(p.amount)}`)
+const chargeText = (p: Plan) => chargeLabel(p, num)
 const current = computed(() => {
   const s = sub.value
   if (!s) return ''
@@ -83,10 +87,10 @@ const currency = field('currency', (v) => v as Plan['currency'])
 const cycle = field('cycle', (v) => v as Plan['cycle'])
 const status = field('status', (v) => v as Plan['status'])
 const month = computed(() => (undated.value ? ymOf(now) : edit.value!.effective!.slice(0, 7)))
-// VAT is always there (it was before the redesign); it only counts for USD, which the hint says.
-const isUsd = computed(() => (edit.value?.to.currency ?? (sub.value ? planAt(sub.value, others.value, month.value).currency : undefined)) === 'USD')
+// VAT is always there (it was before the redesign); it only counts for a foreign currency, which the hint says.
+const isForeign = computed(() => { const c = edit.value?.to.currency ?? (sub.value ? planAt(sub.value, others.value, month.value).currency : undefined); return !!c && c !== 'KRW' })
 
-const mo = (p: Subscription) => (p.status === 'active' ? monthlyKrw(p, store.settings) : 0)
+const mo = (p: Subscription) => (p.status === 'active' ? monthlyKrw(p, pricedSettings()) : 0)
 /** Monthly amount of this subscription and the subscription transfer, without and with the change, in the month it applies (an undated one: this month). */
 const pv = computed(() => {
   const e = edit.value
@@ -143,14 +147,14 @@ function canAdvance(from: number) {
         <div class="field">
           <label for="c-amt">{{ t('subscriptions.newAmount') }}</label>
           <div class="amt-row">
-            <Seg v-model="currency" class="cur" :options="currencyOpts" :label="t('subscriptions.currency')" />
+            <CurrencyPick v-model="currency" :options="currencyOpts" :label="t('subscriptions.currency')" />
             <MoneyInput id="c-amt" v-model="amount" decimal prefix="" />
           </div>
         </div>
         <div class="field">
           <label for="c-vat">VAT (%)</label>
           <MoneyInput id="c-vat" v-model="vat" decimal prefix="" />
-          <span v-if="!isUsd" class="hint">{{ t('subscriptions.vatUsdOnly') }}</span>
+          <span v-if="!isForeign" class="hint">{{ t('currency.vatForeignOnly') }}</span>
         </div>
         <div class="field">
           <span id="c-cy-l" class="flabel">{{ t('subscriptions.billingCycle') }}</span>
