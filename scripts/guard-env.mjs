@@ -166,6 +166,11 @@ function recursiveSearch(raw, cwd) {
     for (const p of s.paths) {
       const hint = `Exclude env files (grep --exclude='.env*', rg -g '!.env*') or name the folders without them.`
       if (p.includes(PH)) return `A recursive search over a path only known at run time (${p.replaceAll(PH, '$')}) could read an env file. ${hint}`
+      // a path the shell expands (glob, braces, ~) is not the word seen here (retro review T-1): refused unless env files are excluded
+      if (/[*?[{]/.test(p) || p.startsWith('~')) {
+        if (s.excludes.some((g) => ['.env', '.env.example', '.env.x'].every((n) => globMatches(g, n)))) continue
+        return `A recursive search over ${p} (the shell expands it) could read an env file. ${hint}`
+      }
       const abs = resolve(cwd, p)
       let st
       try { st = statSync(abs) } catch { continue }
@@ -276,6 +281,11 @@ if (!isMain) {
     ['grep -n SECRET docker/compose.yaml', false],
     ['grep SECRET docker', false],
     ['grep -rn SECRET src/ server/ tests/', false],
+    ['grep -r SECRET */', true], // the shell expands it (retro review T-1)
+    ['grep -r SECRET {docker,src}', true],
+    ['grep -r SECRET ~/x/docker', true],
+    ['grep -r SECRET d?cker', true],
+    ['grep -r --exclude=.env* SECRET */', false],
     ['rg -n SECRET src server', false],
     ['grep -rn docker src', false],
     ['grep -r -e docker -- src', false],
