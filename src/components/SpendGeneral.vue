@@ -4,18 +4,19 @@ import { t } from '../i18n'
 import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort } from '../lib/format'
-import { num, spendState, spendingIn, today, ymOf, ymd, type SpendStateName } from '../lib/calc'
+import { num, spendState, spendingIn, ymOf, ymd, type SpendStateName } from '../lib/calc'
 import type { PayBy, Spending } from '../data/types'
 import Seg from './Seg.vue'
 import Select from './Select.vue'
 import SpendEditor from './SpendEditor.vue'
 import { downloadCsv } from '../lib/csv'
 import { spendingCsvRows } from '../lib/spending-csv'
+import { localToday } from '../lib/now'
 
 // 일반 tab (spec 011 S-6, S-7): the lump-sum spendings as a table (a card list on the phone), three summary
 // cards, filters. Everything shown is worked out here from the store through calc.ts: the state by `spendState`,
 // the month sums by `spendingIn`. The edit button opens SpendEditor (W-7).
-const now = today()
+const now = localToday()
 const nowYmd = ymd(now)
 const ym = ymOf(now)
 const OFF = new Set<string>() // `spendState` reads the holiday set only when a spending has no live round; a lump always has one

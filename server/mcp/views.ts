@@ -46,6 +46,8 @@ export interface Data {
   currencies?: ForeignCurrency[]
   /** the user's own monthly dates (spec 013 S-22); absent = none */
   schedules?: ScheduleItem[]
+  /** the display settings: their time zone is the user's "today" (spec 013 S-22) */
+  preferences?: { timezone?: string }
 }
 
 const krw = (n: number) => Math.round(n)

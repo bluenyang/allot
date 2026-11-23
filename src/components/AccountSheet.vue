@@ -13,9 +13,10 @@ import { store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { offDays } from '../lib/holidays-lazy'
 import { bankLine, targetsOf } from '../lib/accounts'
-import { addYm, bufferGauge, goalMonth, projectAccount, today, yearContribution, ymLabel, ymOf, ymd } from '../lib/calc'
+import { addYm, bufferGauge, goalMonth, projectAccount, yearContribution, ymLabel, ymOf, ymd } from '../lib/calc'
 import { fmtMoney } from '../lib/display'
 import type { Balance } from '../data/types'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ accountId: string }>()
 const emit = defineEmits<{ close: []; edit: [] }>()
@@ -24,8 +25,8 @@ const acc = computed(() => store.accounts.find((a) => a.id === props.accountId) 
 // The account went away (deleted elsewhere, or a reload without it): nothing to show.
 watch(acc, (a) => { if (!a) emit('close') })
 
-const todayStr = ymd(today())
-const now = ymOf(today())
+const todayStr = ymd(localToday())
+const now = ymOf(localToday())
 const balances = computed(() => store.balances.filter((b) => b.accountId === props.accountId).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)))
 
 // Holidays for the day shift, from the month before the last record to after the forecast.

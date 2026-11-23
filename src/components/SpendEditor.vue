@@ -24,6 +24,7 @@ import { offDays } from '../lib/holidays-lazy'
 import { store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import type { Card, Currency, PayBy, Spending, SpendingRound, SpendHow, SpendInterval } from '../data/types'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ initial: Spending | null; /** which tab asked for a new one: decides how it starts (일시불 or 카드 할부) */ start?: 'general' | 'inst' }>()
 const emit = defineEmits<{ close: [] }>()
@@ -40,7 +41,7 @@ const storedCustom = I?.interval === 'custom' ? [...I.rounds].filter((r) => r.no
 const feeOf = (how: SpendHow, payBy: PayBy, fee: number) => (how === 'installment' && payBy === 'card' ? fee : 0)
 
 const blank = (): Spending => ({
-  id: '', name: '', note: '', category: '', bought: ymd(today()), amount: 0, currency: 'KRW', fxRate: null, fxBuffer: null,
+  id: '', name: '', note: '', category: '', bought: ymd(localToday()), amount: 0, currency: 'KRW', fxRate: null, fxBuffer: null,
   how: props.start === 'inst' ? 'installment' : 'lump', payBy: 'card', count: props.start === 'inst' ? 6 : 1, fee: 0, interval: null, cancelled: false,
   cardId: null, refillFrom: null, rounds: [],
 })
@@ -289,7 +290,7 @@ const summary = computed(() => ({
 const gauge = computed(() => {
   const acc = bufAcc.value
   if (!acc) return null
-  const g = bufferGauge(acc, store, ymd(today()), I?.id)
+  const g = bufferGauge(acc, store, ymd(localToday()), I?.id)
   const use = g.used + principal.value
   const left = g.left - principal.value
   const l = live.value

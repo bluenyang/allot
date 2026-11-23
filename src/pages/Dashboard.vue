@@ -22,6 +22,7 @@ import {
   canUndo, changed, decide, fieldName, listFor, loadProposals, money, proposals, proposalTitle, rowFields, rowLabel, rowTitle, shown, summary, tableName, undo, when, worded,
   type Proposal,
 } from '../lib/proposals'
+import { localToday } from '../lib/now'
 
 const AddRecord = defineAsyncComponent(() => import('../components/AddRecordModal.vue'))
 
@@ -30,7 +31,7 @@ const AddRecord = defineAsyncComponent(() => import('../components/AddRecordModa
 // the remainder's '관리' goes to the pay page's simulation (spec 013 S-16); '내보내기' saves the shown month's
 // summary as a CSV made here from the state (S-17).
 // "고정 지출 추이" looks ahead six months (the past is not stored; the user approved the change on 2026-11-15).
-const now = today()
+const now = localToday()
 // The month comes from the header's month switch (spec 007 S-15); payments stay "from today".
 const ym = computed(() => view.ym)
 const year = computed(() => Number(view.ym.slice(0, 4)))

@@ -3,10 +3,11 @@
 // have no feature yet; it goes through the shell's toast (spec 010 S-5).
 import { reactive } from 'vue'
 import { t, type MessageKey } from '../i18n'
-import { today, ymOf } from './calc'
+import { ymOf } from './calc'
 import { showToast } from './toast'
+import { localToday } from './now'
 
-export const view = reactive({ ym: ymOf(today()) })
+export const view = reactive({ ym: ymOf(localToday()) })
 
 /** Say that a control is not there yet (it is drawn as in the design). `what` is a message key. */
 export function notReady(what: MessageKey) {

@@ -13,10 +13,11 @@ import { dateText, money, moneyClass } from '../lib/format'
 import { holidayList } from '../lib/holidays-lazy'
 import { BUILTIN_SETS } from '../data/holidays-kr'
 import { holidayName, setName } from '../lib/holiday-names'
-import { addYm, monthDates, today, upcomingPayments, ymOf } from '../lib/calc'
+import { addYm, monthDates, upcomingPayments, ymOf } from '../lib/calc'
 import type { HolidaySet, Preferences, Settings } from '../data/types'
 import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
 import Select from '../components/Select.vue'
+import { localToday } from '../lib/now'
 
 // 설정 › 일반 (spec 010 S-11, canvas "설정"): five titled sections. 화면 and 표시 형식 save the moment
 // a choice is made (the session is noted when the save starts and checked before each later step,
@@ -66,7 +67,7 @@ const pickFormat = (patch: Partial<Preferences>) => saveNow(patch, undefined, g(
 const fmt = computed(() => ({ amountUnit: store.preferences.amountUnit, negative: store.preferences.negative, dateFormat: store.preferences.dateFormat }))
 
 // Preview: this month's upcoming payments in the chosen formats (the user's own data)
-const now = today()
+const now = localToday()
 const preview = computed(() => upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), now, 31).slice(0, 4))
 const previewTotal = computed(() => preview.value.reduce((a, p) => a + p.krw, 0))
 const monthName = computed(() => new Date(2000, Number(ymOf(now).slice(5)) - 1, 1).toLocaleString(lang.value === 'en' ? 'en-US' : 'ko-KR', { month: 'long' }))

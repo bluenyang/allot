@@ -16,11 +16,12 @@ import { addYm, monthlyKrw, monthMoney, num, planAt, today, ymOf } from '../lib/
 import type { Plan, PlanChange, Subscription } from '../data/types'
 import Select from './Select.vue'
 import DateInput from './DateInput.vue'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ initial: PlanChange | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const now = today()
+const now = localToday()
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const blank = (): PlanChange => ({ id: '', subId: store.subscriptions[0]?.id ?? '', effective: `${addYm(ymOf(now), 1)}-01`, to: {}, note: '' })
 function validate(c: PlanChange) {

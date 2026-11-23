@@ -4,9 +4,10 @@ import Seg from '../components/Seg.vue'
 import { pricedSettings, savePreferences, store } from '../lib/store'
 import { ACCENT_PRESETS, DEFAULT_ACCENT, DEFAULT_PRIMARY, PRIMARY_PRESETS, derive, isHex } from '../lib/theme'
 import { money as fmtAs } from '../lib/format'
-import { monthMoney, upcomingPayments, today, ymOf } from '../lib/calc'
+import { monthMoney, upcomingPayments, ymOf } from '../lib/calc'
 import type { Preferences } from '../data/types'
 import { t, type MessageKey } from '../i18n'
+import { localToday } from '../lib/now'
 
 // 설정 › 테마 (spec 007 S-7): colours, corners and density. Until 저장 only the preview box shows
 // the choice; the preview mode (light/dark) is for the box only — the real mode is in 일반.
@@ -54,7 +55,7 @@ const adjusted = computed(() => {
 })
 
 // The preview box shows the user's own numbers.
-const now = today()
+const now = localToday()
 const pays = computed(() => upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), now, 31))
 const remainder = computed(() => monthMoney(store, ymOf(now)).dist.remainder)
 const paysSum = computed(() => pays.value.reduce((a, p) => a + p.krw, 0))

@@ -10,11 +10,12 @@ import { pricedSettings, store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, today, usd, ymd, ymOf, ymRange } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, usd, ymd, ymOf, ymRange } from '../lib/calc'
 import type { Category, Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
 import { downloadCsv, wonCell, type CsvCell } from '../lib/csv'
+import { localToday } from '../lib/now'
 
 // The editors load when one is opened: the first screen stays small.
 const SubEditor = defineAsyncComponent(() => import('../components/SubEditor.vue'))
@@ -23,7 +24,7 @@ const PlanChangeEditor = defineAsyncComponent(() => import('../components/PlanCh
 // 구독 (spec 010 S-7): four summary cards, four views in one card, a two-step editor for a subscription
 // and one for a plan change. The CSV export (spec 013 S-17) writes the list as it is filtered.
 const tab = ref('list')
-const now = today()
+const now = localToday()
 const ym = ref(ymOf(now))
 const PATH_IDS = ['direct', 'google', 'apple', 'telecom'] as const
 /** The category filter: the six and 기타 (`other`, spec 013 S-18). */

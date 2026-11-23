@@ -12,6 +12,7 @@ import DateInput from './DateInput.vue'
 import EditSheet from './EditSheet.vue'
 import MoneyInput from './MoneyInput.vue'
 import Tip from './Tip.vue'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ spending: Spending }>()
 const emit = defineEmits<{ close: [] }>()
@@ -19,7 +20,7 @@ const emit = defineEmits<{ close: [] }>()
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const left = props.spending.rounds.filter((r) => r.state === 'left')
 const sum = left.reduce((a, r) => a + r.amount, 0)
-const date = ref(ymd(today()))
+const date = ref(ymd(localToday()))
 const amount = ref<number | ''>(sum)
 
 const { item: edit, error, busy, open, close, save } = useEditor('spendings', () => props.spending, (x) => {

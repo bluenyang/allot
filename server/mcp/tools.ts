@@ -6,7 +6,7 @@
 // Descriptions and errors are in English (spec 008 S-10); the data is as the user entered it.
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server'
 import { z } from 'zod'
-import { today, ymOf } from '../../src/lib/calc'
+import { todayIn, ymOf } from '../../src/lib/calc'
 import { ROUND_MAX } from '../../src/lib/spending-rules'
 import { listSets } from '../changes'
 import { asUser } from '../db/scope'
@@ -147,20 +147,30 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
       : `Read-only access to ${base}`,
   })
   const data = () => asUser(uid, (q) => readState(q, uid)) as Promise<Data>
+  /** "Today" in the user's time zone (spec 013 S-22). */
+  const dayOf = (d: Data) => todayIn(d.preferences?.timezone)
 
   server.registerTool('get_overview', {
     title: 'Overview of a month',
     description: 'The month at a glance (default: this month): pay, transfer and card-billing dates (shifted off weekends and holidays when the user set that), the subscription transfer calculation, how the salary is distributed over the allocation targets (without a remainder target, what is left stays in the pay account as unallocatedKrw; a month adjustment replaces a target\'s phase amount that month), the remainder split, the month adjustments (monthAdjusts: target, amount and the planned amount it replaces), the subscription charges, the one-off spending rounds (spendingRounds, kept apart from the charges) and scheduled plan changes of that month, and the settings (net pay, pay days, exchange rate).',
     inputSchema: z.object({ month: month.optional().describe('YYYY-MM; default this month') }),
     annotations: READ_ONLY,
-  }, guarded('get_overview', async ({ month: ym }) => json(overview(await data(), ym ?? ymOf(today())))))
+  }, guarded('get_overview', async ({ month: ym }) => {
+    const d = await data()
+    const today = () => dayOf(d)
+    return json(overview(d, ym ?? ymOf(today())))
+  }))
 
   server.registerTool('list_subscriptions', {
     title: 'Subscriptions',
     description: 'Every subscription with the plan in force this month (scheduled plan changes applied), its monthly cost in KRW (yearly plans divided by 12, USD converted with the exchange rate and VAT) and its next payment date.',
     inputSchema: z.object({ status: z.enum(['active', 'cancelled', 'company']).optional().describe('only subscriptions with this status this month') }),
     annotations: READ_ONLY,
-  }, guarded('list_subscriptions', async ({ status }) => json(subscriptionList(await data(), today(), status))))
+  }, guarded('list_subscriptions', async ({ status }) => {
+    const d = await data()
+    const today = () => dayOf(d)
+    return json(subscriptionList(d, today(), status))
+  }))
 
   server.registerTool('list_spendings', {
     title: 'One-off spendings',
@@ -170,7 +180,11 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
       month: month.optional().describe('YYYY-MM: only spendings with a round in this month'),
     }),
     annotations: READ_ONLY,
-  }, guarded('list_spendings', async ({ status, month: ym }) => json(spendingList(await data(), today(), { status, month: ym }))))
+  }, guarded('list_spendings', async ({ status, month: ym }) => {
+    const d = await data()
+    const today = () => dayOf(d)
+    return json(spendingList(d, today(), { status, month: ym }))
+  }))
 
   server.registerTool('list_plan_changes', {
     title: 'Scheduled plan changes',
@@ -191,14 +205,22 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
     description: 'The budget menus of a month (default: this month), worked out as the Living, Savings and Investment pages do. living: every living item (name, kind, payMethod, its monthly amount, from, code, phase amounts) with what it costs that month (0 before its from month; a phase amount replaces the monthly amount in that phase) and their sum, which the Living total target gets. saving and invest: how the menu splits (mode amount: each item sends its monthly amount, or its share of that month\'s adjustment; mode ratio: the phase amount of the menu target is split by the item ratios, rounded to 1,000 KRW), the target (id, name, accountId), the total, every item (an account in that group: accountId, name, kind, bank, last4, amount, phase amounts, ratio, what it sends that month, from, stopFrom, goal, annualLimit; nothing before from or from stopFrom on), the sum of the items, what the target gets (targetKrw) and the ratio sum (1 = 100%; what a ratio sum under 100% leaves stays in the remainder), and the month adjustment of the target (adjustment: an amount split spreads it over the items in proportion to their amounts; a ratio split\'s items share it as that month\'s total). targets: what every allocation target gets that month; the remainder; monthAdjusts: that month\'s adjustments with the planned amount each replaces; and maturity: the savings maturity schedule (Savings items that have a from month and whose term reads N months, also in Korean, or YYYY-MM followed by the Korean word for until: maturityMonth, months paid in, expectedKrw, before tax and without interest = with basis projection (the account has a balance record) the projected balance at the end of the month before the maturity month, else with basis amount what the pay split sends the item from its from month up to the month before maturity (its monthly or phase amounts, month adjustments, stop month and the ratio split followed; 0 when the pay split has no Savings target), afterMaturity, state past, due or upcoming relative to the month).',
     inputSchema: z.object({ month: month.optional().describe('YYYY-MM; default this month') }),
     annotations: READ_ONLY,
-  }, guarded('get_budget', async ({ month: ym }) => json(budget(await data(), ym ?? ymOf(today())))))
+  }, guarded('get_budget', async ({ month: ym }) => {
+    const d = await data()
+    const today = () => dayOf(d)
+    return json(budget(d, ym ?? ymOf(today())))
+  }))
 
   server.registerTool('list_accounts', {
     title: 'Bank accounts, balances and cards',
     description: 'Every bank account with its fields (name, role, inflow, outflow, bank, last4, kind, rate, term, maturityMonth (the month the term matures: N months after from for a term of N months, also in Korean, or the YYYY-MM of a term that reads YYYY-MM followed by the Korean word for until; else null), afterMaturity, group, amount, ratio, from, stopFrom, buffer, goal, annualLimit, note), its balance records (date, amount and deposit = money put in at once that day, oldest first) and the last one, the projected balance month by month from this month for `months` months (no interest: from the last record, the transfers into it on the transfer day, buffer refills in on pay days, card bills paid from it out on billing days; null without a balance record), the month the projection first reaches its goal (null when it does not within 50 years, or without a goal or a record), this calendar year\'s contribution against its yearly limit (left, and state near = 90% or more, over = above it), the buffer gauge (its buffer, what buffer uses through its cards took and have not refilled yet, what is left), the allocation targets that send to it and the cards paid from it. Plus every card with its paying account and its billing day (null = the settings\' billing day; effectiveBillingDay is the day used).',
     inputSchema: z.object({ months: z.number().int().optional().describe('how many months of projection; default 12 (fewer than 1 counts as 1, more than 120 as 120)') }),
     annotations: READ_ONLY,
-  }, guarded('list_accounts', async ({ months }) => json(accountList(await data(), today(), Math.min(120, Math.max(1, months ?? 12))))))
+  }, guarded('list_accounts', async ({ months }) => {
+    const d = await data()
+    const today = () => dayOf(d)
+    return json(accountList(d, today(), Math.min(120, Math.max(1, months ?? 12))))
+  }))
 
   server.registerTool('get_schedule', {
     title: 'Schedule over several months',
@@ -208,7 +230,11 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
       months: z.number().int().min(1).max(12).optional().describe('how many months, 1 to 12; default 3'),
     }),
     annotations: READ_ONLY,
-  }, guarded('get_schedule', async ({ from, months }) => json(schedule(await data(), from ?? ymOf(today()), months ?? 3))))
+  }, guarded('get_schedule', async ({ from, months }) => {
+    const d = await data()
+    const today = () => dayOf(d)
+    return json(schedule(d, from ?? ymOf(today()), months ?? 3))
+  }))
 
   server.registerTool('list_changes', {
     title: 'Change history',
@@ -245,7 +271,7 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
     annotations: READ_ONLY,
   }, guarded('list_notifications', async () => {
     const [st, proposals] = await asUser(uid, async (q) => [await readState(q, uid), await pendingCount(q, uid)] as const)
-    return json(notificationList(st as Data, today(), proposals))
+    return json(notificationList(st as Data, dayOf(st as Data), proposals))
   }))
 
   if (key) registerWrite(server, uid, key)

@@ -12,12 +12,13 @@ import BudgetHistory from '../components/BudgetHistory.vue'
 import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
-import { addYm, bufferGauge, livingAt, monthDay, nextTransferYm, phaseAt, phaseNumbers, today, ymd, ymOf } from '../lib/calc'
+import { addYm, bufferGauge, livingAt, monthDay, nextTransferYm, phaseAt, phaseNumbers, ymd, ymOf } from '../lib/calc'
 import { accountLine, baseAmount, itemColor, monthPlans, shareOf, type BudgetCell, type BudgetKpi, type BudgetRow } from '../lib/budget-page'
 import type { LivingItem } from '../data/types'
+import { localToday } from '../lib/now'
 
-const now = ymOf(today())
-const todayStr = ymd(today())
+const now = ymOf(localToday())
+const todayStr = ymd(localToday())
 const off = computed(() => offDays(store.holidaySets, `${addYm(now, -1)}-01`, `${addYm(now, 3)}-01`) ?? new Set<string>())
 const lv = computed(() => livingAt(store.livingItems, store.phases, now))
 const phase = computed(() => phaseAt(store.phases, now))

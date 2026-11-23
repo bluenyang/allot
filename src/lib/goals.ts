@@ -10,6 +10,7 @@ import { addYm, goalAlerts, itemSent, lastBalance, maturityAlerts, monthMoney, t
 import { offDays } from './holidays-lazy'
 import { store } from './store'
 import type { Account } from '../data/types'
+import { localToday } from './now'
 
 /**
  * The dates the goal check needs holidays for: from the month before the earliest last balance record of an account with a
@@ -61,7 +62,7 @@ export function stopPreview(st: AccountState, alert: GoalAlert): StopPreview {
 
 /** The goal cards now (read from the store): the alerts, each with what stopping it changes. */
 export const goalCards = computed(() => {
-  const now = ymd(today())
+  const now = ymd(localToday())
   const range = goalOffRange(store, now)
   const off: ReadonlySet<string> = range ? offDays(store.holidaySets, range[0], range[1]) ?? new Set() : new Set()
   return goalAlerts(store, now, off).map((alert) => ({ alert, preview: stopPreview(store, alert) }))
@@ -91,7 +92,7 @@ export function keepMaturity(accountId: string, ym: string) {
 
 /** The maturity cards now (read from the store): this month's or past maturities still sending, each with what stopping changes. */
 export const maturityCards = computed(() => {
-  const now = ymd(today())
+  const now = ymd(localToday())
   const s = store.settings
   // only the next transfer month needs the holidays (this month's transfer date)
   const off: ReadonlySet<string> = (s.dayShift ?? 'none') === 'none' ? new Set()

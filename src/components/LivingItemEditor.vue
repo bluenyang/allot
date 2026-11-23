@@ -15,15 +15,16 @@ import Seg from './Seg.vue'
 import Tip from './Tip.vue'
 import { useEditor } from '../lib/useEditor'
 import { store } from '../lib/store'
-import { addYm, livingAt, phaseAt, phaseNumbers, today, ymOf } from '../lib/calc'
+import { addYm, livingAt, phaseAt, phaseNumbers, ymOf } from '../lib/calc'
 import { baseAmount, chipOf, chipValue, fromChoice, fromOf, type Chip, type ChipPick, type FromChoice } from '../lib/budget-page'
 import { wonText } from '../lib/format'
 import type { LivingItem } from '../data/types'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ initial: LivingItem | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const now = ymOf(today())
+const now = ymOf(localToday())
 const KIND_IDS = ['food', 'transit', 'allowance', 'goods', 'other'] as const
 const METHOD_IDS = ['debit', 'credit', 'cash', 'transfer'] as const
 // The chip labels are the words stored in the free-text field, in the screen language when the editor opens.

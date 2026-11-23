@@ -7,7 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import CalendarView from './CalendarView.vue'
 import Icon from './Icon.vue'
-import { addYm, parseDate, today, ymOf } from '../lib/calc'
+import { addYm, parseDate, ymOf } from '../lib/calc'
 import { calendarEvents, kindLabel } from '../lib/calendar-events'
 import type { CalKind } from '../lib/calendar-events'
 import { fmtMoney } from '../lib/display'
@@ -16,8 +16,9 @@ import { lang, t } from '../i18n'
 import { store } from '../lib/store'
 import { eventKindLabel } from '../lib/labels'
 import { inMonth } from '../lib/event-when'
+import { localToday } from '../lib/now'
 
-const now = today()
+const now = localToday()
 const nowYm = ymOf(now)
 const ym = ref(nowYm)
 const step = (n: number) => { ym.value = addYm(ym.value, n) }

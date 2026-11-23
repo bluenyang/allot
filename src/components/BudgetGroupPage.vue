@@ -22,20 +22,21 @@ import { showToast } from '../lib/toast'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { rateText } from '../lib/labels'
-import { addYm, groupAt, groupValue, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, today, yearContribution, ymd, ymOf } from '../lib/calc'
+import { addYm, groupAt, groupValue, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, yearContribution, ymd, ymOf } from '../lib/calc'
 import {
   accountLine, adjustOf, adjustStart, baseAmount, itemColor, limitTone, monthPlans, pctOf, shareOf, sumStatus, yearSent,
   type BudgetCell, type BudgetKpi, type BudgetRow, type LimitTone, type Tone,
 } from '../lib/budget-page'
 import type { Account, BudgetGroup, SplitMode } from '../data/types'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ group: BudgetGroup }>()
 const saving = props.group === 'saving'
 const m = (key: string, vars?: Record<string, string | number>) => t(`budget.${props.group}.${key}` as MessageKey, vars)
 const cat = computed(() => m('cat'))
 
-const now = ymOf(today())
-const todayStr = ymd(today())
+const now = ymOf(localToday())
+const todayStr = ymd(localToday())
 const year = Number(now.slice(0, 4))
 const g = computed(() => groupAt(props.group, store.accounts, store.phases, store.targets, store.settings, now, store.monthAdjusts))
 const items = computed(() => g.value.rows.map((r) => r.account))
