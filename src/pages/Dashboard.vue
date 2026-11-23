@@ -139,7 +139,7 @@ function diffRows(p: Proposal) {
   const out: { k: string; from: string; to: string }[] = []
   for (const c of p.preview.rows) {
     if (c.op === 'update') {
-      for (const f of rowFields(c)) out.push({ k: `${tableName(c.table)} · ${rowLabel(c) || fieldName(f.k, c.table)}${rowLabel(c) ? ` · ${fieldName(f.k, c.table)}` : ''}`, from: worded(f.k, f.b, c.before), to: worded(f.k, f.a, c.after) })
+      for (const f of rowFields(c)) out.push({ k: `${tableName(c.table)} · ${rowLabel(c) || fieldName(f.k, c.table)}${rowLabel(c) ? ` · ${fieldName(f.k, c.table)}` : ''}`, from: worded(f.k, f.b, c.before, c.table), to: worded(f.k, f.a, c.after, c.table) })
     } else out.push({ k: rowTitle(c), from: '', to: '' })
   }
   const m = p.preview.months[0]

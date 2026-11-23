@@ -201,10 +201,16 @@ export const fieldName = (k: string, table?: string) => {
   return k
 }
 
-/** A stored value as words: "월간", "₩9,900", "0%", "미확인", a date in the user's format; a code or text as it is. */
-export function worded(field: string, v: unknown, row?: Record<string, unknown> | null): string {
+/** Fields whose value reads differently in one table: a currency's `buffer` is a percent, an account's an amount (review rc3-1 F-5). */
+const TABLE_PERCENT: Record<string, readonly string[]> = { foreign_currency: ['buffer'] }
+/**
+ * A stored value as words: "월간", "₩9,900", "0%", "미확인", a date in the user's format; a code or text as it is.
+ * `table`, when known, picks a table's own reading of the field (as `fieldName` does).
+ */
+export function worded(field: string, v: unknown, row?: Record<string, unknown> | null, table?: string): string {
   if (v === null || v === undefined || v === '') return '—'
   const word = (f: () => string) => { try { return f() } catch { return String(v) } }
+  if (table && TABLE_PERCENT[table]?.includes(field)) return `${String(v)}%`
   switch (field) {
     case 'category': return word(() => catLabel(String(v)))
     case 'status': return te(`label.status.${String(v)}`) ? statusLabel(String(v)) : String(v)
