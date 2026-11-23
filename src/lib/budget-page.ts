@@ -3,7 +3,7 @@
 // the preview of a total change. No store, no messages: the pages turn the codes into text.
 // Tested without a database (tests/unit/budget-page.test.ts).
 import type { Account, AllocationTarget, BudgetGroup, MonthAdjust, Phase, Settings } from '../data/types'
-import { addYm, groupAt, monthMoney, phaseAt, splitOf, type GroupMonth, type MonthState } from './calc'
+import { addYm, groupAt, livingAt, monthMoney, phaseAt, splitOf, type GroupMonth, type MonthState } from './calc'
 
 // ---------- the status line under the list (S-3) ----------
 export type SumStatus =
@@ -178,6 +178,29 @@ export function adjustPreview(st: MonthState, ym: string, targetId: string, valu
     : phase ? row(bare, withTotal(st.phases, phase.id, targetId, value))
     : now
   return { base, current: now.amount, before: now.rest, after: next.rest, value: next.amount }
+}
+
+// ---------- 월별 기록 (S-15) ----------
+export interface MonthPlan {
+  ym: string
+  /** the planned amount: the target's value that month (`monthMoney`); without the target, the items' sum */
+  planned: number
+}
+/**
+ * The planned amounts of the Living or Investment menu for the last `back` months and month `now`, newest first (S-15).
+ * The spent or sent amounts come with statements and transactions (0.1.9); there is nothing to compare them with yet.
+ */
+export function monthPlans(st: MonthState & { accounts?: Account[] }, menu: 'living' | 'invest', now: string, back = 6): MonthPlan[] {
+  const target = st.targets.find((t) => t.kind === menu)
+  const out: MonthPlan[] = []
+  for (let i = 0; i <= back; i++) {
+    const ym = addYm(now, -i)
+    const planned = target ? (monthMoney(st, ym).dist.rows.find((r) => r.key === target.id)?.amount ?? 0)
+      : menu === 'living' ? livingAt(st.livingItems ?? [], st.phases, ym).sum
+      : groupAt('invest', st.accounts ?? [], st.phases, st.targets, st.settings, ym, st.monthAdjusts ?? []).sum
+    out.push({ ym, planned })
+  }
+  return out
 }
 
 // ---------- KPIs (S-1 범위 밖: what the data gives) ----------

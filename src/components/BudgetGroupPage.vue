@@ -7,12 +7,15 @@
 // has (spec "범위 밖"): Savings = saved so far and in a year (balance records + projection, no interest) and the
 // way to the goals; Investment = sent this year (planned), the annual-limit use, the next transfer.
 // rc.2 (spec 013 rev 1): this month's adjustment of the menu's target (S-14) — the month reads it, and 총액 수정 offers
-// "이번 달만" (both splits) beside "구간 끝까지" (ratio split, as before).
+// "이번 달만" (both splits) beside "구간 끝까지" (ratio split, as before); the second tab (S-15): Savings 만기 일정,
+// Investment 월별 기록.
 import { computed, ref } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import BudgetPage from './BudgetPage.vue'
 import BudgetItemEditor from './BudgetItemEditor.vue'
 import BudgetAdjustEditor from './BudgetAdjustEditor.vue'
+import BudgetHistory from './BudgetHistory.vue'
+import BudgetMaturity from './BudgetMaturity.vue'
 import Seg from './Seg.vue'
 import { saveItem, saveSettings, store } from '../lib/store'
 import { showToast } from '../lib/toast'
@@ -21,7 +24,7 @@ import { offDays } from '../lib/holidays-lazy'
 import { rateText } from '../lib/labels'
 import { addYm, groupAt, groupValue, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, today, yearContribution, ymd, ymOf } from '../lib/calc'
 import {
-  accountLine, adjustOf, adjustPreview, baseAmount, itemColor, limitTone, pctOf, shareOf, sumStatus, yearSent,
+  accountLine, adjustOf, adjustPreview, baseAmount, itemColor, limitTone, monthPlans, pctOf, shareOf, sumStatus, yearSent,
   type BudgetCell, type BudgetKpi, type BudgetRow, type LimitTone, type Tone,
 } from '../lib/budget-page'
 import type { Account, BudgetGroup, SplitMode } from '../data/types'
@@ -196,9 +199,18 @@ const total = computed(() => {
 // ---------- editors ----------
 /** undefined = closed, null = a new item. */
 const editing = ref<Account | null | undefined>(undefined)
-const openEdit = (id: string) => { editing.value = store.accounts.find((a) => a.id === id) ?? undefined }
+const editStep = ref(0)
+const openEdit = (id: string, step = 0) => { editStep.value = step; editing.value = store.accounts.find((a) => a.id === id) ?? undefined }
+const openNew = () => { editStep.value = 0; editing.value = null }
 const totalOpen = ref(false)
 
+// ---------- the second tab (S-15) ----------
+const tab = ref('list')
+const tabs = computed(() => [
+  { id: 'list', label: m('tabList'), icon: 'list' },
+  saving ? { id: 'maturity', label: t('budget.tabMaturity'), icon: 'events' } : { id: 'history', label: t('budget.tabHistory'), icon: 'chart' },
+])
+const plans = computed(() => (saving ? [] : monthPlans(store, 'invest', now)))
 </script>
 
 <template>
@@ -207,7 +219,8 @@ const totalOpen = ref(false)
     :cells="cells" :split-label="t('budget.split')" :kpis="kpis" :list-title="m('listTitle')" :sum-line="sumLine"
     :cols="{ name: m('colName'), amount: ratio ? t('budget.colRatioAmount') : t('budget.colAmount'), meta: m('colMeta'), prog: m('colProg') }"
     :rows="rows" :bar="bar" :gap="gap" :total="total" :note="m(ratio ? 'noteRatio' : 'noteAmount')"
-    @add="editing = null" @edit="openEdit" @action="totalOpen = true"
+    v-model:tab="tab" :tabs="tabs"
+    @add="openNew" @edit="openEdit" @action="totalOpen = true"
   >
     <template v-if="!target" #notice>
       <div class="notice" data-testid="no-target">
@@ -219,7 +232,15 @@ const totalOpen = ref(false)
       <Seg :model-value="g.mode" :options="splitOpts" :label="t('budget.split')" @update:model-value="setSplit" />
       <span class="hint">{{ m(ratio ? 'ratioHint' : 'amountHint') }}</span>
     </template>
-    <BudgetItemEditor v-if="editing !== undefined" :group="props.group" :initial="editing" :mode="g.mode" :total="g.total" @close="editing = undefined" />
+    <template #tab>
+      <BudgetMaturity v-if="saving" :items="items" @edit="openEdit($event, 1)" />
+      <BudgetHistory
+        v-else :title="t('budget.history.titleInvest')" :rows="plans" :now="now"
+        :cols="[t('budget.history.colMonth'), t('budget.history.colPlan'), t('budget.history.colSent'), t('budget.history.colDiff')]"
+        :note="target ? '' : t('budget.history.noTarget', { cat })"
+      />
+    </template>
+    <BudgetItemEditor v-if="editing !== undefined" :group="props.group" :initial="editing" :mode="g.mode" :total="g.total" :start-step="editStep" @close="editing = undefined" />
     <BudgetAdjustEditor v-if="totalOpen && target" :target="target" :ym="now" total @close="totalOpen = false" />
   </BudgetPage>
 </template>

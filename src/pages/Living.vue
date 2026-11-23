@@ -3,15 +3,17 @@
 // item counts from its `from` month; a phase amount replaces its monthly amount, S-4) is the value of the
 // pay split's living target. KPIs from the data rc.1 has (spec "범위 밖"): this month's living costs, the
 // number of items, and the buffer of the account the living target is linked to.
+// rc.2 (spec 013 S-15): the 월별 기록 tab — the planned living costs of the last six months and this month.
 import { computed, ref } from 'vue'
 import { t } from '../i18n'
 import BudgetPage from '../components/BudgetPage.vue'
 import LivingItemEditor from '../components/LivingItemEditor.vue'
+import BudgetHistory from '../components/BudgetHistory.vue'
 import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { addYm, bufferGauge, livingAt, monthDay, nextTransferYm, phaseAt, phaseNumbers, today, ymd, ymOf } from '../lib/calc'
-import { accountLine, baseAmount, itemColor, shareOf, type BudgetCell, type BudgetKpi, type BudgetRow } from '../lib/budget-page'
+import { accountLine, baseAmount, itemColor, monthPlans, shareOf, type BudgetCell, type BudgetKpi, type BudgetRow } from '../lib/budget-page'
 import type { LivingItem } from '../data/types'
 
 const now = ymOf(today())
@@ -72,6 +74,11 @@ const bar = computed(() => rows.value.filter((r) => r.amount > 0).map((r) => ({ 
 // The editor: undefined = closed, null = a new item.
 const editing = ref<LivingItem | null | undefined>(undefined)
 const openEdit = (id: string) => { editing.value = store.livingItems.find((x) => x.id === id) ?? undefined }
+
+// ---------- 월별 기록 (S-15) ----------
+const tab = ref('list')
+const tabs = computed(() => [{ id: 'list', label: t('budget.living.tabList'), icon: 'list' }, { id: 'history', label: t('budget.tabHistory'), icon: 'chart' }])
+const plans = computed(() => monthPlans(store, 'living', now))
 </script>
 
 <template>
@@ -83,11 +90,19 @@ const openEdit = (id: string) => { editing.value = store.livingItems.find((x) =>
     :rows="rows" :bar="bar" :gap="0"
     :total="{ amount: fmtMoney(lv.sum), msg: target ? t('budget.status.living') : t('budget.status.livingNoTarget'), tone: target ? 'muted' : 'warn' }"
     :note="t('budget.living.note')"
+    v-model:tab="tab" :tabs="tabs"
     @add="editing = null" @edit="openEdit"
   >
     <template #split>
       <b class="split-v">{{ t('budget.itemsTotal') }}</b>
       <span class="hint">{{ t('budget.living.splitHint') }}</span>
+    </template>
+    <template #tab>
+      <BudgetHistory
+        :title="t('budget.history.titleLiving')" :rows="plans" :now="now"
+        :cols="[t('budget.history.colMonth'), t('budget.history.colBudget'), t('budget.history.colSpent'), t('budget.history.colDiff')]"
+        :note="target ? '' : t('budget.history.noTarget', { cat: t('budget.living.cat') })"
+      />
     </template>
     <LivingItemEditor v-if="editing !== undefined" :initial="editing" @close="editing = undefined" />
   </BudgetPage>

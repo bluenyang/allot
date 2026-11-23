@@ -2,8 +2,11 @@
 // asks whether to stop sending to it. The pure parts (the holiday range, what a stop changes) take the state as an
 // argument so the unit tests run them without a store; `goalCards` and `goalCount` read the store for the screens
 // (the page's cards, the waiting count and the sidebar badge).
-import { computed } from 'vue'
-import { addYm, goalAlerts, itemSent, lastBalance, monthMoney, today, ymd, type AccountState, type GoalAlert } from './calc'
+// The maturity cards (spec 013 S-15, rc.2) have the same shape: a Savings item whose maturity month has come and which
+// still sends. 멈추기 writes its stop month (in the database, revertible); 계속 보내기 is kept in this browser only
+// (localStorage, per account and maturity month: no new column), so another browser asks again.
+import { computed, ref } from 'vue'
+import { addYm, goalAlerts, itemSent, lastBalance, maturityAlerts, monthMoney, today, ymd, type AccountState, type GoalAlert } from './calc'
 import { offDays } from './holidays-lazy'
 import { store } from './store'
 import type { Account } from '../data/types'
@@ -64,5 +67,38 @@ export const goalCards = computed(() => {
   return goalAlerts(store, now, off).map((alert) => ({ alert, preview: stopPreview(store, alert) }))
 })
 
-/** How many goal cards wait: counted with the AI proposals in 대기 중인 변경 and on the sidebar badge (S-7). */
-export const goalCount = computed(() => goalCards.value.length)
+// ---------- maturity cards (S-15) ----------
+const KEPT_KEY = 'allot.maturityKept'
+/** The key of one maturity the user chose to keep sending past. */
+export const maturityKey = (accountId: string, ym: string) => `${accountId}@${ym}`
+function readKept(): Set<string> {
+  try {
+    const v: unknown = JSON.parse(globalThis.localStorage?.getItem(KEPT_KEY) ?? '[]')
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+/** The maturities kept in this browser (read once, when the module loads). */
+const kept = ref<Set<string>>(readKept())
+/** 계속 보내기 on a maturity card: remembered in this browser only; nothing is saved on the server. */
+export function keepMaturity(accountId: string, ym: string) {
+  const next = new Set(kept.value)
+  next.add(maturityKey(accountId, ym))
+  kept.value = next
+  try { globalThis.localStorage?.setItem(KEPT_KEY, JSON.stringify([...next])) } catch { /* private mode: kept for this visit only */ }
+}
+
+/** The maturity cards now (read from the store): this month's or past maturities still sending, each with what stopping changes. */
+export const maturityCards = computed(() => {
+  const now = ymd(today())
+  const s = store.settings
+  // only the next transfer month needs the holidays (this month's transfer date)
+  const off: ReadonlySet<string> = (s.dayShift ?? 'none') === 'none' ? new Set()
+    : offDays(store.holidaySets, `${addYm(now.slice(0, 7), -1)}-01`, `${addYm(now.slice(0, 7), 3)}-01`) ?? new Set()
+  const done = kept.value
+  return maturityAlerts(store, now, off, (id, ym) => done.has(maturityKey(id, ym))).map((alert) => ({ alert, preview: stopPreview(store, alert) }))
+})
+
+/** How many goal and maturity cards wait: counted with the AI proposals in 대기 중인 변경 and on the sidebar badge (S-7, S-15). */
+export const goalCount = computed(() => goalCards.value.length + maturityCards.value.length)

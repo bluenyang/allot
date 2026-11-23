@@ -941,3 +941,77 @@ export const num = (n: number) => Math.round(n).toLocaleString('ko-KR')
 export const usd = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 export const ymLabel = (ym: string) => `${ym.slice(0, 4)}.${ym.slice(5, 7)}`
 export const md = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`
+
+// ---------- maturity (spec 013 S-15, rc.2) ----------
+/** The longest term read as a maturity: 100 years (a longer one is not listed, so nothing loops for ages). */
+const MATURITY_MAX_MONTHS = 1200
+/** How many months from `from` to `to` (YYYY-MM each; negative when `to` is earlier). */
+export const monthsBetween = (from: string, to: string) =>
+  (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(from.slice(5, 7))
+
+export interface Maturity {
+  /** the maturity month */
+  ym: string
+  /** the months paid in before it: `from` up to the month before `ym` */
+  months: number
+}
+// "N개월" / "N months" and "YYYY-MM까지" / "until YYYY-MM" (the Hangul as escapes: the screen-code check reads this file)
+const TERM_MONTHS = /^(\d{1,4})\s*(?:\uAC1C\uC6D4|months?)$/i
+const TERM_UNTIL = /^(\d{4})-(0[1-9]|1[0-2])\s*\uAE4C\uC9C0$/
+const TERM_UNTIL_EN = /^until\s+(\d{4})-(0[1-9]|1[0-2])$/i
+
+/**
+ * The maturity of a Savings item (S-15): its free-text `term` read as "N개월" (N months after `from`) or
+ * "YYYY-MM까지" (that month), and only with a `from` month. Anything else is not read (null): the term stays
+ * free text, nothing is refused.
+ */
+export function maturityOf(a: Pick<Account, 'term' | 'from'>): Maturity | null {
+  const term = (a.term ?? '').trim()
+  if (!a.from || !term) return null
+  const n = TERM_MONTHS.exec(term)
+  if (n) {
+    const months = Number(n[1])
+    return months > 0 && months <= MATURITY_MAX_MONTHS ? { ym: addYm(a.from, months), months } : null
+  }
+  const u = TERM_UNTIL.exec(term) ?? TERM_UNTIL_EN.exec(term)
+  if (!u) return null
+  const ym = `${u[1]}-${u[2]}`
+  const months = monthsBetween(a.from, ym)
+  return months >= 0 && months <= MATURITY_MAX_MONTHS ? { ym, months } : null
+}
+
+export interface MaturityAmount {
+  amount: number
+  /** true = the projected balance from the last balance record; false = what the plan sends from `from` on */
+  projected: boolean
+}
+/**
+ * What a Savings item holds at maturity, before tax and without interest (S-15): with a balance record, the projected
+ * balance after the last transfer before the maturity month (`projectAccount`); without one, what the pay split sends
+ * it from `from` up to that month (its monthly amount × the months, with its phase amounts, stop month and adjustments).
+ */
+export function maturityAmount(acc: Account, st: AccountState, off: ReadonlySet<string>, m: Maturity): MaturityAmount {
+  const last = addYm(m.ym, -1)
+  if (lastBalance(st.balances, acc.id)) return { amount: projectAccount(acc, st, off, last, 1)?.[0]?.end ?? 0, projected: true }
+  let amount = 0
+  const one = { ...st, accounts: [acc] }
+  for (let ym = acc.from ?? m.ym; ym < m.ym; ym = addYm(ym, 1)) amount += itemSent(acc, one, ym)
+  return { amount, projected: false }
+}
+
+/**
+ * The maturity cards of 대기 중인 변경 (S-15, the goal card's shape): a Savings item whose maturity month is this month
+ * or past and which still sends (no stop month), unless `handled` says the user chose to keep sending for that maturity.
+ * 멈추기 writes `stopFrom` = the next transfer month, as a goal card does.
+ */
+export function maturityAlerts(st: AccountState, today: string, off: ReadonlySet<string>, handled: (accountId: string, ym: string) => boolean = () => false): GoalAlert[] {
+  const now = today.slice(0, 7)
+  const out: GoalAlert[] = []
+  for (const a of st.accounts) {
+    if (a.group !== 'saving' || a.stopFrom) continue
+    const m = maturityOf(a)
+    if (!m || m.ym > now || handled(a.id, m.ym)) continue
+    out.push({ account: a, month: m.ym, stopFrom: nextTransferYm(today, st.settings, off) })
+  }
+  return out
+}

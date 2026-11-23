@@ -6,7 +6,7 @@ import Seg from '../components/Seg.vue'
 import Icon from '../components/Icon.vue'
 import { t } from '../i18n'
 import { fmtMoney } from '../lib/display'
-import { goalCards, goalCount } from '../lib/goals'
+import { goalCards, goalCount, keepMaturity, maturityCards } from '../lib/goals'
 import { saveItem } from '../lib/store'
 import { showToast } from '../lib/toast'
 import { ApiError } from '../lib/api'
@@ -22,6 +22,7 @@ import {
 // one change set (it shows in 변경 내역 as "AI · key name"). A decided card stays on the screen.
 // Above them, the goal cards (spec 013 S-7): worked out from the state (src/lib/goals.ts), not stored. 멈추기 writes
 // the account's stop month, 계속 보내기 its goal acknowledgement; each is one account save (one change set, revertible).
+// The maturity cards (spec 013 S-15) look the same: 멈추기 writes the stop month; 계속 보내기 is kept in this browser only.
 const filter = ref<'waiting' | 'handled' | 'all'>('waiting')
 const opened = reactive<Record<string, boolean>>({})
 // Waiting cards are open, handled ones closed, until the user toggles one.
@@ -32,7 +33,10 @@ onMounted(loadProposals)
 onActivated(loadProposals)
 
 const list = computed(() => listFor(filter.value))
-const goals = computed(() => (filter.value === 'handled' ? [] : goalCards.value))
+const goals = computed(() => (filter.value === 'handled' ? [] : [
+  ...goalCards.value.map((g) => ({ ...g, kind: 'goal' as const })),
+  ...maturityCards.value.map((g) => ({ ...g, kind: 'maturity' as const })),
+]))
 const seg = computed(() => [
   { id: 'waiting', label: t('pending.filterWaiting'), count: proposals.waiting.length + goalCount.value },
   { id: 'handled', label: t('pending.filterHandled') },
@@ -72,6 +76,11 @@ const stopGoal = (a: Account, stopFrom: string) => decideGoal(a, { stopFrom }, (
   actionLabel: t('goals.toHistory'), onAction: () => { void router.push('/history') },
 }))
 const keepGoal = (a: Account) => decideGoal(a, { goalAck: a.goal ?? null }, () => showToast(t('goals.kept', { name: a.name })))
+/** 계속 보내기 on a maturity card: nothing goes to the server (S-15). */
+function keepMat(a: Account, month: string) {
+  keepMaturity(a.id, month)
+  showToast(t('goals.maturityKept', { name: a.name }))
+}
 /** A note for a handled card, by how it ended. */
 function handledNote(p: Proposal): string {
   if (p.status === 'applied') return t('pending.noteApplied', { at: when(p.decidedAt ?? p.createdAt) })
@@ -94,14 +103,15 @@ function handledNote(p: Proposal): string {
     </div>
 
     <article
-      v-for="g in goals" :key="`goal-${g.alert.account.id}`" class="card prop wait goal" :data-goal="g.alert.account.id"
-      :aria-label="`${t('goals.title')} · ${g.alert.account.name}`"
+      v-for="g in goals" :key="`${g.kind}-${g.alert.account.id}`" class="card prop wait goal" :data-goal="g.kind === 'goal' ? g.alert.account.id : undefined"
+      :data-maturity="g.kind === 'maturity' ? g.alert.account.id : undefined"
+      :aria-label="`${t(g.kind === 'goal' ? 'goals.title' : 'goals.maturityTitle')} · ${g.alert.account.name}`"
     >
       <header class="ph2">
         <span class="ico ok"><Icon name="saving" /></span>
         <div class="tt">
-          <b>{{ t('goals.title') }} · {{ g.alert.account.name }}</b>
-          <small class="hint">{{ goalBody(g.alert.account, g.alert.month) }}</small>
+          <b>{{ t(g.kind === 'goal' ? 'goals.title' : 'goals.maturityTitle') }} · {{ g.alert.account.name }}</b>
+          <small class="hint">{{ g.kind === 'goal' ? goalBody(g.alert.account, g.alert.month) : t('goals.maturityBody', { name: g.alert.account.name, ym: ymText(g.alert.month) }) }}</small>
         </div>
         <span class="pill warn">{{ t('goals.waiting') }}</span>
       </header>
@@ -130,10 +140,10 @@ function handledNote(p: Proposal): string {
       </div>
       <footer class="pfoot">
         <div class="note small">
-          <span>{{ t('goals.hint', { ym: ymText(g.preview.month) }) }}</span>
+          <span>{{ t(g.kind === 'goal' ? 'goals.hint' : 'goals.maturityHint', { ym: ymText(g.preview.month) }) }}</span>
           <p v-if="goalError[g.alert.account.id]" class="warn" role="alert">{{ goalError[g.alert.account.id] }}</p>
         </div>
-        <button class="btn sm" type="button" :disabled="!!goalBusy" @click="keepGoal(g.alert.account)">{{ t('goals.keep') }}</button>
+        <button class="btn sm" type="button" :disabled="!!goalBusy" @click="g.kind === 'goal' ? keepGoal(g.alert.account) : keepMat(g.alert.account, g.alert.month)">{{ t('goals.keep') }}</button>
         <button class="btn sm pri" type="button" :disabled="!!goalBusy" @click="stopGoal(g.alert.account, g.alert.stopFrom)">{{ t('goals.stop') }}</button>
       </footer>
     </article>
