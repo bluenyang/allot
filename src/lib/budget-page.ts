@@ -2,8 +2,8 @@
 // a list, the percent ↔ ratio of an item, the chips that fill a free-text field, the "언제부터" choice and
 // the preview of a total change. No store, no messages: the pages turn the codes into text.
 // Tested without a database (tests/unit/budget-page.test.ts).
-import type { Account, AllocationTarget, BudgetGroup, Phase, Settings } from '../data/types'
-import { addYm, groupAt, monthMoney, phaseAt, type GroupMonth, type MonthState } from './calc'
+import type { Account, AllocationTarget, BudgetGroup, MonthAdjust, Phase, Settings } from '../data/types'
+import { addYm, groupAt, monthMoney, phaseAt, splitOf, type GroupMonth, type MonthState } from './calc'
 
 // ---------- the status line under the list (S-3) ----------
 export type SumStatus =
@@ -120,11 +120,71 @@ export function totalPreview(state: MonthState & { accounts: Account[] }, group:
   }
 }
 
+// ---------- 이번 달만 조정 (S-14) ----------
+/** The month adjustment of a target in month `ym`, if there is one. */
+export const adjustOf = (adjusts: readonly MonthAdjust[] | undefined, ym: string, targetId: string) =>
+  (adjusts ?? []).find((a) => a.ym === ym && a.targetId === targetId)
+/** The adjustments with the one of (`ym`, `targetId`) set to `amount` (replaced, or added with no id yet). */
+export function withAdjust(adjusts: readonly MonthAdjust[] | undefined, ym: string, targetId: string, amount: number): MonthAdjust[] {
+  const list = adjusts ?? []
+  const old = adjustOf(list, ym, targetId)
+  return old ? list.map((a) => (a === old ? { ...a, amount } : a)) : [...list, { id: '', ym, targetId, amount }]
+}
+/** The adjustments without the one of (`ym`, `targetId`). */
+export const withoutAdjust = (adjusts: readonly MonthAdjust[] | undefined, ym: string, targetId: string) =>
+  (adjusts ?? []).filter((a) => !(a.ym === ym && a.targetId === targetId))
+
+/** A target kind the "조정" button is for (S-26: fixed, Savings total, Investment total). */
+export const adjustable = (kind: string) => kind === 'fixed' || kind === 'saving' || kind === 'invest'
+
+/**
+ * Whether "이 구간 끝까지" can change target `t` in month `ym`: it writes the amount of that month's phase, so it needs a
+ * phase, and a Savings / Investment total needs the ratio split (an amount split has no phase amount: its value is the
+ * items' sum). The reason when it cannot.
+ */
+export function phaseScope(t: AllocationTarget, st: Pick<MonthState, 'phases' | 'settings'>, ym: string): { phase: Phase } | { reason: 'amountSplit' | 'noPhase' } {
+  if ((t.kind === 'saving' || t.kind === 'invest') && splitOf(t.kind, st.settings) === 'amount') return { reason: 'amountSplit' }
+  const phase = phaseAt(st.phases, ym)
+  return phase ? { phase } : { reason: 'noPhase' }
+}
+
+export type AdjustScope = 'month' | 'phase'
+export interface AdjustPreview {
+  /** the target's value that month without its adjustment (the phase amount, or the items' sum) */
+  base: number
+  /** its value now (with the adjustment, if any) */
+  current: number
+  /** the remainder (or what stays in the pay account) now and after the change */
+  before: number
+  after: number
+  /** the target's value after the change */
+  value: number
+}
+/**
+ * What adjusting target `targetId` in month `ym` to `value` does (S-14): "이번 달만" = a month adjustment of that month;
+ * "이 구간 끝까지" = the amount of that month's phase (and the month's adjustment, if any, goes: it would hide the new
+ * amount). `pay` is the take-home the simulation shows.
+ */
+export function adjustPreview(st: MonthState, ym: string, targetId: string, value: number, scope: AdjustScope, pay?: number): AdjustPreview {
+  const row = (s: MonthState, phases?: Phase[]) => {
+    const d = monthMoney(s, ym, { pay, phases }).dist
+    return { amount: d.rows.find((r) => r.key === targetId)?.amount ?? 0, rest: d.remainder }
+  }
+  const now = row(st)
+  const bare = { ...st, monthAdjusts: withoutAdjust(st.monthAdjusts, ym, targetId) }
+  const base = row(bare).amount
+  const phase = phaseAt(st.phases, ym)
+  const next = scope === 'month' ? row({ ...st, monthAdjusts: withAdjust(st.monthAdjusts, ym, targetId, value) })
+    : phase ? row(bare, withTotal(st.phases, phase.id, targetId, value))
+    : now
+  return { base, current: now.amount, before: now.rest, after: next.rest, value: next.amount }
+}
+
 // ---------- KPIs (S-1 범위 밖: what the data gives) ----------
-/** What a menu planned to send from January of `ym`'s year up to and including `ym`. */
-export function yearSent(group: BudgetGroup, accounts: Account[], phases: Phase[], targets: AllocationTarget[], s: Pick<Settings, 'savingSplit' | 'investSplit'>, ym: string): number {
+/** What a menu planned to send from January of `ym`'s year up to and including `ym` (with the month adjustments, S-14). */
+export function yearSent(group: BudgetGroup, accounts: Account[], phases: Phase[], targets: AllocationTarget[], s: Pick<Settings, 'savingSplit' | 'investSplit'>, ym: string, adjusts: MonthAdjust[] = []): number {
   let total = 0
-  for (let m = `${ym.slice(0, 4)}-01`; m <= ym; m = addYm(m, 1)) total += groupAt(group, accounts, phases, targets, s, m).sum
+  for (let m = `${ym.slice(0, 4)}-01`; m <= ym; m = addYm(m, 1)) total += groupAt(group, accounts, phases, targets, s, m, adjusts).sum
   return total
 }
 
