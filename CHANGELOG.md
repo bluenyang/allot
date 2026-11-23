@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.7-rc.2 — unreleased
+## 0.1.7-rc.2 — 2026-11-23
 
 Budget and screen features that were "coming soon". Spec 013 revision 1 (`.agents/intent/013_budget-and-soon/spec.md`, S-14 to S-21). Migrations 0032 and 0033 (a table for one month's adjustments, a column for where a savings product's money goes at maturity, the subscription category "other").
 
