@@ -318,10 +318,18 @@ test.describe.serial('V-20 currencies', () => {
       // every switch off: the refresh asks the fake service nothing, and the button is gone
       for (const x of (await state(request)).currencies.filter((x) => x.auto)) expect((await api(request, 'PUT', `/api/currencies/${x.id}`, { code: x.code, rate: x.rate, buffer: x.buffer, auto: false })).status).toBe(200)
       expect((await fake.delete('/_log')).ok()).toBe(true)
+      const off0 = await state(request)
+      const beforeOff = { eur: off0.currencies.find((x) => x.code === 'EUR'), usd: off0.settings.fxRate, usdAt: off0.settings.fxAutoAt }
       const r = await api(request, 'POST', '/api/currencies/refresh')
       expect(r.status).toBe(200)
       expect(r.json.off).toBe(false)
       expect(await seen()).toEqual([])
+      // the server keeps answers for a few minutes (F-8), so the fake's silence alone proves nothing: no rate and no refresh
+      // time moved either (review rc3-6 R6-1) — a wrong refresh would write the remembered EUR 1512.34
+      const after = await state(request)
+      expect(after.currencies.find((x) => x.code === 'EUR')).toMatchObject({ rate: 1500, autoAt: beforeOff.eur?.autoAt ?? null })
+      expect(after.settings.fxRate).toBe(beforeOff.usd)
+      expect(after.settings.fxAutoAt).toBe(beforeOff.usdAt)
       await page.goto('/settings/general')
       await expect(fxRow(page, 'EUR')).toContainText('직접 입력')
       await expect(page.getByRole('button', { name: '지금 갱신' })).toHaveCount(0)
