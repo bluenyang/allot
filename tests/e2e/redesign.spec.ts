@@ -752,6 +752,12 @@ test('(V-8, W-8) 설정 and 관리: what does not exist yet is a visible, inert 
     await page.waitForLoadState('networkidle')
     for (const n of names) await expect(page.locator('[aria-disabled="true"]').filter({ hasText: n }), `${route} ${n} is not 준비 중`).toHaveCount(0)
   }
+  // …and the real controls are there (review rc3-5 R5-6)
+  await page.goto('/settings/general')
+  await expect(page.getByLabel('시간대')).toBeVisible()
+  await expect(page.getByRole('button', { name: /외화 추가/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /일정 추가/ })).toBeVisible()
+  await expect(page.getByText('원화 고정', { exact: false }).first()).toBeVisible()
   const cases: [string, string[]][] = [
     ['settings/ai', ['+ 모델 연결', '연결된 앱 관리']],
   ]
