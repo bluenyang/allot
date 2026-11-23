@@ -14,7 +14,17 @@ import postgres from 'postgres'
 
 let failed = 0
 let skipped = 0
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
 const skip = (msg) => { console.log(`SKIP ${msg}`); skipped++ }
 const BASE = process.env.BASE ?? 'http://localhost:15173'
 const sql = postgres(process.env.DATABASE_URL, { max: 1 })
@@ -68,6 +78,7 @@ ok(su.status === 200, `U sign-in ${su.status}`)
 if (failed) process.exit(1)
 
 let policyChanged = false
+armed = true
 try {
   // ── the policy and who may change it ──
   const p0 = await A('GET', '/api/admin/api-keys')
@@ -264,7 +275,10 @@ try {
   const [{ n: nAfter }] = await sql`select count(*)::int as n from apikey where reference_id = ${uId}`
   ok(nAfter === 0, `U's keys are gone with the account (${nAfter})`)
   ok((await mcp(A, left.json?.key)).status === 401, 'a deleted user\'s key → MCP 401')
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
 } finally {
+  stopped = true // the cleanup's own checks only report
   if (policyChanged) {
     const r = await A('PUT', '/api/admin/api-keys', { noExpiry: false })
     console.log(`restore policy OFF → ${r.status}`)

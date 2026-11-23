@@ -26,7 +26,17 @@ const mode = process.argv[2]
 if (!['auth', 'isolation', 'tools', 'write'].includes(mode)) throw new Error('usage: mcp.mjs auth|isolation|tools|write')
 let failed = 0
 const cleanups = [] // run in the final `finally` (rows made by id, deleted by id even if a check threw)
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
 const BASE = process.env.BASE ?? 'http://127.0.0.1:3000'
 const sql = postgres(process.env.DATABASE_URL, { max: 1 })
 const sha = (k) => createHash('sha256').update(k).digest('base64url')
@@ -958,12 +968,16 @@ async function writeMode() {
   await sqlW.end()
 }
 
+armed = true
 try {
   if (mode === 'write') await writeMode()
   else if (mode === 'auth') await authMode()
   else if (mode === 'isolation') await isolationMode()
   else await toolsMode()
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
 } finally {
+  stopped = true // the cleanup's own checks only report
   for (const f of cleanups) await f().catch(() => {})
   await sql`delete from apikey where name = 'v4'`.catch(() => {})
   for (const u of made) {

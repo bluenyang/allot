@@ -10,7 +10,17 @@
 import postgres from 'postgres'
 
 let failed = 0
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
 const BASE = process.env.BASE ?? 'http://allot-rc:3000'
 if (!/^http:\/\/(allot-rc:3000|127\.0\.0\.1:15174)$/.test(BASE)) { console.log(`refuse: BASE ${BASE} is not the test server`); process.exit(1) }
 if (!/\/allot_rc$/.test(process.env.DATABASE_URL ?? '')) { console.log('refuse: DATABASE_URL is not the test server database'); process.exit(1) }
@@ -85,6 +95,7 @@ const sa = await signIn(A, process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD)
 ok(sa.status === 200, `admin sign-in → ${sa.status}`)
 if (failed) process.exit(1)
 
+armed = true
 try {
   // ── 1. nothing stored = today's behaviour ──
   const p0 = await A('GET', '/api/admin/password-policy')
@@ -270,7 +281,10 @@ try {
     ok(r.status === 404, `an expired key, PATCH ${JSON.stringify(body)} → ${r.status} (A-41)`)
   }
   ok((await A('PATCH', '/api/keys/no-such-key', { name: 'x' })).status === 404, 'an unknown key id → 404')
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
 } finally {
+  stopped = true // the cleanup's own checks only report
   for (const [who, id] of keyIds) await who('DELETE', `/api/keys/${id}`).catch(() => null)
   await sql`delete from apikey where name like 'PK-key%'`.catch(() => null)
   if (uId) {

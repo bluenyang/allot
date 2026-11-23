@@ -7,7 +7,17 @@ const BASE = process.env.BASE ?? 'http://127.0.0.1:15174'
 const MARK = `E2E-${Date.now().toString(36)}-rules`
 const headers = { 'content-type': 'application/json', origin: BASE }
 let failed = 0
-const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++ }
+// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
+class Stop extends Error {}
+let armed = false
+let stopped = false
+const ok = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
+  if (cond) return
+  failed++
+  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
+}
 
 const login = await fetch(BASE + '/api/auth/sign-in/email', { method: 'POST', headers, body: JSON.stringify({ email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD }) })
 if (login.status !== 200) throw new Error(`sign-in → ${login.status}`)
@@ -18,6 +28,7 @@ async function api(method, path, body) {
 }
 const made = [] // [path, id], deleted in reverse
 
+armed = true
 try {
   // review 2 F-1: an account saved twice in a row with what the API answered (an empty memo)
   const a = await api('POST', '/api/accounts', { name: `${MARK}-acc`, role: '', inflow: '', outflow: '', buffer: 500_000, note: '' })
@@ -116,7 +127,10 @@ try {
   ok(inside.status === 200 && inside.json.some((x) => x.id === linkSet.id), `since … until now: the card update is in it → ${inside.status}`)
   ok((await api('GET', '/api/changes?since=yesterday-ish')).status === 400, 'a since that is not a time is refused (400)')
   ok((await api('GET', '/api/changes?until=nope')).status === 400, 'an until that is not a time is refused (400)')
+} catch (e) {
+  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
 } finally {
+  stopped = true // the cleanup's own checks only report
   for (const [path, id] of made.reverse()) {
     const r = await api('DELETE', `${path}/${id}`)
     ok(r.status === 204, `cleanup ${path}/${id} → ${r.status}`)
