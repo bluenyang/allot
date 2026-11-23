@@ -1,10 +1,11 @@
 // spec 013 S-22 (W-18): the user's own monthly dates in a month (the same weekend/holiday shift as the pay days) and on
-// the calendar. Synthetic data, no database.
+// the calendar and in the MCP get_schedule. Synthetic data, no database.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { scheduleItemsIn } from '../../src/lib/schedule-items'
 import { store } from '../../src/lib/store'
 import { calendarEvents } from '../../src/lib/calendar-events'
+import { schedule, type Data } from '../../server/mcp/views'
 import type { ScheduleItem } from '../../src/data/types'
 
 const items: ScheduleItem[] = [
@@ -45,4 +46,23 @@ test('the calendar shows the items with their name, a kind for in or out, and th
   assert.ok(!calendarEvents('2026-11-01', '2026-12-01').some((e) => e.kind === 'in' && e.date.startsWith('2026-11-0')))
   store.schedules = []
   Object.assign(store.settings, { dayShift: 'none' })
+})
+
+test('get_schedule lists the items of each month with their date after the shift, account and direction', () => {
+  const data: Data = {
+    settings: { netPay: 0, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, dayShift: 'after' },
+    living: { food: 0, transit: 0, allowance: 0 },
+    targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [],
+    schedules: items,
+  }
+  const s = schedule(data, '2026-11', 2)
+  assert.deepEqual(s.months[0]!.ownDates, [
+    { id: 'i2', name: 'E2E-Refund', day: 1, date: '2026-11-02', nominal: '2026-11-01', shifted: 'after', accountId: null, direction: 'in' },
+    { id: 'i3', name: 'E2E-Fee', day: 15, date: '2026-11-16', nominal: '2026-11-15', shifted: 'after', accountId: null, direction: 'out' },
+    { id: 'i1', name: 'E2E-Rent', day: 31, date: '2026-11-30', nominal: '2026-11-30', shifted: null, accountId: 'a1', direction: 'out', note: 'n' },
+  ])
+  // December 31st is a Thursday: no shift, the whole day
+  assert.equal(s.months[1]!.ownDates.find((x) => x.id === 'i1')!.date, '2026-12-31')
+  // no items: an empty list
+  assert.deepEqual(schedule({ ...data, schedules: undefined }, '2026-11', 1).months[0]!.ownDates, [])
 })
