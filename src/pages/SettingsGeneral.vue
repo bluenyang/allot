@@ -424,7 +424,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
     <EditSheet v-if="fxEdit" :title="fxEdit.isNew ? c('addTitle') : t('settings.general.fxEditTitle', { code: fxEdit.code })" :desc="g('fxEditDesc')" :error="fxError" :busy="fxBusy" :hint="fxFoot"
       :can-delete="!fxEdit.isNew && !fxIsUsd" :delete-name="fxEdit.code" @save="saveFx" @cancel="fxEdit = null" @delete="removeFx">
       <div v-if="!fxIsUsd" class="field"><label for="fx-code">{{ c('code') }} <span class="req">*</span></label>
-        <input id="fx-code" v-model="fxEdit.code" class="in mono" list="fx-codes" autocomplete="off" maxlength="3" placeholder="EUR" @blur="fxEdit.code = normalCode(fxEdit.code)">
+        <input id="fx-code" v-model="fxEdit.code" class="in mono" list="fx-codes" autocomplete="off" placeholder="EUR" @blur="fxEdit.code = normalCode(fxEdit.code)">
         <datalist id="fx-codes"><option v-for="k in COMMON_CODES" :key="k" :value="k">{{ curName(k) }}</option></datalist>
         <span class="hint">{{ c('codeHint') }}</span></div>
       <div class="field"><span id="fx-mode" class="lbl">{{ g('fxMode') }}</span>
