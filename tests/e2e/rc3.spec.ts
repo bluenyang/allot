@@ -514,7 +514,8 @@ test.describe.serial('V-21 password policy and API keys', () => {
       expect((await keyOf()).confirm).toBe(null)
       // extend 30 days from now
       await s.getByRole('button', { name: '만료 연장' }).click()
-      await s.getByRole('button', { name: '30일 연장' }).click()
+      // the choice names the date it gives (review rc3-1 F-9): "30일 · YYYY-MM-DD까지"
+      await s.getByRole('button', { name: /^30일 · / }).click()
       await expect(page.getByText('만료일을 바꿨어요.')).toBeVisible()
       k = await keyOf()
       expect(Math.abs(new Date(k.expiresAt).getTime() - (Date.now() + 30 * 86_400_000))).toBeLessThan(120_000)
