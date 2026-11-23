@@ -110,7 +110,7 @@ test('the screen language: the account first, else the browser (en… = English,
 
 test('keys built from data exist for every value (categories, kinds, states, tables…)', () => {
   const families: Record<string, string[]> = {
-    'label.category': ['ai', 'telecom', 'content', 'tool', 'insurance', 'life'],
+    'label.category': ['ai', 'telecom', 'content', 'tool', 'insurance', 'life', 'other'],
     'label.path': ['direct', 'google', 'apple', 'telecom'],
     'label.status': ['active', 'cancelled', 'company'],
     'label.cycle': ['monthly', 'yearly'],

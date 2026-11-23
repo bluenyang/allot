@@ -3,7 +3,7 @@
 // new set). Recording is in the app, not in triggers, so the rows are stored exactly as the
 // API reads them and the revert writes them back through the same rules.
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, getTableName, inArray, lt, or, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, getTableName, gte, inArray, lt, or, sql, type SQL } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type { Db } from './db/client'
 import { hasIdentity, OWNED, type OwnedTable } from './db/owned'
@@ -173,7 +173,7 @@ const GONE = new Set(['living'])
 const CHILDREN = new Map<PgTable, [OwnedTable, PgColumn][]>([
   [t.subscription, [[t.planChange, t.planChange.subId]]],
   [t.phase, [[t.phaseAmount, t.phaseAmount.phaseId], [t.livingPhaseAmount, t.livingPhaseAmount.phaseId], [t.accountPhaseAmount, t.accountPhaseAmount.phaseId]]],
-  [t.allocationTarget, [[t.phaseAmount, t.phaseAmount.targetId]]],
+  [t.allocationTarget, [[t.phaseAmount, t.phaseAmount.targetId], [t.monthAdjust, t.monthAdjust.targetId]]],
   [t.spending, [[t.spendingRound, t.spendingRound.spendingId]]],
   [t.livingItem, [[t.livingPhaseAmount, t.livingPhaseAmount.itemId]]],
   [t.bankAccount, [[t.accountBalance, t.accountBalance.accountId], [t.accountPhaseAmount, t.accountPhaseAmount.accountId]]],
@@ -213,6 +213,15 @@ async function checkRules(q: Db, uid: string) {
         throw new RuleBroken(m('revertSpending', { name: s.name }))
       }
     }
+    // A buffer use keeps a card with a paying account (spec 013 S-8, S-9; review 2 F-6, user: "거부하도록 고침 (Recommended)").
+    const buffers = spendings.filter((s) => s.how === 'buffer')
+    if (buffers.length) {
+      const cards = await q.select().from(t.card).where(eq(t.card.userId, uid))
+      for (const s of buffers) {
+        const c = cards.find((x) => x.id === s.cardId)
+        if (!c?.accountId) throw new RuleBroken(m('revertBuffer', { name: s.name }))
+      }
+    }
   }
 }
 
@@ -220,9 +229,12 @@ async function checkRules(q: Db, uid: string) {
 /** A page cursor: the last set shown (its time and id; sets are ordered by both). */
 export interface Cursor { at: string; id: string }
 
-export async function listSets(q: Db, uid: string, before: Cursor | undefined, limit: number) {
+/** A period of the history (spec 013 S-18): `since` and `until` are ISO times, either may be left out. */
+export interface Period { since?: string; until?: string }
+
+export async function listSets(q: Db, uid: string, before: Cursor | undefined, limit: number, period: Period = {}) {
   const cs = t.changeSet
-  const mine = eq(cs.userId, uid)
+  const mine = and(eq(cs.userId, uid), period.since ? gte(cs.at, period.since) : undefined, period.until ? lt(cs.at, period.until) : undefined)!
   const where = before ? and(mine, or(lt(cs.at, before.at), and(eq(cs.at, before.at), lt(cs.id, before.id)))) : mine
   const sets = await q.select().from(cs).where(where).orderBy(desc(cs.at), desc(cs.id)).limit(limit)
   return withLogs(q, uid, sets)

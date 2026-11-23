@@ -20,7 +20,7 @@ export function out<R extends Record<string, unknown>>(row: R, optional: string[
 export async function readState(q: Db, uid: string) {
   const list = <T extends ListTable>(table: T) =>
     q.select().from(table as never).where(eq(table.userId, uid)).orderBy(asc(table.seq)) as unknown as Promise<T['$inferSelect'][]>
-  const [[settings], livingItems, livingAmounts, subscriptions, planChanges, phases, events, checks, accounts, accountAmounts, balances, cards, debts, remainderSplit, targets, amounts, [prefs], holidaySets, spendings, spendingRounds] = await Promise.all([
+  const [[settings], livingItems, livingAmounts, subscriptions, planChanges, phases, events, checks, accounts, accountAmounts, balances, cards, monthAdjusts, debts, remainderSplit, targets, amounts, [prefs], holidaySets, spendings, spendingRounds] = await Promise.all([
     q.select().from(t.settings).where(eq(t.settings.userId, uid)),
     list(t.livingItem),
     q.select().from(t.livingPhaseAmount).where(eq(t.livingPhaseAmount.userId, uid)),
@@ -33,6 +33,7 @@ export async function readState(q: Db, uid: string) {
     q.select().from(t.accountPhaseAmount).where(eq(t.accountPhaseAmount.userId, uid)),
     list(t.accountBalance),
     list(t.card),
+    list(t.monthAdjust),
     list(t.debt),
     list(t.remainderSplit),
     list(t.allocationTarget),
@@ -65,6 +66,7 @@ export async function readState(q: Db, uid: string) {
     accounts: accounts.map((x) => ({ ...out(x, ['note']), amounts: byPhase(accountAmounts, (r) => r.accountId, x.id) })),
     balances: balances.map((x) => out(x, ['note'])),
     cards: cards.map((x) => out(x, ['note'])),
+    monthAdjusts: monthAdjusts.map((x) => out(x, ['reason'])),
     debts: debts.map((x) => out(x)),
     remainderSplit: remainderSplit.map((x) => out(x)),
     preferences: p,

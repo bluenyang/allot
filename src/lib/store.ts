@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import type {
   Account, AllocationTarget, Balance, Card, CheckItem, Debt, HolidaySet, Living, LivingItem, Phase, PlanChange, PlanEvent, Preferences, RemainderSplit, Settings,
-  Spending, Subscription,
+  MonthAdjust, Spending, Subscription,
 } from '../data/types'
 import { ApiError, api } from './api'
 import { t } from '../i18n'
@@ -17,6 +17,7 @@ export interface State {
   livingItems: LivingItem[]
   balances: Balance[]
   cards: Card[]
+  monthAdjusts: MonthAdjust[]
   targets: AllocationTarget[]
   subscriptions: Subscription[]
   planChanges: PlanChange[]
@@ -38,7 +39,7 @@ const empty = (): State => ({
   living: { ...DEFAULT_LIVING },
   preferences: { ...DEFAULT_PREFERENCES },
   targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [], spendings: [],
-  livingItems: [], balances: [], cards: [], pendingProposals: 0,
+  livingItems: [], balances: [], cards: [], monthAdjusts: [], pendingProposals: 0,
 })
 
 export const store = reactive<State>(empty())
@@ -103,6 +104,7 @@ export const RESOURCES = {
   livingItems: '/api/living-items',
   balances: '/api/balances',
   cards: '/api/cards',
+  monthAdjusts: '/api/month-adjusts',
 } as const
 
 /** Lists whose delete also changes other rows on the server (unlinks, spec 013 S-9, S-13): reload the state after one. */

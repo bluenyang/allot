@@ -292,6 +292,7 @@ export const en = {
       tool: 'Tools',
       insurance: 'Insurance',
       life: 'Living',
+      other: 'Other',
     },
     path: {
       direct: 'Direct payment',

@@ -292,6 +292,7 @@ export const ko = {
       tool: '도구',
       insurance: '보험',
       life: '생활',
+      other: '기타',
     },
     path: {
       direct: '직접 결제',

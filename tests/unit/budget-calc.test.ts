@@ -201,3 +201,27 @@ test('review 2 F-2: a remainder account still counts its buffer use: the bill ou
   // the 이번 달 column counts the same money in (review 3 F-2)
   assert.equal(accountMonthIn(pay, st, '2026-12'), 3_000_000)
 })
+
+test('rc.2 S-14: a month adjustment replaces a target amount for that month only', () => {
+  const targets: AllocationTarget[] = [...T, { id: 'ti', name: 'Invest', kind: 'invest' }, { id: 'ts', name: 'Savings', kind: 'saving' }]
+  const accounts = [acc('x', { group: 'invest', ratio: 0.5 }), acc('y', { group: 'invest', ratio: 0.5 }), acc('cma', { group: 'saving', amount: 300_000 })]
+  const adj = [
+    { id: 'a1', ym: '2026-06', targetId: 'tf', amount: 50_000 },
+    { id: 'a2', ym: '2026-06', targetId: 'ti', amount: 400_000 },
+    { id: 'a3', ym: '2026-06', targetId: 'ts', amount: 100_000 },
+  ]
+  const at = (ym: string) => distributionAt(ym, S.netPay, [P1, P2], targets, [], [], [], S, 0, 0, accounts, adj)
+  const row = (ym: string, k: string) => at(ym).rows.find((r) => r.key === k)?.amount ?? 0
+  assert.equal(row('2026-06', 'tf'), 50_000)
+  assert.equal(row('2026-07', 'tf'), 200_000)
+  // a ratio split: the adjustment is the month's total, split over the items
+  assert.equal(row('2026-06', 'ti'), 400_000)
+  assert.deepEqual(groupAt('invest', accounts, [P1, P2], targets, S, '2026-06', adj).rows.map((r) => r.amount), [200_000, 200_000])
+  assert.equal(row('2026-07', 'ti'), 1_000_000)
+  // an amount split: the target gets the adjustment that month
+  assert.equal(row('2026-06', 'ts'), 100_000)
+  assert.equal(row('2026-07', 'ts'), 300_000)
+  // monthMoney reads them from the state
+  const st = state({ targets, accounts, monthAdjusts: adj })
+  assert.equal(monthMoney(st, '2026-06').dist.rows.find((r) => r.key === 'tf')!.amount, 50_000)
+})

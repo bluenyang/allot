@@ -2,7 +2,7 @@ export type Currency = 'KRW' | 'USD'
 export type Cycle = 'monthly' | 'yearly'
 export type PayPath = 'direct' | 'google' | 'apple' | 'telecom'
 export type SubStatus = 'active' | 'cancelled' | 'company'
-export type Category = 'ai' | 'telecom' | 'content' | 'tool' | 'insurance' | 'life'
+export type Category = 'ai' | 'telecom' | 'content' | 'tool' | 'insurance' | 'life' | 'other'
 
 /** 요금에 영향을 주는 필드. 플랜 변경(PlanChange)은 이 필드만 바꾼다. */
 export interface Plan {
@@ -175,8 +175,19 @@ export interface Account {
   from?: string | null
   stopFrom?: string | null
   goalAck?: number | null
+  /** where the money goes at maturity (free text, spec 013 S-15) */
+  afterMaturity?: string
   note?: string
   amounts?: Record<string, number>
+}
+
+/** One month's amount of a target, in place of its phase amount for that month (spec 013 S-14). */
+export interface MonthAdjust {
+  id: string
+  ym: string // YYYY-MM
+  targetId: string
+  amount: number
+  reason?: string
 }
 
 /** A balance written down on a date (spec 013 S-6). */

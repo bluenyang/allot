@@ -289,6 +289,15 @@ export const RESOURCES = {
       await unlink(q, rec, uid, t.allocationTarget, t.allocationTarget.accountId, id)
     },
   }),
+  // One month's amount of a target (spec 013 S-14): fixed, saving and invest targets only.
+  'month-adjusts': list(t.monthAdjust, v.monthAdjust, {
+    optional: ['reason'],
+    toRow: (x) => ({ ...x, reason: x.reason || null }),
+    check: async (q, uid, x) => {
+      const [tg] = await q.select({ kind: t.allocationTarget.kind }).from(t.allocationTarget).where(and(eq(t.allocationTarget.userId, uid), eq(t.allocationTarget.id, x.targetId)))
+      return tg && !(AMOUNT_KINDS as readonly string[]).includes(tg.kind) ? m('amountsTargetsOnly') : null
+    },
+  }),
   balances: list(t.accountBalance, v.balance, {
     optional: ['note'],
     toRow: (x) => ({ ...x, note: x.note || null }),
@@ -380,7 +389,7 @@ export const resourceOf = (name: string): ListResource | SingleResource | Living
     : Object.hasOwn(SINGLES, name) ? SINGLES[name as keyof typeof SINGLES] : undefined)
 
 /** What an AI may change (spec 009 S-2, spec 013 S-10): not debts, holiday sets or display settings. */
-export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings', 'living-items', 'accounts', 'balances', 'cards'] as const
+export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings', 'living-items', 'accounts', 'balances', 'cards', 'month-adjusts'] as const
 export const AI_SINGLES = ['settings', 'living'] as const
 export type AiResource = (typeof AI_LISTS)[number] | (typeof AI_SINGLES)[number]
 export const AI_RESOURCES: readonly string[] = [...AI_LISTS, ...AI_SINGLES]

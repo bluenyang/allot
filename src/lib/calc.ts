@@ -1,5 +1,5 @@
 import type {
-  Account, AllocationKind, AllocationTarget, Balance, BudgetGroup, Card, Currency, Cycle, DayShift, Living, LivingItem, PayBy, Phase, Plan, PlanChange,
+  Account, AllocationKind, AllocationTarget, Balance, BudgetGroup, Card, Currency, Cycle, DayShift, Living, LivingItem, MonthAdjust, PayBy, Phase, Plan, PlanChange,
   RemainderSplit, Settings, SpendHow, Spending, SpendingRound, SpendInterval, SplitMode, Subscription,
 } from '../data/types'
 
@@ -398,8 +398,11 @@ export function distributionAt(
   spendRemainder = 0,
   spendSubs = 0,
   accounts: Account[] = [],
+  adjusts: MonthAdjust[] = [],
 ): Distribution {
   const phase = phaseAt(phases, ym)
+  // one month's amount of a target, in place of its phase amount (spec 013 S-14)
+  const adjustOf = (t: AllocationTarget) => adjusts.find((a) => a.ym === ym && a.targetId === t.id)
   const livingSum = Array.isArray(living) ? livingAt(living, phases, ym).sum : living.food + living.transit + living.allowance
   const subsTransfer = transferAt(subs, changes, s, ym, spendSubs).transfer
   const stopped = (t: AllocationTarget) => {
@@ -409,8 +412,8 @@ export function distributionAt(
   const amountOf = (t: AllocationTarget) =>
     t.kind === 'living' ? livingSum
     : t.kind === 'subscriptions' ? subsTransfer
-    : t.kind === 'fixed' ? (stopped(t) ? 0 : (phase?.amounts[t.id] ?? 0))
-    : t.kind === 'saving' || t.kind === 'invest' ? groupAt(t.kind, accounts, phases, targets, s, ym).sum
+    : t.kind === 'fixed' ? (stopped(t) ? 0 : (adjustOf(t)?.amount ?? phase?.amounts[t.id] ?? 0))
+    : t.kind === 'saving' || t.kind === 'invest' ? groupValue(groupAt(t.kind, accounts, phases, targets, s, ym, adjusts), adjustOf(t))
     : 0
   const remainderTarget = targets.find((t) => t.kind === 'remainder') ?? null
   const others = targets.filter((t) => t.kind !== 'remainder').reduce((sum, t) => sum + amountOf(t), 0)
@@ -446,6 +449,12 @@ export function livingAt(items: LivingItem[], phases: Phase[], ym: string) {
 /** Is a Savings / Investment account sending in month `ym` (from its `from` month, until `stopFrom`, S-3, S-7)? */
 export const accountSends = (a: Account, ym: string) => (!a.from || ym >= a.from) && (!a.stopFrom || ym < a.stopFrom)
 
+/**
+ * What a Savings / Investment target gets in a month: its items added up; a month adjustment of an amount split
+ * takes the target's place for that month (a ratio split's adjustment is its total, so the items carry it; S-14).
+ */
+export const groupValue = (g: GroupMonth, adjust: MonthAdjust | undefined) => (adjust && g.mode === 'amount' ? adjust.amount : g.sum)
+
 /** The split of a menu (S-3): saving defaults to amount, invest to ratio. */
 export const splitOf = (group: BudgetGroup, s: Pick<Settings, 'savingSplit' | 'investSplit'>): SplitMode =>
   (group === 'saving' ? s.savingSplit ?? 'amount' : s.investSplit ?? 'ratio')
@@ -470,12 +479,14 @@ export interface GroupMonth {
  * rounded to the nearest 1,000. The target gets the items added up, so a ratio sum under 100% leaves
  * the rest in the remainder. An item counts from `from` until `stopFrom`.
  */
-export function groupAt(group: BudgetGroup, accounts: Account[], phases: Phase[], targets: AllocationTarget[], s: Pick<Settings, 'savingSplit' | 'investSplit'>, ym: string): GroupMonth {
+export function groupAt(group: BudgetGroup, accounts: Account[], phases: Phase[], targets: AllocationTarget[], s: Pick<Settings, 'savingSplit' | 'investSplit'>, ym: string, adjusts: MonthAdjust[] = []): GroupMonth {
   const phase = phaseAt(phases, ym)
   const mode = splitOf(group, s)
   const target = targets.find((t) => t.kind === group) ?? null
   const items = accounts.filter((a) => a.group === group)
-  const ratioTotal = target && phase ? (phase.amounts[target.id] ?? 0) : 0
+  // a ratio split's month adjustment is that month's total (S-14)
+  const adjust = target ? adjusts.find((a) => a.ym === ym && a.targetId === target.id) : undefined
+  const ratioTotal = adjust ? adjust.amount : target && phase ? (phase.amounts[target.id] ?? 0) : 0
   const rows = items.map((account) => ({
     account,
     amount: !accountSends(account, ym) ? 0
@@ -491,9 +502,9 @@ export function groupAt(group: BudgetGroup, accounts: Account[], phases: Phase[]
  * What a Savings / Investment item really gets in month `ym`: its item amount, but only while the menu has its
  * target — without one, the salary split sends nothing to the items (the remainder keeps it; review 1 F-4).
  */
-export function itemSent(acc: Account, st: Pick<MonthState, 'phases' | 'targets' | 'settings'> & { accounts?: Account[] }, ym: string): number {
+export function itemSent(acc: Account, st: Pick<MonthState, 'phases' | 'targets' | 'settings' | 'monthAdjusts'> & { accounts?: Account[] }, ym: string): number {
   if (!acc.group) return 0
-  const g = groupAt(acc.group, st.accounts ?? [acc], st.phases, st.targets, st.settings, ym)
+  const g = groupAt(acc.group, st.accounts ?? [acc], st.phases, st.targets, st.settings, ym, st.monthAdjusts ?? [])
   return g.target ? (g.rows.find((r) => r.account.id === acc.id)?.amount ?? 0) : 0
 }
 
@@ -875,6 +886,8 @@ export interface MonthState {
   living: Living
   livingItems?: LivingItem[]
   accounts?: Account[]
+  /** one month's amounts of targets (spec 013 S-14) */
+  monthAdjusts?: MonthAdjust[]
   subscriptions: Subscription[]
   planChanges: PlanChange[]
   spendings?: Spending[]
@@ -892,7 +905,7 @@ export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; p
   const transfer = transferAt(state.subscriptions, state.planChanges, state.settings, ym, spend.subs)
   const dist = distributionAt(
     ym, opt.pay ?? state.settings.netPay, opt.phases ?? state.phases, state.targets, state.livingItems ?? state.living,
-    state.subscriptions, state.planChanges, state.settings, spend.remainder, spend.subs, state.accounts ?? [],
+    state.subscriptions, state.planChanges, state.settings, spend.remainder, spend.subs, state.accounts ?? [], state.monthAdjusts ?? [],
   )
   return { transfer, dist, spend }
 }
