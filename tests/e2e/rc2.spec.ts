@@ -271,7 +271,7 @@ test('(V-15, S-15) 만기 일정: rows by maturity month with 받을 돈 and 만
     const ru = page.getByTestId(`maturity-${idu}`)
     await expect(ru).toContainText(ymLabel(until))
     await expect(ru).toContainText(won(200_000))
-    await expect(ru).toContainText('매달 금액 × 4개월 · 이자 제외')
+    await expect(ru).toContainText('4개월 동안 분배가 보내는 돈 · 이자 제외')
     await expect(ru).toContainText('E2E 생활비 통장으로')
     await expect(tbl.locator('.foot')).toContainText(nx)
 
