@@ -547,7 +547,6 @@ export const ko = {
     saveHint: '저장하면 변경 내역에 남아요',
     serviceName: '서비스 이름',
     namePh: '예: 영상 스트리밍',
-    catOther: '기타 · 직접 입력',
     planPh: '예: 프리미엄 연간 · 가족 공유 4인',
     planHint: '플랜 이름이 길어도 괜찮아요. 목록에는 첫 줄만 보여요.',
     billingCycle: '결제 주기',

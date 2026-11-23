@@ -12,7 +12,7 @@ import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
 import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, today, usd, ymOf, ymRange } from '../lib/calc'
-import type { Plan, PlanChange, Subscription } from '../data/types'
+import type { Category, Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
 
@@ -26,6 +26,8 @@ const tab = ref('list')
 const now = today()
 const ym = ref(ymOf(now))
 const PATH_IDS = ['direct', 'google', 'apple', 'telecom'] as const
+/** The category filter: the six and 기타 (`other`, spec 013 S-18). */
+const CATS: Category[] = [...new Set<Category>([...CATEGORY_IDS, 'other'])]
 
 const tabs = computed(() => [
   { id: 'list', label: t('subscriptions.tabList'), count: store.subscriptions.length || undefined },
@@ -220,7 +222,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
             <Seg v-model="status" :options="statusOpts" :label="t('subscriptions.byStatus')" />
             <span class="vr" aria-hidden="true"></span>
             <label class="fsearch"><Icon name="search" /><input v-model="q" type="search" :aria-label="t('subscriptions.searchLabel')" :placeholder="t('subscriptions.searchPh')"></label>
-            <Select v-model="cat" class="fsel" :aria-label="t('subscriptions.category')" :options="[{ value: '', label: t('subscriptions.allCategories') }, ...CATEGORY_IDS.map((k) => ({ value: k, label: catLabel(k) }))]" />
+            <Select v-model="cat" class="fsel" :aria-label="t('subscriptions.category')" :options="[{ value: '', label: t('subscriptions.allCategories') }, ...CATS.map((k) => ({ value: k, label: catLabel(k) }))]" />
             <Select v-model="path" class="fsel" :aria-label="t('subscriptions.path')" :options="[{ value: '', label: t('subscriptions.allPaths') }, ...PATH_IDS.map((k) => ({ value: k, label: pathLabel(k) }))]" />
             <label class="fmonth">{{ t('subscriptions.baseMonth') }}<MonthInput v-model="ym" /></label>
             <span class="hint count">{{ t('subscriptions.count', { n: shown.length }) }}</span>

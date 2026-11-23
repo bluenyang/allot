@@ -8,14 +8,13 @@ import EditSheet from './EditSheet.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import MoneyInput from './MoneyInput.vue'
 import Seg from './Seg.vue'
-import Soon from './Soon.vue'
 import Tip from './Tip.vue'
 import { useEditor } from '../lib/useEditor'
 import { store } from '../lib/store'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
 import { chargeKrw, monthlyKrw, num, planAt, usd, ymLabel } from '../lib/calc'
 import { wonText } from '../lib/format'
-import type { PlanChange, Subscription } from '../data/types'
+import type { Category, PlanChange, Subscription } from '../data/types'
 import Select from './Select.vue'
 import DateInput from './DateInput.vue'
 
@@ -24,6 +23,8 @@ const emit = defineEmits<{ close: []; editChange: [c: PlanChange] }>()
 
 const PATH_IDS = ['direct', 'google', 'apple', 'telecom'] as const
 const STATUS_IDS = ['active', 'company', 'cancelled'] as const
+/** The category chips: the six of the list and 기타 (`other`, spec 013 S-18), a category like the others. */
+const CATS: Category[] = [...new Set<Category>([...CATEGORY_IDS, 'other'])]
 
 const blank = (): Subscription => ({
   id: '', name: '', category: 'tool', plan: '', amount: 0, currency: 'KRW', vat: 0, cycle: 'monthly',
@@ -119,8 +120,7 @@ async function confirmDelete() { await remove() }
         <div class="field">
           <span id="e-cat-l" class="flabel">{{ t('subscriptions.category') }}</span>
           <div class="chips" role="radiogroup" aria-labelledby="e-cat-l">
-            <button v-for="k in CATEGORY_IDS" :key="k" type="button" role="radio" class="chip" :class="{ on: edit.category === k }" :aria-checked="edit.category === k ? 'true' : 'false'" @click="edit.category = k">{{ catLabel(k) }}</button>
-            <Soon class="chip off" :aria-label="`${t('subscriptions.catOther')} (${t('common.soon')})`">{{ t('subscriptions.catOther') }}</Soon>
+            <button v-for="k in CATS" :key="k" type="button" role="radio" class="chip" :class="{ on: edit.category === k }" :aria-checked="edit.category === k ? 'true' : 'false'" @click="edit.category = k">{{ catLabel(k) }}</button>
           </div>
         </div>
         <div class="field">
@@ -220,7 +220,6 @@ async function confirmDelete() { await remove() }
 .err{font-size:12px;color:var(--neg-text);margin:0}
 .lrow{display:flex;align-items:center;gap:6px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chips .chip.off{border:1px dashed var(--border-strong);border-radius:16px;padding:0 12px;height:36px;background:transparent}
 .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px 14px;align-items:start}
 .amt{display:grid;grid-template-columns:minmax(0,1fr);gap:16px 14px;align-items:start}
 .amt.two{grid-template-columns:minmax(0,1fr) 140px}

@@ -547,7 +547,6 @@ export const en = {
     saveHint: 'Saving records it in the change history',
     serviceName: 'Service name',
     namePh: 'e.g. Video streaming',
-    catOther: 'Other · type your own',
     planPh: 'e.g. Premium yearly · family of 4',
     planHint: 'A long plan name is fine. The list shows its first line only.',
     billingCycle: 'Billing cycle',
