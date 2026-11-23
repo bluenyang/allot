@@ -28,15 +28,25 @@ test('a buffer change with auto on keeps the refreshed rate', async () => {
   assert.equal((calls[1]!.body as ForeignCurrency).buffer, 2)
 })
 
+test('turning auto off without touching the rate keeps the refreshed rate (review rc3-3 N-3)', async () => {
+  store.currencies = [{ ...EUR }]
+  const calls = fakeApi(1512)
+  await saveCurrency({ ...EUR, auto: false }, 1500)
+  assert.deepEqual(calls.map((c) => `${c.method} ${c.path}`), ['GET /api/state', 'PUT /api/currencies/e1'])
+  assert.equal((calls[1]!.body as ForeignCurrency).rate, 1512)
+  assert.equal((calls[1]!.body as ForeignCurrency).auto, false)
+})
+
 test('a typed rate goes as typed; auto off and a new currency read nothing', async () => {
   store.currencies = [{ ...EUR }]
   let calls = fakeApi(1512)
   await saveCurrency({ ...EUR, rate: 1490 }, 1500)
   assert.deepEqual(calls.map((c) => `${c.method} ${c.path}`), ['PUT /api/currencies/e1'])
   assert.equal((calls[0]!.body as ForeignCurrency).rate, 1490)
+  store.currencies = [{ ...EUR, auto: false }]
   calls = fakeApi(1512)
   await saveCurrency({ ...EUR, auto: false, buffer: 2 }, 1500)
-  assert.deepEqual(calls.map((c) => c.method), ['PUT'])
+  assert.deepEqual(calls.map((c) => c.method), ['PUT'], 'stored and saved auto off: nothing is read')
   calls = fakeApi(1512)
   await saveCurrency({ ...EUR, id: '', code: 'JPY', rate: 9.1 }, null)
   assert.deepEqual(calls.map((c) => `${c.method} ${c.path}`), ['POST /api/currencies'])

@@ -183,7 +183,9 @@ export function saveCurrency(row: ForeignCurrency, tabRate: number | null): Prom
   // one session scope for the read and the save, like saveSettings (review rc3-3 N-4): a sign-out between them sends nothing
   return save(async (s) => {
     let body = row
-    if (row.id && row.auto && tabRate !== null && row.rate === tabRate) {
+    // auto on now or before this save (turning it off without touching the rate keeps the refreshed one, review rc3-3 N-3)
+    const wasAuto = !!store.currencies.find((c) => c.id === row.id)?.auto
+    if (row.id && (row.auto || wasAuto) && tabRate !== null && row.rate === tabRate) {
       const now = (await api<State>('GET', '/api/state')).currencies.find((c) => c.id === row.id)
       if (!s.alive()) return undefined
       if (now) body = { ...row, rate: now.rate }
