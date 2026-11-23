@@ -9,7 +9,7 @@ import { fmtDate, fmtMoney } from './display'
 import { catLabel, cycleLabel, pathLabel, statusLabel } from './labels'
 import { loadState, store, subName } from './store'
 import { showToast } from './toast'
-import { usd } from './calc'
+import { fxAmount } from './currency'
 
 export interface RowChange { table: string; op: 'insert' | 'update' | 'delete'; key: Record<string, string>; before: Record<string, unknown> | null; after: Record<string, unknown> | null }
 export interface Delta { before: number; after: number }
@@ -199,7 +199,7 @@ export function worded(field: string, v: unknown, row?: Record<string, unknown> 
     case 'status': return te(`label.status.${String(v)}`) ? statusLabel(String(v)) : String(v)
     case 'cycle': return word(() => cycleLabel(String(v)))
     case 'path': return word(() => pathLabel(String(v)))
-    case 'amount': return typeof v === 'number' ? (row?.currency === 'USD' ? usd(v) : fmtMoney(v)) : String(v)
+    case 'amount': return typeof v === 'number' ? (typeof row?.currency === 'string' && row.currency !== 'KRW' ? fxAmount(row.currency, v) : fmtMoney(v)) : String(v)
     // spec 013 money fields (review 2 F-8)
     case 'deposit': case 'buffer': case 'goal': case 'annualLimit': case 'goalAck': return typeof v === 'number' ? fmtMoney(v) : String(v)
     case 'vat': return `${String(v)}%`

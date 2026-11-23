@@ -27,7 +27,8 @@ const round = (s: Spending) => s.rounds.find((r) => r.state !== 'merged') ?? s.r
 const krw = (s: Spending) => s.rounds.filter((r) => r.state !== 'merged').reduce((a, r) => a + r.amount, 0)
 const mon = (d: string) => monthShort(Number(d.slice(5, 7)))
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
-const orig = (s: Spending) => (s.currency === 'USD' ? `USD ${s.amount.toFixed(2)}` : `KRW ${num(s.amount)}`)
+// a foreign amount by its own code (spec 013 S-23): "USD 12.50", "EUR 8.00"
+const orig = (s: Spending) => (s.currency !== 'KRW' ? `${s.currency} ${s.amount.toFixed(2)}` : `KRW ${num(s.amount)}`)
 const payName = (p: PayBy) => t(`spending.gen.pay.${p}` as 'spending.gen.pay.card')
 /** A card lump sum names its card when it has one (spec 013 S-13). */
 const cardLump = (s: Spending) => {

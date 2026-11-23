@@ -48,7 +48,7 @@ const month = computed(() => {
   const names = list.map((x) => x.name)
   const first = list[0]
   const itemText = !names.length ? ''
-    : names.length === 1 ? t('spending.itemOne', { name: names[0]! }) + (first && first.currency === 'USD' ? t('spending.itemUsd', { amount: first.amount.toFixed(2) }) : '')
+    : names.length === 1 ? t('spending.itemOne', { name: names[0]! }) + (first && first.currency !== 'KRW' ? t('currency.itemFx', { code: first.currency, amount: first.amount.toFixed(2) }) : '')
     : t('spending.itemMany', { name: names[0]!, n: names.length - 1 })
   const rem = now.dist.remainder
   const out = now.spend.remainder

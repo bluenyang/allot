@@ -17,6 +17,8 @@ import EditSheet from './EditSheet.vue'
 import MoneyInput from './MoneyInput.vue'
 import Select from './Select.vue'
 import Seg from './Seg.vue'
+import CurrencyPick from './CurrencyPick.vue'
+import { currencyCodes, rateFor, rateNum } from '../lib/currency'
 import Tip from './Tip.vue'
 import { addYm, billingDayOf, bufferGauge, cardBillDate, monthDay, num, payDayFrom, planRounds, replan as doReplan, spendingKrw, today, ymd } from '../lib/calc'
 import { fmtMoney } from '../lib/display'
@@ -79,7 +81,8 @@ const step = ref(0)
 const askDel = ref(false)
 const askRe = ref(false)
 const steps = computed(() => [t('spending.ed.stepBought'), t('spending.ed.stepHow'), t('spending.ed.stepRounds')])
-const currencyOpts = [{ id: 'KRW', label: 'KRW' }, { id: 'USD', label: 'USD' }]
+// KRW, USD and every listed code (spec 013 S-23); the stored code stays an option
+const currencyOpts = computed(() => currencyCodes(store.currencies, I?.currency).map((id) => ({ id, label: id })))
 const howOpts = computed(() => [
   { id: 'lump', label: t('spending.ed.howLump') }, { id: 'installment', label: t('spending.ed.howInst') }, { id: 'split', label: t('spending.ed.howSplit') },
   { id: 'buffer', label: t('spending.ed.howBuffer') },
@@ -143,11 +146,14 @@ const bufAcc = computed(() => (isBuf.value ? bufCards.value.find((x) => x.card.i
 watch(payBy, (p) => { if (p !== 'card') cardId.value = '' })
 
 // ---------- the principal, the dates, the plan ----------
-const rate = computed(() => (currency.value === 'USD' ? (I?.currency === 'USD' && I.fxRate ? I.fxRate : store.settings.fxRate) : null))
+/** Today's rate and buffer of the picked foreign currency: the settings' for USD (as before), the list's for another code. */
+const fxDefault = computed(() => rateFor(currency.value, store.settings, store.currencies) ?? { rate: store.settings.fxRate, buffer: store.settings.fxBuffer })
+const foreign = computed(() => currency.value !== 'KRW')
+const rate = computed(() => (foreign.value ? (I?.currency === currency.value && I.fxRate ? I.fxRate : fxDefault.value.rate) : null))
 const amountN = computed(() => (typeof amount.value === 'number' ? amount.value : NaN))
 // the buffer is fixed with the rate when the spending is saved: an edit that keeps the rounds keeps the stored one, a new plan takes today's
-const buffer = computed(() => (currency.value === 'USD' ? (I?.currency === 'USD' && I.fxBuffer !== null && !replan.value ? I.fxBuffer : store.settings.fxBuffer) : null))
-const principal = computed(() => (Number.isFinite(amountN.value) ? spendingKrw(amountN.value, currency.value, { fxRate: rate.value ?? store.settings.fxRate, fxBuffer: buffer.value ?? store.settings.fxBuffer }) : 0))
+const buffer = computed(() => (foreign.value ? (I?.currency === currency.value && I.fxBuffer !== null && !replan.value ? I.fxBuffer : fxDefault.value.buffer) : null))
+const principal = computed(() => (Number.isFinite(amountN.value) ? spendingKrw(amountN.value, currency.value, { fxRate: rate.value ?? fxDefault.value.rate, fxBuffer: buffer.value ?? fxDefault.value.buffer }) : 0))
 // Holidays for every month a billing date is worked out in: from the purchase month or the first date the user set, whichever is
 // earlier, to the later of them plus the rounds, with the month before and the months after that a moved date can reach (review 8).
 const off = computed<ReadonlySet<string>>(() => {
@@ -284,7 +290,7 @@ const whereLine = computed(() => {
 })
 const summary = computed(() => ({
   name: name.value.trim() || '—', date: md(bought.value),
-  amt: (currency.value === 'USD' ? `USD ${typeof amount.value === 'number' ? amount.value.toFixed(2) : '—'} · ` : '') + fmtMoney(principal.value),
+  amt: (foreign.value ? `${currency.value} ${typeof amount.value === 'number' ? amount.value.toFixed(2) : '—'} · ` : '') + fmtMoney(principal.value),
 }))
 /** The buffer gauge (S-8): the account's buffer, what other buffer uses have not refilled yet, and this spending on top. */
 const gauge = computed(() => {
@@ -300,7 +306,7 @@ const gauge = computed(() => {
     until: DATE.test(lastD) ? `${lastD.slice(0, 4)}. ${lastD.slice(5, 7)}` : '—', each: l[0]?.amount ?? 0,
   }
 })
-const usdLine = computed(() => t('spending.ed.fxValue', { rate: num(rate.value ?? store.settings.fxRate), buffer: buffer.value ?? store.settings.fxBuffer }))
+const usdLine = computed(() => { const r = rate.value ?? fxDefault.value.rate; return t('spending.ed.fxValue', { rate: currency.value === 'USD' ? num(r) : rateNum(r), buffer: buffer.value ?? fxDefault.value.buffer }) })
 
 // ---------- checks, one per step ----------
 function problem(s: number): string | null {
@@ -385,17 +391,17 @@ async function confirmDelete() { await remove() }
         <div class="field">
           <label for="sp-amount" class="req">{{ t('spending.ed.amount') }}</label>
           <div class="amt-row">
-            <Seg v-model="currency" class="cur" :options="currencyOpts" :label="t('spending.ed.currency')" />
-            <MoneyInput id="sp-amount" v-model="amount" :decimal="currency === 'USD'" prefix="" />
+            <CurrencyPick v-model="currency" :options="currencyOpts" :label="t('spending.ed.currency')" />
+            <MoneyInput id="sp-amount" v-model="amount" :decimal="foreign" prefix="" />
           </div>
         </div>
         <div class="field">
           <div class="lrow"><label for="sp-bought">{{ t('spending.ed.bought') }}</label><Tip :text="t('spending.ed.boughtTip')" /></div>
           <DateInput id="sp-bought" v-model="bought" :aria-label="t('spending.ed.bought')" />
         </div>
-        <template v-if="currency === 'USD'">
+        <template v-if="foreign">
           <div class="field">
-            <div class="lrow"><span class="flabel">{{ t('spending.ed.fx') }}</span><Tip :text="t('spending.ed.fxTip', { buffer: store.settings.fxBuffer })" /></div>
+            <div class="lrow"><span class="flabel">{{ t('spending.ed.fx') }}</span><Tip :text="t('spending.ed.fxTip', { buffer: fxDefault.buffer })" /></div>
             <div class="line" data-testid="sp-fx">{{ usdLine }}</div>
           </div>
           <div class="field">

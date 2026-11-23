@@ -8,11 +8,13 @@ import EditSheet from './EditSheet.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import MoneyInput from './MoneyInput.vue'
 import Seg from './Seg.vue'
+import CurrencyPick from './CurrencyPick.vue'
 import Tip from './Tip.vue'
 import { useEditor } from '../lib/useEditor'
 import { pricedSettings, store } from '../lib/store'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { chargeKrw, monthlyKrw, num, planAt, usd, ymLabel } from '../lib/calc'
+import { chargeKrw, monthlyKrw, num, planAt, ymLabel } from '../lib/calc'
+import { currencyCodes, fxAmount, rateFor, rateNum } from '../lib/currency'
 import { wonText } from '../lib/format'
 import type { Category, PlanChange, Subscription } from '../data/types'
 import Select from './Select.vue'
@@ -49,7 +51,8 @@ const askDel = ref(false)
 const steps = computed(() => [t('subscriptions.stepBasic'), t('subscriptions.stepPay')])
 const statusOpts = computed(() => STATUS_IDS.map((id) => ({ id, label: statusLabel(id) })))
 const cycleOpts = computed(() => (['monthly', 'yearly'] as const).map((id) => ({ id, label: cycleLabel(id) })))
-const currencyOpts = [{ id: 'KRW', label: 'KRW' }, { id: 'USD', label: 'USD' }]
+// KRW, USD and every listed code (spec 013 S-23); the stored code stays an option
+const currencyOpts = computed(() => currencyCodes(store.currencies, props.initial?.currency).map((id) => ({ id, label: id })))
 const isNew = !props.initial
 
 // The model of an amount field is a number, or '' while it is empty.
@@ -82,7 +85,7 @@ function save() {
 const PLAN_KEYS = ['plan', 'amount', 'currency', 'vat', 'cycle', 'status'] as const
 const planLabel = (): Record<(typeof PLAN_KEYS)[number], string> => ({ plan: t('subscriptions.plan'), amount: t('subscriptions.amount'), currency: t('subscriptions.currency'), vat: 'VAT', cycle: t('subscriptions.cycle'), status: t('subscriptions.status') })
 function show(k: (typeof PLAN_KEYS)[number], p: Subscription) {
-  if (k === 'amount') return p.currency === 'USD' ? usd(p.amount) : wonText(p.amount)
+  if (k === 'amount') return p.currency !== 'KRW' ? fxAmount(p.currency, p.amount) : wonText(p.amount)
   if (k === 'cycle') return cycleLabel(p.cycle)
   if (k === 'status') return statusLabel(p.status)
   if (k === 'vat') return `${p.vat}%`
@@ -100,7 +103,11 @@ const overridden = computed(() => {
 })
 const draft = computed(() => ({ ...edit.value!, amount: Number(edit.value!.amount) || 0, vat: Number(edit.value!.vat) || 0 }))
 const monthly = computed(() => wonText(monthlyKrw(draft.value, pricedSettings())) + (draft.value.cycle === 'yearly' ? ` ${t('subscriptions.yearOf', { amount: wonText(chargeKrw(draft.value, pricedSettings())) })}` : ''))
-const fx = computed(() => `₩${num(store.settings.fxRate)}`)
+// the rate of the item's currency (USD: the settings' one, shown as before)
+const fx = computed(() => {
+  const r = rateFor(edit.value!.currency, store.settings, store.currencies)
+  return r ? `₩${edit.value!.currency === 'USD' ? num(r.rate) : rateNum(r.rate)}` : '—'
+})
 
 function toCancelled() { edit.value!.status = 'cancelled' }
 async function confirmDelete() { await remove() }
@@ -135,15 +142,15 @@ async function confirmDelete() { await remove() }
       </template>
 
       <template v-else>
-        <div class="amt" :class="{ two: edit.currency === 'USD' }">
+        <div class="amt" :class="{ two: edit.currency !== 'KRW' }">
           <div class="field">
             <label for="e-amount" class="req">{{ t('subscriptions.amount') }}</label>
             <div class="amt-row">
-              <Seg v-model="edit.currency" class="cur" :options="currencyOpts" :label="t('subscriptions.currency')" />
+              <CurrencyPick v-model="edit.currency" :options="currencyOpts" :label="t('subscriptions.currency')" />
               <MoneyInput id="e-amount" v-model="amount" decimal prefix="" />
             </div>
           </div>
-          <div v-if="edit.currency === 'USD'" class="field">
+          <div v-if="edit.currency !== 'KRW'" class="field">
             <div class="lrow"><label for="e-vat">VAT (%)</label><Tip :text="t('subscriptions.vatTip', { rate: fx })" /></div>
             <MoneyInput id="e-vat" v-model="vat" decimal prefix="" />
           </div>
