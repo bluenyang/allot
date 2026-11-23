@@ -44,6 +44,7 @@ export const budgetKo = {
     tabMaturity: '만기 일정',
     status: {
       adjusted: '이번 달만 {amount}로 조정했어요 · 항목에 금액 비례로 나눠요',
+      adjustedNoItem: '이번 달만 {amount}로 조정했어요 · 이 달에 보내는 항목이 없어 월급 분배 금액만 바뀌어요',
       living: '이 합계가 월급 분배의 생활비 금액이 돼요',
       livingNoTarget: '월급 분배에 생활비 합계 대상이 없어 아직 월급 분배에 들어가지 않아요',
       noTarget: '월급 분배에 {cat} 합계 대상이 없어 이 항목들은 아직 월급 분배에 들어가지 않아요',

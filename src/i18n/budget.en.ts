@@ -43,6 +43,7 @@ export const budgetEn: BudgetMessages = {
     tabMaturity: 'Maturities',
     status: {
       adjusted: 'Adjusted to {amount} for this month only · split over the items by their amounts',
+      adjustedNoItem: 'Adjusted to {amount} for this month only · no item sends this month, so only the pay split amount changes',
       living: 'This total becomes the living cost amount of the pay split',
       livingNoTarget: 'The pay split has no living cost target, so this is not in the pay split yet',
       noTarget: 'The pay split has no {cat} total target, so these items are not in the pay split yet',

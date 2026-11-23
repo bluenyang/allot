@@ -185,7 +185,8 @@ const total = computed(() => {
   const s = sumStatus(g.value, phase.value)
   const c = cat.value
   const [msg, tone]: [string, Tone] =
-    adjust.value && !ratio.value ? [t('budget.status.adjusted', { amount: fmtMoney(adjust.value.amount) }), 'ok']
+    // no item sends that month: nothing is spread and the target takes the adjustment itself (A-29; review rc2-3 F-1)
+    adjust.value && !ratio.value ? (g.value.sum > 0 ? [t('budget.status.adjusted', { amount: fmtMoney(adjust.value.amount) }), 'ok'] : [t('budget.status.adjustedNoItem', { amount: fmtMoney(adjust.value.amount) }), 'warn'])
     : s.code === 'noTarget' ? [t('budget.status.noTarget', { cat: c }), 'warn']
     : s.code === 'noPhase' ? [t('budget.status.noPhase'), 'warn']
     : s.code === 'same' ? [t(s.ratio ? 'budget.status.sameRatio' : 'budget.status.same', { cat: c }), 'ok']
