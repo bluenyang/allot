@@ -13,6 +13,7 @@ import { ApiError, api } from '../lib/api'
 import { loadState, store, subName } from '../lib/store'
 import Select from '../components/Select.vue'
 import { PERIOD_KINDS, periodBounds, periodQuery, type PeriodKind } from '../lib/history-period'
+import { fieldName, tableName } from '../lib/proposals'
 
 // Change history (spec 005 S-3, restyled by spec 010 S-9): one save = one change set, newest first, grouped by
 // day. A set can be reverted like a commit: the opposite change is saved as a new set (also a revert can be
@@ -30,7 +31,8 @@ interface Change {
 interface ChangeSet {
   id: string
   at: string
-  actorKind: 'user' | 'api_key'
+  /** system: the server's daily rate refresh (spec 013 S-23) */
+  actorKind: 'user' | 'api_key' | 'system'
   /** The AI key's name when an AI key made the set (spec 009). */
   actorLabel: string | null
   method: string
@@ -40,7 +42,6 @@ interface ChangeSet {
   changes: Change[]
 }
 
-const tableName = (name: string) => { const k = `history.table.${name}`; return te(k) ? t(k as MessageKey) : name }
 const OP = { insert: 'insert', update: 'update', delete: 'delete' } as const
 /** What the opposite change was, for a set that reverts another. */
 const WAS = { insert: 'delete', delete: 'insert', update: 'update' } as const
@@ -128,12 +129,12 @@ const fields = (c: Change) => {
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
 /** A field's value: an allocation target by its name (a month adjustment's or a phase amount's target; review rc2-1 F-3), else as stored. */
 const valueOf = (k: string, v: unknown) => (k === 'targetId' && typeof v === 'string' ? targetName(v) : show(v))
-const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : t('history.you'))
+const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : s.actorKind === 'system' ? t('currency.system') : t('history.you'))
 
 // ---------- filters ----------
 const actor = ref<'all' | 'me' | 'ai'>('all')
 const kind = ref('')
-const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending', 'month_adjust']
+const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending', 'month_adjust', 'foreign_currency', 'schedule_item']
 /** The remainder split's rows are named after what the remainder target is, not a fixed word (spec 010 S-9). */
 const kindOpts = computed(() => KIND_IDS.map((id) => ({ id, label: id === 'remainder_split' ? t('history.kindRemainder') : tableName(id) })))
 const byKind = computed(() => sets.value.filter((s) => !kind.value || s.changes.some((c) => c.tableName === kind.value)))
@@ -231,7 +232,7 @@ async function revert() {
                   <thead><tr><th scope="col">{{ t('history.colField') }}</th><th scope="col">{{ t('history.colBefore') }}</th><th scope="col">{{ t('history.colAfter') }}</th></tr></thead>
                   <tbody>
                     <tr v-for="f in fields(c)" :key="f.k">
-                      <th scope="row">{{ f.k }}</th>
+                      <th scope="row" :title="f.k">{{ fieldName(f.k, c.tableName) }}</th>
                       <td class="bef">{{ c.op === 'insert' ? '—' : valueOf(f.k, f.b) }}</td>
                       <td class="aft">{{ c.op === 'delete' ? '—' : valueOf(f.k, f.a) }}</td>
                     </tr>
