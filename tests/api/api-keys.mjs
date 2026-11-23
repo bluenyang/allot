@@ -70,6 +70,7 @@ if (failed) process.exit(1)
 
 const uEmail = `v2-${Date.now()}@example.com`
 let uDeleted = false
+let aKeyId = null // the admin's test key while it exists (a stopped run removes it in the cleanup)
 const uPw = 'v2-first-pass-1'
 const created = await A('POST', '/api/auth/admin/create-user', { email: uEmail, password: uPw, name: 'V2 user', role: 'user' })
 ok(created.status === 200, `create-user → ${created.status}`)
@@ -199,6 +200,7 @@ try {
 
   // ── someone else's key; a key is no session ──
   const aKey = await A('POST', '/api/keys', { name: 'admin-key', expiresInDays: 30 })
+  aKeyId = aKey.json?.item?.id ?? null
   ok(aKey.status === 201, `A creates a key → ${aKey.status}`)
   const stolen = await U('DELETE', `/api/keys/${aKey.json?.item?.id}`)
   ok(stolen.status === 404, `U deletes A's key id → ${stolen.status} (want 404)`)
@@ -213,6 +215,7 @@ try {
   }
   ok((await A('GET', '/api/keys')).json.keys.length === 1, 'those requests created nothing')
   await A('DELETE', `/api/keys/${aKey.json?.item?.id}`)
+  aKeyId = null
 
   // ── the plugin's own paths are closed ──
   for (const [method, path, body] of [
@@ -288,7 +291,12 @@ try {
     console.log(`restore policy OFF → ${r.status}`)
   }
   await sql`delete from apikey where name in ('first','y365','d1','admin-key','forever','use','old','left') and reference_id = ${uId ?? ''}`.catch(() => {})
-  // a run stopped before the deletion check above still removes the test user U (review rc3-10 R10-1)
+  // a run stopped before its own deletes still removes the admin's test key and the test user U (review rc3-10 R10-1;
+  // the admin's key was found by the forced failure, test-rc3/rc3-forced-3.log)
+  if (aKeyId) {
+    const d = await A('DELETE', `/api/keys/${aKeyId}`).catch((e) => ({ status: `threw ${e?.message ?? e}` }))
+    console.log(`cleanup: delete the admin's test key → ${d.status}`)
+  }
   if (uId && !uDeleted) {
     const d = await A('DELETE', `/api/admin/users/${uId}`, { confirmEmail: uEmail }).catch((e) => ({ status: `threw ${e?.message ?? e}` }))
     console.log(`cleanup: delete U → ${d.status}`)
