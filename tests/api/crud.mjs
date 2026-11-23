@@ -183,7 +183,8 @@ if (phase === 'create') {
     'USD without a buffer': { ...spend, currency: 'USD', fxRate: 1380, fxBuffer: null },
     'KRW with a buffer': { ...spend, fxBuffer: 3 },
     'USD with a 3-decimal buffer': { ...spend, currency: 'USD', fxRate: 1380, fxBuffer: 3.456 },
-    'USD with a 3-decimal rate': { ...spend, currency: 'USD', fxRate: 1380.256, fxBuffer: 3 },
+    // a spending's rate takes up to 6 decimals since rc.3 (review rc3-1 F-2, A-43); the buffer keeps 2
+    'USD with a 7-decimal rate': { ...spend, currency: 'USD', fxRate: 1380.2560001, fxBuffer: 3 },
     'lump with 2 rounds': { ...spend, how: 'lump', count: 1, fee: 0, rounds: spend.rounds.slice(0, 2) },
     'fee on a salary installment': { ...spend, payBy: 'salary' },
     'interval on an installment': { ...spend, interval: 'monthly' },
