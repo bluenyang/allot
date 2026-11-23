@@ -1559,3 +1559,25 @@ test('(S-4, A-41, review 17, W-7) three rounds with the first paid made six: the
     await cleanEd(request)
   }
 })
+
+test('(spec 011 S-4) the 할부 detail: each round of the rounds table is one table row on one line (the global .row grid stays off it)', async ({ page, request }) => {
+  const name = `${MARK}-rt`
+  const m = (n: number) => `${thisYm().slice(0, 4)}-${String(((Number(thisYm().slice(5, 7)) - 1 + n) % 12) + 1).padStart(2, '0')}`
+  const body = {
+    name, note: '', category: '생활', bought: `${thisYm()}-05`, amount: 300_000, currency: 'KRW', fxRate: null, fxBuffer: null,
+    how: 'installment', payBy: 'card', count: 3, fee: 0, interval: null, cancelled: false,
+    rounds: [1, 2, 3].map((no) => ({ no, date: `${m(no)}-14`, amount: 100_000, state: 'left', edited: false })),
+  }
+  await withSpendings(request, [body], async () => {
+    await page.goto('/spend/inst')
+    await page.getByText(name).first().click()
+    const rows = page.locator('table.rt tbody tr')
+    await expect(rows).toHaveCount(3)
+    for (let i = 0; i < 3; i++) {
+      const row = rows.nth(i)
+      expect(await row.evaluate((el) => getComputedStyle(el).display)).toBe('table-row')
+      const ys = await row.locator('td').evaluateAll((tds) => tds.map((td) => Math.round(td.getBoundingClientRect().top)))
+      expect(new Set(ys).size, `round ${i + 1}: every cell on one line (${ys.join(',')})`).toBe(1)
+    }
+  })
+})

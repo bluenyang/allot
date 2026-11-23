@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.7-fix.1 — 2026-11-24
+
+A fix release on 0.1.7, named by the user ("0.1.7-fix.1로 배포해"). The version carries a hyphen, so the release workflow
+marks it a prerelease and does not move the `latest` image tag: use `ghcr.io/bluenyang/allot:0.1.7-fix.1` by name.
+
+### Fixed
+- The rounds table of the 할부 detail broke each round into two lines under the column headers: the rows took the global
+  `.row` grid style (since 0.1.5). Each round is one table row again.
+
 ## 0.1.7 — 2026-11-23
 
 The budget menus, account management and every feature that was "coming soon" except the AI ones, each with MCP tools.

@@ -322,7 +322,7 @@ const pickItem = (id: string) => { picked.value = id; error.value = '' }
                 <th scope="col" class="r pr"><span class="sr">{{ t('common.edit') }}</span></th>
               </tr></thead>
               <tbody>
-                <tr v-for="x in d.rounds" :key="x.r.no" class="row" :class="{ nx: x.st === 'next', gone: x.st === 'merged' }">
+                <tr v-for="x in d.rounds" :key="x.r.no" :class="{ nx: x.st === 'next', gone: x.st === 'merged' }">
                   <td class="num pl lbl">{{ x.label }}</td>
                   <td class="mono dt">{{ x.r.date }}</td>
                   <td class="r num amt">{{ fmtMoney(x.r.amount) }}<span v-if="x.r.edited && x.st !== 'merged'" class="hint ed" :title="t('spending.inst.editedTitle')">{{ t('spending.inst.edited') }}</span></td>
