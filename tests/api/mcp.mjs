@@ -6,12 +6,15 @@
 // written straight into the `apikey` table in the form the plugin stores them (the way a key made
 // on the screen looks in the database: SHA-256 base64url of the key); making keys through the
 // screen's API is tests/api/api-keys.mjs. No raw key is printed or written anywhere.
-//   isolation  V-5: users A and B each put marked data in; A's key calls all nine tools and nothing of B shows, and back.
-//   tools      V-6: tools/list (nine, read-only), get_overview for this month and three months on against calc.ts,
-//              get_budget and list_accounts against calc.ts (spec 013 S-10), an unknown tool and bad arguments, list_changes paging.
+//   isolation  V-5: users A and B each put marked data in; A's key calls all eleven tools and nothing of B shows, and back.
+//   tools      V-6: tools/list (eleven, read-only), get_overview for this month and three months on against calc.ts,
+//              get_budget and list_accounts against calc.ts (spec 013 S-10), an unknown tool and bad arguments, list_changes paging;
+//              spec 013 rev 1: search against src/lib/search.ts, list_notifications against calc.ts, list_changes since/until,
+//              the month adjustments and maturity schedule in get_budget (S-14, S-15, S-18..S-20).
 //   write      spec 009 V-3…V-9 through the tools: scope, proposals, previews, apply, confirmation methods,
 //              stale / expired / revoked, revert, isolation (a fresh user W; keys are made through the API);
-//              spec 013 S-10: living items, accounts, cards, a balance record and a buffer use proposed, confirmed, read back and reverted.
+//              spec 013 S-10: living items, accounts, cards, a balance record and a buffer use proposed, confirmed, read back and reverted;
+//              spec 013 S-14: a month adjustment proposed, applied, read back in get_overview and get_budget (this month only), deleted.
 //   auth       V-4: every refusal is the same 401, the per-address limit (21st failure → 429), the per-key
 //              limit, a session or a key on the wrong path, GET, a big body, a foreign Origin.
 //              Ends by exhausting the address limit: restart the api before the next mode.
@@ -84,7 +87,7 @@ const createUser = async (tag) => {
   return r.json.user.id
 }
 
-const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes', 'list_spendings', 'get_budget', 'list_accounts']
+const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes', 'list_spendings', 'get_budget', 'list_accounts', 'search', 'list_notifications']
 let rpcId = 100
 /** tools/call → { status, result (the tool's result), error (JSON-RPC error), data (structuredContent) } */
 async function tool(key, name, args = {}) {
@@ -263,7 +266,7 @@ async function isolationMode() {
     ...(state.cards ?? []).map((x) => x.name), ...(state.livingItems ?? []).map((x) => x.name)].filter((x) => x.length >= 4)
   const states = {}
   for (const tag of ['A', 'B']) states[tag] = (await users[tag].api('GET', '/api/state')).json
-  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }], ['list_spendings', {}], ['get_budget', {}], ['list_accounts', {}]]
+  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }], ['list_spendings', {}], ['get_budget', {}], ['list_accounts', {}], ['search', { query: 'ISO' }], ['list_notifications', {}]]
   for (const [me, other] of [['A', 'B'], ['B', 'A']]) {
     const out = {}
     const outD = {}
@@ -274,7 +277,7 @@ async function isolationMode() {
       outD[name] = t.data
     }
     const all = Object.values(out).join('\n')
-    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the nine answers`)
+    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the eleven answers`)
     const foreignIds = uuidIds(states[other]).filter((x) => !uuidIds(states[me]).includes(x))
     ok(foreignIds.length > 0 && !foreignIds.some((x) => all.includes(x)), `${me}'s key: none of ${other}'s ${foreignIds.length} ids appear`)
     const foreignNames = ownStrings(states[other]).filter((n) => !ownStrings(states[me]).includes(n))
@@ -291,6 +294,9 @@ async function isolationMode() {
     ok(out.list_changes.includes('subscription') || out.list_changes.includes(`${m}-sub`), `${me}'s key: list_changes shows ${me}'s own changes`)
     ok(out.list_accounts.includes(`${m}-account`) && out.list_accounts.includes(`${m}-balance`) && out.list_accounts.includes(`${m}-card`) && out.get_budget.includes(`${m}-living`),
       `${me}'s key: list_accounts shows ${me}'s own account, balance record and card, get_budget ${me}'s own living item`)
+    const found = outD.search.results.map((x) => x.name)
+    ok([`${m}-sub`, `${m}-spend`, `${m}-living`, `${m}-account`, `${m}-card`, `${m}-target`, `${m}-event`, `${m}-check`].every((n) => found.includes(n)) && !found.some((n) => n.includes(users[other].marker)),
+      `${me}'s key: search finds ${me}'s own marked rows of every kind and none of ${other}'s`)
   }
   // A's key cannot ask for B's data by id or by any argument: the tools take none, and an extra argument is ignored or refused
   const sneaky = await tool(users.A.key, 'list_changes', { limit: 50, userId: users.B.id })
@@ -305,14 +311,15 @@ async function toolsMode() {
   const key = await insertKey(aId)
   const list = await mcp(A, key)
   const tools = list.json?.result?.tools ?? []
-  ok(tools.length === 9 && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the nine tools (${tools.map((t) => t.name).join(', ')})`)
+  ok(tools.length === 11 && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the eleven tools (${tools.map((t) => t.name).join(', ')})`)
   ok(tools.every((t) => t.annotations?.readOnlyHint === true), 'every tool says readOnlyHint: true')
   ok(tools.every((t) => !/create|update|delete|write|set_|add_|remove/.test(t.name)), 'no tool name is a write')
   ok(tools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'descriptions are English text')
 
   const unknown = await tool(key, 'delete_everything', {})
   ok(failedCall(unknown), `an unknown tool is an MCP error (${unknown.status} ${JSON.stringify(unknown.error ?? unknown.result?.content?.[0]?.text)?.slice(0, 80)})`)
-  for (const [name, args] of [['get_overview', { month: '2026-13' }], ['get_overview', { month: 'now' }], ['get_schedule', { months: 13 }], ['get_schedule', { months: 0 }], ['list_changes', { limit: 51 }], ['list_changes', { before: '2026-01-01 00:00:00+00' }], ['list_subscriptions', { status: 'gone' }], ['get_budget', { month: '2026-00' }]]) {
+  for (const [name, args] of [['get_overview', { month: '2026-13' }], ['get_overview', { month: 'now' }], ['get_schedule', { months: 13 }], ['get_schedule', { months: 0 }], ['list_changes', { limit: 51 }], ['list_changes', { before: '2026-01-01 00:00:00+00' }], ['list_subscriptions', { status: 'gone' }], ['get_budget', { month: '2026-00' }],
+    ['search', {}], ['search', { query: 'x', kinds: ['gone'] }], ['list_changes', { since: 'not a time' }], ['list_changes', { until: '2026-13-45' }]]) {
     const t = await tool(key, name, args)
     ok(failedCall(t), `${name} ${JSON.stringify(args)} is refused`)
   }
@@ -374,12 +381,15 @@ async function toolsMode() {
     const { dist } = calc.monthMoney(state, ym)
     ok(!failedCall(b) && b.data?.month === ym && b.data.living.items.length === items.length && b.data.living.sumKrw === calc.livingAt(items, state.phases, ym).sum, `get_budget ${ym}: the ${items.length} living items and their sum are calc.ts's`)
     for (const g of ['saving', 'invest']) {
-      const x = calc.groupAt(g, state.accounts, state.phases, state.targets, state.settings, ym)
+      const x = calc.groupAt(g, state.accounts, state.phases, state.targets, state.settings, ym, state.monthAdjusts ?? [])
       ok(b.data?.[g]?.mode === x.mode && b.data[g].sumKrw === x.sum && b.data[g].totalKrw === x.total && JSON.stringify(b.data[g].items.map((i) => [i.accountId, i.monthKrw])) === JSON.stringify(x.rows.map((r) => [r.account.id, r.amount])),
         `get_budget ${ym}: ${g} (${x.mode}, ${x.rows.length} items) is calc.ts's`)
     }
     ok(b.data?.targets?.length === state.targets.length && b.data.targets.every((t) => t.amountKrw === (t.kind === 'remainder' ? dist.remainder : (dist.rows.find((r) => r.key === t.targetId)?.amount ?? 0))) && b.data.remainderKrw === dist.remainder,
       `get_budget ${ym}: what every target gets is monthMoney's`)
+    const adj = (state.monthAdjusts ?? []).filter((a) => a.ym === ym)
+    ok(JSON.stringify((b.data?.monthAdjusts ?? []).map((a) => [a.id, a.targetId, a.amountKrw])) === JSON.stringify(adj.map((a) => [a.id, a.targetId, a.amount])), `get_budget ${ym}: the ${adj.length} month adjustments of the month`)
+    ok(Array.isArray(b.data?.maturity) && b.data.maturity.every((m) => state.accounts.some((a) => a.id === m.accountId && a.group === 'saving' && a.from) && /^\d{4}-\d{2}$/.test(m.maturityMonth)), `get_budget ${ym}: the maturity schedule lists savings items with a from month (${b.data?.maturity?.length})`)
   }
   const la = await tool(key, 'list_accounts', {})
   const bal = state.balances ?? []
@@ -402,6 +412,46 @@ async function toolsMode() {
     const p2 = await tool(key, 'list_changes', { limit: 1, before: p1.data.next.before, beforeId: p1.data.next.beforeId })
     ok(!failedCall(p2) && p2.data.sets.length <= 1 && p2.data.sets[0]?.id !== p1.data.sets[0].id, `list_changes: the next page is another set (${p2.data.sets[0]?.id ?? 'none'})`)
   } else skip('list_changes paging (only one set in the history)')
+
+  // ── spec 013 S-18: list_changes takes the period of the change history (since inclusive, until exclusive) ──
+  const allSets = (await A('GET', '/api/changes?limit=50')).json
+  const pAll = await tool(key, 'list_changes', { limit: 50, since: '2000-01-01T00:00:00Z' })
+  ok(!failedCall(pAll) && JSON.stringify(pAll.data.sets.map((x) => x.id)) === JSON.stringify(allSets.map((x) => x.id)), 'list_changes since 2000: the same sets as without a period')
+  const pNone = await tool(key, 'list_changes', { since: '2999-01-01' })
+  ok(!failedCall(pNone) && pNone.data.sets.length === 0, 'list_changes since 2999: nothing')
+  const pOld = await tool(key, 'list_changes', { until: '2000-01-01' })
+  ok(!failedCall(pOld) && pOld.data.sets.length === 0, 'list_changes until 2000: nothing')
+  if (allSets.length >= 2) {
+    const cut = allSets[1].at // the second newest: since takes it and the newer one
+    const api = (await A('GET', `/api/changes?limit=50&since=${encodeURIComponent(cut)}`)).json
+    const viaTool = await tool(key, 'list_changes', { limit: 50, since: cut })
+    ok(!failedCall(viaTool) && JSON.stringify(viaTool.data.sets.map((x) => x.id)) === JSON.stringify(api.map((x) => x.id)) && viaTool.data.sets.length >= 2, `list_changes since ${cut}: the sets GET /api/changes gives (${api.length})`)
+  } else skip('list_changes period against the API (fewer than two sets)')
+
+  // ── spec 013 S-19: search is the header search's matching (src/lib/search.ts) on the same state ──
+  const srch = await import('../../src/lib/search.ts')
+  const named = [...state.subscriptions, ...state.accounts, ...(state.spendings ?? [])].find((x) => x.name.length >= 2)
+  for (const query of [named ? named.name.slice(0, 2) : 'a', 'a', '  ']) {
+    const t = await tool(key, 'search', { query })
+    const want = srch.search(state, query)
+    ok(!failedCall(t) && t.data.count === want.length && JSON.stringify(t.data.results.map((x) => [x.kind, x.id, x.matched, x.page])) === JSON.stringify(want.map((h) => [h.kind, h.id, h.field, h.path])),
+      `search ${JSON.stringify(query)}: the ${want.length} results of src/lib/search.ts, in its order`)
+  }
+  const onlyAcc = await tool(key, 'search', { query: 'a', kinds: ['account'] })
+  ok(!failedCall(onlyAcc) && onlyAcc.data.results.every((x) => x.kind === 'account') && onlyAcc.data.count === srch.search(state, 'a', ['account']).length, 'search kinds [account]: accounts only')
+
+  // ── spec 013 S-20: list_notifications against calc.ts (charges and rounds of the next three days, this month's remainder) ──
+  const ln = await tool(key, 'list_notifications', {})
+  const todayStr = calc.ymd(calc.today())
+  const in3 = calc.ymd(new Date(calc.today().getFullYear(), calc.today().getMonth(), calc.today().getDate() + 3))
+  const charges = calc.upcomingPayments(state.subscriptions, state.planChanges, state.settings, calc.today(), 3).map((p) => `charge:${p.sub.id}:${calc.ymd(p.date)}`)
+  const rounds = (state.spendings ?? []).filter((x) => !x.cancelled).flatMap((x) => x.rounds.filter((r) => r.state === 'left' && r.date >= todayStr && r.date <= in3).map((r) => `round:${x.id}:${r.no}:${r.date}`))
+  const got = ln.data?.notifications ?? []
+  ok(!failedCall(ln) && ln.data.date === todayStr && got.every((n) => typeof n.message === 'string' && n.message.length > 0 && typeof n.path === 'string'), `list_notifications: ${got.length} notifications, each with a sentence and a page`)
+  ok(JSON.stringify(got.filter((n) => n.group === 'pay').map((n) => n.id).sort()) === JSON.stringify([...charges, ...rounds].sort()), `list_notifications: the ${charges.length} charges and ${rounds.length} rounds of the next three days are calc.ts's`)
+  const rem = calc.monthMoney(state, todayStr.slice(0, 7)).dist.remainder
+  ok(got.some((n) => n.kind === 'remainderShort') === rem < 0, `list_notifications: a remainder short notice exactly when this month's remainder (${rem}) is below 0`)
+  ok(got.filter((n) => n.kind === 'proposals').every((n) => n.count === state.pendingProposals) && got.some((n) => n.kind === 'proposals') === state.pendingProposals > 0, `list_notifications: the proposals waiting (${state.pendingProposals})`)
 }
 
 
@@ -430,19 +480,20 @@ async function writeMode() {
 
   // ── V-3: scope ──
   const rn = await names(kRead.key)
-  ok(rn.length === 9 && rn.includes('list_spendings') && rn.includes('get_budget') && rn.includes('list_accounts') && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the nine read tools (list_spendings, get_budget and list_accounts among them) and no write tool')
+  ok(rn.length === 11 && ['list_spendings', 'get_budget', 'list_accounts', 'search', 'list_notifications'].every((n) => rn.includes(n)) && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the eleven read tools (list_spendings, get_budget, list_accounts, search and list_notifications among them) and no write tool')
   for (const [name, args] of [['propose_changes', { changes: [] }], ['apply_proposal', { proposalId: 'x' }], ['get_proposal', { proposalId: 'x' }], ['propose_revert', { changeSetId: 'x' }]]) {
     ok(failedCall(await tool(kRead.key, name, args)), `a read key calling ${name} is an MCP error`)
   }
   const un = await mcp(A, kUi.key)
   const utools = un.json?.result?.tools ?? []
-  ok(utools.length === 13 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: thirteen tools (${utools.length})`)
+  ok(utools.length === 15 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: fifteen tools (${utools.length})`)
   ok(utools.find((t) => t.name === 'apply_proposal')?.annotations?.destructiveHint === true && utools.find((t) => t.name === 'get_proposal')?.annotations?.readOnlyHint === true && utools.find((t) => t.name === 'propose_changes')?.annotations?.readOnlyHint === false, 'annotations: apply is destructive, get is read-only, propose is not read-only')
   ok(utools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'write tool descriptions are English text')
   const pc = utools.find((t) => t.name === 'propose_changes')
   ok(JSON.stringify(pc?.inputSchema ?? {}).includes('subscriptions') && JSON.stringify(pc?.inputSchema ?? {}).includes('remainder-split') && JSON.stringify(pc?.inputSchema ?? {}).includes('spendings') && /spendings/.test(pc?.description ?? ''), 'propose_changes advertises the resource shapes (spendings too)')
   ok(['living-items', 'accounts', 'balances', 'cards'].every((r) => JSON.stringify(pc?.inputSchema ?? {}).includes(`"${r}"`)) && /buffer/.test(pc?.description ?? '') && /maturity/.test(pc?.description ?? '') && /mini PC/.test(pc?.description ?? ''),
     'propose_changes advertises living items, accounts, balances and cards, the buffer use and the two examples (spec 013 S-10)')
+  ok(JSON.stringify(pc?.inputSchema ?? {}).includes('"month-adjusts"') && /month adjustments/.test(pc?.description ?? '') && /afterMaturity/.test(pc?.description ?? ''), 'propose_changes advertises the month adjustments and afterMaturity (spec 013 S-14, S-15)')
   console.log(`INFO propose_changes input schema: ${JSON.stringify(pc?.inputSchema ?? {}).length} bytes`)
 
   // without the badge's number, which a proposal changes by existing
@@ -855,6 +906,33 @@ async function writeMode() {
     ok(la?.cards?.some((c) => c.id === card?.id && c.accountId === pay?.id && c.account === 'E2E-mcp-pay' && c.billingDay === 12), 'list_accounts: the card with its paying account and billing day')
     const ov1 = (await tool(kRead.key, 'get_overview', { month: ym1 })).data
     ok(ov1?.distribution?.remainderKrw === m3b?.remainderKrw?.after, "get_overview next month: the remainder is the preview's after")
+
+    // ── spec 013 S-14: a month adjustment of the savings target, this month only ──
+    const sMa = JSON.stringify(await wState())
+    const qa = await tool(kChat.key, 'propose_changes', { note: 'this month only', changes: [
+      { resource: 'month-adjusts', action: 'create', data: { ym: ymNow, targetId: tgt?.id ?? 'x', amount: 100_000, reason: 'E2E once' } },
+    ] })
+    const [qaNow, qaNext] = qa.data?.preview?.months ?? []
+    const qaRow = qaNow?.distribution?.find((r) => r.targetId === tgt?.id)
+    ok(!failedCall(qa) && (qa.data?.preview?.rows ?? []).some((r) => r.table === 'month_adjust' && r.op === 'insert') && qaRow?.amountKrw?.before === 300_000 && qaRow.amountKrw.after === 100_000
+      && qaNow.remainderKrw.after - qaNow.remainderKrw.before === 200_000 && qaNext?.remainderKrw?.before === qaNext?.remainderKrw?.after,
+      `propose_changes month-adjusts: this month the savings target 300,000 → 100,000 and the remainder 200,000 more, next month as before (${(qa.text ?? '').slice(0, 100)})`)
+    ok(JSON.stringify(await wState()) === sMa, 'proposing the adjustment wrote nothing')
+    const aa = await tool(kChat.key, 'apply_proposal', { proposalId: qa.data?.proposalId })
+    ok(!failedCall(aa), 'applied: the month adjustment')
+    const stA = await wState()
+    const ma = (stA.monthAdjusts ?? []).find((x) => x.targetId === tgt?.id && x.ym === ymNow)
+    ok(ma?.amount === 100_000 && ma.reason === 'E2E once', 'the month adjustment is in the data')
+    const ovA = (await tool(kRead.key, 'get_overview', {})).data
+    ok(ovA?.monthAdjusts?.some((x) => x.id === ma?.id && x.amountKrw === 100_000 && x.plannedKrw === 300_000 && x.reason === 'E2E once') && ovA.distribution.rows.find((r) => r.targetId === tgt?.id)?.amountKrw === 100_000
+      && ovA.distribution.remainderKrw === mjs.monthMoney(stA, ymNow).dist.remainder, 'get_overview: the adjustment with the amount it replaces, the target at 100,000 and the remainder monthMoney\'s')
+    const gbA = (await tool(kRead.key, 'get_budget', {})).data
+    const gbN = (await tool(kRead.key, 'get_budget', { month: ym1 })).data
+    ok(gbA?.saving?.targetKrw === 100_000 && gbA.saving.sumKrw === 300_000 && gbA.saving.adjustment?.amountKrw === 100_000 && gbA.targets.find((t) => t.targetId === tgt?.id)?.amountKrw === 100_000
+      && gbN?.saving?.targetKrw === 300_000 && gbN.saving.adjustment === null && (gbN.monthAdjusts ?? []).length === 0,
+      'get_budget: this month the target gets the adjustment (its items still add up to 300,000), next month 300,000 again')
+    const delA = await W('DELETE', `/api/month-adjusts/${ma?.id}`)
+    ok(delA.status === 204 && JSON.stringify(await wState()) === sMa, `deleting the adjustment → ${delA.status}, the data as before it`)
 
     // the user reverts it in the change history: no balance record, no spending, the data as before
     const rv13 = await W('POST', `/api/changes/${apply3.json?.changeSet}/revert`)
