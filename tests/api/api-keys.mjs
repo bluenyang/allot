@@ -69,6 +69,7 @@ ok(sa.status === 200, `A sign-in ${sa.status}`)
 if (failed) process.exit(1)
 
 const uEmail = `v2-${Date.now()}@example.com`
+let uDeleted = false
 const uPw = 'v2-first-pass-1'
 const created = await A('POST', '/api/auth/admin/create-user', { email: uEmail, password: uPw, name: 'V2 user', role: 'user' })
 ok(created.status === 200, `create-user → ${created.status}`)
@@ -271,6 +272,7 @@ try {
   const [{ n: nBefore }] = await sql`select count(*)::int as n from apikey where reference_id = ${uId}`
   ok(nBefore >= 1, `U has ${nBefore} key(s) before the account is deleted`)
   const gone = await A('DELETE', `/api/admin/users/${uId}`, { confirmEmail: uEmail })
+  if (gone.status === 204) uDeleted = true
   ok(gone.status === 204, `admin deletes U → ${gone.status}`)
   const [{ n: nAfter }] = await sql`select count(*)::int as n from apikey where reference_id = ${uId}`
   ok(nAfter === 0, `U's keys are gone with the account (${nAfter})`)
@@ -284,6 +286,11 @@ try {
     console.log(`restore policy OFF → ${r.status}`)
   }
   await sql`delete from apikey where name in ('first','y365','d1','admin-key','forever','use','old','left') and reference_id = ${uId ?? ''}`.catch(() => {})
+  // a run stopped before the deletion check above still removes the test user U (review rc3-10 R10-1)
+  if (uId && !uDeleted) {
+    const d = await A('DELETE', `/api/admin/users/${uId}`, { confirmEmail: uEmail }).catch((e) => ({ status: `threw ${e?.message ?? e}` }))
+    console.log(`cleanup: delete U → ${d.status}`)
+  }
   await sql.end()
 }
 console.log(failed ? `${failed} FAILED` : `all checks passed${skipped ? ` (${skipped} skipped)` : ''}`)
