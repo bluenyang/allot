@@ -103,7 +103,7 @@ function monthlyDelta(d: Data, c: PlanChange): number | null {
 
 /**
  * The month adjustments of month `ym` (spec 013 S-14), each with the amount it replaces: a fixed target's phase amount, or a
- * Savings / Investment target's split (amount split: the items added up, which the target gets in place of the adjustment;
+ * Savings / Investment target's split (amount split: the items added up, which the adjustment is spread over in proportion;
  * ratio split: the phase amount the items share, which the adjustment replaces as that month's total).
  */
 function adjustsIn(d: Data, ym: string) {
@@ -322,9 +322,9 @@ function groupView(d: Data, group: BudgetGroup, ym: string) {
     })),
     sumKrw: krw(g.sum),
     ratioSum: g.ratioSum,
-    /** what the target gets that month: the items added up, or this month's adjustment of an amount split (spec 013 S-14) */
+    /** what the target gets that month: the items added up (an amount split's adjustment is spread over them; spec 013 S-14, review rc2-1 F-2) */
     targetKrw: krw(groupValue(g, adjust)),
-    /** this month's adjustment of the target (amount split: what the target gets; ratio split: the total the items share), or null */
+    /** this month's adjustment of the target (amount split: spread over the items by amount; ratio split: the total the items share), or null */
     adjustment: adjust ? { id: adjust.id, amountKrw: krw(adjust.amount), ...(adjust.reason ? { reason: adjust.reason } : {}) } : null,
   }
 }

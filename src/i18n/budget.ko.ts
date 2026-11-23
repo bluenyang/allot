@@ -302,7 +302,8 @@ export const budgetKo = {
       short: '나머지가 모자라요. 다른 분배 대상을 줄이거나 실수령을 확인하세요.',
       noPhase: '이번 달 구간이 없어요. 월급 분배에서 구간을 먼저 만드세요.',
       goPay: '월급 분배 열기',
-      amountKeep: '금액으로 나누는 중이라 항목별 금액은 그대로예요. 이 달 월급 분배의 {cat} 금액만 바뀌어요.',
+      amountSpread: '항목 금액 비율대로 나눠요',
+      amountKeep: '이 달에 보내는 {cat} 항목이 없어 월급 분배의 {cat} 금액만 바뀌어요.',
     },
   },
 } as const

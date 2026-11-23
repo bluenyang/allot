@@ -450,10 +450,26 @@ export function livingAt(items: LivingItem[], phases: Phase[], ym: string) {
 export const accountSends = (a: Account, ym: string) => (!a.from || ym >= a.from) && (!a.stopFrom || ym < a.stopFrom)
 
 /**
- * What a Savings / Investment target gets in a month: its items added up; a month adjustment of an amount split
- * takes the target's place for that month (a ratio split's adjustment is its total, so the items carry it; S-14).
+ * What a Savings / Investment target gets in a month: its items added up, in both splits (`groupAt` spreads a month
+ * adjustment over the items; S-14, review rc2-1 F-2). The one exception: an amount split whose items send nothing that
+ * month has no item to carry an adjustment, so the target gets the adjustment itself.
  */
 export const groupValue = (g: GroupMonth, adjust: MonthAdjust | undefined) => (adjust && g.mode === 'amount' ? adjust.amount : g.sum)
+
+/**
+ * `total` spread over `amounts` in proportion to them (review rc2-1 F-2): each gets ⌊amount × total ÷ sum⌋ and the last
+ * non-zero one takes the rest, so the parts add up to `total`. With a sum of 0 nothing is spread (all stay 0).
+ */
+export function spreadOver(amounts: number[], total: number): number[] {
+  const sum = amounts.reduce((a, x) => a + x, 0)
+  if (sum <= 0) return [...amounts]
+  const exact = Number.isInteger(sum) && Number.isInteger(total) && amounts.every(Number.isInteger)
+  const share = (x: number) => (exact ? Number((BigInt(x) * BigInt(total)) / BigInt(sum)) : Math.floor((x * total) / sum))
+  const last = amounts.reduce((at, x, i) => (x > 0 ? i : at), -1)
+  const parts = amounts.map((x, i) => (i === last || x <= 0 ? 0 : share(x)))
+  parts[last] = total - parts.reduce((a, x) => a + x, 0)
+  return parts
+}
 
 /** The split of a menu (S-3): saving defaults to amount, invest to ratio. */
 export const splitOf = (group: BudgetGroup, s: Pick<Settings, 'savingSplit' | 'investSplit'>): SplitMode =>
@@ -484,15 +500,16 @@ export function groupAt(group: BudgetGroup, accounts: Account[], phases: Phase[]
   const mode = splitOf(group, s)
   const target = targets.find((t) => t.kind === group) ?? null
   const items = accounts.filter((a) => a.group === group)
-  // a ratio split's month adjustment is that month's total (S-14)
+  // a ratio split's month adjustment is that month's total (S-14); an amount split's is spread over the month's
+  // items in proportion to their amounts, so every view of the items follows it (review rc2-1 F-2)
   const adjust = target ? adjusts.find((a) => a.ym === ym && a.targetId === target.id) : undefined
   const ratioTotal = adjust ? adjust.amount : target && phase ? (phase.amounts[target.id] ?? 0) : 0
-  const rows = items.map((account) => ({
-    account,
-    amount: !accountSends(account, ym) ? 0
-      : mode === 'ratio' ? Math.round((ratioTotal * (account.ratio ?? 0)) / 1000) * 1000
-      : amountIn(account.amount ?? 0, account.amounts, phase),
-  }))
+  const amounts = items.map((account) =>
+    !accountSends(account, ym) ? 0
+    : mode === 'ratio' ? Math.round((ratioTotal * (account.ratio ?? 0)) / 1000) * 1000
+    : amountIn(account.amount ?? 0, account.amounts, phase))
+  const spread = adjust && mode === 'amount' ? spreadOver(amounts, adjust.amount) : amounts
+  const rows = items.map((account, i) => ({ account, amount: spread[i]! }))
   const sum = rows.reduce((a, r) => a + r.amount, 0)
   const ratioSum = Math.round(items.reduce((a, x) => a + (x.ratio ?? 0), 0) * 10_000) / 10_000
   return { group, mode, target, total: mode === 'ratio' ? ratioTotal : sum, rows, sum, ratioSum }

@@ -301,7 +301,8 @@ export const budgetEn: BudgetMessages = {
       short: 'The remainder falls short. Lower another target or check the take-home pay.',
       noPhase: 'No phase this month. Create a phase in the pay split first.',
       goPay: 'Open the pay split',
-      amountKeep: 'Split by amount, so each item’s amount stays. Only this month’s {cat} amount in the pay split changes.',
+      amountSpread: 'Spread over the items by their amounts',
+      amountKeep: 'No {cat} item sends this month, so only this month’s {cat} amount in the pay split changes.',
     },
   },
 }

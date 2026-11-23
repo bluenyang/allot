@@ -442,7 +442,10 @@ test('get_overview and get_budget: the month adjustments, worked out by calc.ts,
   assert.equal(b.invest.targetKrw, inv.sum)
   assert.deepEqual(b.invest.adjustment, { id: 'm3', amountKrw: 500_000 })
   const sav = groupAt('saving', ad.accounts, ad.phases, ad.targets, ad.settings, '2026-11', ad.monthAdjusts)
-  assert.equal(b.saving.sumKrw, 500_000, 'an amount split keeps its items')
+  // an amount split spreads the adjustment over its items by their amounts (review rc2-1 F-2): the one item gets it all
+  assert.equal(b.saving.sumKrw, 300_000)
+  assert.deepEqual(b.saving.items.map((i) => i.monthKrw), sav.rows.map((r) => r.amount))
+  assert.deepEqual(b.saving.items.map((i) => [i.amountKrw, i.monthKrw]), [[500_000, 300_000]])
   assert.equal(b.saving.targetKrw, groupValue(sav, ad.monthAdjusts![1]))
   assert.equal(b.saving.targetKrw, 300_000)
   assert.equal(b.targets.find((t) => t.targetId === 't-sav')!.amountKrw, 300_000)

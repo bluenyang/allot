@@ -4,8 +4,8 @@
 // target (one row, `month-adjusts`); "이 구간 끝까지" writes the amount of that month's phase with every other field of the
 // phase as it was, as the phase editor does (not offered for a Savings / Investment total in the amount split: its value
 // is the items' sum; nor without a phase that month). The phase scope also takes away the month's adjustment, which would
-// hide the new amount. "조정 되돌리기" deletes the month's adjustment. The remainder before → after (and, in the ratio
-// split, each item's new amount) is worked out on a copy of the state (`adjustPreview`). An emptied amount field means 0,
+// hide the new amount. "조정 되돌리기" deletes the month's adjustment. The remainder before → after (and each item's
+// new amount: by ratio, or spread by amount) is worked out on a copy of the state (`adjustPreview`). An emptied amount field means 0,
 // as the phase editor's amount fields do; anything else goes to the API as typed and the API answers.
 // `total` = the Savings / Investment page's "총액 수정" (spec 013 S-3): its own words, the phase scope first where it is
 // offered (the rc.1 dialog wrote the phase only), no quick buttons.
@@ -67,16 +67,20 @@ const scopeHint = computed(() => {
 const onlyMonth = 'reason' in ps ? ps.reason : null
 const kindLabel = computed(() => t(`payroll.kind.${props.target.kind}` as MessageKey))
 const amountSplit = onlyMonth === 'amountSplit'
-/** A ratio split: what each item gets after the change. */
-const ratioRows = computed(() => {
-  if (!group || amountSplit) return []
+/**
+ * What each item gets after the change: the ratio split shares the total by ratio; the amount split spreads the month's
+ * value over the items in proportion to their amounts (review rc2-1 F-2) — unless no item sends that month, when the
+ * target gets the value itself.
+ */
+const itemRows = computed(() => {
+  if (!group || (amountSplit && start.base <= 0)) return []
   const v = value.value
   const adjusts = scope.value === 'month' ? withAdjust(store.monthAdjusts, props.ym, props.target.id, v) : withoutAdjust(store.monthAdjusts, props.ym, props.target.id)
   const phases = scope.value === 'phase' && phase ? withTotal(store.phases, phase.id, props.target.id, v) : store.phases
   return groupAt(group, store.accounts, phases, store.targets, store.settings, props.ym, adjusts).rows
 })
 /** What the items get in all: what the target gets that month (a ratio sum under 100% leaves the rest in the remainder). */
-const ratioSum = computed(() => ratioRows.value.reduce((a, r) => a + r.amount, 0))
+const itemSum = computed(() => itemRows.value.reduce((a, r) => a + r.amount, 0))
 const restName = computed(() => {
   const r = store.targets.find((x) => x.kind === 'remainder')
   return r ? t('budget.total.restOf', { name: r.name }) : t('budget.total.rest')
@@ -150,10 +154,10 @@ function revert() {
     </div>
     <div class="pvw" data-testid="adjust-preview">
       <div class="pl"><span>{{ restName }}</span><span><s>{{ signed(preview.before) }}</s><b>{{ signed(preview.after) }}</b></span></div>
-      <div v-if="ratioRows.length" class="sub">
-        <b>{{ t('budget.total.redo') }}</b>
-        <div v-for="r in ratioRows" :key="r.account.id" class="pl"><span>{{ r.account.name }} · {{ pctOf(r.account.ratio ?? 0) }}%</span><b>{{ wonText(r.amount) }}</b></div>
-        <div class="pl"><span>{{ t('budget.adjust.itemsSum', { cat }) }}</span><b>{{ wonText(ratioSum) }}</b></div>
+      <div v-if="itemRows.length" class="sub">
+        <b>{{ t(amountSplit ? 'budget.total.amountSpread' : 'budget.total.redo') }}</b>
+        <div v-for="r in itemRows" :key="r.account.id" class="pl"><span>{{ r.account.name }}<template v-if="!amountSplit"> · {{ pctOf(r.account.ratio ?? 0) }}%</template></span><b>{{ wonText(r.amount) }}</b></div>
+        <div class="pl"><span>{{ t('budget.adjust.itemsSum', { cat }) }}</span><b>{{ wonText(itemSum) }}</b></div>
       </div>
       <span v-else-if="group && amountSplit" class="sub">{{ t('budget.total.amountKeep', { cat }) }}</span>
       <span v-if="preview.after < 0" class="bad">{{ t('budget.total.short') }}</span>
