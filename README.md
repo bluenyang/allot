@@ -40,6 +40,9 @@ docker compose -f docker/compose.yaml up -d
 - `TRUSTED_ORIGINS`에 같은 주소를 적는다(쉼표로 여러 개). 운영에서는 반드시 설정한다. 비워 두면 요청이 온 주소를 믿는 개발용 동작이다.
 - **HTTPS(Traefik):** 예시 compose는 이미 떠 있는 Traefik(docker provider) 뒤에 앱을 둔다. 앱은 포트를 열지 않고 Traefik 네트워크(`TRAEFIK_NETWORK`)에 붙고, `ALLOT_HOST`·`TRAEFIK_ENTRYPOINT`·`TRAEFIK_CERTRESOLVER`를 그 Traefik의 이름에 맞춘다. 컨테이너는 읽기 전용, Linux capability 없이 돈다. Traefik을 쓰지 않으면 compose 파일의 주석대로 포트를 연다.
 - 변경 내역은 기본으로 계속 쌓인다. `CHANGE_LOG_RETENTION_DAYS`(일)를 정하면 그보다 오래된 변경 묶음을 시작할 때와 하루 한 번 지운다.
+- 환율 자동 갱신(0.1.7): 설정 > 통화에서 '자동'을 켠 통화만, 시작하고 1분 뒤와 그 뒤 하루 한 번 공개 환율(ECB 기준, Frankfurter)을 받아 바꾼다. 아무도 켜지 않았으면 밖으로 요청하지 않는다. 바뀐 환율은 변경 내역에 '자동 갱신'으로 남고 되돌릴 수 있다. 받지 못하면 환율은 그대로 두고 화면에 마지막 실패를 보인다.
+  - `ALLOT_FX_URL`: 환율 서비스 주소(기본 `https://api.frankfurter.app`). 같은 API(`/latest?from=<코드>&to=KRW`)를 내는 다른 주소(예: 직접 띄운 Frankfurter)를 쓸 때.
+  - `ALLOT_FX_REFRESH=off`: 서버 전체에서 자동 갱신을 끈다(밖으로 나가는 요청이 없다). 화면의 '지금 갱신'도 받지 않는다.
 - 로그인 시도 제한은 클라이언트 IP로 센다.
   - **Traefik 뒤:** `TRUSTED_PROXY_IP_HEADER=X-Real-IP`. Traefik이 클라이언트 주소로 이 헤더를 채운다. 앱 포트를 열지 않아 Traefik만 앱에 닿을 때만 안전하다.
   - **다른 리버스 프록시 뒤:** `APP_BIND=127.0.0.1`(기본값)로 두어 프록시만 앱에 닿게 하고, `TRUSTED_PROXY_IP_HEADER`에 그 프록시가 덮어쓰는 헤더(예: `X-Real-IP`)를 적는다. 프록시가 컨테이너라면 앱 포트를 공개하지 말고 같은 내부 네트워크로 연결한다.

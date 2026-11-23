@@ -21,6 +21,7 @@ const ROUTES: Record<string, string> = {
   'GET /api/me': 'The signed-in user (name, email, role).',
   'POST /api/app-login/ticket': 'A one-time sign-in link for a listed app URL ({ returnTo }).',
   'GET /api/docs': 'This page.',
+  'POST /api/currencies/refresh': 'Refresh your automatic exchange rates now (spec 013 S-23); answers { settings, currencies, off }. A code the rate service cannot give keeps its rate and shows why.',
   'GET /api/keys': 'Your API keys (for MCP): name, scope, expiry, last use; never the key itself.',
   'POST /api/keys': 'Create an API key; the key is shown once in the answer.',
   'DELETE /api/keys/:id': 'Delete an API key.',
