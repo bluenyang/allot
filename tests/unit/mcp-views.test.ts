@@ -551,3 +551,21 @@ test('list_notifications: the bell\'s list with a sentence each, goal cards and 
   const stopped: Data = { ...due, accounts: due.accounts.map((a) => (a.id === 'dep' ? { ...a, stopFrom: '2027-01' } : a)) }
   assert.deepEqual(notificationList(stopped, now, 0).notifications.filter((n) => n.group === 'pending'), [])
 })
+
+// ── spec 013 S-23: the currencies in the overview, and items in a listed code ──
+test('overview lists USD from the settings and the currency list; a subscription in a listed code is priced by its rate', () => {
+  const eur = { id: 'fc1', code: 'EUR', rate: 1500, buffer: 2, auto: true, autoAt: '2026-11-23T00:00:00.000Z', autoError: null }
+  const d: Data = { ...data, settings: { ...data.settings, fxAuto: false }, currencies: [eur], subscriptions: [...data.subscriptions, sub({ id: 's5', name: 'Sub Five', amount: 10, currency: 'EUR' })] }
+  const o = overview(d, '2026-11')
+  assert.deepEqual(o.currencies, [
+    { code: 'USD', rate: 1400, buffer: 5, auto: false, autoAt: null, autoError: null },
+    { id: 'fc1', code: 'EUR', rate: 1500, buffer: 2, auto: true, autoAt: '2026-11-23T00:00:00.000Z', autoError: null },
+  ])
+  const five = subscriptionList(d, NOW).subscriptions.find((x) => x.id === 's5')!
+  assert.equal(five.currency, 'EUR')
+  assert.equal(five.chargeKrw, 15_000)
+  const x = transferAt(d.subscriptions, d.planChanges, priced(d.settings, d.currencies), '2026-11')
+  assert.equal(o.subscriptionTransfer.foreignAsMonthlyKrw, Math.round(x.foreignMonthly))
+  assert.equal(o.subscriptionTransfer.fxBufferKrw, Math.round(x.buffer))
+  assert.equal(overview(data, '2026-11').currencies.length, 1)
+})
