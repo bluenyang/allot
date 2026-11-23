@@ -20,10 +20,11 @@ Settings and security features that were "coming soon". Spec 013 revision 1 (`.a
 - Exchange rates of listed currencies and of spendings keep up to six decimals (migration 0036), so a small unit such as VND is not rounded to two; a spending's rate takes up to six decimals (was two). USD's settings rate is unchanged.
 - The server keeps each answer of the rate service for a few minutes (a failure for one), shared by "지금 갱신" and the daily refresh.
 
-### Fixed
-- Change sets saved before this release for the settings or the display settings can be reverted again (the new columns made them read as changed later).
 - The change history names the currency and own-date tables and their fields, shows field names for every table, and names the automatic refresh as its actor.
 - A pending AI proposal stays valid after a rate refresh that changes no rate.
+
+### Fixed
+- Change sets saved before this release for the settings or the display settings can be reverted again (the new columns made them read as changed later).
 
 ### Not in 0.1.7
 Connected apps (OAuth) come with 0.1.12 (MCP over OAuth); statements, the AI assistant and model connections stay "coming soon".
