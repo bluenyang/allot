@@ -1,5 +1,5 @@
 // API check for spec 005 V-5 and V-8 (h): one user cannot see or change another user's data; spec 013 V-4: also the
-// living items, the new account fields, balance records and cards.
+// living items, the new account fields, balance records and cards; spec 013 rev 1 (rc.2): month adjustments.
 //   BASE=… ADMIN_EMAIL=… ADMIN_PASSWORD=… B_EMAIL=… B_PASSWORD=… node tests/api/isolation.mjs
 // A is the seeded account (has data); B is a second account with no data (tests/api/make-user.ts).
 // B's rows are removed at the end (in finally); its change history and the account stay, so run it on a
@@ -166,6 +166,29 @@ ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings
       "A's living item, account, balance record and card are unchanged")
   } finally {
     for (const [path, id] of aMade.reverse()) {
+      const d = await A('DELETE', `${path}/${id}`)
+      ok(d.status === 204, `A's ${path} row removed → ${d.status}`)
+    }
+  }
+  // spec 013 rev 1 (rc.2) S-14: A's month adjustment is invisible to B and out of its reach; B cannot adjust A's target.
+  const aMade2 = []
+  try {
+    const aTgt = await A('POST', '/api/targets', { name: MARK, kind: 'fixed' })
+    if (aTgt.status === 201) aMade2.push(['/api/targets', aTgt.json.id])
+    const aAdj = await A('POST', '/api/month-adjusts', { ym: '2090-05', targetId: aTgt.json?.id, amount: 1000, reason: MARK })
+    if (aAdj.status === 201) aMade2.push(['/api/month-adjusts', aAdj.json.id])
+    ok(aTgt.status === 201 && aAdj.status === 201, `A creates a fixed target and a month adjustment (${aTgt.status},${aAdj.status})`)
+    const bSees = (await B('GET', '/api/state')).json
+    ok(Array.isArray(bSees.monthAdjusts) && !JSON.stringify(bSees).includes(aAdj.json.id), "B's state has none of A's month adjustments")
+    const put = await B('PUT', `/api/month-adjusts/${aAdj.json.id}`, { ym: '2090-05', targetId: aTgt.json.id, amount: 1 })
+    const del = await B('DELETE', `/api/month-adjusts/${aAdj.json.id}`)
+    ok(put.status === 404 && del.status === 404, `B PUT/DELETE A's month adjustment → ${put.status}/${del.status} (want 404/404)`)
+    const bAdj = track('/api/month-adjusts', await B('POST', '/api/month-adjusts', { ym: '2090-06', targetId: aTgt.json.id, amount: 1, reason: MARK }))
+    ok(bAdj.status === 400, `B month adjustment of A's target → ${bAdj.status} (want 400)`)
+    const mine = (await A('GET', '/api/state')).json.monthAdjusts.filter((x) => x.targetId === aTgt.json.id)
+    ok(mine.length === 1 && mine[0].amount === 1000 && mine[0].ym === '2090-05', "A's month adjustment is unchanged, and the only one on its target")
+  } finally {
+    for (const [path, id] of aMade2.reverse()) {
       const d = await A('DELETE', `${path}/${id}`)
       ok(d.status === 204, `A's ${path} row removed → ${d.status}`)
     }
