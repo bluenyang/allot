@@ -9,6 +9,11 @@ import { expect, request as pwRequest, test, type APIRequestContext, type Page }
 import { MARK as RUN, choose, deleteInSheet, fillDate, saveSheet, sheet } from './helpers'
 import { tool } from './proposal-helpers'
 
+// This file changes the password policy, turns the lockout on and makes accounts: only on the throwaway test server
+// (:15174), never the staging stack the user uses (review rc3-5 R5-5).
+const TEST_SERVER = 'http://127.0.0.1:15174'
+if ((process.env.BASE ?? '') !== TEST_SERVER) throw new Error(`rc3.spec runs only against ${TEST_SERVER} (BASE=${process.env.BASE ?? 'unset'})`)
+
 const MARK = `${RUN}-r3`
 
 async function api(request: APIRequestContext, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, data?: unknown) {
