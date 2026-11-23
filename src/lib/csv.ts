@@ -27,6 +27,12 @@ function plainNumber(n: number): string {
   return /e/i.test(s) ? n.toFixed(20).replace(/0+$/, '').replace(/\.$/, '') : s
 }
 
+/**
+ * A computed KRW amount as a cell: whole won, as the screens show it (a USD charge converted at the exchange rate is
+ * fractional; review rc2-1 F-9). Stored amounts are whole won already and pass unchanged.
+ */
+export const wonCell = (n: number): number => Math.round(n) || 0
+
 /** The whole file: the BOM, then each row as one CRLF-terminated record. */
 export function toCsv(rows: CsvCell[][]): string {
   return BOM + rows.map((r) => r.map(csvField).join(',') + '\r\n').join('')

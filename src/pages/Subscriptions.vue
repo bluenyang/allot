@@ -14,7 +14,7 @@ import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, tod
 import type { Category, Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
-import { downloadCsv, type CsvCell } from '../lib/csv'
+import { downloadCsv, wonCell, type CsvCell } from '../lib/csv'
 
 // The editors load when one is opened: the first screen stays small.
 const SubEditor = defineAsyncComponent(() => import('../components/SubEditor.vue'))
@@ -88,7 +88,7 @@ function exportCsv() {
   const rows: CsvCell[][] = [['name', 'category', 'plan', 'amount', 'currency', 'cycle', 'status', 'next', 'monthly'].map(H)]
   for (const r of shown.value) {
     const p = r.p
-    rows.push([p.name, catLabel(p.category), p.plan, p.amount, p.currency, cycleLabel(p.cycle), statusLabel(p.status), r.next ? ymd(r.next) : '', Math.round(r.monthly)])
+    rows.push([p.name, catLabel(p.category), p.plan, p.amount, p.currency, cycleLabel(p.cycle), statusLabel(p.status), r.next ? ymd(r.next) : '', wonCell(r.monthly)])
   }
   downloadCsv(`allot-subscriptions-${ym.value}.csv`, rows)
 }
