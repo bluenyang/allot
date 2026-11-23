@@ -64,7 +64,7 @@ step "front page answers 200" sh -c 'code=$(curl -s -o /dev/null -w "%{http_code
 KEEP=$(ls -1t "$STORE" | grep -v -x -e current -e "$SHA" -e '[0-9a-f]*\.tar' | head -1)
 for d in "$STORE"/*/; do
   n=$(basename "$d")
-  { [ "$n" = "$SHA" ] || [ "$n" = "$KEEP" ]; } && continue
+  { [ "$n" = current ] || [ "$n" = "$SHA" ] || [ "$n" = "$KEEP" ]; } && continue
   step "remove an older snapshot" rm -rf "$STORE/$n"
 done
 done_check
