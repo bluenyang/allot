@@ -319,7 +319,7 @@ async function toolsMode() {
   const unknown = await tool(key, 'delete_everything', {})
   ok(failedCall(unknown), `an unknown tool is an MCP error (${unknown.status} ${JSON.stringify(unknown.error ?? unknown.result?.content?.[0]?.text)?.slice(0, 80)})`)
   for (const [name, args] of [['get_overview', { month: '2026-13' }], ['get_overview', { month: 'now' }], ['get_schedule', { months: 13 }], ['get_schedule', { months: 0 }], ['list_changes', { limit: 51 }], ['list_changes', { before: '2026-01-01 00:00:00+00' }], ['list_subscriptions', { status: 'gone' }], ['get_budget', { month: '2026-00' }],
-    ['search', {}], ['search', { query: 'x', kinds: ['gone'] }], ['list_changes', { since: 'not a time' }], ['list_changes', { until: '2026-13-45' }]]) {
+    ['search', {}], ['list_changes', { since: 'not a time' }], ['list_changes', { until: '2026-13-45' }]]) {
     const t = await tool(key, name, args)
     ok(failedCall(t), `${name} ${JSON.stringify(args)} is refused`)
   }
@@ -439,6 +439,11 @@ async function toolsMode() {
   }
   const onlyAcc = await tool(key, 'search', { query: 'a', kinds: ['account'] })
   ok(!failedCall(onlyAcc) && onlyAcc.data.results.every((x) => x.kind === 'account') && onlyAcc.data.count === srch.search(state, 'a', ['account']).length, 'search kinds [account]: accounts only')
+  // an unknown kind is taken and matches nothing (193f231: not refused); next to a known kind it is left out
+  const gone = await tool(key, 'search', { query: 'a', kinds: ['gone'] })
+  ok(!failedCall(gone) && gone.data.count === 0 && gone.data.results.length === 0, `search kinds [gone]: taken, no results (${gone.data?.count})`)
+  const mixed = await tool(key, 'search', { query: 'a', kinds: ['gone', 'account'] })
+  ok(!failedCall(mixed) && mixed.data.count === srch.search(state, 'a', ['account']).length, 'search kinds [gone, account]: the accounts only')
 
   // ── spec 013 S-20: list_notifications against calc.ts (charges and rounds of the next three days, this month's remainder) ──
   const ln = await tool(key, 'list_notifications', {})
