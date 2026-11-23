@@ -172,7 +172,7 @@ function handledNote(p: Proposal): string {
             <table>
               <tbody>
                 <tr v-for="f in rowFields(c)" :key="f.k">
-                  <td class="k">{{ fieldName(f.k) }}</td>
+                  <td class="k">{{ fieldName(f.k, c.table) }}</td>
                   <td class="from num">{{ worded(f.k, f.b, c.before) }}</td>
                   <td class="arr">→</td>
                   <td class="to num">{{ worded(f.k, f.a, c.after) }}</td>
@@ -182,7 +182,7 @@ function handledNote(p: Proposal): string {
           </div>
           <dl v-else class="dl" :class="{ gone: c.op === 'delete' }">
             <div v-for="f in rowFields(c)" :key="f.k">
-              <dt>{{ fieldName(f.k) }}</dt>
+              <dt>{{ fieldName(f.k, c.table) }}</dt>
               <dd :class="{ sig: f.k === 'verified' && !(c.after ?? c.before)?.verified, subtle: worded(f.k, c.op === 'delete' ? f.b : f.a, c.op === 'delete' ? c.before : c.after) === '—' }">{{ worded(f.k, c.op === 'delete' ? f.b : f.a, c.op === 'delete' ? c.before : c.after) }}</dd>
             </div>
           </dl>
