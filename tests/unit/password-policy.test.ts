@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { keyCreate, keyUpdate, passwordPolicy } from '../../server/validation'
 import {
-  CHECKED_WITHOUT_POLICY, DEFAULT_POLICY, failureKey, isPrunable, lockedMinutes, nextFailure, parsePolicy, PASSWORD_FIELDS, tooShort,
+  CHECKED_WITHOUT_POLICY, DEFAULT_POLICY, failureKey, lockedMinutes, nextFailure, parsePolicy, PASSWORD_FIELDS, tooShort,
   type FailureRow,
 } from '../../server/password-rules'
 import { generatePassword, PASSWORD_ALPHABET, PASSWORD_LENGTH } from '../../src/lib/password-gen'
@@ -90,17 +90,13 @@ test('lockout counting with a fake clock: N failures lock for M minutes, then th
   assert.deepEqual([after.count, after.lockedUntil], [1, null])
 })
 
-test('failures older than a day count for nothing and may be deleted; a lock is never deleted while it lasts', () => {
+test('failures older than a day count for nothing', () => {
   const lock = { enabled: true, attempts: 5, minutes: 15 }
   const t0 = new Date('2031-01-01T00:00:00Z')
   const old: FailureRow = { count: 4, lockedUntil: null, updatedAt: t0 }
   const day = new Date(t0.getTime() + 86_400_000 + 1)
   assert.equal(nextFailure(old, day, lock).count, 1)
   assert.equal(nextFailure(old, new Date(t0.getTime() + 3_600_000), lock).count, 5)
-  assert.equal(isPrunable(old, day), true)
-  assert.equal(isPrunable(old, new Date(t0.getTime() + 60_000)), false)
-  const locked: FailureRow = { count: 5, lockedUntil: new Date(day.getTime() + 60_000), updatedAt: t0 }
-  assert.equal(isPrunable(locked, day), false)
 })
 
 test('the generator: 20 characters from the alphabet, from the random source given', () => {

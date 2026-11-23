@@ -11,6 +11,7 @@ import { asUser, lockFor } from './db/scope'
 import * as t from './db/schema'
 import { fxBase, fxEnabled, refreshAll, refreshUser, type FetchFn, type FxResult, type FxState, type FxStore, planWrites } from './fx-rates'
 import { readState } from './state'
+import { cachedFetch } from './fx-cache'
 
 /** The set's actor and its method and path (shown in the change history). */
 const ACTOR = { kind: 'system', id: 'fx-refresh' } as const
@@ -54,7 +55,8 @@ export const fxStore: FxStore = {
   write: writeFx,
 }
 
-const realFetch: FetchFn = (url, init) => fetch(url, init)
+// the answers of the last minutes are reused by "지금 갱신" and the daily job alike (server/fx-cache.ts, review rc3-1 F-8)
+const realFetch: FetchFn = cachedFetch((url, init) => fetch(url, init))
 
 /**
  * Refresh the signed-in user's auto rates now; answers the settings and the currency list as /api/state does, and

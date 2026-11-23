@@ -153,9 +153,20 @@ export function deleteItem(key: ListKey, id: string) {
   })
 }
 
+/**
+ * Does a settings save need the server's USD rate first? While the daily refresh may write `fxRate` (fxAuto on, spec 013
+ * S-23), a save that leaves the rate as this tab last saw it must not put back an older rate (review rc3-1 F-7).
+ */
+export const needsServerRate = (local: Settings, patch: Partial<Settings>): boolean =>
+  (local.fxAuto || patch.fxAuto === true) && (patch.fxRate === undefined || patch.fxRate === local.fxRate)
+
 export function saveSettings(patch: Partial<Settings> = {}) {
   return save(async (s) => {
-    const saved = await api<Settings>('PUT', '/api/settings', { ...store.settings, ...patch })
+    const body = { ...store.settings, ...patch }
+    // the rate the server holds now (it may have refreshed since this tab loaded); the user's own rate goes as typed
+    if (needsServerRate(store.settings, patch)) body.fxRate = (await api<State>('GET', '/api/state')).settings.fxRate
+    if (!s.alive()) return
+    const saved = await api<Settings>('PUT', '/api/settings', body)
     s.ifCurrent(() => { store.settings = saved })
   })
 }
