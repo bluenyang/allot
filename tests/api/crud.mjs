@@ -291,7 +291,7 @@ if (phase === 'create') {
   await refused('/api/month-adjusts', { ...ad, amount: 2_147_483_648 }, 'amount 2^31')
   await accepted('/api/month-adjusts', { ...ad, amount: 2_147_483_647 }, 'amount 2^31-1', (j) => j.amount === 2_147_483_647)
   await refused('/api/month-adjusts', { ...ad, ym: '2090-13' }, 'ym 2090-13')
-  await refused('/api/month-adjusts', { ...ad, reason: m201 }, 'a reason of 201 characters')
+  // the reason: S-26 sets no limit on it (review rc2-1 F-4; checked in tests/api/budget-rules.mjs)
   await accepted('/api/month-adjusts', { ...ad, reason: m200 }, 'a reason of 200 characters', (j) => j.reason === m200)
   for (const kind of ['living', 'subscriptions', 'remainder']) {
     const tg = before.json.targets.find((x) => x.kind === kind)

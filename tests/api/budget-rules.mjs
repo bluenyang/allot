@@ -89,6 +89,15 @@ try {
   ok(rv2.status === 200, `then the revert is taken → ${rv2.status}`)
   ok((await api('GET', '/api/state')).json.cards.find((x) => x.id === c2.json.id)?.accountId === null, 'and the card has no account again')
 
+  // spec 013 rev 1 S-26 lists no limit on a month adjustment's reason (review rc2-1 F-4): a long one is taken
+  const fx = await api('POST', '/api/targets', { name: `${MARK}-fx`, kind: 'fixed' })
+  ok(fx.status === 201, `a fixed target → ${fx.status}`)
+  made.push(['/api/targets', fx.json.id])
+  const long = 'r'.repeat(1000)
+  const adj = await api('POST', '/api/month-adjusts', { ym: '2090-07', targetId: fx.json.id, amount: 1_000, reason: long })
+  ok(adj.status === 201 && adj.json.reason === long, `a reason of 1,000 characters is taken → ${adj.status}`)
+  if (adj.status === 201) made.push(['/api/month-adjusts', adj.json.id])
+
   // spec 013 rev 1 S-18: GET /api/changes takes a period, since (inclusive) and until (exclusive), as ISO times
   const t0 = new Date(Date.now() - 10 * 60_000).toISOString()
   const recent = await api('GET', `/api/changes?since=${encodeURIComponent(t0)}&limit=100`)
