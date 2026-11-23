@@ -12,8 +12,8 @@ services:
   web:
     build: { context: .., dockerfile: docker/Dockerfile }
     # `vite preview` serves only the snapshot's built dist/ (with the same /api and /dex proxy as the dev server).
-    # Writable: Vite writes its bundled config next to vite.config.ts.
-    command: ["/stage/node_modules/.bin/vite", "preview", "--host", "0.0.0.0", "--port", "15173", "--strictPort"]
+    # Read-only: the runner config loader writes no bundled config file next to vite.config.ts.
+    command: ["/stage/node_modules/.bin/vite", "preview", "--configLoader", "runner", "--host", "0.0.0.0", "--port", "15173", "--strictPort"]
     working_dir: /stage
     ports: ["0.0.0.0:15173:15173"]
     env_file: [.env.dev]
@@ -21,7 +21,7 @@ services:
       API_URL: http://api:3000
       DEX_URL: http://dex:5556
     volumes:
-      - ../.loctx/staging/current:/stage
+      - ../.loctx/staging/current:/stage:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:15173/ >/dev/null"]
       interval: 2s
