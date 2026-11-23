@@ -474,10 +474,11 @@ test('maturity: the term forms, and the savings schedule with its expected amoun
   }
   const m = maturitySchedule(md, '2027-01')
   assert.deepEqual(m.map((x) => [x.accountId, x.maturityMonth, x.months, x.basis, x.state]), [['cma', '2027-01', 3, 'projection', 'due'], ['dep', '2027-04', 6, 'amount', 'upcoming']])
-  // the CMA has a balance record: its projected balance that month (10,000,000 on Nov 1, 500,000 a month in)
+  // the CMA has a balance record: the screens' rule (calc maturityAmount) — the projected balance at the end of the month
+  // before maturity, so the transfer of the maturity month is not counted (10,000,000 on Nov 1, 500,000 a month in: Nov, Dec)
   const st: AccountState = { ...md, balances: md.balances!, cards: md.cards! }
-  assert.equal(m[0]!.expectedKrw, projectAccount(md.accounts[0]!, st, none, '2027-01', 1)!.find((r) => r.ym === '2027-01')!.end)
-  assert.equal(m[0]!.expectedKrw, 11_500_000)
+  assert.equal(m[0]!.expectedKrw, projectAccount(md.accounts[0]!, st, none, '2026-12', 1)!.find((r) => r.ym === '2026-12')!.end)
+  assert.equal(m[0]!.expectedKrw, 11_000_000)
   assert.equal(m[0]!.afterMaturity, 'E2E to living')
   assert.equal(m[1]!.expectedKrw, 600_000, 'no record: the monthly amount × the months')
   assert.equal(maturitySchedule(md, '2027-02')[0]!.state, 'past')

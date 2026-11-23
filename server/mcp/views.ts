@@ -6,6 +6,7 @@ import {
   addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate,
   phaseAt, planAt, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
   type AccountState, type MonthDate,
+  maturityAmount,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 import { buildNotices, type Notice } from '../../src/lib/notices'
@@ -15,6 +16,7 @@ import type {
   SubStatus, Subscription,
 } from '../../src/data/types'
 import { maturityOf } from './maturity'
+import { whenSpan } from '../../src/lib/event-when'
 
 /** The part of GET /api/state the tools read. */
 export interface Data {
@@ -262,12 +264,9 @@ export function allocation(d: Data) {
  * The months of a plan event's `when`: YYYY-MM, YYYY-MM~MM (to a later month of the same year) or YYYY-MM~YYYY-MM (into a
  * later year, spec 013 S-18). A range whose end is before its start counts as its start month only, as the screens show it.
  */
+// The span of an event's `when`: the screens' rule (src/lib/event-when.ts `whenSpan`); an unreadable value is its first month.
 export function eventMonths(when: string): { from: string; to: string } {
-  const m = /^(\d{4}-\d{2})(?:~(\d{4}-\d{2}|\d{2}))?$/.exec(when)
-  if (!m) return { from: when.slice(0, 7), to: when.slice(0, 7) }
-  const from = m[1]!
-  const to = m[2] === undefined ? from : m[2].length === 2 ? `${from.slice(0, 4)}-${m[2]}` : m[2]
-  return { from, to: to < from ? from : to }
+  return whenSpan(when) ?? { from: when.slice(0, 7), to: when.slice(0, 7) }
 }
 
 export function schedule(d: Data, from: string, months: number) {
@@ -340,16 +339,17 @@ export function maturitySchedule(d: Data, ym: string) {
   return d.accounts.filter((a) => a.group === 'saving').flatMap((a) => {
     const m = maturityOf(a)
     if (!m) return []
+    // the screens' rule (calc maturityAmount): the projected balance before the maturity month, or what the plan sends
     const rec = lastBalance(st.balances, a.id)
     const recYm = rec?.date.slice(0, 7)
     const lo = recYm && recYm < m.month ? recYm : m.month
-    const row = rec ? projectAccount(a, st, offDays(d, lo, m.month), m.month, 1)?.find((r) => r.ym === m.month) : undefined
+    const got = maturityAmount(a, st, offDays(d, lo, m.month), { ym: m.month, months: m.months })
     return [{
       accountId: a.id, name: a.name, bank: a.bank ?? '', term: a.term ?? '', from: a.from ?? null, stopFrom: a.stopFrom ?? null,
       maturityMonth: m.month, months: m.months, monthlyKrw: krw(a.amount ?? 0),
-      expectedKrw: krw(row ? row.end : (a.amount ?? 0) * m.months),
-      /** projection: the projected balance; amount: the monthly amount × months */
-      basis: row ? 'projection' as const : 'amount' as const,
+      expectedKrw: krw(got.amount),
+      /** projection: the projected balance; amount: what the plan sends from `from` to the maturity month */
+      basis: got.projected ? 'projection' as const : 'amount' as const,
       afterMaturity: a.afterMaturity ?? '',
       state: m.month < ym ? 'past' as const : m.month === ym ? 'due' as const : 'upcoming' as const,
     }]

@@ -4,7 +4,7 @@ import { t, type MessageKey } from '../i18n'
 import { phaseNumbers } from './calc'
 import type { Phase, AllocationKind, Category, Cycle, EventKind, PayPath, Spending, SpendingRound, SubStatus } from '../data/types'
 
-export const CATEGORY_IDS: Category[] = ['ai', 'telecom', 'content', 'tool', 'insurance', 'life']
+export const CATEGORY_IDS: Category[] = ['ai', 'telecom', 'content', 'tool', 'insurance', 'life', 'other']
 export const catLabel = (id: string) => t(`label.category.${id}` as MessageKey)
 export const pathLabel = (id: PayPath | string) => t(`label.path.${id}` as MessageKey)
 export const statusLabel = (id: SubStatus | string) => t(`label.status.${id}` as MessageKey)

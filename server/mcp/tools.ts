@@ -233,10 +233,10 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
     description: 'Find the user\'s subscriptions, one-off spendings, living items, bank accounts, cards, allocation targets, plan events and check items whose name (an event\'s title, a check item\'s text) or memo holds `query` (any part, case-insensitive, Korean as typed), as the header search of the app does. Results are grouped by kind in that order; in a kind name matches come before memo matches. Each result has its kind, id, name, note, matched (name or note) and page (the app page that shows it). Read the row itself with the other tools (list_subscriptions, list_spendings, get_budget, list_accounts, get_allocation, get_schedule).',
     inputSchema: z.object({
       query: z.string().describe('the text to find; an empty one finds nothing'),
-      kinds: z.array(z.enum(SEARCH_KINDS)).optional().describe('only these kinds; default all'),
+      kinds: z.array(z.string()).optional().describe(`only these kinds (${SEARCH_KINDS.join(', ')}); default all; an unknown kind matches nothing`),
     }),
     annotations: READ_ONLY,
-  }, guarded('search', async ({ query, kinds }) => json(searchView(await data(), query, kinds))))
+  }, guarded('search', async ({ query, kinds }) => json(searchView(await data(), query, kinds?.filter((k): k is (typeof SEARCH_KINDS)[number] => (SEARCH_KINDS as readonly string[]).includes(k))))))
 
   server.registerTool('list_notifications', {
     title: 'Notifications',
