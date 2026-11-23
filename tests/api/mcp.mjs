@@ -694,9 +694,9 @@ async function writeMode() {
   const t0 = pt.data?.preview?.months?.[0]
   ok(!failedCall(pt) && t0.neededKrw.after - t0.neededKrw.before >= 40_000 && t0.neededKrw.after - t0.neededKrw.before < 41_000 && t0.transferKrw.after >= t0.transferKrw.before && t0.remainderKrw.after <= t0.remainderKrw.before, `the preview's needed amount is 40,000 higher (rounded up to 1,000) (${t0?.neededKrw?.before} → ${t0?.neededKrw?.after}), the transfer ${t0?.transferKrw?.before} → ${t0?.transferKrw?.after}`)
   ok((await W('POST', `/api/proposals/${pt.data.proposalId}/reject`)).status === 204, 'rejected: the subscription-account proposal')
-  // rules of the screen apply: a round count that does not fit, a USD amount with a long rate
+  // rules of the screen apply: a round count that does not fit, a USD amount with a rate past 6 decimals (A-43)
   const bad1 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 1000, { count: 2 }) }] })
-  const bad2 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 10, { currency: 'USD', fxRate: 1300.123, fxBuffer: 2 }) }] })
+  const bad2 = await tool(kUi.key, 'propose_changes', { changes: [{ resource: 'spendings', action: 'create', data: SP('x', 'salary', 10, { currency: 'USD', fxRate: 1300.1234567, fxBuffer: 2 }) }] })
   ok(failedCall(bad1) && failedCall(bad2) && !/spendFx|spendHow|spendRounds/.test(bad1.text + bad2.text), `spending rules reach the AI in English (${(bad1.error?.message ?? bad1.text).slice(0, 80)} | ${(bad2.error?.message ?? bad2.text).slice(0, 80)})`)
   // the user confirms on the screen
   const apS = await W('POST', `/api/proposals/${ps.data.proposalId}/apply`)
