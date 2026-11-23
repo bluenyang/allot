@@ -28,10 +28,12 @@ function memoryStore(users: Record<string, FxState>) {
   return { store, written }
 }
 
-test('fetchRate: asks from=<code>&to=KRW and rounds to 2 decimals', async () => {
-  const svc = fakeService({ EUR: 1534.567 })
-  assert.deepEqual(await fetchRate('EUR', svc.fetchFn, BASE), { rate: 1534.57 })
-  assert.deepEqual(svc.calls, [`${BASE}/latest?from=EUR&to=KRW`])
+test('fetchRate: asks from=<code>&to=KRW; USD rounds to 2 decimals (its settings column), a listed code to 6 (A-43)', async () => {
+  const svc = fakeService({ EUR: 1534.5678912, USD: 1380.567, VND: 0.05481234 })
+  assert.deepEqual(await fetchRate('EUR', svc.fetchFn, BASE), { rate: 1534.567891 })
+  assert.deepEqual(await fetchRate('USD', svc.fetchFn, BASE), { rate: 1380.57 })
+  assert.deepEqual(await fetchRate('VND', svc.fetchFn, BASE), { rate: 0.054812 }, 'a small unit keeps its rate (review rc3-1 F-2)')
+  assert.deepEqual(svc.calls[0], `${BASE}/latest?from=EUR&to=KRW`)
 })
 
 test('fetchRate: a code the service does not have, a network failure, a timeout, a bad answer', async () => {
@@ -42,8 +44,8 @@ test('fetchRate: a code the service does not have, a network failure, a timeout,
   assert.deepEqual(await fetchRate('EUR', async () => answer(500, {}), BASE), { error: 'http_500' })
   assert.deepEqual(await fetchRate('EUR', async () => answer(200, { rates: { USD: 1 } }), BASE), { error: 'bad_answer' })
   assert.deepEqual(await fetchRate('EUR', async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('x') } }), BASE), { error: 'bad_answer' })
-  // the column holds above 0 and up to 999,999.99
-  assert.deepEqual(await fetchRate('EUR', fakeService({ EUR: 0.001 }).fetchFn, BASE), { error: 'out_of_range' })
+  // above 0 after rounding (6 decimals for a listed code) and up to 999,999.99
+  assert.deepEqual(await fetchRate('EUR', fakeService({ EUR: 0.0000001 }).fetchFn, BASE), { error: 'out_of_range' })
   assert.deepEqual(await fetchRate('EUR', fakeService({ EUR: 1_000_000 }).fetchFn, BASE), { error: 'out_of_range' })
 })
 

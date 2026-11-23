@@ -29,6 +29,9 @@ test('a currency code is three capitals (S-26); another foreign code carries a r
   no(subscription, { ...SUB, currency: 'eur' })
   no(subscription, { ...SUB, currency: 'EURO' })
   ok(spending, { ...SPEND, currency: 'JPY' })
+  ok(spending, { ...SPEND, currency: 'VND', fxRate: 0.054812 }) // 6 decimals (review rc3-1 F-2, A-43)
+  no(spending, { ...SPEND, currency: 'VND', fxRate: 0.0548123 })
+  no(spending, { ...SPEND, fxBuffer: 3.555 }) // the buffer keeps 2
   no(spending, { ...SPEND, currency: 'JPY', fxRate: null })
   no(spending, { ...SPEND, currency: 'JPY', fxBuffer: null })
 })

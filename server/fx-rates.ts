@@ -24,8 +24,12 @@ export const fxBase = (env: Record<string, string | undefined> = process.env) =>
 export const fxEnabled = (env: Record<string, string | undefined> = process.env) => env.ALLOT_FX_REFRESH?.trim().toLowerCase() !== 'off'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
+const round6 = (n: number) => Math.round(n * 1e6) / 1e6
 
-/** KRW per one unit of `code`, rounded to 2 decimals, or why there is none. Never throws. */
+/**
+ * KRW per one unit of `code`, or why there is none. Never throws. Rounded to the column it goes to: USD's settings rate
+ * has 2 decimals, the currency list 6 (review rc3-1 F-2, A-43).
+ */
 export async function fetchRate(code: string, fetchFn: FetchFn, base = fxBase(), timeoutMs = FX_TIMEOUT_MS): Promise<FxResult> {
   let res: Awaited<ReturnType<FetchFn>>
   try {
@@ -45,7 +49,7 @@ export async function fetchRate(code: string, fetchFn: FetchFn, base = fxBase(),
   }
   const raw = (body as { rates?: Record<string, unknown> } | null)?.rates?.KRW
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return { error: 'bad_answer' }
-  const rate = round2(raw)
+  const rate = code === 'USD' ? round2(raw) : round6(raw)
   if (!(rate > 0) || rate > RATE_MAX) return { error: 'out_of_range' }
   return { rate }
 }

@@ -253,6 +253,13 @@
       "when": 1795414841750,
       "tag": "0035_force_rls_rc3",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795419037179,
+      "tag": "0036_rc3_rate_precision",
+      "breakpoints": true
     }
   ]
 }

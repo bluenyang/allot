@@ -49,8 +49,9 @@ test('the buffer is fixed with the rate: USD needs it, KRW has none, it stays wi
   ok({ ...usd, fxBuffer: 3.46 })
   no({ ...usd, fxBuffer: 3.456 }, 'fxBuffer')
   ok({ ...usd, fxRate: 1380.25 })
-  no({ ...usd, fxRate: 1380.256 }, 'fxRate')
-  // the check is exact: a value that is only close to a 2-decimal one would be stored rounded
+  ok({ ...usd, fxRate: 1380.256 }) // 6 decimals since rc.3 (review rc3-1 F-2, A-43)
+  no({ ...usd, fxRate: 1380.2560001 }, 'fxRate')
+  // the check is exact: a value that is only close to a 6-decimal one would be stored rounded
   no({ ...usd, fxRate: 1.000000009 }, 'fxRate')
   for (const v of [3.46, 1380.25, 0.1, 99.99]) { ok({ ...usd, fxRate: v }); if (v <= 100) ok({ ...usd, fxBuffer: v }) }
   // so the principal worked out from what is sent is the one the stored columns give (USD 100,000,000 at 1.00, no buffer)

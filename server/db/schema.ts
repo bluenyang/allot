@@ -317,7 +317,8 @@ export const foreignCurrency = pgTable('foreign_currency', {
   id: text('id').primaryKey(),
   seq: seq(),
   code: text('code').notNull(),
-  rate: numeric('rate', { precision: 8, scale: 2, mode: 'number' }).notNull(),
+  // 6 decimals: a small unit (e.g. VND, about 0.05 KRW) keeps its rate (review rc3-1 F-2, A-43)
+  rate: numeric('rate', { precision: 14, scale: 6, mode: 'number' }).notNull(),
   buffer: numeric('buffer', { precision: 5, scale: 2, mode: 'number' }).notNull().default(0),
   auto: boolean('auto').notNull().default(false),
   /** Written by the server only: the last refresh, and why the last try failed (null after a success). */
@@ -357,7 +358,8 @@ export const spending = pgTable('spending', {
   bought: date('bought', { mode: 'string' }).notNull(),
   amount: numeric('amount', { precision: 12, scale: 2, mode: 'number' }).notNull(),
   currency: currencyCode('currency').notNull(),
-  fxRate: numeric('fx_rate', { precision: 8, scale: 2, mode: 'number' }),
+  // 6 decimals like the currency list (A-43); USD's settings rate stays numeric(8,2)
+  fxRate: numeric('fx_rate', { precision: 14, scale: 6, mode: 'number' }),
   fxBuffer: numeric('fx_buffer', { precision: 5, scale: 2, mode: 'number' }),
   how: spendHow('how').notNull(),
   payBy: payBy('pay_by').notNull(),

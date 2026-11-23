@@ -261,6 +261,8 @@ export const MAX_ROUNDS = 120
 
 /** A value that is exactly its own 2-decimal rounding (3.46, 1380.25), so what the numeric(_,2) column stores is what was typed. */
 export const twoDecimals = (n: number | null) => n === null || Math.round(n * 100) / 100 === n
+/** At most 6 decimals: a spending's exchange rate, numeric(14,6) (review rc3-1 F-2, A-43). */
+export const sixDecimals = (n: number | null) => n === null || Math.round(n * 1e6) / 1e6 === n
 
 export const spending = z.object({
   name: text.min(1, 'nameReq'),
@@ -293,7 +295,7 @@ export const spending = z.object({
   // any foreign currency carries its rate and buffer, as USD did (spec 013 S-23)
   if (x.currency !== 'KRW' ? x.fxRate === null : x.fxRate !== null) bad('fxRate', 'spendFx')
   // the columns are numeric(8,2) and numeric(5,2): what is stored must be what the rounds were worked out with
-  if (!twoDecimals(x.fxRate)) bad('fxRate', 'spendFxDecimals')
+  if (!sixDecimals(x.fxRate)) bad('fxRate', 'spendFxDecimals')
   if (!twoDecimals(x.fxBuffer)) bad('fxBuffer', 'spendFxDecimals')
   if (x.currency !== 'KRW' ? x.fxBuffer === null : x.fxBuffer !== null) bad('fxBuffer', 'spendFx')
   if (x.currency === 'KRW' && !Number.isInteger(x.amount)) bad('amount', 'spendKrwWhole')
