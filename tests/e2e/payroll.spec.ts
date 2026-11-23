@@ -131,7 +131,8 @@ test('(V-10) the simulation: month steps, the take-home tried on the screen only
   await expect(page.getByText('임시 값')).toHaveCount(0)
 
   // the total is the take-home, and a computed row opens its dialog
-  await expect(page.getByRole('row', { name: /합계/ })).toContainText('실수령과 같아요')
+  // the total row (the living row's detail says 생활비 항목 합계 since spec 013 S-2)
+  await expect(page.getByRole('row', { name: /^합계/ })).toContainText('실수령과 같아요')
   await page.getByRole('button', { name: /계산 보기$/ }).first().click()
   const dlg = page.getByRole('alertdialog')
   await expect(dlg).toContainText('이 금액은 계산 값이에요')
@@ -150,6 +151,7 @@ test('(V-6) an account role is any text, the chips fill it, and 들어오는 돈
     await s.getByLabel('역할').fill('내가 정한 역할 ABC')
     await s.getByLabel('들어오는 돈').fill('매달 이체 · 26일')
     await s.getByLabel('나가는 돈').fill('카드 대금')
+    await s.getByRole('button', { name: '다음', exact: true }).click() // spec 013 S-5: two steps, the four old fields on the first
     await saveSheet(page, '통장 추가')
     await page.reload()
     await go(page, 'pay', '통장·생활비·설정')

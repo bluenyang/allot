@@ -1,4 +1,7 @@
-import type { AllocationKind, AllocationTarget, Currency, Cycle, DayShift, Living, PayBy, Phase, Plan, PlanChange, RemainderSplit, Settings, SpendHow, Spending, SpendingRound, SpendInterval, Subscription } from '../data/types'
+import type {
+  Account, AllocationKind, AllocationTarget, Balance, BudgetGroup, Card, Currency, Cycle, DayShift, Living, LivingItem, PayBy, Phase, Plan, PlanChange,
+  RemainderSplit, Settings, SpendHow, Spending, SpendingRound, SpendInterval, SplitMode, Subscription,
+} from '../data/types'
 
 export const DAY = 86_400_000
 
@@ -388,20 +391,26 @@ export function distributionAt(
   netPay: number,
   phases: Phase[],
   targets: AllocationTarget[],
-  living: Living,
+  living: Living | LivingItem[],
   subs: Subscription[],
   changes: PlanChange[],
   s: Settings,
   spendRemainder = 0,
   spendSubs = 0,
+  accounts: Account[] = [],
 ): Distribution {
   const phase = phaseAt(phases, ym)
-  const livingSum = living.food + living.transit + living.allowance
+  const livingSum = Array.isArray(living) ? livingAt(living, phases, ym).sum : living.food + living.transit + living.allowance
   const subsTransfer = transferAt(subs, changes, s, ym, spendSubs).transfer
+  const stopped = (t: AllocationTarget) => {
+    const acc = t.accountId ? accounts.find((a) => a.id === t.accountId) : undefined
+    return !!acc?.stopFrom && ym >= acc.stopFrom
+  }
   const amountOf = (t: AllocationTarget) =>
     t.kind === 'living' ? livingSum
     : t.kind === 'subscriptions' ? subsTransfer
-    : t.kind === 'fixed' ? (phase?.amounts[t.id] ?? 0)
+    : t.kind === 'fixed' ? (stopped(t) ? 0 : (phase?.amounts[t.id] ?? 0))
+    : t.kind === 'saving' || t.kind === 'invest' ? groupAt(t.kind, accounts, phases, targets, s, ym).sum
     : 0
   const remainderTarget = targets.find((t) => t.kind === 'remainder') ?? null
   const others = targets.filter((t) => t.kind !== 'remainder').reduce((sum, t) => sum + amountOf(t), 0)
@@ -422,6 +431,250 @@ export function distributionAt(
   }
 }
 
+// ---------- budget core (spec 013) ----------
+/** An item's amount in `phase`: the phase's own amount when it has one, else the item's (S-4). */
+const amountIn = (base: number, amounts: Record<string, number> | undefined, phase: Phase | null) =>
+  phase && amounts && Object.hasOwn(amounts, phase.id) ? amounts[phase.id]! : base
+
+/** Living items in month `ym` (S-2, S-4): an item counts from its `from` month on. */
+export function livingAt(items: LivingItem[], phases: Phase[], ym: string) {
+  const phase = phaseAt(phases, ym)
+  const rows = items.map((item) => ({ item, amount: item.from && ym < item.from ? 0 : amountIn(item.amount, item.amounts, phase) }))
+  return { rows, sum: rows.reduce((a, r) => a + r.amount, 0) }
+}
+
+/** Is a Savings / Investment account sending in month `ym` (from its `from` month, until `stopFrom`, S-3, S-7)? */
+export const accountSends = (a: Account, ym: string) => (!a.from || ym >= a.from) && (!a.stopFrom || ym < a.stopFrom)
+
+/** The split of a menu (S-3): saving defaults to amount, invest to ratio. */
+export const splitOf = (group: BudgetGroup, s: Pick<Settings, 'savingSplit' | 'investSplit'>): SplitMode =>
+  (group === 'saving' ? s.savingSplit ?? 'amount' : s.investSplit ?? 'ratio')
+
+export interface GroupMonth {
+  group: BudgetGroup
+  mode: SplitMode
+  /** the menu's target (at most one per user), if there is one */
+  target: AllocationTarget | null
+  /** ratio split: the phase's total for the target; amount split: the sum of the items */
+  total: number
+  rows: { account: Account; amount: number }[]
+  /** what the target gets: the items added up */
+  sum: number
+  /** ratio split: the ratios added up (1 = 100%) */
+  ratioSum: number
+}
+
+/**
+ * The Savings or Investment menu in month `ym` (S-3, S-4): amount split = each item's monthly amount (its
+ * phase amount when it has one); ratio split = the phase's total for the target × the item's ratio,
+ * rounded to the nearest 1,000. The target gets the items added up, so a ratio sum under 100% leaves
+ * the rest in the remainder. An item counts from `from` until `stopFrom`.
+ */
+export function groupAt(group: BudgetGroup, accounts: Account[], phases: Phase[], targets: AllocationTarget[], s: Pick<Settings, 'savingSplit' | 'investSplit'>, ym: string): GroupMonth {
+  const phase = phaseAt(phases, ym)
+  const mode = splitOf(group, s)
+  const target = targets.find((t) => t.kind === group) ?? null
+  const items = accounts.filter((a) => a.group === group)
+  const ratioTotal = target && phase ? (phase.amounts[target.id] ?? 0) : 0
+  const rows = items.map((account) => ({
+    account,
+    amount: !accountSends(account, ym) ? 0
+      : mode === 'ratio' ? Math.round((ratioTotal * (account.ratio ?? 0)) / 1000) * 1000
+      : amountIn(account.amount ?? 0, account.amounts, phase),
+  }))
+  const sum = rows.reduce((a, r) => a + r.amount, 0)
+  const ratioSum = Math.round(items.reduce((a, x) => a + (x.ratio ?? 0), 0) * 10_000) / 10_000
+  return { group, mode, target, total: mode === 'ratio' ? ratioTotal : sum, rows, sum, ratioSum }
+}
+
+/**
+ * What a Savings / Investment item really gets in month `ym`: its item amount, but only while the menu has its
+ * target — without one, the salary split sends nothing to the items (the remainder keeps it; review 1 F-4).
+ */
+export function itemSent(acc: Account, st: Pick<MonthState, 'phases' | 'targets' | 'settings'> & { accounts?: Account[] }, ym: string): number {
+  if (!acc.group) return 0
+  const g = groupAt(acc.group, st.accounts ?? [acc], st.phases, st.targets, st.settings, ym)
+  return g.target ? (g.rows.find((r) => r.account.id === acc.id)?.amount ?? 0) : 0
+}
+
+/** Does the remainder target send to this account? Its money is the remainder after the month's spendings (review 1 F-9). */
+export const takesRemainder = (acc: Account, targets: AllocationTarget[]) => targets.some((t) => t.kind === 'remainder' && t.accountId === acc.id)
+
+/** Targets whose money a linked account receives as a transfer: not the Savings / Investment totals, whose money goes to their items (review 1 F-9). */
+export const sendsToLinked = (t: AllocationTarget) => t.kind !== 'saving' && t.kind !== 'invest'
+
+/** The billing day of a card spending: the card's own, else the settings' (S-13). */
+export const billingDayOf = (card: Pick<Card, 'billingDay'> | null | undefined, s: Pick<Settings, 'billingDay'>) => card?.billingDay ?? s.billingDay
+
+/** The date a card bill for something bought on `bought` is paid: the billing day of the next month (spec 011 S-4, S-13). */
+export function cardBillDate(bought: string, billingDay: number, s: Settings, off: ReadonlySet<string>): string {
+  return monthDay(addYm(bought.slice(0, 7), 1), billingDay, s.dayShift ?? 'none', off).date
+}
+
+/** The first pay day on or after `date` (the default refill start of a buffer use, S-8). */
+export function payDayFrom(date: string, s: Settings, off: ReadonlySet<string>): string {
+  const ym = date.slice(0, 7)
+  const here = monthDay(ym, s.payDay, s.dayShift ?? 'none', off).date
+  return here >= date ? here : monthDay(addYm(ym, 1), s.payDay, s.dayShift ?? 'none', off).date
+}
+
+/** What `projectAccount` and the goal and limit checks read. */
+export interface AccountState extends MonthState {
+  accounts: Account[]
+  balances: Balance[]
+  cards: Card[]
+}
+
+/** One dated movement of an account (S-6). */
+interface Move { date: string; amount: number }
+
+/** The movements of account `acc` in month `ym`: transfers in on the transfer day, refills in, card bills out (S-6, S-8, S-13). */
+function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<string>): Move[] {
+  const s = st.settings
+  const moves: Move[] = []
+  const transfer = monthDay(ym, s.transferDay, s.dayShift ?? 'none', off).date
+  if (acc.group) {
+    const sent = itemSent(acc, st, ym)
+    if (sent) moves.push({ date: transfer, amount: sent })
+  } else {
+    const dist = monthMoney(st, ym).dist
+    for (const r of dist.rows) {
+      const t = st.targets.find((x) => x.id === r.key)
+      if (t?.accountId === acc.id && sendsToLinked(t) && r.amount > 0) moves.push({ date: transfer, amount: r.amount })
+    }
+  }
+  // An account that takes the remainder gets it after the month's spendings: its ordinary card bills are taken off it
+  // already. A buffer use is not: its bill leaves the buffer and its refills come back (review 2 F-2).
+  const remainder = takesRemainder(acc, st.targets)
+  const cards = new Set(st.cards.filter((c) => c.accountId === acc.id).map((c) => c.id))
+  for (const sp of st.spendings ?? []) {
+    if (!sp.cardId || !cards.has(sp.cardId)) continue
+    const card = st.cards.find((c) => c.id === sp.cardId)
+    const live = sp.rounds.filter((r) => r.state !== 'merged' && !(sp.cancelled && r.state === 'left'))
+    if (sp.how === 'buffer') {
+      // the bill leaves the account's buffer on the billing date; the refills come back on their dates
+      const bill = cardBillDate(sp.bought, billingDayOf(card, s), s, off)
+      if (bill.slice(0, 7) === ym) moves.push({ date: bill, amount: -live.reduce((a, r) => a + r.amount, 0) })
+      for (const r of live) if (r.date.slice(0, 7) === ym) moves.push({ date: r.date, amount: r.amount })
+    } else if (!remainder) {
+      for (const r of live) if (r.date.slice(0, 7) === ym) moves.push({ date: r.date, amount: -r.amount })
+    }
+  }
+  return moves
+}
+
+/** The last balance record of an account (latest date; on the same date, the later one). */
+export function lastBalance(balances: Balance[], accountId: string): Balance | null {
+  let last: Balance | null = null
+  for (const b of balances) if (b.accountId === accountId && (!last || b.date >= last.date)) last = b
+  return last
+}
+
+export interface ProjectedMonth { ym: string; inflow: number; outflow: number; end: number }
+
+/**
+ * The balance of an account month by month (S-6), no interest: from its last record, every movement dated
+ * after the record. Months `from` .. `from` + `months` − 1 are returned; null without a record.
+ */
+export function projectAccount(acc: Account, st: AccountState, off: ReadonlySet<string>, from: string, months = 12): ProjectedMonth[] | null {
+  const rec = lastBalance(st.balances, acc.id)
+  if (!rec) return null
+  let bal = rec.amount
+  const out: ProjectedMonth[] = []
+  const start = rec.date.slice(0, 7) < from ? rec.date.slice(0, 7) : from
+  const last = addYm(from, months - 1)
+  for (let ym = start; ym <= last; ym = addYm(ym, 1)) {
+    let inflow = 0
+    let outflow = 0
+    if (ym >= rec.date.slice(0, 7)) {
+      for (const mv of movesIn(acc, st, ym, off)) {
+        if (mv.date <= rec.date) continue
+        if (mv.amount >= 0) inflow += mv.amount
+        else outflow -= mv.amount
+      }
+    }
+    bal += inflow - outflow
+    if (ym >= from) out.push({ ym, inflow, outflow, end: bal })
+  }
+  return out
+}
+
+/** The first month the projected balance reaches the goal (S-7): the record's month if it already does; null if not within 50 years or without a goal or a record. */
+export function goalMonth(acc: Account, st: AccountState, off: ReadonlySet<string>): string | null {
+  const rec = lastBalance(st.balances, acc.id)
+  if (acc.goal === null || acc.goal === undefined || !rec) return null
+  if (rec.amount >= acc.goal) return rec.date.slice(0, 7)
+  const rows = projectAccount(acc, st, off, rec.date.slice(0, 7), 600) ?? []
+  return rows.find((r) => r.end >= acc.goal!)?.ym ?? null
+}
+
+/**
+ * What goes into an account in calendar year `year` (S-7): the planned transfers and refills of that year, plus the
+ * money put in at once that the balance records of that year name (`deposit`; review 1 F-12, user: "잔액 기록에 '넣은 돈'
+ * 표시" — a balance alone is not counted as paid in).
+ */
+export function yearContribution(acc: Account, st: AccountState, off: ReadonlySet<string>, year: number): number {
+  let total = 0
+  for (let m = 1; m <= 12; m++) {
+    const ym = `${year}-${String(m).padStart(2, '0')}`
+    for (const mv of movesIn(acc, st, ym, off)) if (mv.amount > 0) total += mv.amount
+  }
+  for (const r of st.balances) if (r.accountId === acc.id && r.date.slice(0, 4) === String(year)) total += r.deposit ?? 0
+  return total
+}
+
+export interface BufferGauge {
+  buffer: number
+  /** buffer-use principal not refilled yet (refills dated after `today`) */
+  used: number
+  left: number
+}
+/** The buffer of an account on `today` (S-8): its buffer, minus what buffer uses through its cards took and have not refilled yet. */
+export function bufferGauge(acc: Account, st: Pick<AccountState, 'cards' | 'spendings'>, today: string, exceptId?: string): BufferGauge {
+  const cards = new Set(st.cards.filter((c) => c.accountId === acc.id).map((c) => c.id))
+  let used = 0
+  for (const sp of st.spendings ?? []) {
+    if (sp.how !== 'buffer' || sp.cancelled || !sp.cardId || !cards.has(sp.cardId) || sp.id === exceptId) continue
+    for (const r of sp.rounds) if (r.state !== 'merged' && r.date > today) used += r.amount
+  }
+  const buffer = acc.buffer ?? 0
+  return { buffer, used, left: buffer - used }
+}
+
+/** The month a stop starts: this month when its transfer day is still to come, else the next one (S-7). */
+export function nextTransferYm(today: string, s: Settings, off: ReadonlySet<string>): string {
+  const ym = today.slice(0, 7)
+  return monthDay(ym, s.transferDay, s.dayShift ?? 'none', off).date > today ? ym : addYm(ym, 1)
+}
+
+export interface GoalAlert { account: Account; month: string; stopFrom: string }
+/**
+ * The goal cards of 대기 중인 변경 (S-7): an account with a goal whose projected balance has reached it by this
+ * month, still sending (no stop), and whose goal the user has not chosen to keep sending past.
+ */
+export function goalAlerts(st: AccountState, today: string, off: ReadonlySet<string>): GoalAlert[] {
+  const now = today.slice(0, 7)
+  const out: GoalAlert[] = []
+  for (const a of st.accounts) {
+    if (a.goal === null || a.goal === undefined || a.stopFrom || a.goalAck === a.goal) continue
+    const month = goalMonthBy(a, st, off, now)
+    if (month) out.push({ account: a, month, stopFrom: nextTransferYm(today, st.settings, off) })
+  }
+  return out
+}
+
+/** The goal month if it is `until` or earlier: projects only up to `until`, so the badge does not work out decades (review 1 F-15). */
+function goalMonthBy(acc: Account, st: AccountState, off: ReadonlySet<string>, until: string): string | null {
+  const rec = lastBalance(st.balances, acc.id)
+  if (acc.goal === null || acc.goal === undefined || !rec) return null
+  const from = rec.date.slice(0, 7)
+  if (rec.amount >= acc.goal) return from <= until ? from : null
+  if (from > until) return null
+  let n = 1
+  for (let ym = from; ym < until; ym = addYm(ym, 1)) n++
+  return (projectAccount(acc, st, off, from, n) ?? []).find((r) => r.end >= acc.goal!)?.ym ?? null
+}
+
 // ---------- one-off spending (spec 011 S-3..S-6) ----------
 export interface SpendInput {
   bought: string // YYYY-MM-DD
@@ -437,6 +690,10 @@ export interface SpendInput {
   first?: string
   /** split with interval 'custom': one date per round */
   dates?: string[]
+  /** card: the card's billing day (S-13); default the settings' one */
+  billingDay?: number | null
+  /** buffer use: the first refill date (S-8); the next ones are the pay days after it */
+  refillFrom?: string
 }
 
 /** The KRW principal of a spending: USD = amount × rate × (1 + buffer%), rounded to the won (S-3). */
@@ -444,17 +701,24 @@ export function spendingKrw(amount: number, currency: Currency, s: Pick<Settings
   return currency === 'USD' ? Math.round(amount * s.fxRate * (1 + s.fxBuffer / 100)) : amount
 }
 
-/** Rounds of a spending (S-4): total = principal + fee, each ⌊total ÷ n ÷ 10⌋ × 10, the last takes the rest. */
+/**
+ * Rounds of a spending (S-4): total = principal + fee, each ⌊total ÷ n ÷ 10⌋ × 10, the last takes the rest.
+ * A buffer use (spec 013 S-8) has no fee; its rounds are the refills: the first on `refillFrom`, then the pay day of each month after.
+ */
 export function planRounds(input: SpendInput, s: Settings, off: ReadonlySet<string>): SpendingRound[] {
   const { how, payBy } = input
   const n = how === 'lump' ? 1 : input.count
   if (!Number.isInteger(n) || n < 1 || n > 60) throw new RangeError(`rounds must be 1..60, got ${n}`)
   const fee = how === 'installment' && payBy === 'card' ? (input.fee ?? 0) : 0
+  const shift = s.dayShift ?? 'none'
   const total = input.principal + fee
   const each = Math.floor(total / n / 10) * 10
   const amounts = Array.from({ length: n }, (_, i) => (i === n - 1 ? total - each * (n - 1) : each))
   let dates: string[]
-  if (how === 'split') {
+  if (how === 'buffer') {
+    const first = input.refillFrom ?? payDayFrom(input.bought, s, off)
+    dates = Array.from({ length: n }, (_, i) => (i === 0 ? first : monthDay(addYm(first.slice(0, 7), i), s.payDay, shift, off).date))
+  } else if (how === 'split') {
     const first = input.first ?? input.bought
     if (input.interval === 'custom') {
       if (!input.dates || input.dates.length !== n) throw new RangeError(`custom dates must have ${n} entries`)
@@ -465,9 +729,9 @@ export function planRounds(input: SpendInput, s: Settings, off: ReadonlySet<stri
       dates = Array.from({ length: n }, (_, i) => ymd(addMonths(parseDate(first), i)))
     }
   } else if (payBy === 'card') {
-    const shift = s.dayShift ?? 'none'
     const from = addYm(input.bought.slice(0, 7), 1)
-    dates = Array.from({ length: n }, (_, i) => monthDay(addYm(from, i), s.billingDay, shift, off).date)
+    const day = input.billingDay ?? s.billingDay
+    dates = Array.from({ length: n }, (_, i) => monthDay(addYm(from, i), day, shift, off).date)
   } else {
     dates = Array.from({ length: n }, () => input.bought)
   }
@@ -599,12 +863,18 @@ export function upcomingSpendRounds(spendings: Spending[], from: Date, days: num
   return out.sort((a, b) => a.date.getTime() - b.date.getTime() || a.spending.name.localeCompare(b.spending.name) || a.round.no - b.round.no)
 }
 
-/** What `monthMoney` reads. `spendings` may be missing (none). */
+/**
+ * What `monthMoney` reads. `spendings` may be missing (none). With `livingItems` the living sum is theirs
+ * (spec 013 S-2), else the old `living` row's; `accounts` are the Savings / Investment items and the
+ * accounts whose stop ends a fixed target (S-3, S-7).
+ */
 export interface MonthState {
   settings: Settings
   phases: Phase[]
   targets: AllocationTarget[]
   living: Living
+  livingItems?: LivingItem[]
+  accounts?: Account[]
   subscriptions: Subscription[]
   planChanges: PlanChange[]
   spendings?: Spending[]
@@ -621,8 +891,8 @@ export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; p
   const spend = spendingIn(state.spendings ?? [], ym)
   const transfer = transferAt(state.subscriptions, state.planChanges, state.settings, ym, spend.subs)
   const dist = distributionAt(
-    ym, opt.pay ?? state.settings.netPay, opt.phases ?? state.phases, state.targets, state.living,
-    state.subscriptions, state.planChanges, state.settings, spend.remainder, spend.subs,
+    ym, opt.pay ?? state.settings.netPay, opt.phases ?? state.phases, state.targets, state.livingItems ?? state.living,
+    state.subscriptions, state.planChanges, state.settings, spend.remainder, spend.subs, state.accounts ?? [],
   )
   return { transfer, dist, spend }
 }

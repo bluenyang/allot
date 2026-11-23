@@ -9,9 +9,10 @@ import { lockFor, setUser } from './scope'
 export type OwnedTable = PgTable & { userId: PgColumn }
 
 export const OWNED: OwnedTable[] = [
-  t.settings, t.living, t.subscription, t.phase, t.allocationTarget, t.planEvent,
-  t.checkItem, t.bankAccount, t.debt, t.remainderSplit, t.planChange, t.phaseAmount,
+  t.settings, t.subscription, t.phase, t.bankAccount, t.card, t.allocationTarget, t.planEvent,
+  t.checkItem, t.debt, t.remainderSplit, t.planChange, t.phaseAmount,
   t.preference, t.holidaySet, t.mcpProposal, t.spending, t.spendingRound,
+  t.livingItem, t.livingPhaseAmount, t.accountPhaseAmount, t.accountBalance,
 ]
 
 /** Moved with the data when an account is replaced: the data tables, then the change history. */

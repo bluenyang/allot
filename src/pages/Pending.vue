@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed, onActivated, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import PageHeader from '../components/PageHeader.vue'
 import Seg from '../components/Seg.vue'
 import Icon from '../components/Icon.vue'
 import { t } from '../i18n'
 import { fmtMoney } from '../lib/display'
+import { goalCards, goalCount } from '../lib/goals'
+import { saveItem } from '../lib/store'
+import { showToast } from '../lib/toast'
+import { ApiError } from '../lib/api'
+import type { Account } from '../data/types'
 import {
   canUndo, changed, decide, fieldName, listFor, loadProposals, money, monthLabel, moreProposals, proposalTitle, proposals, rowFields, rowTarget, shown,
   summary, undo, when, worded, type MonthPreview, type Proposal, type RowChange,
@@ -14,6 +20,8 @@ import {
 // card shows what it changes — rows before and after, and the transfer and distribution of this and
 // next month before and after — and waits for the user's confirm or reject. Confirming applies it as
 // one change set (it shows in 변경 내역 as "AI · key name"). A decided card stays on the screen.
+// Above them, the goal cards (spec 013 S-7): worked out from the state (src/lib/goals.ts), not stored. 멈추기 writes
+// the account's stop month, 계속 보내기 its goal acknowledgement; each is one account save (one change set, revertible).
 const filter = ref<'waiting' | 'handled' | 'all'>('waiting')
 const opened = reactive<Record<string, boolean>>({})
 // Waiting cards are open, handled ones closed, until the user toggles one.
@@ -24,8 +32,9 @@ onMounted(loadProposals)
 onActivated(loadProposals)
 
 const list = computed(() => listFor(filter.value))
+const goals = computed(() => (filter.value === 'handled' ? [] : goalCards.value))
 const seg = computed(() => [
-  { id: 'waiting', label: t('pending.filterWaiting'), count: proposals.waiting.length },
+  { id: 'waiting', label: t('pending.filterWaiting'), count: proposals.waiting.length + goalCount.value },
   { id: 'handled', label: t('pending.filterHandled') },
   { id: 'all', label: t('pending.filterAll') },
 ])
@@ -39,6 +48,30 @@ function net(mo: MonthPreview) {
   return { name: r.name, text: `${d > 0 ? '+' : '−'}${fmtMoney(Math.abs(d))}`, cls: d < 0 ? 'up' : 'down' }
 }
 const isUpdate = (c: RowChange) => c.op === 'update'
+
+// ---------- goal cards ----------
+const router = useRouter()
+const goalBusy = ref('')
+const goalError = reactive<Record<string, string>>({})
+const ymText = (ym: string) => `${ym.slice(0, 4)}. ${ym.slice(5, 7)}`
+const goalBody = (a: Account, month: string) =>
+  t(a.name.endsWith(t('goals.suffix')) ? 'goals.bodyNamed' : 'goals.body', { name: a.name, goal: fmtMoney(a.goal ?? 0), ym: month })
+async function decideGoal(a: Account, patch: Partial<Account>, done: () => void) {
+  goalBusy.value = a.id
+  goalError[a.id] = ''
+  try {
+    await saveItem('accounts', { ...(JSON.parse(JSON.stringify(a)) as Account), ...patch })
+    done()
+  } catch (e) {
+    goalError[a.id] = e instanceof ApiError ? e.message : t('pending.failed')
+  } finally {
+    goalBusy.value = ''
+  }
+}
+const stopGoal = (a: Account, stopFrom: string) => decideGoal(a, { stopFrom }, () => showToast(t('goals.stopped', { name: a.name, ym: ymText(stopFrom) }), {
+  actionLabel: t('goals.toHistory'), onAction: () => { void router.push('/history') },
+}))
+const keepGoal = (a: Account) => decideGoal(a, { goalAck: a.goal ?? null }, () => showToast(t('goals.kept', { name: a.name })))
 /** A note for a handled card, by how it ended. */
 function handledNote(p: Proposal): string {
   if (p.status === 'applied') return t('pending.noteApplied', { at: when(p.decidedAt ?? p.createdAt) })
@@ -60,7 +93,52 @@ function handledNote(p: Proposal): string {
       <span class="hint">{{ t('pending.expiryHint') }}</span>
     </div>
 
-    <div v-if="proposals.loaded && !list.length" class="card empty-card">
+    <article
+      v-for="g in goals" :key="`goal-${g.alert.account.id}`" class="card prop wait goal" :data-goal="g.alert.account.id"
+      :aria-label="`${t('goals.title')} · ${g.alert.account.name}`"
+    >
+      <header class="ph2">
+        <span class="ico ok"><Icon name="saving" /></span>
+        <div class="tt">
+          <b>{{ t('goals.title') }} · {{ g.alert.account.name }}</b>
+          <small class="hint">{{ goalBody(g.alert.account, g.alert.month) }}</small>
+        </div>
+        <span class="pill warn">{{ t('goals.waiting') }}</span>
+      </header>
+      <div class="detail">
+        <section class="chg">
+          <div class="chg-h"><b>{{ t('goals.changes', { ym: ymText(g.preview.month) }) }}</b></div>
+          <div class="tw">
+            <table>
+              <tbody>
+                <tr>
+                  <td class="k">{{ t('goals.send', { name: g.alert.account.name }) }}</td>
+                  <td class="from num">{{ fmtMoney(g.preview.send.before) }}</td>
+                  <td class="arr">→</td>
+                  <td class="to num">{{ fmtMoney(g.preview.send.after) }}</td>
+                </tr>
+                <tr>
+                  <td class="k">{{ t('goals.remainder', { ym: ymText(g.preview.month) }) }}</td>
+                  <td class="from num">{{ g.preview.remainder.before < 0 ? '−' : '' }}{{ fmtMoney(Math.abs(g.preview.remainder.before)) }}</td>
+                  <td class="arr">→</td>
+                  <td class="to num">{{ g.preview.remainder.after < 0 ? '−' : '' }}{{ fmtMoney(Math.abs(g.preview.remainder.after)) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <footer class="pfoot">
+        <div class="note small">
+          <span>{{ t('goals.hint', { ym: ymText(g.preview.month) }) }}</span>
+          <p v-if="goalError[g.alert.account.id]" class="warn" role="alert">{{ goalError[g.alert.account.id] }}</p>
+        </div>
+        <button class="btn sm" type="button" :disabled="!!goalBusy" @click="keepGoal(g.alert.account)">{{ t('goals.keep') }}</button>
+        <button class="btn sm pri" type="button" :disabled="!!goalBusy" @click="stopGoal(g.alert.account, g.alert.stopFrom)">{{ t('goals.stop') }}</button>
+      </footer>
+    </article>
+
+    <div v-if="proposals.loaded && !list.length && !goals.length" class="card empty-card">
       <b>{{ filter === 'waiting' ? t('pending.none') : t('pending.noneHandled') }}</b>
       <span class="hint">{{ t('pending.noneHint') }}</span>
     </div>
@@ -152,6 +230,8 @@ function handledNote(p: Proposal): string {
 .ph2{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--divider)}
 .ico{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:var(--r-ctl);background:var(--accent-soft);color:var(--accent-text)}
 .ico svg{width:15px;height:15px}
+.ico.ok{background:var(--primary-tint);color:var(--primary-text)}
+.goal .chg{padding-bottom:12px}
 .tt{flex:1 1 240px;min-width:0;display:flex;flex-direction:column}
 .tt b{overflow-wrap:anywhere}
 .detail{display:flex;flex-direction:column}

@@ -14,6 +14,7 @@ import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
 import { t, type MessageKey } from './i18n'
 import { phaseTag } from './lib/labels'
+import { goalCount } from './lib/goals'
 
 // Shell (spec 010 S-4): a grouped sidebar with the user at the bottom, a header bar and a footer on
 // every page; on a phone a top bar, a bottom bar and a "더보기" sheet. Menu entries for features that
@@ -23,7 +24,7 @@ const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 interface Entry { id: string; soon?: boolean }
 const groups: { id: 'overview' | 'budget' | 'manage' | 'ai'; items: Entry[] }[] = [
   { id: 'overview', items: [{ id: 'home' }] },
-  { id: 'budget', items: [{ id: 'pay' }, { id: 'living', soon: true }, { id: 'spend' }, { id: 'saving', soon: true }, { id: 'invest', soon: true }] },
+  { id: 'budget', items: [{ id: 'pay' }, { id: 'living' }, { id: 'spend' }, { id: 'saving' }, { id: 'invest' }] },
   { id: 'manage', items: [{ id: 'events' }, { id: 'pending' }, { id: 'history' }] },
   { id: 'ai', items: [{ id: 'statements', soon: true }, { id: 'assistant', soon: true }] },
 ]
@@ -41,13 +42,15 @@ const lower = computed(() => ['settings', ...(isAdmin.value ? ['admin'] : [])])
 // Where we are (spec 012 S-4): the page (`meta.page`, the KeepAlive key) and its tab, from the router.
 const current = useRoute()
 const route = computed(() => ({ page: current.meta.page ?? 'home', sub: String(current.params.tab ?? '') }))
+/** What waits on 대기 중인 변경: AI proposals and goal cards (spec 013 S-7). */
+const pendingN = computed(() => store.pendingProposals + goalCount.value)
 /** The address of a menu entry: a tabbed page opens on its first tab, as #spend and #settings did. */
 const PATH: Record<string, string> = { home: '/', spend: '/spend/general', settings: '/settings/general' }
 const pathOf = (id: string) => PATH[id] ?? `/${id}`
 
 // ── Header bar (spec 010 S-4): where you are (the overview: its month and phase), search and
 // notifications as drawn (not there yet → `Soon`). No light/dark switch: the theme is chosen in Settings (D-10).
-const GROUP_OF: Record<string, MessageKey> = { spend: 'shell.groupBudget', pay: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
+const GROUP_OF: Record<string, MessageKey> = { spend: 'shell.groupBudget', pay: 'shell.groupBudget', living: 'shell.groupBudget', saving: 'shell.groupBudget', invest: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
 const crumbPage = computed(() => (route.value.page === 'settings'
   ? t(`settings.tabs.${['general', 'theme', 'ai', 'security'].includes(route.value.sub) ? route.value.sub : 'general'}` as MessageKey)
   : label(route.value.page)))
@@ -60,12 +63,12 @@ const REPO = 'https://github.com/bluenyang/allot'
 
 // ── Phone: the bottom bar and the "더보기" sheet (spec 010 S-4). The pending page has a place on the
 // bar only while something waits there (spec 009 A-7); the budget slot opens the pay split, and
-// stays current on the spending page too.
+// stays current on the spending, living, savings and investment pages too (spec 013 S-1).
 const bottom = computed(() => [
   { id: 'home', href: '/', icon: 'home', label: t('shell.tabs.home'), on: route.value.page === 'home' },
-  { id: 'budget', href: '/pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'spend'].includes(route.value.page) },
+  { id: 'budget', href: '/pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'spend', 'living', 'saving', 'invest'].includes(route.value.page) },
   { id: 'events', href: '/events', icon: 'events', label: t('shell.tabs.events'), on: route.value.page === 'events' },
-  ...(store.pendingProposals ? [{ id: 'pending', href: '/pending', icon: 'pending', label: t('shell.tabs.pending'), on: route.value.page === 'pending', badge: store.pendingProposals }] : []),
+  ...(pendingN.value ? [{ id: 'pending', href: '/pending', icon: 'pending', label: t('shell.tabs.pending'), on: route.value.page === 'pending', badge: pendingN.value }] : []),
 ])
 const moreOpen = ref(false)
 const moreOn = computed(() => ['history', 'settings', 'admin', 'dev'].includes(route.value.page))
@@ -128,7 +131,7 @@ const onGripKey = (e: KeyboardEvent) => {
             <Soon v-if="it.soon" tag="div" class="ni" :title="sideFolded ? soonName(label(it.id)) : undefined"><Icon :name="it.id" /><span class="grow lbl">{{ label(it.id) }}</span></Soon>
             <RouterLink v-else class="ni" :to="pathOf(it.id)" :aria-current="route.page === it.id ? 'true' : 'false'" :title="sideFolded ? label(it.id) : undefined">
               <Icon :name="it.id" /><span class="grow lbl">{{ label(it.id) }}</span>
-              <span v-if="it.id === 'pending' && store.pendingProposals" class="ncount badge" :aria-label="t('shell.pendingN', { n: store.pendingProposals })">{{ store.pendingProposals }}</span>
+              <span v-if="it.id === 'pending' && pendingN" class="ncount badge" :aria-label="t('shell.pendingN', { n: pendingN })">{{ pendingN }}</span>
             </RouterLink>
           </template>
         </div>
@@ -200,7 +203,7 @@ const onGripKey = (e: KeyboardEvent) => {
       </RouterLink>
       <button class="mi" :class="{ on: moreOn }" type="button" aria-haspopup="dialog" :aria-expanded="moreOpen" @click="moreOpen = true"><Icon name="more" />{{ t('shell.tabs.more') }}</button>
     </nav>
-    <MoreSheet v-model="moreOpen" :name="me?.name ?? ''" :email="me?.email ?? ''" :admin="isAdmin" :pending="store.pendingProposals" @logout="logout" />
+    <MoreSheet v-model="moreOpen" :name="me?.name ?? ''" :email="me?.email ?? ''" :admin="isAdmin" :pending="pendingN" @logout="logout" />
   </div>
 </template>
 

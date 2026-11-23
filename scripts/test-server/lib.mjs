@@ -10,10 +10,14 @@ export function requireTestServer() {
   }
 }
 
-/** The list resources of /api/state: state key → API path. */
+/**
+ * The list resources of /api/state: state key → API path, in the order cleanup.mjs deletes them: a spending before
+ * its card and account (a buffer use keeps both, spec 013 S-9), a balance record or a card before its account.
+ */
 export const LISTS = {
   planChanges: 'plan-changes', phases: 'phases', subscriptions: 'subscriptions', events: 'events', checks: 'checks',
-  accounts: 'accounts', debts: 'debts', remainderSplit: 'remainder-split', spendings: 'spendings', targets: 'targets',
+  spendings: 'spendings', cards: 'cards', balances: 'balances', livingItems: 'living-items',
+  accounts: 'accounts', debts: 'debts', remainderSplit: 'remainder-split', targets: 'targets',
 }
 
 /** Signs in once and returns { api, state }. */

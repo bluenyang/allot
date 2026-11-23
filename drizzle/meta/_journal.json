@@ -197,6 +197,34 @@
       "when": 1795267632551,
       "tag": "0027_colossal_caretaker",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1795380642977,
+      "tag": "0028_budget_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1795380660878,
+      "tag": "0029_move_living_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1795380679228,
+      "tag": "0030_drop_living",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795387260116,
+      "tag": "0031_balance_deposit",
+      "breakpoints": true
     }
   ]
 }

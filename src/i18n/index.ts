@@ -6,6 +6,12 @@ import { createI18n } from 'vue-i18n'
 import { en } from './en'
 import { ko, type Messages } from './ko'
 import type { SpendingMessages } from './spending.ko'
+import { accountsEn } from './accounts.en'
+import { accountsKo, type AccountsMessages } from './accounts.ko'
+import { budgetEn } from './budget.en'
+import { budgetKo, type BudgetMessages } from './budget.ko'
+import { goalsEn } from './goals.en'
+import { goalsKo, type GoalsMessages } from './goals.ko'
 
 export type Lang = 'ko' | 'en'
 export const LANGS: readonly Lang[] = ['ko', 'en']
@@ -14,7 +20,7 @@ type Path<T, P extends string = ''> = {
   [K in keyof T & string]: T[K] extends string ? `${P}${K}` : Path<T[K], `${P}${K}.`>
 }[keyof T & string]
 /** A key of the message lists, e.g. 'shell.menu' (the 지출 page's lazy parts are in spending.ko.ts). */
-export type MessageKey = Path<Messages & SpendingMessages>
+export type MessageKey = Path<Messages & SpendingMessages & BudgetMessages & AccountsMessages & GoalsMessages>
 
 const KEY = 'allot.lang'
 
@@ -49,7 +55,8 @@ export const i18n = createI18n({
   legacy: false,
   locale: languageBeforeSignIn(),
   fallbackLocale: 'ko',
-  messages: { ko, en },
+  // spec 013: the budget pages, accounts and goal cards keep their messages in their own modules, merged here
+  messages: { ko: { ...ko, ...budgetKo, ...accountsKo, ...goalsKo }, en: { ...en, ...budgetEn, ...accountsEn, ...goalsEn } },
   missingWarn: false,
   fallbackWarn: false,
 })

@@ -15,7 +15,7 @@ import type { Db } from './db/client'
 import { asUser } from './db/scope'
 import { body } from './body'
 import { langOf, msg } from './messages'
-import { applyOp, RESOURCES, Rejected, SINGLES, type ListName, type SingleName } from './ops'
+import { applyOp, RESOURCES, Rejected, singleSchema, type ListName, type SingleName } from './ops'
 import { applyProposal, getProposal, listProposals, pendingCount, ProposalError, proposalText, rejectProposal, type ProposalStatus } from './proposals'
 import { readState } from './state'
 
@@ -84,7 +84,7 @@ function crud(r: Hono<AppEnv>, path: string, resource: ListName) {
 
 /** PUT of a one-row record. */
 function single(r: Hono<AppEnv>, path: string, resource: SingleName) {
-  r.put(path, body(SINGLES[resource].schema), async (c) => {
+  r.put(path, body(singleSchema(resource)), async (c) => {
     try {
       const res = await run(c, { resource, action: 'update', data: c.req.valid('json' as never) })
       return c.json(res.row)
@@ -107,6 +107,7 @@ for (const [path, resource] of [
   ['/subscriptions', 'subscriptions'], ['/plan-changes', 'plan-changes'], ['/phases', 'phases'], ['/events', 'events'],
   ['/checks', 'checks'], ['/accounts', 'accounts'], ['/debts', 'debts'], ['/remainder-split', 'remainder-split'],
   ['/holiday-sets', 'holiday-sets'], ['/targets', 'targets'], ['/spendings', 'spendings'],
+  ['/living-items', 'living-items'], ['/balances', 'balances'], ['/cards', 'cards'], // spec 013
 ] as const) crud(routes, path, resource)
 
 // ── Proposals from an AI key (spec 009 S-4, S-9): the screen confirms or rejects them (a session only) ──

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.7-rc.1 — unreleased
+
+The budget core: Living, Savings and Investment menus, accounts with balances, goals and limits, cards, and paying a card purchase from an account's buffer, with MCP tools. Intent 013 (`.agents/intent/013_budget-and-soon/`). The database gains five tables and new columns (migrations 0028 to 0031); the old living row becomes living items.
+
+### Added
+- **Living** (`/living`): a list of living-cost items (category, usual payment method, monthly amount, from month, an amount per phase, memo). Their sum is the value of the Living total target. The Salary allocation page shows them read-only with a link to Living.
+- **Savings** (`/saving`) and **Investment** (`/invest`): items are accounts of that menu; the menu splits by amount (each item's monthly amount, with amounts per phase) or by ratio (the phase's total × the item's ratio, rounded to the nearest 1,000 won). New target kinds Savings total and Investment total (one each) take the items' sum; a ratio sum under 100% leaves the rest in the remainder. "총액 수정" changes the current phase's total. Existing fixed targets are not changed or moved.
+- **Accounts**: bank, last 4 digits, kind, rate and term (free text), buffer, goal, yearly limit and memo; targets can be linked to an account. An account's sheet holds its **balance records** (date, amount, and optionally the money put in at once that day) and a **12-month forecast** from the last record (what the salary split sends to it on the transfer day, buffer refills in, card bills paid through its cards out; no interest; an account that takes the remainder gets the remainder after the month's spendings, so only its buffer uses are counted on top, and an item of Savings or Investment gets nothing while its menu has no target). The accounts table shows this month's transfer and warns about targets without an account.
+- **Goals**: when the forecast reaches an account's goal, Pending changes shows a card asking to stop sending to it. Stop sets the account's stop month (the next transfer month): its item amount and the fixed targets linked to it are 0 from then on, and the change can be reverted in the change history. Keep sending is not asked again for that goal. The sidebar badge counts these cards.
+- **Yearly limit**: this year's planned payments plus the money a balance record names as put in at once (its optional "이번에 넣은 돈", such as a maturity payout; a balance alone is not counted as paid in); near (90%) and over are warnings only.
+- **Cards**: name, last 4 digits, paying account and billing day (empty = the settings' card billing day). A card spending can name its card and is then billed on that card's day; a spending without a card is billed as before. The paying account of a card that a buffer use goes through cannot be cleared (it can be moved to another account), and such a card or account cannot be deleted.
+- **Buffer use** (버퍼 사용, the fourth way to pay): a card purchase paid from the buffer kept in the card's paying account, refilled over 1 to 60 months on pay days by raising that account's transfer (each refill is the amount ÷ months rounded down to 10 won, the last takes the rest). Only the refills come off each month's remainder. A buffer use needs a card with a paying account; a short buffer is a warning only.
+- **MCP**: read tools `get_budget` (living items, the savings and investment split with each item's amount, the targets' values) and `list_accounts` (accounts with balance records, forecast, goal month, yearly contribution and limit, buffer gauge, linked targets, cards); `get_allocation` shows the new target kinds and linked accounts. A write key can propose living items, accounts, balance records, cards and buffer-use spendings through `propose_changes`.
+
+### Changed
+- The change history names the new tables and fields, and the spending tables of 0.1.5 too.
+- The three living values (food, transit, allowance) of 0.1.6 are three living items of the same amounts; every month's transfer, distribution and remainder is what it was. `PUT /api/living` and the MCP resource `living` still take the three values and set those items. A change of the old living row in the change history can no longer be reverted (its table is gone; the history still shows it).
+- On the accounts table a row opens the account's sheet; the editor opens from its edit button.
+
+### Not in this release candidate
+- The one-month adjustment of the simulation, the second tabs of Living, Savings and Investment (monthly record, maturity schedule) and the rest of the "coming soon" features come in later 0.1.7 release candidates.
+
 ## 0.1.6 — 2026-11-23
 
 Released without a release candidate, on the user's instruction ("rc.1 없이 stable"). The stable image `ghcr.io/bluenyang/allot:0.1.6` was checked on the test server after the release (spec 012 V-8): the server's answers for eight addresses (the app pages, the API, `/healthz`, `/api/mcp` and the session check) were recorded, and `tests/e2e/router.spec.ts` passed 42 of 42.

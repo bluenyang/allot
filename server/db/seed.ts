@@ -20,6 +20,9 @@ import * as authSchema from './auth-schema'
 import { moveOwner } from './owned'
 import { asUser, lockFor } from './scope'
 
+/** Names of the three coded living items when the seed makes them (spec 013 S-2). */
+const SEED_LIVING = { food: '식비', transit: '교통', allowance: '용돈' } as const
+
 export interface SeedData {
   settings: Settings
   living: Living
@@ -60,7 +63,13 @@ export async function seed(data: SeedData, uid: string, tx: Db = db) {
   await asUser(uid, async (d) => {
     await lockFor(d, 'data', uid)
     await d.insert(t.settings).values({ userId: uid, ...data.settings }).onConflictDoUpdate({ target: t.settings.userId, set: data.settings })
-    await d.insert(t.living).values({ userId: uid, ...data.living }).onConflictDoUpdate({ target: t.living.userId, set: data.living })
+    // The old living row is the three coded living items now (spec 013 S-2).
+    for (const code of ['food', 'transit', 'allowance'] as const) {
+      const li = t.livingItem
+      const [have] = await d.select({ id: li.id }).from(li).where(and(eq(li.userId, uid), eq(li.code, code)))
+      if (have) await d.update(li).set({ amount: data.living[code] }).where(and(eq(li.userId, uid), eq(li.id, have.id)))
+      else await d.insert(li).values({ userId: uid, id: randomUUID(), name: SEED_LIVING[code], kind: SEED_LIVING[code], amount: data.living[code], code })
+    }
     await upsert(d, uid, t.subscription, data.subscriptions.map((s) => ({ ...s, note: s.note ?? null })))
     await upsert(d, uid, t.planChange, data.planChanges as never)
     // The seed's targets are the target set: others go (their phase amounts cascade).

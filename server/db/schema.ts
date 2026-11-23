@@ -14,13 +14,16 @@ export const cycle = pgEnum('cycle', ['monthly', 'yearly'])
 export const subStatus = pgEnum('sub_status', ['active', 'cancelled', 'company'])
 export const payPath = pgEnum('pay_path', ['direct', 'google', 'apple', 'telecom'])
 export const category = pgEnum('category', ['ai', 'telecom', 'content', 'tool', 'insurance', 'life'])
-export const spendHow = pgEnum('spend_how', ['lump', 'installment', 'split'])
+export const spendHow = pgEnum('spend_how', ['lump', 'installment', 'split', 'buffer'])
 export const payBy = pgEnum('pay_by', ['card', 'salary', 'subs'])
 export const spendInterval = pgEnum('spend_interval', ['monthly', 'biweekly', 'custom'])
 export const roundState = pgEnum('round_state', ['left', 'paid', 'merged'])
 export const eventState = pgEnum('event_state', ['done', 'doing', 'todo'])
-/** living: sum of living costs · subscriptions: needed subscription transfer · fixed: per-phase amount · remainder: the rest */
-export const allocationKind = pgEnum('allocation_kind', ['living', 'subscriptions', 'fixed', 'remainder'])
+/**
+ * living: sum of the living items · subscriptions: needed subscription transfer · fixed: per-phase amount · remainder: the rest ·
+ * saving / invest: sum of that menu's items (accounts with that group; spec 013 S-3)
+ */
+export const allocationKind = pgEnum('allocation_kind', ['living', 'subscriptions', 'fixed', 'remainder', 'saving', 'invest'])
 
 const seq = () => integer('seq').generatedAlwaysAsIdentity()
 /**
@@ -51,7 +54,14 @@ export const settings = pgTable('settings', {
   subRound: integer('sub_round').notNull().default(10_000),
   /** Monthly dates on a weekend or holiday: 'none' keeps them, 'before'/'after' move to a business day (spec 007 S-10). */
   dayShift: text('day_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
-}, (t) => [userScoped(t.userId)])
+  /** How the Savings and Investment menus split their total (spec 013 S-3). */
+  savingSplit: text('saving_split').$type<'amount' | 'ratio'>().notNull().default('amount'),
+  investSplit: text('invest_split').$type<'amount' | 'ratio'>().notNull().default('ratio'),
+}, (t) => [
+  userScoped(t.userId),
+  check('settings_saving_split', sql`${t.savingSplit} in ('amount', 'ratio')`),
+  check('settings_invest_split', sql`${t.investSplit} in ('amount', 'ratio')`),
+])
 
 /**
  * Display settings and theme, one row per user (spec 007 S-7, S-8). Text columns checked by zod,
@@ -90,12 +100,26 @@ export const holidaySet = pgTable('holiday_set', {
   userScoped(t.userId),
 ])
 
-export const living = pgTable('living', {
-  userId: owner().primaryKey(),
-  food: integer('food').notNull(),
-  transit: integer('transit').notNull(),
-  allowance: integer('allowance').notNull(),
-}, (t) => [userScoped(t.userId)])
+/** A living-cost item (spec 013 S-2); `code` marks the three moved from the old living row (food, transit, allowance). */
+export const livingItem = pgTable('living_item', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  name: text('name').notNull(),
+  kind: text('kind').notNull().default(''),
+  payMethod: text('pay_method').notNull().default(''),
+  amount: integer('amount').notNull().default(0),
+  from: ym('from_month'),
+  code: text('code').$type<'food' | 'transit' | 'allowance'>(),
+  note: text('note'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('living_item_user_id_id').on(t.userId, t.id),
+  uniqueIndex('living_item_user_code').on(t.userId, t.code).where(sql`${t.code} is not null`),
+  check('living_item_amount_nonneg', sql`${t.amount} >= 0`),
+  check('living_item_from_ym', sql`${t.from} is null or ${t.from} ~ '^[0-9]{4}-[0-9]{2}$'`),
+  check('living_item_code', sql`${t.code} is null or ${t.code} in ('food', 'transit', 'allowance')`),
+])
 
 export const subscription = pgTable('subscription', {
   userId: owner(),
@@ -168,6 +192,13 @@ export const checkItem = pgTable('check_item', {
   done: boolean('done').notNull().default(false),
 }, (t) => [unique('check_item_user_id_id').on(t.userId, t.id), userScoped(t.userId)])
 
+/**
+ * A bank account (spec 013 S-5). With a `group` it is also an item of the Savings or Investment menu:
+ * its monthly `amount` (amount split; per phase in account_phase_amount) or `ratio` (ratio split) goes
+ * to it from `from_month` on, until `stop_from` (that month and later get nothing). `buffer` is money kept
+ * in the account; `goal` and `annual_limit` are optional; `goal_ack` is the goal the user chose to keep
+ * sending past (S-7).
+ */
 export const bankAccount = pgTable('bank_account', {
   userId: owner(),
   id: text('id').primaryKey(),
@@ -176,7 +207,70 @@ export const bankAccount = pgTable('bank_account', {
   role: text('role').notNull().default(''),
   inflow: text('inflow').notNull().default(''),
   outflow: text('outflow').notNull().default(''),
-}, (t) => [unique('bank_account_user_id_id').on(t.userId, t.id), userScoped(t.userId)])
+  bank: text('bank').notNull().default(''),
+  last4: text('last4').notNull().default(''),
+  kind: text('kind').notNull().default(''),
+  rate: text('rate').notNull().default(''),
+  term: text('term').notNull().default(''),
+  buffer: integer('buffer').notNull().default(0),
+  goal: integer('goal'),
+  annualLimit: integer('annual_limit'),
+  group: text('group').$type<'saving' | 'invest'>(),
+  amount: integer('amount').notNull().default(0),
+  ratio: numeric('ratio', { precision: 5, scale: 4, mode: 'number' }),
+  from: ym('from_month'),
+  stopFrom: ym('stop_from'),
+  goalAck: integer('goal_ack'),
+  note: text('note'),
+}, (t) => [
+  unique('bank_account_user_id_id').on(t.userId, t.id),
+  userScoped(t.userId),
+  check('bank_account_last4', sql`${t.last4} = '' or ${t.last4} ~ '^[0-9]{4}$'`),
+  check('bank_account_group', sql`${t.group} is null or ${t.group} in ('saving', 'invest')`),
+  check('bank_account_amounts_nonneg', sql`${t.buffer} >= 0 and ${t.amount} >= 0 and (${t.goal} is null or ${t.goal} >= 0) and (${t.annualLimit} is null or ${t.annualLimit} >= 0)`),
+  check('bank_account_ratio_range', sql`${t.ratio} is null or (${t.ratio} >= 0 and ${t.ratio} <= 1)`),
+  check('bank_account_from_ym', sql`${t.from} is null or ${t.from} ~ '^[0-9]{4}-[0-9]{2}$'`),
+  check('bank_account_stop_ym', sql`${t.stopFrom} is null or ${t.stopFrom} ~ '^[0-9]{4}-[0-9]{2}$'`),
+])
+
+/**
+ * A balance written down on a date (spec 013 S-6): the projection starts from the last one. `deposit` is money put in at
+ * once that day (a maturity payout, …): the yearly contribution counts it (review 1 F-12, user: "잔액 기록에 '넣은 돈' 표시").
+ */
+export const accountBalance = pgTable('account_balance', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  accountId: text('account_id').notNull(),
+  date: date('date', { mode: 'string' }).notNull(),
+  amount: integer('amount').notNull(),
+  deposit: integer('deposit'),
+  note: text('note'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('account_balance_user_id_id').on(t.userId, t.id),
+  check('account_balance_deposit_nonneg', sql`${t.deposit} is null or ${t.deposit} >= 0`),
+  foreignKey({ name: 'account_balance_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }).onDelete('cascade'),
+  check('account_balance_amount_nonneg', sql`${t.amount} >= 0`),
+])
+
+/** A card (spec 013 S-13): the account its bill is paid from, and its billing day (null = the settings' one). */
+export const card = pgTable('card', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  name: text('name').notNull(),
+  last4: text('last4').notNull().default(''),
+  accountId: text('account_id'),
+  billingDay: smallint('billing_day'),
+  note: text('note'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('card_user_id_id').on(t.userId, t.id),
+  foreignKey({ name: 'card_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
+  check('card_last4', sql`${t.last4} = '' or ${t.last4} ~ '^[0-9]{4}$'`),
+  check('card_billing_day', sql`${t.billingDay} is null or ${t.billingDay} between 1 and 31`),
+])
 
 export const debt = pgTable('debt', {
   userId: owner(),
@@ -211,9 +305,14 @@ export const spending = pgTable('spending', {
   fee: integer('fee').notNull().default(0),
   interval: spendInterval('interval'),
   cancelled: boolean('cancelled').notNull().default(false),
+  /** The card it was paid with (spec 013 S-13); a buffer use needs one with a paying account. */
+  cardId: text('card_id'),
+  /** Buffer use: the first refill date (spec 013 S-8). */
+  refillFrom: date('refill_from', { mode: 'string' }),
 }, (t) => [
   userScoped(t.userId),
   unique('spending_user_id_id').on(t.userId, t.id),
+  foreignKey({ name: 'spending_card_fk', columns: [t.userId, t.cardId], foreignColumns: [card.userId, card.id] }),
   check('spending_amount_nonneg', sql`${t.amount} >= 0`),
   check('spending_fee_nonneg', sql`${t.fee} >= 0`),
   check('spending_count_range', sql`${t.count} between 1 and 60`),
@@ -244,10 +343,13 @@ export const allocationTarget = pgTable('allocation_target', {
   name: text('name').notNull(),
   kind: allocationKind('kind').notNull(),
   note: text('note'),
+  /** The account the target's money goes to (spec 013 S-5). */
+  accountId: text('account_id'),
 }, (t) => [
   userScoped(t.userId),
   unique('allocation_target_user_id_id').on(t.userId, t.id),
-  // living, subscriptions and remainder exist at most once each, per user
+  foreignKey({ name: 'allocation_target_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
+  // living, subscriptions, remainder, saving and invest exist at most once each, per user
   uniqueIndex('allocation_target_single_kind').on(t.userId, t.kind).where(sql`${t.kind} <> 'fixed'`),
 ])
 
@@ -263,6 +365,34 @@ export const phaseAmount = pgTable('phase_amount', {
   foreignKey({ name: 'phase_amount_phase_fk', columns: [t.userId, t.phaseId], foreignColumns: [phase.userId, phase.id] }).onDelete('cascade'),
   foreignKey({ name: 'phase_amount_target_fk', columns: [t.userId, t.targetId], foreignColumns: [allocationTarget.userId, allocationTarget.id] }).onDelete('cascade'),
   check('phase_amount_nonneg', sql`${t.amount} >= 0`),
+])
+
+/** A living item's amount in one phase (spec 013 S-4); without one the item's own amount applies. */
+export const livingPhaseAmount = pgTable('living_phase_amount', {
+  userId: owner(),
+  phaseId: text('phase_id').notNull(),
+  itemId: text('item_id').notNull(),
+  amount: integer('amount').notNull(),
+}, (t) => [
+  userScoped(t.userId),
+  primaryKey({ columns: [t.phaseId, t.itemId] }),
+  foreignKey({ name: 'living_phase_amount_phase_fk', columns: [t.userId, t.phaseId], foreignColumns: [phase.userId, phase.id] }).onDelete('cascade'),
+  foreignKey({ name: 'living_phase_amount_item_fk', columns: [t.userId, t.itemId], foreignColumns: [livingItem.userId, livingItem.id] }).onDelete('cascade'),
+  check('living_phase_amount_nonneg', sql`${t.amount} >= 0`),
+])
+
+/** A Savings / Investment account's amount in one phase (amount split; spec 013 S-4). */
+export const accountPhaseAmount = pgTable('account_phase_amount', {
+  userId: owner(),
+  phaseId: text('phase_id').notNull(),
+  accountId: text('account_id').notNull(),
+  amount: integer('amount').notNull(),
+}, (t) => [
+  userScoped(t.userId),
+  primaryKey({ columns: [t.phaseId, t.accountId] }),
+  foreignKey({ name: 'account_phase_amount_phase_fk', columns: [t.userId, t.phaseId], foreignColumns: [phase.userId, phase.id] }).onDelete('cascade'),
+  foreignKey({ name: 'account_phase_amount_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }).onDelete('cascade'),
+  check('account_phase_amount_nonneg', sql`${t.amount} >= 0`),
 ])
 
 /** How the remainder is split (the last item takes what is left). */

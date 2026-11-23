@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import type {
-  Account, AllocationTarget, CheckItem, Debt, HolidaySet, Living, Phase, PlanChange, PlanEvent, Preferences, RemainderSplit, Settings, Spending, Subscription,
+  Account, AllocationTarget, Balance, Card, CheckItem, Debt, HolidaySet, Living, LivingItem, Phase, PlanChange, PlanEvent, Preferences, RemainderSplit, Settings,
+  Spending, Subscription,
 } from '../data/types'
 import { ApiError, api } from './api'
 import { t } from '../i18n'
@@ -11,7 +12,11 @@ import { DEFAULT_LIVING, DEFAULT_PREFERENCES, DEFAULT_SETTINGS } from '../data/d
 // the store is updated from the server's answer, so what you see is what is saved.
 export interface State {
   settings: Settings
+  /** The old living row, from the three coded living items (spec 013 S-2). */
   living: Living
+  livingItems: LivingItem[]
+  balances: Balance[]
+  cards: Card[]
   targets: AllocationTarget[]
   subscriptions: Subscription[]
   planChanges: PlanChange[]
@@ -32,7 +37,8 @@ const empty = (): State => ({
   settings: { ...DEFAULT_SETTINGS },
   living: { ...DEFAULT_LIVING },
   preferences: { ...DEFAULT_PREFERENCES },
-  targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [], spendings: [], pendingProposals: 0,
+  targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [], spendings: [],
+  livingItems: [], balances: [], cards: [], pendingProposals: 0,
 })
 
 export const store = reactive<State>(empty())
@@ -94,7 +100,13 @@ export const RESOURCES = {
   targets: '/api/targets',
   holidaySets: '/api/holiday-sets',
   spendings: '/api/spendings',
+  livingItems: '/api/living-items',
+  balances: '/api/balances',
+  cards: '/api/cards',
 } as const
+
+/** Lists whose delete also changes other rows on the server (unlinks, spec 013 S-9, S-13): reload the state after one. */
+const RELOAD_AFTER_DELETE: readonly ListKey[] = ['accounts', 'cards', 'livingItems', 'phases'] // a phase takes its item amounts (review 1 F-6)
 export type ListKey = keyof typeof RESOURCES
 
 /** Create (no id) or replace an item; returns the saved item. */
@@ -108,8 +120,8 @@ export function saveItem<K extends ListKey>(key: K, item: State[K][number]): Pro
       const i = list.findIndex((x) => x.id === saved.id)
       if (i >= 0) list[i] = saved
       else list.push(saved)
-      // Mirrors the server: a target that is no longer 'fixed' loses its phase amounts.
-      if (key === 'targets' && (saved as { kind?: string }).kind !== 'fixed') {
+      // Mirrors the server: a target whose kind takes no phase amounts loses them (spec 013 S-3).
+      if (key === 'targets' && !['fixed', 'saving', 'invest'].includes((saved as { kind?: string }).kind ?? '')) {
         for (const p of store.phases) delete p.amounts[saved.id]
       }
     })
@@ -127,7 +139,9 @@ export function deleteItem(key: ListKey, id: string) {
       // Cascades in the DB, mirrored here: a subscription takes its plan changes, a target its phase amounts.
       if (key === 'subscriptions') store.planChanges = store.planChanges.filter((c) => c.subId !== id)
       if (key === 'targets') for (const p of store.phases) delete p.amounts[id]
+      if (key === 'accounts') store.balances = store.balances.filter((b) => b.accountId !== id)
     })
+    if (RELOAD_AFTER_DELETE.includes(key)) await loadState()
   })
 }
 
@@ -149,6 +163,7 @@ export function saveLiving(patch: Partial<Living> = {}) {
   return save(async (s) => {
     const saved = await api<Living>('PUT', '/api/living', { ...store.living, ...patch })
     s.ifCurrent(() => { store.living = saved })
+    await loadState() // the three values are living items now (spec 013 S-2)
   })
 }
 
@@ -162,8 +177,8 @@ export const removeSpending = (id: string) => deleteItem('spendings', id)
 
 /** Everything the app holds, for the JSON view in the 개발 tab. */
 export function exportJson(): string {
-  const { settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, preferences, holidaySets, spendings } = store
-  return JSON.stringify({ settings, living, targets, subscriptions, planChanges, phases, events, checks, accounts, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
+  const { settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, debts, remainderSplit, preferences, holidaySets, spendings } = store
+  return JSON.stringify({ settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
 }
 
 export const subName = (id: string) => store.subscriptions.find((s) => s.id === id)?.name ?? id

@@ -446,11 +446,11 @@ test.describe('shell', () => {
     await page.goto('/')
     const side = page.locator('aside.side')
     await expect(side.locator('.glabel')).toHaveText(['Overview', 'Budget', 'Manage', 'AI'])
-    await expect(side.getByRole('link')).toContainText(['Overview', 'Pay split', 'Spending', 'Schedule', 'Pending changes', 'Change history', 'Settings'])
+    await expect(side.getByRole('link')).toContainText(['Overview', 'Pay split', 'Living', 'Spending', 'Savings', 'Investing', 'Schedule', 'Pending changes', 'Change history', 'Settings'])
     const calls: string[] = []
     page.on('request', (req) => { if (req.url().includes('/api/')) calls.push(req.url()) })
     const before = page.url()
-    for (const name of ['Living', 'Savings', 'Investing', 'Statement analysis', 'AI assistant']) {
+    for (const name of ['Statement analysis', 'AI assistant']) { // Living, Savings and Investing open in spec 013 S-1
       const item = side.getByRole('button', { name: new RegExp(name) })
       await expect(item, name).toHaveAttribute('aria-disabled', 'true')
       await expect(item.locator('.soon-pill'), name).toHaveText('Coming soon')

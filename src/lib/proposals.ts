@@ -198,6 +198,8 @@ export function worded(field: string, v: unknown, row?: Record<string, unknown> 
     case 'cycle': return word(() => cycleLabel(String(v)))
     case 'path': return word(() => pathLabel(String(v)))
     case 'amount': return typeof v === 'number' ? (row?.currency === 'USD' ? usd(v) : fmtMoney(v)) : String(v)
+    // spec 013 money fields (review 2 F-8)
+    case 'deposit': case 'buffer': case 'goal': case 'annualLimit': case 'goalAck': return typeof v === 'number' ? fmtMoney(v) : String(v)
     case 'vat': return `${String(v)}%`
     case 'verified': return v ? t('pending.verifiedYes') : t('pending.verifiedNo')
     case 'done': return v ? t('pending.doneYes') : t('pending.doneNo')
