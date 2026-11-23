@@ -9,6 +9,8 @@ import type { PayBy, Spending } from '../data/types'
 import Seg from './Seg.vue'
 import Select from './Select.vue'
 import SpendEditor from './SpendEditor.vue'
+import { downloadCsv } from '../lib/csv'
+import { spendingCsvRows } from '../lib/spending-csv'
 
 // 일반 tab (spec 011 S-6, S-7): the lump-sum spendings as a table (a card list on the phone), three summary
 // cards, filters. Everything shown is worked out here from the store through calc.ts: the state by `spendState`,
@@ -63,6 +65,9 @@ const catSel = computed(() => (cats.value.includes(cat.value) ? cat.value : ''))
 const shown = computed(() => rows.value.filter((r) => inStatus(r, status.value) && (!pay.value || r.s.payBy === pay.value) && (!catSel.value || r.s.category === catSel.value)))
 const payOpts = computed(() => [{ value: '', label: t('spending.gen.payAll') }, ...(['card', 'salary', 'subs'] as const).map((p) => ({ value: p, label: payName(p) }))])
 const catOpts = computed(() => [{ value: '', label: t('spending.gen.catAll') }, ...cats.value.map((c) => ({ value: c, label: c }))])
+/** The page's CSV button (spec 013 S-17): the spendings shown with these filters, one row per round. */
+function exportCsv() { downloadCsv(`allot-spending-general-${ym}.csv`, spendingCsvRows(shown.value.map((r) => r.s))) }
+defineExpose({ exportCsv })
 
 // ---------- the three cards (real values, S-7) ----------
 const names = (list: Spending[]) => { const u = [...new Set(list.map((s) => s.name))]; return u.slice(0, 2).join(' · ') + (u.length > 2 ? ` +${u.length - 2}` : '') }

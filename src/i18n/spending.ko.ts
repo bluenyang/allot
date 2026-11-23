@@ -275,6 +275,17 @@ export const spendingKo = {
       cancelDo: '취소하기',
       cancelKeep: '그대로 두기',
     },
+    csv: {
+      name: '지출',
+      category: '분류',
+      bought: '산 날',
+      how: '방식',
+      pay: '결제 수단',
+      round: '회차',
+      date: '날짜',
+      amount: '금액(원)',
+      state: '상태',
+    },
   },
 } as const
 

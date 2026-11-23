@@ -8,7 +8,6 @@ import { monthMoney, today, ymLabel, ymOf } from '../lib/calc'
 import Icon from '../components/Icon.vue'
 import PageHeader from '../components/PageHeader.vue'
 import PageLoadError from '../components/PageLoadError.vue'
-import Soon from '../components/Soon.vue'
 import SpendGeneral from '../components/SpendGeneral.vue'
 import SpendEditor from '../components/SpendEditor.vue'
 import SpendInstallments from '../components/SpendInstallments.vue'
@@ -83,13 +82,20 @@ function checkAdd() {
 onActivated(checkAdd)
 watch(() => route.query, checkAdd)
 
+// ---------- CSV (spec 013 S-17): the tab shown, with its filters; each tab builds its own file ----------
+type Exporter = { exportCsv: () => void }
+const genTab = ref<Exporter | null>(null)
+const instTab = ref<Exporter | null>(null)
+const subsTab = ref<Exporter | null>(null)
+const exportCsv = () => ({ general: genTab, inst: instTab, subs: subsTab })[kind.value].value?.exportCsv()
+
 const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('spending.addInst'), subs: t('subscriptions.addSub') })[kind.value])
 </script>
 
 <template>
   <section class="page-gap">
     <PageHeader :title="t('spending.title')" :desc="t('spending.desc')">
-      <Soon class="soon-btn" :aria-label="`${t('shell.csvExport')} (${t('common.soon')})`"><Icon name="download" />{{ t('shell.csvExport') }}</Soon>
+      <button class="btn" type="button" @click="exportCsv"><Icon name="download" />{{ t('shell.csvExport') }}</button>
     </PageHeader>
 
     <section class="card mstrip" aria-labelledby="ms-t">
@@ -125,10 +131,10 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
 
     <!-- kept alive: leaving the tab deactivates the page (its editors close, as when leaving the page), coming back finds its view and filters -->
     <KeepAlive>
-      <Subscriptions v-if="kind === 'subs'" embedded :adding="adding" @added="adding = false" />
+      <Subscriptions v-if="kind === 'subs'" ref="subsTab" embedded :adding="adding" @added="adding = false" />
     </KeepAlive>
-    <SpendGeneral v-if="kind === 'general'" />
-    <SpendInstallments v-else-if="kind === 'inst'" />
+    <SpendGeneral v-if="kind === 'general'" ref="genTab" />
+    <SpendInstallments v-else-if="kind === 'inst'" ref="instTab" />
     <SpendEditor v-if="spendAdd" :initial="null" :start="spendAdd" @close="spendAdd = null" />
   </section>
 </template>

@@ -5,23 +5,23 @@ import SubTabs from '../components/SubTabs.vue'
 import PageHeader from '../components/PageHeader.vue'
 import TransferChart from '../components/TransferChart.vue'
 import Seg from '../components/Seg.vue'
-import Soon from '../components/Soon.vue'
 import Icon from '../components/Icon.vue'
 import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, today, usd, ymOf, ymRange } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, today, usd, ymd, ymOf, ymRange } from '../lib/calc'
 import type { Category, Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
+import { downloadCsv, type CsvCell } from '../lib/csv'
 
 // The editors load when one is opened: the first screen stays small.
 const SubEditor = defineAsyncComponent(() => import('../components/SubEditor.vue'))
 const PlanChangeEditor = defineAsyncComponent(() => import('../components/PlanChangeEditor.vue'))
 
 // 구독 (spec 010 S-7): four summary cards, four views in one card, a two-step editor for a subscription
-// and one for a plan change. Not drawn yet: the CSV export (준비 중).
+// and one for a plan change. The CSV export (spec 013 S-17) writes the list as it is filtered.
 const tab = ref('list')
 const now = today()
 const ym = ref(ymOf(now))
@@ -81,6 +81,18 @@ const chargeText = (r: (typeof rows.value)[number]) => (r.p.status === 'company'
 const pathText = (r: (typeof rows.value)[number]) => (r.p.status === 'company' ? t('subscriptions.company') : pathLabel(r.p.path))
 const subsName = computed(() => store.targets.find((x) => x.kind === 'subscriptions')?.name ?? t('subscriptions.transferName'))
 const remainderName = computed(() => store.targets.find((x) => x.kind === 'remainder')?.name ?? '')
+
+// ---------- CSV (spec 013 S-17): the subscriptions the list shows (its filters and base month) ----------
+function exportCsv() {
+  const H = (k: string) => t(`subscriptions.csv.${k}` as MessageKey)
+  const rows: CsvCell[][] = [['name', 'category', 'plan', 'amount', 'currency', 'cycle', 'status', 'next', 'monthly'].map(H)]
+  for (const r of shown.value) {
+    const p = r.p
+    rows.push([p.name, catLabel(p.category), p.plan, p.amount, p.currency, cycleLabel(p.cycle), statusLabel(p.status), r.next ? ymd(r.next) : '', Math.round(r.monthly)])
+  }
+  downloadCsv(`allot-subscriptions-${ym.value}.csv`, rows)
+}
+defineExpose({ exportCsv })
 
 // ---------- editors ----------
 const subEd = ref<{ item: Subscription | null } | null>(null)
@@ -189,7 +201,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
 <template>
   <section class="page-gap">
     <PageHeader v-if="!embedded" :title="t('subscriptions.title')" :desc="t('subscriptions.desc')">
-      <Soon class="soon-btn" :aria-label="`${t('shell.csvExport')} (${t('common.soon')})`"><Icon name="download" />{{ t('shell.csvExport') }}</Soon>
+      <button class="btn" type="button" @click="exportCsv"><Icon name="download" />{{ t('shell.csvExport') }}</button>
       <button class="btn pri" type="button" @click="openSub()"><Icon name="plus" />{{ t('subscriptions.addSub') }}</button>
     </PageHeader>
 

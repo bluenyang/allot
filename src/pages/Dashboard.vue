@@ -4,7 +4,6 @@ import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
-import Soon from '../components/Soon.vue'
 import { saveItem, store, subName } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { notReady, view } from '../lib/view'
@@ -12,11 +11,12 @@ import { allocColor } from '../lib/colors'
 import { kindDetail, phaseTag, roundSuffix } from '../lib/labels'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
 import { manText, monthLong, monthShort, weekdayShort } from '../lib/format'
-import { t, lang } from '../i18n'
+import { t, lang, type MessageKey } from '../i18n'
 import { offDays } from '../lib/holidays-lazy'
 import { whenShort } from '../lib/event-when'
+import { downloadCsv, type CsvCell } from '../lib/csv'
 import {
-  addYm, clusterDots, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymOf, ymRange,
+  addYm, clusterDots, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymd, ymOf, ymRange,
 } from '../lib/calc'
 import {
   canUndo, changed, decide, fieldName, listFor, loadProposals, money, proposals, proposalTitle, rowFields, rowLabel, rowTitle, shown, summary, tableName, undo, when, worded,
@@ -26,8 +26,9 @@ import {
 const AddRecord = defineAsyncComponent(() => import('../components/AddRecordModal.vue'))
 
 // 현황 (spec 007 S-4, redrawn by spec 010 S-6): the canvas dashboard on the data we have. Not in the
-// app yet (S-3): file export and the last sync — they are `Soon` or "—". '결제 추가' opens the spending add
-// editor (/spend/general?add) and the remainder's '관리' goes to the pay page's simulation (spec 013 S-16).
+// app yet (S-3): the last sync — it is "—". '결제 추가' opens the spending add editor (/spend/general?add) and
+// the remainder's '관리' goes to the pay page's simulation (spec 013 S-16); '내보내기' saves the shown month's
+// summary as a CSV made here from the state (S-17).
 // "고정 지출 추이" looks ahead six months (the past is not stored; the user approved the change on 2026-11-15).
 const now = today()
 // The month comes from the header's month switch (spec 007 S-15); payments stay "from today".
@@ -169,6 +170,37 @@ const dots = computed(() => clusterDots(pays.value.map((p) => p.dday), stripW.va
   const text = ms.length === 1 ? payText(ms[0]!) : `${t('dashboard.paymentCount', { n: ms.length })}: ${ms.map(payText).join(' · ')}`
   return { id: ms.map((m) => m.key).join('+'), left: `${c.pct}%`, first: i === 0, n: ms.length, text }
 }))
+// ---------- 내보내기 (spec 013 S-17): the shown month's summary as CSV ----------
+// Distribution rows (target, kind, amount), the subscription transfer, the remainder (and its split), then the
+// month's subscription payments and spending rounds (date, name, amount) in date order.
+function exportCsv() {
+  const m = ym.value
+  const H = (k: string) => t(`dashboard.csv.${k}` as MessageKey)
+  const d = dist.value
+  const xferDay = dates.value.transfer.date
+  const rows: CsvCell[][] = [[H('section'), H('name'), H('kind'), H('date'), H('amount')]]
+  for (const r of d.rows) rows.push([H('secDist'), r.name, r.detail || kindDetail(r.kind), xferDay, r.amount])
+  const subsTarget = store.targets.find((x) => x.kind === 'subscriptions')?.name ?? t('subscriptions.transferName')
+  rows.push([H('secTransfer'), subsTarget, t('calendar.kind.transfer'), xferDay, xfer.value.transfer])
+  if (d.remainderTarget) {
+    rows.push([H('secRemainder'), d.remainderTarget.name, kindDetail('remainder'), xferDay, d.remainder])
+    for (const x of split.value) rows.push([H('secSplit'), x.name, '', xferDay, x.amount])
+  } else rows.push([H('secRemainder'), spare.value < 0 ? t('dashboard.short') : t('dashboard.spare'), '', xferDay, spare.value])
+  const first = parseDate(`${m}-01`)
+  const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate() - 1
+  const due: { date: string; row: CsvCell[] }[] = []
+  for (const p of upcomingPayments(store.subscriptions, store.planChanges, store.settings, first, days)) {
+    due.push({ date: ymd(p.date), row: [H('secPay'), p.sub.name, H('kindSub'), ymd(p.date), p.krw] })
+  }
+  // every round of the month that counts (paid or to pay; not merged, not a cancelled spending's open round)
+  for (const s of store.spendings) for (const r of s.rounds) {
+    if (r.state === 'merged' || (s.cancelled && r.state === 'left') || r.date.slice(0, 7) !== m) continue
+    due.push({ date: r.date, row: [H('secRound'), s.name, roundSuffix(s, r) || t('dashboard.spendOne'), r.date, r.amount] })
+  }
+  for (const x of due.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))) rows.push(x.row)
+  downloadCsv(`allot-summary-${m}.csv`, rows)
+}
+
 const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
 </script>
 
@@ -187,7 +219,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
         · {{ t('calendar.kind.billing') }} <span :title="moved(dates.billing.shifted)">{{ md(dates.billing.date) }}<small v-if="note(dates.billing)">{{ note(dates.billing) }}</small></span>
         · <button class="linkish" type="button" @click="notReady('shell.lastSync')">{{ t('shell.lastSync') }} —</button>
       </template>
-      <Soon class="soon-btn ph-hide" :aria-label="`${t('shell.export')} (${t('common.soon')})`"><Icon name="download" />{{ t('shell.export') }}</Soon>
+      <button class="btn ph-hide" type="button" :title="t('dashboard.exportLabel', { month: monthTitle })" @click="exportCsv"><Icon name="download" />{{ t('shell.export') }}</button>
       <button class="btn pri" type="button" @click="adding = 'todo'"><Icon name="plus" />{{ t('shell.addRecord') }}</button>
     </PageHeader>
 
@@ -519,7 +551,6 @@ tr.sum td.n{font-weight:700}
 .mn-c b{display:block;font-size:17px}
 .mnav .btn{width:44px;height:44px;flex:none;color:var(--muted)}
 .mnav .btn svg{width:20px;height:20px}
-.soon-btn{height:36px;padding:0 14px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface);color:var(--subtle)}
 @media (max-width:760px){.mnav{display:flex}.ph-hide{display:none !important}.dash-ph :deep(h1){position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
 @media (max-width:760px){.c-how{display:none}.bars,.months{gap:8px}}
 .items > li.dim{opacity:.6}

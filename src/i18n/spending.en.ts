@@ -273,5 +273,16 @@ export const spendingEn = {
       cancelDo: 'Cancel it',
       cancelKeep: 'Keep it',
     },
+    csv: {
+      name: 'Spending',
+      category: 'Category',
+      bought: 'Bought on',
+      how: 'How',
+      pay: 'Paid with',
+      round: 'Round',
+      date: 'Date',
+      amount: 'Amount (KRW)',
+      state: 'State',
+    },
   },
 } satisfies SpendingMessages
