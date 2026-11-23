@@ -16,10 +16,15 @@ IMAGE=${1:-${IMAGE:-}}
 load_secrets
 export DATABASE_URL="postgres://allot_keys:${ALLOT_RC_DB_PASSWORD}@db:5432/allot_rc"
 export BETTER_AUTH_URL=$TEST_BASE
+# Optional: the rate service of the automatic refresh (spec 013 S-23) and its switch, passed by name only when set
+# (a fake rate service for the tests, never the real one): ALLOT_FX_URL=http://allot-fxfake:8080, ALLOT_FX_REFRESH=off.
+FX=()
+[ -z "${ALLOT_FX_URL:-}" ] || FX+=(-e ALLOT_FX_URL)
+[ -z "${ALLOT_FX_REFRESH:-}" ] || FX+=(-e ALLOT_FX_REFRESH)
 begin up "${UP_LOG:-$LOG_DIR/up-$(date +%Y%m%dT%H%M%S).log}"
 [ -n "$IMAGE" ] || step "build image" docker build -q -t allot:test .
 step "remove old" docker rm -f allot-rc
-step "run" docker run -d --name allot-rc --network allot-dev_default --read-only --tmpfs /tmp -p 15174:3000 -e DATABASE_URL -e BETTER_AUTH_SECRET -e ALLOT_MASTER_KEY -e ADMIN_EMAIL -e BETTER_AUTH_URL "${IMAGE:-allot:test}"
+step "run" docker run -d --name allot-rc --network allot-dev_default --read-only --tmpfs /tmp -p 15174:3000 -e DATABASE_URL -e BETTER_AUTH_SECRET -e ALLOT_MASTER_KEY -e ADMIN_EMAIL -e BETTER_AUTH_URL "${FX[@]}" "${IMAGE:-allot:test}"
 step "wait healthy" node "$HERE/wait.mjs" "$HEALTH_URL"
 step "state" docker inspect -f "{{.State.Status}} {{.Config.Image}}" allot-rc
 done_check

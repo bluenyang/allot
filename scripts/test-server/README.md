@@ -10,7 +10,7 @@ The values are passed by name only (`docker run -e NAME`, `source`); nothing pri
 
 | Script | What |
 |---|---|
-| `up.sh [image]` | (Re)start `allot-rc` from `allot:test` (built from the working tree) or the given image; waits for `/healthz`. Log: `$LOG_DIR/up-<time>.log` (`UP_LOG=<file>` to choose). |
+| `up.sh [image]` | (Re)start `allot-rc` from `allot:test` (built from the working tree) or the given image; waits for `/healthz`. Log: `$LOG_DIR/up-<time>.log` (`UP_LOG=<file>` to choose). `ALLOT_FX_URL` / `ALLOT_FX_REFRESH`, when set, are passed to the container by name (the tests point the rate refresh at the fake rate service `tests/api/fx-fake.mjs`, never the real one). |
 | `down.sh` | Take the test server down through the runner: `docker rm -f allot-rc`, then `no-container.mjs allot-rc` (exit 1 if a container of that name remains, 2 on a docker error). Log: `$LOG_DIR/down-<time>.log` (`DOWN_LOG=<file>`). |
 | `stage.sh` | Update the staging stack on :15173 (`docker/compose.dev.yaml`, real data; nothing writes test data) through the runner: `up -d --build -V --wait`, the running images, the git HEAD they were built from, and the front page answering 200. Log: `$LOG_DIR/stage-<time>.log` (`STAGE_LOG=<file>`). |
 | `quiet.mjs <command...>` | Run a command with stdin, stdout and stderr discarded; print only `<program> … exit=<status>` and exit with its status (1 if it cannot start). `stage.sh` runs the compose step through it so build output (which could hold env values) never reaches the log. |
