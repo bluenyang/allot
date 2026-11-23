@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.7-rc.1 — unreleased
+## 0.1.7-rc.1 — 2026-11-23
 
 The budget core: Living, Savings and Investment menus, accounts with balances, goals and limits, cards, and paying a card purchase from an account's buffer, with MCP tools. Intent 013 (`.agents/intent/013_budget-and-soon/`). The database gains five tables and new columns (migrations 0028 to 0031); the old living row becomes living items.
 
