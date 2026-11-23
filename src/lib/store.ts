@@ -171,6 +171,20 @@ export function saveSettings(patch: Partial<Settings> = {}) {
   })
 }
 
+/**
+ * Save a listed currency (spec 013 S-23). While its 자동 is on and the user left the rate as this tab had it, send the rate
+ * the server holds now: the daily refresh may have changed it since the tab loaded (review rc3-2 N-2, like the USD rate in
+ * saveSettings). A rate the user typed goes as typed; the server still takes any rate.
+ */
+export async function saveCurrency(row: ForeignCurrency, tabRate: number | null): Promise<ForeignCurrency> {
+  let body = row
+  if (row.id && row.auto && tabRate !== null && row.rate === tabRate) {
+    const now = (await api<State>('GET', '/api/state')).currencies.find((c) => c.id === row.id)
+    if (now) body = { ...row, rate: now.rate }
+  }
+  return saveItem('currencies', body)
+}
+
 export function savePreferences(next: Preferences) {
   return save(async (s) => {
     const saved = await api<Preferences>('PUT', '/api/preferences', next)

@@ -6,7 +6,7 @@ import Soon from '../components/Soon.vue'
 import Switch from '../components/Switch.vue'
 import { applyPreference, lang, t, te, type Lang, type MessageKey } from '../i18n'
 import { showToast } from '../lib/toast'
-import { deleteItem, pricedSettings, saveItem, savePreferences, saveSettings, sessionScope, status, store } from '../lib/store'
+import { deleteItem, pricedSettings, saveCurrency, saveItem, savePreferences, saveSettings, sessionScope, status, store } from '../lib/store'
 import { api } from '../lib/api'
 import { COMMON_CODES, currencyUses, normalCode, rateNum } from '../lib/currency'
 import { runSteps } from '../lib/session-guard'
@@ -112,15 +112,15 @@ function modeText(r: FxRow) {
 }
 const rateText = (r: FxRow) => c('rate', { rate: rateNum(r.rate), code: r.code })
 
-interface FxDraft { id: string | null; isNew: boolean; code: string; fxRate: number; fxBuffer: number; auto: boolean }
+interface FxDraft { id: string | null; isNew: boolean; code: string; fxRate: number; fxBuffer: number; auto: boolean; /** the rate this tab had when the sheet opened */ tabRate: number | null }
 const fxEdit = ref<FxDraft | null>(null)
 const fxError = ref('')
 const fxBusy = ref(false)
 const fxModes = computed(() => [{ id: 'auto', label: g('fxAuto') }, { id: 'manual', label: g('fxManual') }])
 function openFx(r?: FxRow) {
   fxEdit.value = r
-    ? { id: r.id, isNew: false, code: r.code, fxRate: r.rate, fxBuffer: r.buffer, auto: r.auto }
-    : { id: '', isNew: true, code: '', fxRate: 0, fxBuffer: store.settings.fxBuffer, auto: false }
+    ? { id: r.id, isNew: false, code: r.code, fxRate: r.rate, fxBuffer: r.buffer, auto: r.auto, tabRate: r.rate }
+    : { id: '', isNew: true, code: '', fxRate: 0, fxBuffer: store.settings.fxBuffer, auto: false, tabRate: null }
   fxError.value = ''
 }
 const fxIsUsd = computed(() => fxEdit.value?.id === null)
@@ -144,7 +144,7 @@ async function saveFx() {
   if (!(f.fxBuffer >= 0 && f.fxBuffer <= 100)) return (fxError.value = g('badBuffer'))
   if (f.id === null) return fxRun(() => saveSettings({ fxRate: f.fxRate, fxBuffer: f.fxBuffer, fxAuto: f.auto }))
   const row: ForeignCurrency = { id: f.id, code: normalCode(f.code), rate: f.fxRate, buffer: f.fxBuffer, auto: f.auto }
-  return fxRun(() => saveItem('currencies', row)) // the API checks the code (S-26) and a rename of a code in use (A-35)
+  return fxRun(() => saveCurrency(row, f.tabRate)) // the API checks the code (S-26) and a rename of a code in use (A-35)
 }
 const removeFx = () => { const id = fxEdit.value?.id; if (id) void fxRun(() => deleteItem('currencies', id)) }
 const fxFoot = computed(() => (fxEdit.value && fxEdit.value.fxRate > 0 ? t('settings.general.fxFoot', { rate: money(fxEdit.value.fxRate * (1 + (fxEdit.value.fxBuffer || 0) / 100), { ...fmt.value, amountUnit: 'won' }) }) : ''))
