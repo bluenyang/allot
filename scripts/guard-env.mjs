@@ -102,7 +102,10 @@ function searchArgs(words) {
   if (!isRg && !['grep', 'egrep', 'fgrep'].includes(prog)) return null
   const shortV = isRg ? RG_VALUE_SHORT : GREP_VALUE_SHORT
   const longV = isRg ? RG_VALUE_LONG : GREP_VALUE_LONG
-  let recursive = isRg
+  // rg walks folders but skips dotfiles (.env*) unless told to read hidden files: --hidden, -. or -u twice (retro review T-4)
+  let recursive = false
+  let rgHidden = false
+  let rgU = 0
   let patternGiven = false
   const positional = []
   const includes = []
@@ -122,6 +125,8 @@ function searchArgs(words) {
       const eq = w.indexOf('=')
       const name = w.slice(2, eq < 0 ? undefined : eq)
       if (!isRg && (name === 'recursive' || name === 'dereference-recursive')) recursive = true
+      if (isRg && name === 'hidden') rgHidden = true
+      if (isRg && name === 'no-hidden') rgHidden = false
       if (eq >= 0) option(name, w.slice(eq + 1))
       else if (longV.has(name)) option(name, rest[++i] ?? '')
       continue
@@ -130,12 +135,15 @@ function searchArgs(words) {
       for (let j = 1; j < w.length; j++) {
         const c = w[j]
         if (!isRg && (c === 'r' || c === 'R')) recursive = true
+        if (isRg && c === '.') rgHidden = true
+        if (isRg && c === 'u') rgU++
         if (shortV.has(c)) { option(c, j + 1 < w.length ? w.slice(j + 1) : (rest[++i] ?? '')); break }
       }
       continue
     }
     positional.push(w)
   }
+  if (isRg) recursive = rgHidden || rgU >= 2
   if (!recursive) return null
   const paths = positional.slice(patternGiven ? 0 : 1) // without -e/-f the first word is the pattern
   return { paths: paths.length ? paths : ['.'], includes, excludes }
@@ -263,8 +271,14 @@ if (!isMain) {
     ['grep -r SECRET .', true],
     ['grep -r SECRET', true],
     ['grep -rn -e SECRET docker', true],
-    ['rg SECRET docker', true],
-    ['rg -n SECRET', true],
+    ['rg SECRET docker', false], // rg skips dotfiles by default (retro review T-4)
+    ['rg -n SECRET', false],
+    ['rg --hidden SECRET docker', true],
+    ['rg -. SECRET docker', true],
+    ['rg -uu SECRET docker', true],
+    ['rg -u -u SECRET docker', true],
+    ['rg -u SECRET docker', false],
+    ['rg --hidden -g !.env* SECRET docker', false],
     ['grep -r SECRET src docker', true],
     ['cd x && grep -rl SECRET docker/ | head', true],
     ["grep -rn --include='*.yaml' SECRET docker", false],
