@@ -16,8 +16,24 @@ export function canonical(x: unknown): string {
   return JSON.stringify(x) ?? 'null'
 }
 
-/** SHA-256 of the user's whole data as readState() returns it. */
-export const hashState = (state: unknown) => createHash('sha256').update(canonical(state)).digest('hex')
+/**
+ * Fields only the server writes when it refreshes exchange rates (spec 013 S-23): when the last refresh ran and why it
+ * failed. They are not the user's data, so a refresh that changes no rate leaves a pending proposal valid.
+ */
+const REFRESH_ONLY = ['fxAutoAt', 'fxAutoError', 'autoAt', 'autoError']
+const withoutRefreshMarks = (state: unknown): unknown => {
+  const s = state as { settings?: Record<string, unknown>; currencies?: Record<string, unknown>[] } | null
+  if (!s || typeof s !== 'object') return state
+  const drop = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([k]) => !REFRESH_ONLY.includes(k)))
+  return {
+    ...s,
+    ...(s.settings ? { settings: drop(s.settings) } : {}),
+    ...(Array.isArray(s.currencies) ? { currencies: s.currencies.map(drop) } : {}),
+  }
+}
+
+/** SHA-256 of the user's whole data as readState() returns it (without the rate refresh marks). */
+export const hashState = (state: unknown) => createHash('sha256').update(canonical(withoutRefreshMarks(state))).digest('hex')
 
 export interface Delta<T> { before: T; after: T }
 export interface MonthPreview {

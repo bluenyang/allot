@@ -107,3 +107,11 @@ test('the subscription transfer: each currency takes its own buffer; USD and KRW
   assert.equal(after.buffer, (14_000 * 3) / 100 + (15_000 * 10) / 100)
   assert.equal(after.transfer, Math.ceil(Math.ceil((14_000 + 20_000 + 15_000 + after.buffer) / 1000) * 1000 / 10_000) * 10_000)
 })
+
+test('a rate refresh that changes no rate leaves the state fingerprint of a pending proposal as it was (S-23)', async () => {
+  const { hashState } = await import('../../server/preview')
+  const base = { settings: { ...DEFAULT_SETTINGS, fxAutoAt: null, fxAutoError: null }, currencies: [{ id: 'e', code: 'EUR', rate: 1500, buffer: 0, auto: true, autoAt: null, autoError: null }] }
+  const refreshed = { settings: { ...base.settings, fxAutoAt: '2026-11-23T00:00:00Z', fxAutoError: 'network' }, currencies: [{ ...base.currencies[0]!, autoAt: '2026-11-23T00:00:00Z' }] }
+  assert.equal(hashState(refreshed), hashState(base))
+  assert.notEqual(hashState({ ...refreshed, currencies: [{ ...refreshed.currencies[0]!, rate: 1501 }] }), hashState(base), 'a changed rate still counts')
+})
