@@ -744,10 +744,16 @@ test.describe('(spec 010 EV-5..8) desktop', () => {
 
 test('(V-8, W-8) 설정 and 관리: what does not exist yet is a visible, inert 준비 중 entry that makes no request', async ({ page }) => {
   const notice = page.getByRole('status').filter({ hasText: '준비 중' })
+  // 0.1.7-rc.3 (spec 013 S-22..S-24) made the time zone, the base currency note, 외화 추가, 일정 추가, the password policy
+  // and the generator real: they are no longer 준비 중 entries (checked below); the AI tab's two stay.
+  for (const [route, names] of [['settings/general', ['Asia/Seoul', 'KRW', '외화 추가', '일정 추가']], ['settings/security', ['비밀번호 정책', '자동 생성', '만들기']]] as const) {
+    await page.goto(`/${route}`)
+    await page.locator('header.ph h1').waitFor()
+    await page.waitForLoadState('networkidle')
+    for (const n of names) await expect(page.locator('[aria-disabled="true"]').filter({ hasText: n }), `${route} ${n} is not 준비 중`).toHaveCount(0)
+  }
   const cases: [string, string[]][] = [
-    ['settings/general', ['Asia/Seoul', 'KRW', '+ 외화 추가', '+ 일정 추가']],
     ['settings/ai', ['+ 모델 연결', '연결된 앱 관리']],
-    ['settings/security', ['비밀번호 정책', '자동 생성']],
   ]
   for (const [route, names] of cases) {
     await page.goto(`/${route}`)
