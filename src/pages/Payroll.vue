@@ -13,9 +13,11 @@
 // spec 013 rev 1 (W-12, S-14): the simulation's "조정" on a fixed, Savings total or Investment total row (any month):
 // this month only (a month adjustment) or to the end of the phase; an adjusted row shows the value it replaces struck
 // through and "조정됨 · 이번 달만".
+// spec 013 rev 1 S-16: a link may name the tab (`/pay?tab=sim`, or any tab id): it opens on entry, on a return through
+// KeepAlive and when the query changes; without one (or with an unknown one) the tab stays as it was.
 import { t, tl } from '../i18n'
-import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onActivated, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -44,6 +46,18 @@ const tabs = computed(() => [
   { id: 'sim', label: t('payroll.tabSim'), icon: 'chart' },
   { id: 'accounts', label: t('payroll.tabAccounts'), icon: 'money' },
 ])
+// the tab a link names (S-16)
+const route = useRoute()
+const TAB_IDS = ['phases', 'sim', 'accounts']
+function tabFromQuery() {
+  if (route.path !== '/pay') return // a KeepAlive page also sees the routes of other pages
+  const q = route.query.tab
+  const id = Array.isArray(q) ? q[0] : q
+  if (typeof id === 'string' && TAB_IDS.includes(id)) tab.value = id
+}
+tabFromQuery()
+onActivated(tabFromQuery)
+watch(() => route.query.tab, tabFromQuery)
 const now = ymOf(today())
 // The month's distribution with its one-off spendings (spec 011 S-5); `pay` is a value tried on this screen.
 const dist = (ym: string, pay = store.settings.netPay) => monthMoney(store, ym, { pay }).dist
