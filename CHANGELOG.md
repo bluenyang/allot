@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.7 — 2026-11-23
+
+The budget menus, account management and every feature that was "coming soon" except the AI ones, each with MCP tools.
+The same code as 0.1.7-rc.3: 0.1.7-rc.1 (the budget core), 0.1.7-rc.2 (budget and screen features) and 0.1.7-rc.3
+(settings and security) below together are this release. Spec 013 (`.agents/intent/013_budget-and-soon/spec.md`).
+Released on the user's instruction ("정식 릴리스") after the screen checks on the staging stack (V-12, V-22, user:
+"확인했음, 릴리스"). Migrations 0028 to 0036 run at start; reverting a change set saved before 0.1.7 for the old living
+costs table is refused (A-2).
+
 ## 0.1.7-rc.3 — 2026-11-23
 
 Settings and security features that were "coming soon". Spec 013 revision 1 (`.agents/intent/013_budget-and-soon/spec.md`, S-22 to S-26, A-35 to A-45). Migrations 0034, 0035 and 0036 (the time zone preference, a table for one's own monthly dates, a table of foreign currencies, the automatic refresh columns of the settings, a table of failed sign-ins; the currency of subscriptions, plan changes and spendings becomes a three-letter code — the stored `KRW` and `USD` values are unchanged).
