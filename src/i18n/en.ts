@@ -406,7 +406,7 @@ export const en = {
     movedAfter: 'Moved later: weekend or holiday',
     spendOne: 'One-off spending',
     autoSplit: 'Auto-transfer split on day {day}',
-    takeHome: 'Take-home pay {pay}',
+    takeHome: 'Coming in {pay}',
     ratioLabel: 'Split ratio: {list}',
     trendLabel: 'Subscriptions per month, next 6 months: {list}',
     editCheck: 'Edit to-check item',

@@ -60,7 +60,8 @@ const split = computed(() => (dist.value.remainderTarget ? splitRemainder(dist.v
 const subsMonthly = computed(() => xfer.value.monthlySum + xfer.value.yearlyMonthly)
 // Active in the shown month, with scheduled plan changes applied (the same set as the monthly total).
 const activeSubs = computed(() => xfer.value.items.length)
-const pct = (n: number) => (store.settings.netPay > 0 ? `${((n / store.settings.netPay) * 100).toFixed(1)}%` : '—')
+// shares of what comes in this month (spec 014 S-5): the rows are worked out from it, so the column adds up to 100%
+const pct = (n: number) => (monthNow.value.income.total > 0 ? `${((n / monthNow.value.income.total) * 100).toFixed(1)}%` : '—')
 // What the pay leaves when no target takes the remainder (negative = short).
 const spare = computed(() => unallocated(dist.value))
 const barRows = computed(() => dist.value.rows.filter((x) => x.amount > 0))
@@ -388,7 +389,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
       <div v-if="tab === 'month'" class="flexcols stretch">
         <div class="col-main">
           <section class="card">
-            <div class="card-hd"><h2>{{ t('dashboard.autoSplit', { day: dates.transfer.date.slice(8).replace(/^0/, '') }) }}</h2><span class="aux">{{ t('dashboard.takeHome', { pay: fmtMoney(store.settings.netPay) }) }}</span></div>
+            <div class="card-hd"><h2>{{ t('dashboard.autoSplit', { day: dates.transfer.date.slice(8).replace(/^0/, '') }) }}</h2><span class="aux">{{ t('dashboard.takeHome', { pay: fmtMoney(monthNow.income.total) }) }}</span></div>
             <div class="rbar">
               <div class="ratio" role="img" :aria-label="t('dashboard.ratioLabel', { list: dist.rows.map((r) => `${r.name} ${pct(r.amount)}`).join(', ') })">
                 <i v-for="r in barRows" :key="r.key" :style="{ flexGrow: r.amount, background: allocColor(r.key) }"></i>

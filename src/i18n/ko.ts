@@ -406,7 +406,7 @@ export const ko = {
     movedAfter: '주말·공휴일이라 미룸',
     spendOne: '일회성 지출',
     autoSplit: '{day}일 자동이체 분배',
-    takeHome: '실수령 {pay}',
+    takeHome: '들어올 돈 {pay}',
     ratioLabel: '분배 비율: {list}',
     trendLabel: '앞으로 6개월 구독 월 환산: {list}',
     editCheck: '확인할 것 수정',
