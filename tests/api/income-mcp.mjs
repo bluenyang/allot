@@ -35,7 +35,6 @@ const si = await api('POST', '/api/auth/sign-in/email', { email: process.env.ADM
 ok(si.status === 200, `sign-in → ${si.status}`)
 if (failures()) process.exit(1)
 let keyId = null
-const sets = [] // change sets this run applied, newest last
 arm()
 try {
   const k = await api('POST', '/api/keys', { name: NAME, expiresInDays: 1, write: true, confirm: 'chat' })
@@ -62,17 +61,19 @@ try {
   ok(p.status === 'pending' && !!p.proposalId, `propose a receipt → ${p.status}`)
   const a = await tool('apply_proposal', { proposalId: p.proposalId })
   ok(a.status === 'applied' && !!a.changeSetId, `apply it → ${a.status}`)
-  sets.push(a.changeSetId)
   const inc1 = await tool('get_income', { month })
+  const ov1 = await tool('get_overview', { month })
+  ok(ov1.leftOverKrw - ov0.leftOverKrw === 12_345 && ov1.income?.totalKrw === inc1.totalKrw, `get_overview's left over moved by the same (${ov0.leftOverKrw} → ${ov1.leftOverKrw}; review 2 F-3)`)
   ok(inc1.leftOverKrw - inc0.leftOverKrw === 12_345, `left over moved by the difference (${inc0.leftOverKrw} → ${inc1.leftOverKrw}, salary ${before} → +12,345)`)
   ok(inc1.totalKrw - inc0.totalKrw === 12_345, `total coming in moved by the same (${inc0.totalKrw} → ${inc1.totalKrw})`)
 
   const rv = await tool('propose_revert', { changeSetId: a.changeSetId, note: NAME })
   const ra = await tool('apply_proposal', { proposalId: rv.proposalId })
   ok(ra.status === 'applied', `revert applied → ${ra.status}`)
-  sets.push(ra.changeSetId)
   const inc2 = await tool('get_income', { month })
   ok(inc2.leftOverKrw === inc0.leftOverKrw && inc2.totalKrw === inc0.totalKrw, `the revert puts the month back (${inc2.leftOverKrw})`)
+  const ov2 = await tool('get_overview', { month })
+  ok(ov2.leftOverKrw === ov0.leftOverKrw, `get_overview's left over is back too (${ov2.leftOverKrw})`)
 } catch (e) {
   threw(e)
 } finally {
@@ -81,6 +82,15 @@ try {
     if (!keyId) return 'no key'
     const d = await api('DELETE', `/api/keys/${keyId}`)
     ok(d.status === 204 || d.status === 200, `delete the key → ${d.status}`)
+  })
+  // a run stopped after the apply leaves its receipt: remove every row this run wrote (review 2 F-1)
+  await cleanupStep('delete this run\'s receipts', async () => {
+    const left = ((await api('GET', '/api/state')).json?.incomeReceipts ?? []).filter((r) => r.note === NAME)
+    for (const r of left) {
+      const d = await api('DELETE', `/api/income-receipts/${r.id}`)
+      ok(d.status === 204, `delete receipt ${r.id} → ${d.status}`)
+    }
+    return `${left.length} removed`
   })
   const st = (await api('GET', '/api/state')).json
   ok(!(st?.incomeReceipts ?? []).some((r) => r.note === NAME), 'no receipt of this run is left')
