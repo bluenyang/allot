@@ -267,24 +267,34 @@ test('(V-6, S-2) the salary\'s expected amount is Payroll\'s 월 실수령: an e
 
 test('(V-6, S-10) the change history names a money-received row by its income and month, also after the income is deleted', async ({ page, request }) => {
   const name = `${MARK}-hist`
-  const ym = '2090-01'
-  const inc = (await api(request, 'POST', '/api/incomes', { name, cycle: 'monthly', day: 10, amount: 100_000, note: '' })).json as { id: string }
-  const sal = (await api(request, 'POST', '/api/income-receipts', { itemId: null, ym, amount: 1_000, date: null, note: '' })).json as { id: string }
+  // a month of this run only, so no earlier run's rows match (review 5 F-1)
+  const t0 = Date.now()
+  const ym = `${2100 + (Math.floor(t0 / 1000) % 800)}-${String(1 + (Math.floor(t0 / 1000) % 12)).padStart(2, '0')}`
+  let incId: string | null = null
+  let salId: string | null = null
   let incGone = false
   try {
-    expect((await api(request, 'POST', '/api/income-receipts', { itemId: inc.id, ym, amount: 2_000, date: null, note: '' })).status).toBe(201)
+    const inc = await api(request, 'POST', '/api/incomes', { name, cycle: 'monthly', day: 10, amount: 100_000, note: '' })
+    expect(inc.status).toBe(201)
+    incId = (inc.json as { id: string }).id
+    const sal = await api(request, 'POST', '/api/income-receipts', { itemId: null, ym, amount: 1_000, date: null, note: '' })
+    expect(sal.status).toBe(201)
+    salId = (sal.json as { id: string }).id
+    expect((await api(request, 'POST', '/api/income-receipts', { itemId: incId, ym, amount: 2_000, date: null, note: '' })).status).toBe(201)
     await page.goto('/history')
     const list = page.getByRole('list', { name: '변경 목록' })
-    await expect(list.getByRole('listitem').filter({ hasText: `받은 금액 추가 · ${name} · ${ym}` })).toBeVisible()
-    await expect(list.getByRole('listitem').filter({ hasText: `받은 금액 추가 · 월급 · ${ym}` })).toBeVisible()
-    // the income goes, its receipt with it: the history still names it (from the loaded history), never its id
-    expect((await api(request, 'DELETE', `/api/incomes/${inc.id}`)).status).toBe(204)
+    const added = list.getByRole('listitem').filter({ hasText: `받은 금액 추가 · ${name} · ${ym}` })
+    await expect(added).toHaveCount(1)
+    await expect(list.getByRole('listitem').filter({ hasText: `받은 금액 추가 · 월급 · ${ym}` })).toHaveCount(1)
+    // the income goes, its receipt with it: every row still names it (from the loaded history), never its id (review 5 F-2)
+    expect((await api(request, 'DELETE', `/api/incomes/${incId}`)).status).toBe(204)
     incGone = true
     await page.reload()
-    await expect(list.getByRole('listitem').filter({ hasText: `받은 금액 삭제 · ${name} · ${ym}` })).toBeVisible()
-    await expect(list).not.toContainText(inc.id)
+    await expect(list.getByRole('listitem').filter({ hasText: `받은 금액 삭제 · ${name} · ${ym}` })).toHaveCount(1)
+    await expect(added).toHaveCount(1)
+    await expect(list).not.toContainText(incId)
   } finally {
-    if (!incGone) await api(request, 'DELETE', `/api/incomes/${inc.id}`)
-    await api(request, 'DELETE', `/api/income-receipts/${sal.id}`)
+    if (incId && !incGone) await api(request, 'DELETE', `/api/incomes/${incId}`)
+    if (salId) await api(request, 'DELETE', `/api/income-receipts/${salId}`)
   }
 })
