@@ -146,7 +146,7 @@ const toneClass = (tone?: Tone) => (tone && tone !== 'muted' ? `t-${tone}` : '')
 .cv.big{font-size:20px}
 .act{color:var(--primary-text);padding:0 6px}
 .act svg{width:15px;height:15px}
-.kp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px} /* a row of one or two cards fills the width (review 1 F-4) */
 .kcard{padding:14px 18px;display:flex;flex-direction:column;gap:2px;min-height:136px}
 .kl{font-size:12px;font-weight:600;color:var(--muted)}
 .kv{margin-top:4px;font-size:20px;font-weight:700}

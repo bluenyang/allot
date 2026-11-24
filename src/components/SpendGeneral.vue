@@ -225,7 +225,7 @@ const share = (v: number, total: number) => (total ? (v / total) * 100 : 0)
 </template>
 
 <style scoped>
-.kp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px} /* a row of one or two cards fills the width (review 1 F-4) */
 .kcard{padding:14px 18px;display:flex;flex-direction:column;gap:2px;min-height:148px;min-width:0}
 .k1{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--muted)}
 .k2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:4px}
