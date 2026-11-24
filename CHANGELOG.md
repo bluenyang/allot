@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased — 0.1.8
+## 0.1.8-rc.1 — 2026-11-25
 
-Three-second screens and income. Spec 014 (`.agents/intent/014_three-second-income/spec.md`). Migrations 0037 and 0038
+Three-second screens and income, released as a prerelease after the merge (PR #59; the user: "머지하고 rc까지").
+The version carries a hyphen, so the image is `ghcr.io/bluenyang/allot:0.1.8-rc.1` and `latest` does not move. Spec 014 (`.agents/intent/014_three-second-income/spec.md`). Migrations 0037 and 0038
 add three tables (regular incomes, money received, money that came in once) with forced row-level security; no stored
 value moves: the salary stays the settings' take-home pay on the pay day.
 
