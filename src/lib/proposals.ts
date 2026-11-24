@@ -163,7 +163,7 @@ export async function undo(id: string) {
  * The income a money-received row is for (spec 014 S-3): null is the salary; an income that is gone (its receipts went
  * with it, so the change set shows both) reads as "정기 수입", never its id (review 2 F-5).
  */
-const incomeOf = (id: unknown) => id === null || id === undefined
+export const incomeOf = (id: unknown) => id === null || id === undefined
   ? t('income.salary' as MessageKey)
   : store.incomes.find((x) => x.id === id)?.name ?? t('history.table.income_item' as MessageKey)
 /** A table's name; the rc.3 tables (spec 013 S-22, S-23) keep theirs in the currency messages. */

@@ -15,7 +15,7 @@ import Select from '../components/Select.vue'
 import { DEFAULT_TIMEZONE, isTimeZone } from '../lib/calc'
 import { byActor, type ActorFilter } from '../lib/history-actor'
 import { dayIn, PERIOD_KINDS, periodBounds, periodQuery, type PeriodKind } from '../lib/history-period'
-import { fieldName, tableName } from '../lib/proposals'
+import { fieldName, incomeOf, tableName } from '../lib/proposals'
 
 // Change history (spec 005 S-3, restyled by spec 010 S-9): one save = one change set, newest first, grouped by
 // day. A set can be reverted like a commit: the opposite change is saved as a new set (also a revert can be
@@ -110,6 +110,8 @@ const label = (c: Change) => {
   if (c.tableName === 'phase_amount') return `${phaseName(String(r.phaseId))} · ${targetName(String(r.targetId))}`
   // a month adjustment: its target and month (spec 013 S-14, review rc2-1 F-3)
   if (c.tableName === 'month_adjust') return `${targetName(String(r.targetId))} · ${String(r.ym)}`
+  // money received (spec 014 S-3): the income it is for and its month (review 3 F-1)
+  if (c.tableName === 'income_receipt') return `${incomeOf(r.itemId)} · ${String(r.ym)}`
   const name = r.name ?? r.text ?? r.title ?? r.label ?? r.note
   return typeof name === 'string' && name ? name : Object.values(c.rowKey).join(' · ')
 }
@@ -134,7 +136,9 @@ const fields = (c: Change) => {
 }
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
 /** A field's value: an allocation target by its name (a month adjustment's or a phase amount's target; review rc2-1 F-3), else as stored. */
-const valueOf = (k: string, v: unknown) => (k === 'targetId' && typeof v === 'string' ? targetName(v) : show(v))
+const valueOf = (k: string, v: unknown, table?: string) =>
+  table === 'income_receipt' && k === 'itemId' ? incomeOf(v) // the income's name; null = the salary (review 3 F-1)
+  : k === 'targetId' && typeof v === 'string' ? targetName(v) : show(v)
 const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : s.actorKind === 'system' ? t('currency.system') : t('history.you'))
 
 // ---------- filters ----------
@@ -239,8 +243,8 @@ async function revert() {
                   <tbody>
                     <tr v-for="f in fields(c)" :key="f.k">
                       <th scope="row" :title="f.k">{{ fieldName(f.k, c.tableName) }}</th>
-                      <td class="bef">{{ c.op === 'insert' ? '—' : valueOf(f.k, f.b) }}</td>
-                      <td class="aft">{{ c.op === 'delete' ? '—' : valueOf(f.k, f.a) }}</td>
+                      <td class="bef">{{ c.op === 'insert' ? '—' : valueOf(f.k, f.b, c.tableName) }}</td>
+                      <td class="aft">{{ c.op === 'delete' ? '—' : valueOf(f.k, f.a, c.tableName) }}</td>
                     </tr>
                   </tbody>
                 </table>
