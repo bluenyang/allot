@@ -108,6 +108,8 @@ const onGripDown = (e: PointerEvent) => {
   // no native drag or text selection from what lies under the handle (a menu link): Chrome would cancel the pointer
   // after the first move (spec 014 A-10; the sixth budget entry put a link under it)
   e.preventDefault()
+  // …which also keeps the click from focusing the handle: focus it, so the arrow keys work right after (review 3 F-2)
+  ;(e.currentTarget as HTMLElement).focus({ preventScroll: true })
   grab = sideWidth.value - (e.clientX - side.value.getBoundingClientRect().left)
   dragging = true
   resizing.value = true
