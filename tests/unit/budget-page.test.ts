@@ -3,7 +3,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  chipOf, chipValue, fromChoice, fromOf, limitTone, percentOfRatio, ratioAmount, ratioOfPercent, sumStatus, totalPreview, withTotal, yearSent,
+  chipOf, chipValue, fromChoice, fromOf, limitTone, monthParts, percentOfRatio, ratioAmount, ratioOfPercent, sumStatus, totalPreview, withTotal,
+  yearSent,
 } from '../../src/lib/budget-page'
 import { groupAt, phaseAt } from '../../src/lib/calc'
 import type { Account, AllocationTarget, Phase, Settings } from '../../src/data/types'
@@ -108,4 +109,13 @@ test('KPIs: what a menu sent this year so far, and the annual-limit tone (90% ne
   assert.equal(limitTone(900, 1_000), 'near')
   assert.equal(limitTone(1_000, 1_000), 'near')
   assert.equal(limitTone(1_001, 1_000), 'over')
+})
+
+test('a month card\'s parts: the first three rows that send money, in list order, and the rest added up (spec 014 S-8)', () => {
+  const r = (name: string, amount: number) => ({ name, amount })
+  assert.deepEqual(monthParts([]), { shown: [], rest: null })
+  assert.deepEqual(monthParts([r('a', 0), r('b', 5)]), { shown: [r('b', 5)], rest: null })
+  const five = [r('a', 10), r('b', 0), r('c', 30), r('d', 20), r('e', 5), r('f', 7)]
+  assert.deepEqual(monthParts(five), { shown: [r('a', 10), r('c', 30), r('d', 20)], rest: { n: 2, amount: 12 } })
+  assert.deepEqual(monthParts(five, 4).rest, { n: 1, amount: 7 })
 })

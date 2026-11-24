@@ -9,6 +9,10 @@
 // rc.2 (spec 013 rev 1): this month's adjustment of the menu's target (S-14) — the month reads it, and 총액 수정 offers
 // "이번 달만" (both splits) beside "구간 끝까지" (ratio split, as before); the second tab (S-15): Savings 만기 일정,
 // Investment 월별 기록.
+// spec 014 S-8 (W-6): the first KPI row is what the menu sends every month — this month's amount with the items it is
+// made of, and the next transfer (Investment had it; Savings gets the same card) — and the cards about balances, totals
+// so far, projections and goals (saved so far, in a year, to the goals; sent this year, the annual limits) move to the
+// second row. No value is worked out differently.
 import { computed, ref } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import BudgetPage from './BudgetPage.vue'
@@ -24,7 +28,7 @@ import { offDays } from '../lib/holidays-lazy'
 import { rateText } from '../lib/labels'
 import { addYm, groupAt, groupValue, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, yearContribution, ymd, ymOf } from '../lib/calc'
 import {
-  accountLine, adjustOf, adjustStart, baseAmount, itemColor, limitTone, monthPlans, pctOf, shareOf, sumStatus, yearSent,
+  accountLine, adjustOf, adjustStart, baseAmount, itemColor, limitTone, monthParts, monthPlans, pctOf, shareOf, sumStatus, yearSent,
   type BudgetCell, type BudgetKpi, type BudgetRow, type LimitTone, type Tone,
 } from '../lib/budget-page'
 import type { Account, BudgetGroup, SplitMode } from '../data/types'
@@ -103,7 +107,25 @@ const proj = computed(() => new Map(items.value.map((a) => [a.id, projectAccount
 const paidThisYear = computed(() => new Map(items.value.map((a) => [a.id, yearContribution(a, store, off.value, year)] as const)))
 const toneOf = (x: LimitTone): Tone => (x === 'over' ? 'bad' : x === 'near' ? 'warn' : 'ok')
 
-const kpis = computed<BudgetKpi[]>(() => {
+/** This month's amount and what it is made of, and the next transfer: the first row (spec 014 S-8). */
+const monthKpis = computed<BudgetKpi[]>(() => {
+  const sum = g.value.sum
+  const parts = monthParts(g.value.rows.map((r) => ({ name: r.account.name, amount: r.amount })))
+  const next = groupAt(props.group, store.accounts, store.phases, store.targets, store.settings, nextYm.value, store.monthAdjusts)
+  return [
+    {
+      label: m('kpiMonth'), value: fmtMoney(sum), sub: m('kpiMonthSub', { n: g.value.rows.filter((r) => r.amount > 0).length }),
+      progs: [
+        ...parts.shown.map((r) => ({ label: r.name, value: fmtMoney(r.amount), w: shareOf(r.amount, sum) })),
+        ...(parts.rest ? [{ label: t('budget.kpiMore', { n: parts.rest.n }), value: fmtMoney(parts.rest.amount), w: shareOf(parts.rest.amount, sum) }] : []),
+      ],
+    },
+    { label: m('kpiNext'), value: fmtDate(nextDate.value), sub: m('kpiNextSub', { amount: fmtMoney(next.sum), n: next.rows.filter((r) => r.amount > 0).length }) },
+  ]
+})
+
+/** Balances, totals so far, projections and goals: the second row (spec 014 S-8). */
+const laterKpis = computed<BudgetKpi[]>(() => {
   const list = items.value
   if (saving) {
     const withRec = list.filter((a) => proj.value.get(a.id))
@@ -128,7 +150,6 @@ const kpis = computed<BudgetKpi[]>(() => {
   const limited = list.filter((a) => a.annualLimit !== null && a.annualLimit !== undefined)
   const tones = limited.map((a) => limitTone(paidThisYear.value.get(a.id) ?? 0, a.annualLimit!))
   const worst: LimitTone = tones.includes('over') ? 'over' : tones.includes('near') ? 'near' : 'ok'
-  const next = groupAt(props.group, store.accounts, store.phases, store.targets, store.settings, nextYm.value, store.monthAdjusts)
   return [
     { label: m('kpiYear'), value: fmtMoney(yearSent(props.group, store.accounts, store.phases, store.targets, store.settings, now, store.monthAdjusts)), sub: m('kpiYearSub', { m: Number(now.slice(5)) }) },
     limited.length
@@ -140,9 +161,9 @@ const kpis = computed<BudgetKpi[]>(() => {
           }),
         }
       : { label: m('kpiLimit'), value: m('kpiLimitNone'), sub: m('kpiLimitNoneSub') },
-    { label: m('kpiNext'), value: fmtDate(nextDate.value), sub: m('kpiNextSub', { amount: fmtMoney(next.sum), n: next.rows.filter((r) => r.amount > 0).length }) },
   ]
 })
+const kpis = computed<BudgetKpi[]>(() => [...monthKpis.value, ...laterKpis.value.map((k) => ({ ...k, later: true }))])
 
 // ---------- the list ----------
 const whole = computed(() => (ratio.value ? g.value.total : g.value.sum))
