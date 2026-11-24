@@ -14,7 +14,7 @@ import { asUser, lockFor } from './db/scope'
 import { m, text, type Msg } from './messages'
 import type { Data } from './mcp/views'
 import { AI_LISTS, AI_SINGLES, applyOps, constraintMessage, OpInvalid, OpRejected, parseOp, Rejected, RESOURCES, SINGLES, type Op } from './ops'
-import { hashState, monthPreview } from './preview'
+import { hashState, incomeLine, monthPreview } from './preview'
 import { readState } from './state'
 import { addYm, todayIn, ymOf } from '../src/lib/calc'
 
@@ -210,7 +210,11 @@ export async function propose(uid: string, key: KeyInfo, input: ProposeInput): P
   // this month in the user's time zone (spec 013 S-22)
   const ym = ymOf(todayIn(before.preferences?.timezone))
   const preview = {
-    rows: rows.map((r) => ({ table: r.table, op: r.op, key: r.key, before: stripRow(r.before), after: stripRow(r.after) })),
+    // an income row also has a line in words with the left over of its month (spec 014 S-10)
+    rows: rows.map((r) => {
+      const line = incomeLine(r, before!, after!)
+      return { table: r.table, op: r.op, key: r.key, before: stripRow(r.before), after: stripRow(r.after), ...(line ? { line } : {}) }
+    }),
     months: [ym, addYm(ym, 1)].map((x) => monthPreview(before!, after!, x)),
   }
   const now = Date.now()
