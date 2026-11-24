@@ -36,7 +36,16 @@ test('no incomes, receipts or extras: the month is what it was (total = netPay, 
   for (let k = 0; k < 300; k++) {
     const netPay = rnd(0, 9_000_000)
     const ym = `${rnd(2025, 2028)}-${String(rnd(1, 12)).padStart(2, '0')}`
-    const st = base({ settings: { ...S, netPay } })
+    // the state varies too (review 1 F-8): the fixed amount, the living items, the subscription, the spending, the targets
+    const fixed = rnd(0, 4_000_000)
+    const st = base({
+      settings: { ...S, netPay, subRound: [1_000, 10_000, 50_000][rnd(0, 2)]!, transferDay: rnd(1, 28) },
+      phases: [{ ...phases[0]!, from: `${rnd(2024, 2027)}-01`, amounts: { 't-f': fixed } }],
+      targets: rnd(0, 1) ? targets : targets.filter((t) => t.kind !== 'fixed'),
+      livingItems: Array.from({ length: rnd(0, 4) }, (_, i) => ({ id: `li${i}`, name: `L${i}`, amount: rnd(0, 900_000) } as LivingItem)),
+      subscriptions: rnd(0, 1) ? [{ ...subs[0]!, amount: rnd(1_000, 200_000), cycle: rnd(0, 1) ? 'monthly' : 'yearly' }] : [],
+      spendings: rnd(0, 1) ? [{ ...spendings[0]!, amount: rnd(1, 2_000_000), bought: `${ym}-0${rnd(1, 9)}`, rounds: [{ no: 1, date: `${ym}-1${rnd(0, 9)}`, amount: rnd(1, 2_000_000), state: 'left' }] } as unknown as Spending] : [],
+    })
     const now = monthMoney(st, ym)
     const before = monthMoney(st, ym, { pay: netPay }) // the 0.1.7 call: pay = settings.netPay
     assert.deepEqual(now.dist, before.dist, `dist ${k}`)
