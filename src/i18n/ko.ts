@@ -63,7 +63,7 @@ export const ko = {
     groupAi: 'AI',
     groupSettings: '설정',
     groupSystem: '시스템',
-    pages: { home: '현황', spend: '지출', pay: '월급 분배', events: '일정', history: '변경 내역', pending: '대기 중인 변경', settings: '설정', admin: '관리', dev: '개발', living: '생활', saving: '저축', invest: '투자', statements: '명세서 분석', assistant: 'AI 어시스턴트' },
+    pages: { home: '현황', income: '수입', spend: '지출', pay: '월급 분배', events: '일정', history: '변경 내역', pending: '대기 중인 변경', settings: '설정', admin: '관리', dev: '개발', living: '생활', saving: '저축', invest: '투자', statements: '명세서 분석', assistant: 'AI 어시스턴트' },
     tabs: { home: '현황', budget: '예산', events: '일정', pending: 'AI 제안', more: '더보기' },
     more: '더보기',
     moreHints: { pending: 'AI가 제안한 변경을 확인해요', statements: '카드 명세서를 올리면 AI가 대조해요', assistant: '내 데이터로 묻고 변경을 제안받아요', history: '누가 언제 무엇을 바꿨는지', settings: '표시·통화·기준 일정·AI 연동', admin: '계정·로그인 방식 (관리자)', apiDocs: 'REST 경로와 MCP 도구' },

@@ -63,7 +63,7 @@ export const en = {
     groupAi: 'AI',
     groupSettings: 'Settings',
     groupSystem: 'System',
-    pages: { home: 'Overview', spend: 'Spending', pay: 'Pay split', events: 'Schedule', history: 'Change history', pending: 'Pending changes', settings: 'Settings', admin: 'Admin', dev: 'Developer', living: 'Living', saving: 'Savings', invest: 'Investing', statements: 'Statement analysis', assistant: 'AI assistant' },
+    pages: { home: 'Overview', income: 'Income', spend: 'Spending', pay: 'Pay split', events: 'Schedule', history: 'Change history', pending: 'Pending changes', settings: 'Settings', admin: 'Admin', dev: 'Developer', living: 'Living', saving: 'Savings', invest: 'Investing', statements: 'Statement analysis', assistant: 'AI assistant' },
     tabs: { home: 'Overview', budget: 'Budget', events: 'Schedule', pending: 'AI', more: 'More' },
     more: 'More',
     moreHints: { pending: 'Review the changes the AI proposed', statements: 'Upload a card statement and the AI checks it', assistant: 'Ask about your data and get changes proposed', history: 'Who changed what, and when', settings: 'Display, currency, schedule, AI access', admin: 'Accounts and sign-in methods (admin)', apiDocs: 'REST routes and MCP tools' },
