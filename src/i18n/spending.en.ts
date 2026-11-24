@@ -127,6 +127,7 @@ export const spendingEn = {
     emptyInst: 'Card installments and split payments you add show up here.',
     gen: {
       summaryLabel: 'One-off spending summary',
+      laterLabel: 'Upcoming spending and totals by payment method',
       k1: 'One-off spending in {month}',
       k1Empty: 'No one-off spending counts in this month.',
       k1Aria: 'From remainder {rem}, to subscription transfer {subs}',
@@ -157,6 +158,7 @@ export const spendingEn = {
     },
     inst: {
       summaryLabel: 'Installment summary',
+      laterLabel: 'Left to pay and installment fees',
       k1: 'In progress',
       k1Right: 'Left to pay',
       k1Sub: 'Card installments {card} · Split {split}',

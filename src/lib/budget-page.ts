@@ -237,12 +237,23 @@ export function limitTone(paid: number, limit: number): LimitTone {
 /** A share of a whole in percent (0 when the whole is 0), for the bars. */
 export const shareOf = (part: number, whole: number) => (whole > 0 ? Math.max(0, Math.min(100, (part / whole) * 100)) : 0)
 
+/**
+ * What a month card is made of (spec 014 S-8): the first `n` rows that send money this month, in list order, and the
+ * others added up as one line (null when there are none).
+ */
+export function monthParts<R extends { amount: number }>(rows: R[], n = 3): { shown: R[]; rest: { n: number; amount: number } | null } {
+  const sending = rows.filter((r) => r.amount > 0)
+  const others = sending.slice(n)
+  return { shown: sending.slice(0, n), rest: others.length ? { n: others.length, amount: others.reduce((a, r) => a + r.amount, 0) } : null }
+}
+
 // ---------- what the shared page template (BudgetPage.vue) draws ----------
 export type Tone = 'muted' | 'ok' | 'warn' | 'bad'
 /** One cell of the "들어오는 돈" strip; `action` is a button beside the value (총액 수정). */
 export interface BudgetCell { label: string; value: string; sub?: string; action?: { label: string; aria: string } }
 export interface BudgetProg { label: string; value: string; w: number; tone?: Tone }
-export interface BudgetKpi { label: string; value: string; sub: string; tone?: Tone; progs?: BudgetProg[] }
+/** A KPI card; `later` = a balance, a total so far, a projection or a goal: drawn in the second row (spec 014 S-8). */
+export interface BudgetKpi { label: string; value: string; sub: string; tone?: Tone; progs?: BudgetProg[]; later?: boolean }
 export interface BudgetRow {
   id: string
   name: string

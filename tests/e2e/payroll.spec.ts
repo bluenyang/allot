@@ -130,9 +130,9 @@ test('(V-10) the simulation: month steps, the take-home tried on the screen only
   await sheet(page, '실수령 시뮬레이션').getByRole('button', { name: '적용' }).click()
   await expect(page.getByText('임시 값')).toHaveCount(0)
 
-  // the total is the take-home, and a computed row opens its dialog
+  // the total is what comes in (spec 014 S-8), and a computed row opens its dialog
   // the total row (the living row's detail says 생활비 항목 합계 since spec 013 S-2)
-  await expect(page.getByRole('row', { name: /^합계/ })).toContainText('실수령과 같아요')
+  await expect(page.getByRole('row', { name: /^합계/ })).toContainText('들어올 돈과 같아요')
   await page.getByRole('button', { name: /계산 보기$/ }).first().click()
   const dlg = page.getByRole('alertdialog')
   await expect(dlg).toContainText('이 금액은 계산 값이에요')

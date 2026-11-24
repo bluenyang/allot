@@ -129,6 +129,7 @@ export const spendingKo = {
     emptyInst: '카드 할부나 나눠 내기를 추가하면 여기에 보여요.',
     gen: {
       summaryLabel: '일반 지출 요약',
+      laterLabel: '다가오는 지출과 결제 수단별 합계',
       k1: '{month} 일반 지출',
       k1Empty: '이번 달에 반영되는 일시불이 없어요.',
       k1Aria: '나머지에서 {rem}, 구독 이체에 {subs}',
@@ -159,6 +160,7 @@ export const spendingKo = {
     },
     inst: {
       summaryLabel: '할부 요약',
+      laterLabel: '남은 금액과 할부 수수료',
       k1: '진행 중',
       k1Right: '남은 금액',
       k1Sub: '카드 할부 {card} · 나눠 내기 {split}',
