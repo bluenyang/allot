@@ -10,7 +10,7 @@
 # (compose output discarded through quiet.mjs: it could hold env values; only the exit is logged); show what runs,
 # the staged commit, /healthz and the front page answering 200; keep the current and the previous snapshot only.
 # It refuses a commit that is not a descendant of the one staged now (the database may hold its migrations) unless
-# STAGE_BACK=1. The log goes to $LOG_DIR/stage-<time>.log (STAGE_LOG=<file> to choose; never overwritten), checked with
+# STAGE_BACK=1. Only the five newest database backups are kept. The log goes to $LOG_DIR/stage-<time>.log (STAGE_LOG=<file> to choose; never overwritten), checked with
 # `pnpm check:logs`. Run it from the main checkout (compose resolves the snapshot mount next to docker/).
 set -u
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -52,6 +52,10 @@ if [ ! -f "$SNAP/dist-server/index.mjs" ] || [ ! -f "$SNAP/dist/index.html" ]; t
 fi
 step "snapshot is built" /usr/bin/test -f "$SNAP/dist-server/index.mjs" -a -f "$SNAP/dist/index.html"
 step "back up the database" node "$HERE/backup.mjs" "$LOCTX/backup/allot-dev-before-stage-${SHA:0:7}-$STAMP.sql"
+# keep the five newest staging backups (retro 0.1.7, user: "최근 5개만 남기기"); .loctx is synced by Syncthing
+for old in $(ls -1t "$LOCTX"/backup/allot-dev-*.sql 2>/dev/null | tail -n +6); do
+  step "remove an older backup" rm -f "$old"
+done
 # an empty folder docker made for a mount before the first switch is not a link: remove it (rmdir refuses a full one)
 [ -d "$ST/current" ] && [ ! -L "$ST/current" ] && step "remove the empty mount folder docker made" rmdir "$ST/current"
 step "point current at the snapshot" ln -sfn "$SHA" "$ST/current"
