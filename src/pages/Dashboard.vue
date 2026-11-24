@@ -626,16 +626,16 @@ a.lrow:hover{background:var(--surface-2)}
 .mhead{margin:0}
 .grow{flex-grow:1;min-width:0}
 @media (max-width:760px){
-  /* the whole equation in one row, so 들어올 돈, 나갈 돈, the split and where it goes are in the first screen (V-7, A-16) */
+  /* the equation as three low rows (label · amount, then one hint), so 들어올 돈, 나갈 돈, the split and where it goes
+     are in the first screen and no amount breaks (V-7, A-16) */
   .hero{padding:14px;gap:12px}
   .yv{font-size:34px}
-  .eq{grid-template-columns:minmax(0,1fr) 10px minmax(0,1fr) 10px minmax(0,1fr);gap:4px}
-  .eq .op{font-size:15px}
-  .eqc{padding:8px 9px;gap:2px}
-  .eqc.yc{padding:7px 8px}
-  .eqc .big{font-size:15px}
-  .eqc .lab{font-size:11px}
-  .eqc .hint{font-size:11px;line-height:1.35}
+  .eq{grid-template-columns:minmax(0,1fr);gap:4px}
+  .eq .op{display:none}
+  .eqc{flex-direction:row;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 10px;padding:7px 10px}
+  .eqc.yc{padding:6px 9px}
+  .eqc .big{font-size:16px;white-space:nowrap}
+  .eqc .hint{flex-basis:100%;font-size:11px;line-height:1.35}
   .hero .more{display:none}
   .lrow{padding:10px 14px;gap:8px}
   .l-e{width:84px}
