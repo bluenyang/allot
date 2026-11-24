@@ -586,6 +586,7 @@ export const en = {
     desc: 'Manage recurring payments and plan changes. USD items are converted to won with the applied rate and VAT.',
     addSub: 'Add subscription',
     summaryLabel: 'Subscription summary',
+    laterLabel: 'Yearly view',
     monthlyTotal: 'Monthly total',
     yearlyTotal: 'Yearly total',
     unverifiedCount: 'Receipts to check',

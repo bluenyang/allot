@@ -522,7 +522,9 @@ const kv = (page: Page, name: string) => page.locator('.id-s > div').filter({ ha
 const listItem = (page: Page, name: string) => page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(name) })
 const seg = (page: Page) => page.getByRole('group', { name: '상태로 거르기' })
 const segCount = async (page: Page, name: string) => Number((await seg(page).getByRole('button', { name: new RegExp(`^${name}`) }).locator('.c').innerText()).trim())
-const kcard = (page: Page, i: number) => page.locator('.inst .kcard').nth(i)
+// i names the card as before (0 left to pay, 1 this month's rounds, 2 fees); since spec 014 S-8 the rounds card comes first on the page
+const KCARD_AT = [1, 0, 2]
+const kcard = (page: Page, i: number) => page.locator('.inst .kcard').nth(KCARD_AT[i]!)
 const kval = async (page: Page, i: number) => digits(await kcard(page, i).locator('.k2 b').innerText())
 
 test('(S-4, S-6, S-7, V-6) the 할부 tab: list, filters, detail numbers, rounds table, KPIs; a round edited, marked paid, an early payoff, a cancel and turning it back on', async ({ page, request }) => {

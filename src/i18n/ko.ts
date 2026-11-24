@@ -586,6 +586,7 @@ export const ko = {
     desc: '정기 결제와 플랜 전환을 관리해요. USD 항목은 적용 환율과 VAT로 원화 환산합니다.',
     addSub: '구독 추가',
     summaryLabel: '구독 요약',
+    laterLabel: '연 환산',
     monthlyTotal: '월 환산 합계',
     yearlyTotal: '연 환산 합계',
     unverifiedCount: '영수증 미확인',
