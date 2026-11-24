@@ -307,7 +307,7 @@ export const budgetEn: BudgetMessages = {
       rest: 'Left over (stays in the pay account)',
       restOf: 'Left over · {name}',
       redo: 'Split again by ratio',
-      short: 'Left over falls short. Lower another target or check the take-home pay.',
+      short: 'Left over falls short. Lower another target or check what comes in.',
       noPhase: 'No phase this month. Create a phase in the pay split first.',
       goPay: 'Open the pay split',
       amountSpread: 'Spread over the items by their amounts',
