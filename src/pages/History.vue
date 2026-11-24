@@ -104,6 +104,16 @@ const subLabel = (id: string) => {
 }
 const targetName = (id: string) => store.targets.find((x) => x.id === id)?.name ?? id
 const phaseName = (id: string) => { const p = store.phases.find((x) => x.id === id); return p ? `${p.label} ${p.name}` : id }
+/** The income a money-received row is for: a deleted one by its name in the loaded history, as subLabel does (review 4 F-1). */
+const incomeLabel = (id: unknown) => {
+  if (typeof id === 'string' && !store.incomes.some((x) => x.id === id)) {
+    for (const set of sets.value) for (const ch of set.changes) {
+      const r = ch.tableName === 'income_item' && ch.rowKey.id === id ? ch.after ?? ch.before : null
+      if (typeof r?.name === 'string') return r.name
+    }
+  }
+  return incomeOf(id)
+}
 const label = (c: Change) => {
   const r = c.after ?? c.before ?? {}
   if (c.tableName === 'plan_change' && typeof r.subId === 'string') return subLabel(r.subId)
@@ -111,7 +121,7 @@ const label = (c: Change) => {
   // a month adjustment: its target and month (spec 013 S-14, review rc2-1 F-3)
   if (c.tableName === 'month_adjust') return `${targetName(String(r.targetId))} · ${String(r.ym)}`
   // money received (spec 014 S-3): the income it is for and its month (review 3 F-1)
-  if (c.tableName === 'income_receipt') return `${incomeOf(r.itemId)} · ${String(r.ym)}`
+  if (c.tableName === 'income_receipt') return `${incomeLabel(r.itemId)} · ${String(r.ym)}`
   const name = r.name ?? r.text ?? r.title ?? r.label ?? r.note
   return typeof name === 'string' && name ? name : Object.values(c.rowKey).join(' · ')
 }
@@ -137,7 +147,7 @@ const fields = (c: Change) => {
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
 /** A field's value: an allocation target by its name (a month adjustment's or a phase amount's target; review rc2-1 F-3), else as stored. */
 const valueOf = (k: string, v: unknown, table?: string) =>
-  table === 'income_receipt' && k === 'itemId' ? incomeOf(v) // the income's name; null = the salary (review 3 F-1)
+  table === 'income_receipt' && k === 'itemId' ? incomeLabel(v) // the income's name; null = the salary (review 3 F-1)
   : k === 'targetId' && typeof v === 'string' ? targetName(v) : show(v)
 const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : s.actorKind === 'system' ? t('currency.system') : t('history.you'))
 
