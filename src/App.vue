@@ -105,6 +105,9 @@ let grab = 0 // where on the handle it was grabbed, so the edge does not jump to
 const resizing = ref(false)
 const onGripDown = (e: PointerEvent) => {
   if (e.button !== 0 || !side.value) return
+  // no native drag or text selection from what lies under the handle (a menu link): Chrome would cancel the pointer
+  // after the first move (spec 014 A-10; the sixth budget entry put a link under it)
+  e.preventDefault()
   grab = sideWidth.value - (e.clientX - side.value.getBoundingClientRect().left)
   dragging = true
   resizing.value = true
@@ -135,7 +138,7 @@ const onGripKey = (e: KeyboardEvent) => {
 </script>
 
 <template>
-  <div class="app" :class="{ folded: sideFolded, resizing }" :style="{ '--side-w': `${sideFolded ? SIDE.folded : sideWidth}px` }">
+  <div class="app" :class="{ folded: sideFolded, resizing }" @dragstart="dragging && $event.preventDefault()" :style="{ '--side-w': `${sideFolded ? SIDE.folded : sideWidth}px` }">
     <aside id="side" ref="side" class="side">
       <div class="brand">
         <span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>{{ t('shell.tagline') }}</small></span>
