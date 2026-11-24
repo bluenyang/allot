@@ -9,16 +9,18 @@ Vue 3.5 + Vite 8 + TypeScript 6 / Hono API / PostgreSQL 16 (Drizzle ORM) / Bette
 
 ```bash
 cp docker/.env.example docker/.env.dev  # 테스트 값 채우기 (비밀번호·BETTER_AUTH_SECRET·ALLOT_MASTER_KEY 등)
-docker compose -f docker/compose.dev.yaml up -d --build -V --wait
+docker compose -f docker/compose.dev.yaml build          # 이미지는 node·pnpm만 준다 (처음 한 번, Dockerfile이 바뀔 때)
+bash scripts/test-server/stage.sh [<커밋>]               # 그 커밋을 빌드해 올린다 (기본 origin/master)
 docker compose -f docker/compose.dev.yaml exec api pnpm db:admin  # 관리자 계정만 (데이터 없이)
 # 또는: … exec api pnpm db:seed [데이터 파일]                     # 관리자 계정 + 처음 데이터
 ```
 
-- 서비스: `web`(Vite, 15173 공개), `api`(Hono, 내부 3000), `db`(PostgreSQL 16, 내부), `dex`(테스트용 OIDC 제공자, 내부). 외부에 열리는 포트는 15173 하나다.
+- 서비스: `web`(빌드한 화면을 `vite preview`로, 15173 공개), `api`(빌드한 서버를 `node`로, 내부 3000), `db`(PostgreSQL 16, 내부), `dex`(테스트용 OIDC 제공자, 내부). 외부에 열리는 포트는 15173 하나다.
+- 작업 트리를 띄우지 않는다: `stage.sh`가 커밋 하나를 꺼내(`git archive`) `~/.local/share/allot/staging/<sha>/`에서 dev 이미지로 빌드하고, DB를 `.loctx/backup/`에 백업한 뒤 `.loctx/staging/current`를 그 스냅숏으로 돌리고 api·web을 다시 띄운다. 지금 것보다 앞이 아닌 커밋은 `STAGE_BACK=1` 없이 거부한다. 메인 체크아웃을 고쳐도 15173은 그대로다.
 - `/api`는 Vite가 api 컨테이너로, `/dex`는 dex 컨테이너로 넘긴다(같은 출처라 쿠키·CORS 설정이 필요 없다).
 - `BETTER_AUTH_URL`은 이 컴퓨터의 LAN 주소로 둔다(`http://<IP>:15173`). Dex의 issuer가 이 주소 + `/dex`이고, api 컨테이너도 그 주소로 Dex에 닿기 때문이다(`localhost`면 api가 닿지 못한다).
 - Dex 테스트 사용자는 `docker/dex/config.yaml`에 있다(가짜 값, 비밀번호 `dex-password`). group 규칙 확인용으로 mock 커넥터(고정 group `authors`)도 있다. api의 OIDC 설정은 관리 화면(또는 테스트)에서 넣고, client 값은 `.env.dev`의 `DEX_CLIENT_ID`·`DEX_CLIENT_SECRET`과 맞춘다.
-- 의존성이 바뀌면 `up -d --build -V`로 이미지와 `node_modules`를 새로 받는다.
+- 의존성은 스냅숏마다 그 커밋의 lockfile로 새로 깐다(pnpm 저장소는 볼륨 `allot-stage-pnpm-store`에 남는다).
 - 마이그레이션은 api가 시작할 때 자동으로 적용된다.
 - `pnpm db:seed [파일]`은 데이터 파일(기본 `.loctx/scripts/seed-data.ts`, 로컬 전용)을 id 기준으로 upsert하고, `ADMIN_EMAIL`/`ADMIN_PASSWORD`로 로그인 계정을 만든다(이미 있으면 비밀번호를 바꾸고 기존 세션을 끊는다). 회원가입은 막혀 있다.
 - `pnpm db:admin`은 데이터 파일 없이 관리자 계정만 만든다(새로 클론했을 때). 새 계정은 기본 설정과 빈 목록으로 시작한다.
