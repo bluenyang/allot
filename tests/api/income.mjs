@@ -38,7 +38,14 @@ const bMade = await A('POST', '/api/auth/admin/create-user', { email: bEmail, pa
 const bId = bMade.json?.user?.id
 const sb = await B('POST', '/api/auth/sign-in/email', { email: bEmail, password: bPw })
 ok(sa.status === 200 && bMade.status === 200 && sb.status === 200, `sign-in A ${sa.status}, create B ${bMade.status}, sign-in B ${sb.status}`)
-if (failures()) process.exit(1)
+if (failures()) {
+  // B was made but cannot be used: remove it before stopping (review 2 F-2)
+  if (bId) {
+    const r = await A('DELETE', `/api/admin/users/${bId}`, { confirmEmail: bEmail })
+    console.log(`cleanup: delete B → ${r.status}`)
+  }
+  process.exit(1)
+}
 
 arm()
 try {
