@@ -281,7 +281,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
     <section class="card hero" :aria-label="t('dashboard.home.heroLabel')">
       <div class="h-top">
         <span class="h-t"><b>{{ t('dashboard.home.heroTitle', { month: monthShort(month) }) }}</b><span class="pill" :class="basis.cls">{{ basis.text }}</span></span>
-        <span class="hint">{{ t('dashboard.home.heroHint') }}</span>
+        <span class="hint more">{{ t('dashboard.home.heroHint') }}</span>
       </div>
       <div class="h-big">
         <span class="num yv" :class="{ short: yeo < 0 }" data-testid="yeo">{{ fmtMoney(yeo) }}</span>
@@ -293,20 +293,22 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
           <span class="lab">{{ t('dashboard.home.in') }}</span>
           <span class="num big">{{ fmtMoney(income.total) }}</span>
           <span class="hint num">{{ t('dashboard.home.expected', { amount: fmtMoney(income.expected) }) }}<template v-if="income.diff !== 0"> · <b :class="income.diff > 0 ? 'plus' : 'minus'">{{ signed(income.diff) }}</b></template></span>
-          <span class="hint">{{ inNote }}</span>
+          <span class="hint more">{{ inNote }}</span>
         </RouterLink>
         <span class="op" aria-hidden="true">−</span>
         <div class="eqc">
           <span class="lab">{{ t('dashboard.home.out') }}</span>
           <span class="num big">{{ fmtMoney(outSum) }}</span>
-          <span class="hint">{{ outs.map((o) => o.name).join(' · ') || '—' }}</span>
-          <span class="hint">{{ t('dashboard.home.autoOn', { day: Number(dates.transfer.date.slice(8)) }) }}</span>
+          <span class="hint more">{{ outs.map((o) => o.name).join(' · ') || '—' }}</span>
+          <span class="hint more">{{ t('dashboard.home.autoOn', { day: Number(dates.transfer.date.slice(8)) }) }}</span>
         </div>
         <span class="op" aria-hidden="true">=</span>
         <div class="eqc yc" :class="{ short: yeo < 0 }">
           <span class="lab">{{ t('dashboard.home.yeo') }}</span>
           <span class="num big">{{ fmtMoney(yeo) }}</span>
-          <span class="hint">{{ yeo < 0 ? t('dashboard.home.short', { amount: fmtMoney(-yeo) }) : t('dashboard.home.yeoHint') }}</span>
+          <!-- where it goes, in the first screen too (spec 014 V-7, A-16): the split below in one line -->
+          <span v-if="yeo < 0" class="hint">{{ t('dashboard.home.short', { amount: fmtMoney(-yeo) }) }}</span>
+          <span v-else class="hint goes" data-testid="yeo-goes">{{ t('dashboard.home.goesTo', { list: places.map((x) => `${x.name} ${fmtMoney(x.amount)}`).join(' · ') }) }}</span>
         </div>
       </div>
       <div>
@@ -624,10 +626,17 @@ a.lrow:hover{background:var(--surface-2)}
 .mhead{margin:0}
 .grow{flex-grow:1;min-width:0}
 @media (max-width:760px){
-  .hero{padding:16px}
-  .yv{font-size:36px}
-  .eq{grid-template-columns:minmax(0,1fr)}
-  .eq .op{font-size:16px;height:16px}
+  /* the whole equation in one row, so 들어올 돈, 나갈 돈, the split and where it goes are in the first screen (V-7, A-16) */
+  .hero{padding:14px;gap:12px}
+  .yv{font-size:34px}
+  .eq{grid-template-columns:minmax(0,1fr) 10px minmax(0,1fr) 10px minmax(0,1fr);gap:4px}
+  .eq .op{font-size:15px}
+  .eqc{padding:8px 9px;gap:2px}
+  .eqc.yc{padding:7px 8px}
+  .eqc .big{font-size:15px}
+  .eqc .lab{font-size:11px}
+  .eqc .hint{font-size:11px;line-height:1.35}
+  .hero .more{display:none}
   .lrow{padding:10px 14px;gap:8px}
   .l-e{width:84px}
   .l-g{width:96px}
