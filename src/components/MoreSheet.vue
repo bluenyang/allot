@@ -51,7 +51,7 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
 .mbud{padding:4px 8px 10px;margin-bottom:6px;border-bottom:1px solid var(--border)}
 .mbud p{margin:0 8px 6px;font-size:12px;font-weight:600}
 .tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
-.tiles .tile{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;min-height:0;width:auto;padding:10px 4px;border-radius:8px;color:var(--text);text-decoration:none;font-size:13px;font-weight:600;text-align:center}
+.tiles .tile{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;min-height:0;min-width:0;width:auto;padding:10px 2px;border-radius:8px;color:var(--text);text-decoration:none;font-size:12px;font-weight:600;text-align:center;overflow-wrap:anywhere;line-height:1.25}
 .tiles .tile .ti{width:40px;height:40px;border-radius:8px;background:var(--primary-soft);color:var(--primary-text);display:grid;place-items:center}
 .tiles .tile .ti svg,.mi svg{width:20px;height:20px}
 .tiles .tile.is-soon{color:var(--subtle)}
