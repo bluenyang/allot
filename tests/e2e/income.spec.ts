@@ -32,6 +32,12 @@ const todayKst = () => kst().slice(0, 10)
 const ymAdd = (ym: string, n: number) => new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1)).toISOString().slice(0, 7)
 const monthKo = (ym: string) => `${Number(ym.slice(5, 7))}월`
 
+/** The home's 여유 (the hero's biggest number, spec 014 S-1; review 1 F-2). */
+async function homeLeftOver(page: Page) {
+  await page.goto('/')
+  return digits(await page.getByTestId('yeo').innerText())
+}
+
 async function openIncome(page: Page) {
   await page.goto('/income')
   await expect(page.locator('header.ph h1')).toHaveText('수입')
@@ -116,6 +122,7 @@ test('(V-6, S-3) two receipts for the salary in the shown month add up; the row,
   const title = `월급 · ${monthKo(ym)} 받은 금액`
   const made = async () => (await state(request)).incomeReceipts.filter((r) => !before.has(r.id))
   try {
+    const home0 = await homeLeftOver(page)
     await openIncome(page)
     const total0 = digits(await page.getByTestId('sum-total').innerText())
     const used0 = had ? sum0 : pay
@@ -153,6 +160,7 @@ test('(V-6, S-3) two receipts for the salary in the shown month add up; the row,
     await expect(row.getByTestId('diff')).toHaveText(signed(sum - pay))
     await expect(page.getByTestId('sum-total')).toHaveText(won(total0 - used0 + sum))
     await expect(page.getByTestId('inc-total')).toContainText(won(total0 - used0 + sum))
+    expect(await homeLeftOver(page), 'the home\'s 여유 moves by what was received less what was counted before').toBe(home0 + sum - used0)
   } finally {
     for (const r of await made()) await api(request, 'DELETE', `/api/income-receipts/${r.id}`)
     expect(await made()).toHaveLength(0)
@@ -163,9 +171,11 @@ test('(V-6, S-4) other income: written for today, it adds to the month and to it
   const name = `${MARK}-ex`
   const mine = async () => (await state(request)).incomeExtras.filter((x) => x.name.startsWith(name))
   try {
+    const home0 = await homeLeftOver(page)
     await openIncome(page)
     const total0 = digits(await page.getByTestId('sum-total').innerText())
     const left0 = await leftOver(page)
+    expect(left0, 'the income page names the home\'s 여유').toBe(home0)
 
     await page.getByRole('button', { name: '+ 기타 수입' }).first().click()
     const s = sheet(page, '기타 수입 적기')
@@ -179,6 +189,8 @@ test('(V-6, S-4) other income: written for today, it adds to the month and to it
     await expect(row).toContainText('기타')
     await expect(page.getByTestId('sum-total')).toHaveText(won(total0 + 45_000))
     expect(await leftOver(page), 'the month\'s 여유 grows by it').toBe(left0 + 45_000)
+    expect(await homeLeftOver(page), 'the home\'s 여유 grows by it').toBe(home0 + 45_000)
+    await openIncome(page)
 
     await row.getByRole('button', { name: `${name} 고치기` }).click()
     const e = sheet(page, '기타 수입 수정')
