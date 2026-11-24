@@ -83,12 +83,12 @@ test('(V-10) deleting the remainder target: the leftover shows as "급여 통장
 
     await page.getByRole('tab', { name: '월별 시뮬레이션' }).click()
     await expect(page.getByRole('row', { name: /급여 통장에 남음/ })).toBeVisible()
-    await expect(page.getByText('나머지 대상이 없어서 나눌 금액이 없어요')).toBeVisible()
+    await expect(page.getByText('여유 대상이 없어서 나눌 금액이 없어요')).toBeVisible()
     // the split rows are kept and can still be opened
     expect((await state(request)).remainderSplit.length).toBe(st.remainderSplit.length)
     if (st.remainderSplit.length) {
       await page.getByRole('row', { name: new RegExp(st.remainderSplit[0]!.name) }).click()
-      await expect(sheet(page, '나머지 분배 수정')).toBeVisible()
+      await expect(sheet(page, '여유 분배 수정')).toBeVisible()
       await page.keyboard.press('Escape')
     }
     await page.getByRole('tab', { name: '통장·생활비·설정' }).click()
@@ -175,15 +175,15 @@ test('(A-17) renaming a remainder split keeps its stored ratio (0.3333, the colu
   try {
     await go(page, 'pay', '월별 시뮬레이션')
     await page.getByRole('row', { name: new RegExp(`${MARK}-ratio`) }).click()
-    await sheet(page, '나머지 분배 수정').getByLabel('항목').fill(`${MARK}-renamed`)
-    await saveSheet(page, '나머지 분배 수정')
+    await sheet(page, '여유 분배 수정').getByLabel('항목').fill(`${MARK}-renamed`)
+    await saveSheet(page, '여유 분배 수정')
     const row = ((await state(request)) as unknown as { remainderSplit: { id: string; name: string; ratio: number }[] }).remainderSplit.find((x) => x.id === id)!
     expect(row.name).toBe(`${MARK}-renamed`)
     expect(row.ratio).toBe(0.3333)
     // editing the percent still changes it
     await page.getByRole('row', { name: new RegExp(`${MARK}-renamed`) }).click()
-    await sheet(page, '나머지 분배 수정').getByLabel('비율 %').fill('25')
-    await saveSheet(page, '나머지 분배 수정')
+    await sheet(page, '여유 분배 수정').getByLabel('비율 %').fill('25')
+    await saveSheet(page, '여유 분배 수정')
     expect(((await state(request)) as unknown as { remainderSplit: { id: string; ratio: number }[] }).remainderSplit.find((x) => x.id === id)!.ratio).toBe(0.25)
   } finally {
     await api(request, 'DELETE', `/api/remainder-split/${id}`)

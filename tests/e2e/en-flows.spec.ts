@@ -270,7 +270,7 @@ test('history: day groups, the actor and item filters, the revert modal and its 
     await expect(row).toBeVisible()
     await choose(kind, { label: 'Subscription' })
     await expect(row).toHaveCount(0)
-    expect(await optionTexts(kind)).toContain('Remainder target')
+    expect(await optionTexts(kind)).toContain('Left-over target')
     await choose(kind, { label: 'All items' })
 
     // the revert modal says what happens; the result is a set of its own
@@ -465,7 +465,7 @@ test.describe('shell', () => {
       await page.goto('/')
       await heading(page).waitFor()
       const bar = page.getByRole('navigation', { name: 'Menu' }).last()
-      for (const [label, title] of [['Budget', 'Pay split'], ['Schedule', 'Schedule'], ['Overview', /overview$/]] as const) {
+      for (const [label, title] of [['Budget', 'Pay split'], ['Schedule', 'Schedule'], ['Overview', /^[A-Z][a-z]+ \d{4}$/]] as const) {
         await bar.getByRole('link', { name: label }).click()
         await expect(heading(page)).toHaveText(title)
       }

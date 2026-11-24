@@ -72,7 +72,7 @@ test('history (spec 010 S-9): day groups, the actor and the item filters, a refu
     await expect(list.getByRole('listitem').filter({ hasText: text })).toHaveCount(0)
     const kinds = await optionTexts(kind)
     expect(kinds).not.toContain('투자 계좌')
-    expect(kinds).toContain('나머지 대상')
+    expect(kinds).toContain('여유 대상')
     await choose(kind, { label: '항목 전체' })
     // the same row changed since: the revert is refused and the modal shows why
     await request.delete(`/api/checks/${made.id}`)

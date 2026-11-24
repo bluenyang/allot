@@ -573,7 +573,7 @@ export function noticeText(n: Notice): string {
     case 'maturities': return `${n.count} savings item(s) reached maturity and still send; the user decides under Pending changes whether to stop sending.`
     case 'charge': return `${n.name} is charged ${won(n.amount)} on ${n.date} (${when(n.dday)}).`
     case 'round': return `Round ${n.round}/${n.of} of ${n.name}: ${won(n.amount)} on ${n.date} (${when(n.dday)}).`
-    case 'remainderShort': return `The remainder of ${n.month} is short by ${won(-n.remainder)}.`
+    case 'remainderShort': return `Left over (the remainder) of ${n.month} is short by ${won(-n.remainder)}.`
     case 'yearLimit': return `${n.name} has ${won(n.contribution)} of its ${won(n.limit)} yearly limit for ${n.year}${n.over ? ' (over the limit)' : ' (90% or more)'}.`
     case 'bufferShort': return `The buffer of ${n.name} (${won(n.buffer)}) is short: buffer uses took ${won(n.used)}, ${won(-n.left)} more than it holds.`
   }
