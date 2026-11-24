@@ -73,7 +73,7 @@ function segsOf(d: ReturnType<typeof dist>) {
   return segs
 }
 const aria = (segs: { name: string; amount: number }[]) => segs.map((s) => `${s.name} ${fmtMoney(s.amount)}`).join(', ')
-/** "나머지 ₩… " or "급여 통장에 남음 ₩…" (short: 모자람) for a distribution's note. */
+/** "여유 ₩… " or "급여 통장에 남음 ₩…" (short: 모자람) for a distribution's note. */
 function restNote(d: ReturnType<typeof dist>) {
   if (d.remainderTarget) return `${d.remainderTarget.name} ${fmtMoney(d.remainder)}`
   return `${d.remainder < 0 ? t('payroll.leftoverShort') : t('payroll.leftoverName')} ${fmtMoney(Math.abs(d.remainder))}`

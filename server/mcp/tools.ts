@@ -142,7 +142,7 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
 }
 
 export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServer {
-  const base = 'one person\'s Allot data: monthly salary distribution, the living, savings and investment budgets, bank accounts with their balances and cards, subscriptions, one-off spendings, scheduled plan changes and the change history. Amounts are whole KRW; dates are ISO (YYYY-MM-DD, months YYYY-MM); "today" and "this month" (every default month and D-n) are in the user\'s time zone (a display setting, default Asia/Seoul).'
+  const base = 'one person\'s Allot data: monthly salary distribution, the living, savings and investment budgets, bank accounts with their balances and cards, subscriptions, one-off spendings, scheduled plan changes and the change history. Amounts are whole KRW; dates are ISO (YYYY-MM-DD, months YYYY-MM); "today" and "this month" (every default month and D-n) are in the user\'s time zone (a display setting, default Asia/Seoul). The remainder (what the salary leaves after every allocation target and the month\'s spendings; the fields keep the name remainder) is called 여유 in the Korean app and Left over in the English one: use that word with the user.'
   const server = new McpServer({ name: 'allot', version: SERVER_VERSION }, {
     instructions: key
       ? `Access to ${base} You can read it and propose changes; a proposal never changes anything until the user confirms it (${key.confirm === 'ui' ? 'in the Allot app, under Pending changes' : 'in this conversation, then you call apply_proposal'}).`

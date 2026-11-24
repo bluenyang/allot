@@ -270,7 +270,7 @@ test('history: day groups, the actor and item filters, the revert modal and its 
     await expect(row).toBeVisible()
     await choose(kind, { label: 'Subscription' })
     await expect(row).toHaveCount(0)
-    expect(await optionTexts(kind)).toContain('Remainder target')
+    expect(await optionTexts(kind)).toContain('Left-over target')
     await choose(kind, { label: 'All items' })
 
     // the revert modal says what happens; the result is a set of its own

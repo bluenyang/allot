@@ -28,7 +28,7 @@ const ko = {
   amountsFixedOnly: '구간 금액은 고정 대상에만 넣을 수 있어요.',
   oneLiving: "'생활비 합계' 대상은 하나만 둘 수 있어요.",
   oneSubscriptions: "'구독 이체액' 대상은 하나만 둘 수 있어요.",
-  oneRemainder: "'나머지' 대상은 하나만 둘 수 있어요.",
+  oneRemainder: "'여유' 대상은 하나만 둘 수 있어요.",
   // budget core (spec 013)
   amountsTargetsOnly: '구간 금액은 고정 대상과 저축·투자 합계 대상에만 넣을 수 있어요.',
   oneSaving: "'저축 합계' 대상은 하나만 둘 수 있어요.",
@@ -202,7 +202,7 @@ const en: Record<MsgKey, string> = {
   amountsFixedOnly: 'Phase amounts can only be set for fixed targets.',
   oneLiving: "Only one 'Living total' target is allowed.",
   oneSubscriptions: "Only one 'Subscription transfer' target is allowed.",
-  oneRemainder: "Only one 'Remainder' target is allowed.",
+  oneRemainder: "Only one 'Left over' target is allowed.",
   // budget core (spec 013)
   amountsTargetsOnly: 'Phase amounts can only be set for fixed targets and for Savings or Investment total targets.',
   oneSaving: "Only one 'Savings total' target is allowed.",

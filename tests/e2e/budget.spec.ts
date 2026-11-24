@@ -247,7 +247,7 @@ test('(V-8, S-3) 저축: the target made from the page; amount and ratio split; 
     expect(ph1.amounts[fixed!.id], 'the fixed target amount is unchanged').toBe(fixedAmt)
     for (const id of made) await expect(page.getByTestId(`item-${id}`)).toContainText('= ₩333,000 / 월')
     await expect(page.locator('.tot b.num')).toHaveText(won(999_000))
-    await expect(statusLine(page), 'under: 1,000 short of the total').toHaveText('₩1,000 덜 나눴어요 · 남는 돈은 나머지로 남아요')
+    await expect(statusLine(page), 'under: 1,000 short of the total').toHaveText('₩1,000 덜 나눴어요 · 남는 돈은 여유로 남아요')
     await simAt(page, ym)
     expect(await simValue(page, tname)).toBe(999_000)
     expect(await simValue(page, fixed!.name)).toBe(fixedAmt)
@@ -270,7 +270,7 @@ test('(V-8, S-3) 저축: the target made from the page; amount and ratio split; 
     await saveSheet(page, '저축 총액 수정')
     await expect(statusLine(page), 'same').toHaveText('비율 합계 100% · 월급 분배의 저축 금액과 같아요')
     // the ratio sum off 100%: under and over (a warning only; the save goes through)
-    for (const [pct, msg] of [['33.33', '비율 합계 99.99% · 0.01%는 나머지로 남아요'], ['43.34', '비율 합계 110% · 10% 넘쳐요']] as const) {
+    for (const [pct, msg] of [['33.33', '비율 합계 99.99% · 0.01%는 여유로 남아요'], ['43.34', '비율 합계 110% · 10% 넘쳐요']] as const) {
       await page.getByRole('button', { name: `${MARK}-s3 수정` }).click()
       const e = sheet(page, `저축 상품 수정 · ${MARK}-s3`)
       await e.getByRole('button', { name: '다음', exact: true }).click()
@@ -335,7 +335,7 @@ test('(V-8, S-3, S-5) 투자: the target made from the page; an ISA account by r
     await saveSheet(page, '투자 총액 수정')
     expect((await state(request)).phases.find((p) => p.id === phase0!.id)!.amounts[targetId]).toBe(500_000)
     await expect(page.getByTestId(`item-${isa.id}`)).toContainText('= ₩250,000 / 월')
-    await expect(statusLine(page)).toHaveText('비율 합계 50% · 50%는 나머지로 남아요')
+    await expect(statusLine(page)).toHaveText('비율 합계 50% · 50%는 여유로 남아요')
     await simAt(page, ym)
     expect(await simValue(page, tname)).toBe(250_000)
   } finally {
@@ -617,7 +617,7 @@ test('(V-10, S-8) 버퍼 사용: the refill rounds on pay days with the odd won 
     await expect(s.locator('.rl li')).toHaveCount(3)
     await expect(s.getByTestId('sp-plan')).toContainText('3개월 동안 버퍼 채우기 · 이자 없음')
     for (const [i, a] of ['₩33,330', '₩33,330', '₩33,340'].entries()) await expect(s.locator('.rl li').nth(i)).toContainText(a)
-    await expect(s.getByText(/카드값은 \d+\/\d+ 결제 통장에서 버퍼로, 채우는 돈은 매달 나머지에서 빠져요/)).toBeVisible()
+    await expect(s.getByText(/카드값은 \d+\/\d+ 결제 통장에서 버퍼로, 채우는 돈은 매달 여유에서 빠져요/)).toBeVisible()
     await saveSheet(page, '지출 추가')
     const [got] = await spends()
     expect(got).toMatchObject({ how: 'buffer', payBy: 'card', cardId: card.id, fee: 0, count: 3, amount: 100_000, interval: null })
