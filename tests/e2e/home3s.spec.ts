@@ -89,7 +89,9 @@ test('(S-1) at 390 px wide: no horizontal scroll, and the equation stacks', asyn
 async function inFirstScreen(page: Page, sel: ReturnType<Page['locator']>) {
   const box = (await sel.boundingBox())!
   const vh = page.viewportSize()!.height
-  const bar = await page.locator('nav.mnav').boundingBox().catch(() => null)
+  // the phone's bottom bar (App.vue nav.botnav) covers the end of the screen; it is hidden on a desktop
+  const bars = page.locator('nav.botnav')
+  const bar = (await bars.count()) && (await bars.first().isVisible()) ? await bars.first().boundingBox() : null
   const bottom = bar && bar.y < vh ? bar.y : vh
   return box.y >= 0 && box.y + box.height <= bottom
 }
