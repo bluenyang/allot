@@ -52,7 +52,7 @@ const pathOf = (id: string) => PATH[id] ?? `/${id}`
 
 // ── Header bar (spec 010 S-4): where you are (the overview: its month and phase), search (spec 013 S-19) and
 // notifications (S-20). No light/dark switch: the theme is chosen in Settings (D-10).
-const GROUP_OF: Record<string, MessageKey> = { spend: 'shell.groupBudget', pay: 'shell.groupBudget', living: 'shell.groupBudget', saving: 'shell.groupBudget', invest: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
+const GROUP_OF: Record<string, MessageKey> = { income: 'shell.groupBudget', spend: 'shell.groupBudget', pay: 'shell.groupBudget', living: 'shell.groupBudget', saving: 'shell.groupBudget', invest: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
 const crumbPage = computed(() => (route.value.page === 'settings'
   ? t(`settings.tabs.${['general', 'theme', 'ai', 'security'].includes(route.value.sub) ? route.value.sub : 'general'}` as MessageKey)
   : label(route.value.page)))
@@ -181,7 +181,7 @@ const onGripKey = (e: KeyboardEvent) => {
         <NoticeBell />
       </div>
       <header class="topbar">
-        <div v-if="route.page === 'home'" class="monthnav">
+        <div v-if="route.page === 'home' || route.page === 'income'" class="monthnav">
           <button class="btn icon" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" :stroke="2" /></button>
           <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}</span>
           <button class="btn icon" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" :stroke="2" /></button>
