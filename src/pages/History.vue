@@ -140,7 +140,7 @@ const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t
 // ---------- filters ----------
 const actor = ref<ActorFilter>('all')
 const kind = ref('')
-const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending', 'month_adjust', 'foreign_currency', 'schedule_item']
+const KIND_IDS = ['subscription', 'plan_change', 'living', 'living_item', 'allocation_target', 'phase', 'phase_amount', 'remainder_split', 'bank_account', 'account_balance', 'card', 'debt', 'plan_event', 'check_item', 'settings', 'preference', 'holiday_set', 'spending', 'month_adjust', 'foreign_currency', 'schedule_item', 'income_item', 'income_receipt', 'income_extra']
 /** The remainder split's rows are named after what the remainder target is, not a fixed word (spec 010 S-9). */
 const kindOpts = computed(() => KIND_IDS.map((id) => ({ id, label: id === 'remainder_split' ? t('history.kindRemainder') : tableName(id) })))
 const byKind = computed(() => sets.value.filter((s) => !kind.value || s.changes.some((c) => c.tableName === kind.value)))

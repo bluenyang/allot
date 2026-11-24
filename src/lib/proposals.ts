@@ -173,6 +173,11 @@ export const rowLabel = (c: RowChange) => {
   if (c.table === 'phase_amount') return `${phaseName(String(r.phaseId))} · ${targetName(String(r.targetId))}`
   // a month adjustment: its target and month (spec 013 S-14, review rc2-1 F-3)
   if (c.table === 'month_adjust') return `${targetName(String(r.targetId))} · ${monthLabel(String(r.ym))}`
+  // money received (spec 014 S-3): the income it is for (null = the salary) and its month (review 1 F-1)
+  if (c.table === 'income_receipt') {
+    const of = r.itemId ? (store.incomes.find((x) => x.id === r.itemId)?.name ?? String(r.itemId)) : t('income.salary' as MessageKey)
+    return `${of} · ${monthLabel(String(r.ym))}`
+  }
   const name = r.name ?? r.text ?? r.title ?? r.label
   return typeof name === 'string' && name ? name : ''
 }
