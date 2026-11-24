@@ -84,3 +84,36 @@ test('(S-1) at 390 px wide: no horizontal scroll, and the equation stacks', asyn
   const xs = await cells.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)))
   expect(new Set(xs).size, 'the three cells share one column').toBe(1)
 })
+
+/** Is the element's box wholly inside the first screen (the viewport, above the phone's bottom bar)? */
+async function inFirstScreen(page: Page, sel: ReturnType<Page['locator']>) {
+  const box = (await sel.boundingBox())!
+  const vh = page.viewportSize()!.height
+  const bar = await page.locator('nav.mnav').boundingBox().catch(() => null)
+  const bottom = bar && bar.y < vh ? bar.y : vh
+  return box.y >= 0 && box.y + box.height <= bottom
+}
+
+for (const [label, size] of [['desktop 1440×900', { width: 1440, height: 900 }], ['phone 390×844', { width: 390, height: 844 }]] as const) {
+  test(`(V-7, A-16) ${label}: 여유, 들어올 돈 with its expected amount, 나갈 돈 with its parts, and where 여유 goes are all in the first screen`, async ({ page }) => {
+    await page.setViewportSize(size)
+    await page.goto('/')
+    const h = hero(page)
+    await expect(h).toBeVisible()
+    const goes = h.getByTestId('yeo-goes')
+    // where it goes matches the 여유 어디에 둘까 card: every place named there with its amount
+    const card = page.getByRole('region', { name: '여유 어디에 둘까' })
+    for (const row of await card.locator('.lrow').all()) {
+      await expect(goes).toContainText((await row.locator('.l-n b').innerText()).trim())
+      await expect(goes).toContainText((await row.locator('.amt').innerText()).trim())
+    }
+    for (const [what, el] of [
+      ['여유', h.getByTestId('yeo')],
+      ['들어올 돈', h.locator('a.eqc')],
+      ['나갈 돈', h.locator('.eqc').nth(1)],
+      ['the parts of 나갈 돈 (legend)', h.locator('.legend')],
+      ['where 여유 goes', goes],
+    ] as const) expect(await inFirstScreen(page, el), `${what} is in the first screen`).toBe(true)
+    await expect(h.locator('a.eqc')).toContainText('예상')
+  })
+}
