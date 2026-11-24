@@ -1,8 +1,9 @@
 // API check for spec 014 V-4: the incomes, their receipts and extra income — create, update, delete, the stated rules
 // (S-2–S-4: the same rules as the existing fields, and a yearly income names its month), the delete of an income taking
 // its receipts and its revert bringing both back, the month's money in /api/state, and isolation from a second user.
-//   BASE=… ADMIN_EMAIL=… ADMIN_PASSWORD=… B_EMAIL=… B_PASSWORD=… node tests/api/income.mjs
-// A is the test account, B a second account (tests/api/make-user.ts). Every row made is removed in `finally`; the
+//   BASE=… ADMIN_EMAIL=… ADMIN_PASSWORD=… node tests/api/income.mjs
+// A is the test account (an admin); B is a second account A creates through the admin API (e2e-… @example.com) and
+// deletes at the end. Every row made is removed in `finally`; the
 // change history stays, so run it on the throwaway test server only. Exit code 0 only when every check passed.
 import { arm, cleanupStep, disarm, failures, ok, settle, threw } from './lib/check.mjs'
 
@@ -31,8 +32,12 @@ const B = client()
 const made = [] // [client, path, id]
 const track = (c, path, r) => { if (r.status === 201 && r.json?.id) made.push([c, path, r.json.id]); return r }
 const sa = await A('POST', '/api/auth/sign-in/email', { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })
-const sb = await B('POST', '/api/auth/sign-in/email', { email: process.env.B_EMAIL, password: process.env.B_PASSWORD })
-ok(sa.status === 200 && sb.status === 200, `sign-in A ${sa.status}, B ${sb.status}`)
+const bEmail = `e2e-income-${Date.now()}@example.com`
+const bPw = `e2e-income-${Math.random().toString(36).slice(2)}-Pw1`
+const bMade = await A('POST', '/api/auth/admin/create-user', { email: bEmail, password: bPw, name: 'E2E income B', role: 'user' })
+const bId = bMade.json?.user?.id
+const sb = await B('POST', '/api/auth/sign-in/email', { email: bEmail, password: bPw })
+ok(sa.status === 200 && bMade.status === 200 && sb.status === 200, `sign-in A ${sa.status}, create B ${bMade.status}, sign-in B ${sb.status}`)
 if (failures()) process.exit(1)
 
 arm()
@@ -127,6 +132,10 @@ try {
     })
   }
   settle()
+  if (bId) await cleanupStep('delete B', async () => {
+    const r = await A('DELETE', `/api/admin/users/${bId}`, { confirmEmail: bEmail })
+    ok(r.status === 200 || r.status === 204, `delete B → ${r.status}`)
+  })
   const left = (await A('GET', '/api/state')).json
   ok(!JSON.stringify([left.incomes, left.incomeReceipts, left.incomeExtras]).includes(MARK), 'no E2E-income rows left for A')
 }
