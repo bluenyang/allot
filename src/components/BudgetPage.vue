@@ -5,6 +5,9 @@
 // a share bar, the total row with its status line, and the note under the list. A page with `tabs` (rc.2, S-15: the
 // Savings 만기 일정, the Living and Investment 월별 기록) gets a tab row under the KPIs: the first tab is the list, any
 // other draws the page's `tab` slot. Without `tabs` no tab row is drawn. It only draws: the pages compute every value.
+// spec 014 S-8 (W-6): the KPI cards are two rows: first what the page sends every month and what that is made of, then
+// the cards marked `later` (balances, totals so far, projections, goals). A row with no card is not drawn.
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { t } from '../i18n'
 import Icon from './Icon.vue'
@@ -12,7 +15,7 @@ import PageHeader from './PageHeader.vue'
 import SubTabs from './SubTabs.vue'
 import type { BudgetCell, BudgetKpi, BudgetRow, Tone } from '../lib/budget-page'
 
-defineProps<{
+const props = defineProps<{
   title: string
   desc: string
   addLabel: string
@@ -33,6 +36,10 @@ defineProps<{
   tab?: string
 }>()
 const emit = defineEmits<{ add: []; edit: [id: string]; action: [index: number]; 'update:tab': [id: string] }>()
+const kpiRows = computed(() => [
+  { key: 'month', aria: t('budget.kpiAria'), list: props.kpis.filter((k) => !k.later) },
+  { key: 'later', aria: t('budget.kpiLaterAria'), list: props.kpis.filter((k) => k.later) },
+].filter((r) => r.list.length))
 const toneClass = (tone?: Tone) => (tone && tone !== 'muted' ? `t-${tone}` : '')
 </script>
 
@@ -63,8 +70,8 @@ const toneClass = (tone?: Tone) => (tone && tone !== 'muted' ? `t-${tone}` : '')
       </div>
     </section>
 
-    <section class="kp" :aria-label="t('budget.kpiAria')">
-      <div v-for="(k, i) in kpis" :key="i" class="card kcard">
+    <section v-for="row in kpiRows" :key="row.key" class="kp" :class="`kp-${row.key}`" :aria-label="row.aria">
+      <div v-for="(k, i) in row.list" :key="i" class="card kcard">
         <span class="kl">{{ k.label }}</span>
         <div class="kv num" :class="toneClass(k.tone)">{{ k.value }}</div>
         <div class="hint">{{ k.sub }}</div>
@@ -139,7 +146,7 @@ const toneClass = (tone?: Tone) => (tone && tone !== 'muted' ? `t-${tone}` : '')
 .cv.big{font-size:20px}
 .act{color:var(--primary-text);padding:0 6px}
 .act svg{width:15px;height:15px}
-.kp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px} /* a row of one or two cards fills the width (review 1 F-4) */
 .kcard{padding:14px 18px;display:flex;flex-direction:column;gap:2px;min-height:136px}
 .kl{font-size:12px;font-weight:600;color:var(--muted)}
 .kv{margin-top:4px;font-size:20px;font-weight:700}

@@ -26,7 +26,7 @@ const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 interface Entry { id: string; soon?: boolean }
 const groups: { id: 'overview' | 'budget' | 'manage' | 'ai'; items: Entry[] }[] = [
   { id: 'overview', items: [{ id: 'home' }] },
-  { id: 'budget', items: [{ id: 'pay' }, { id: 'living' }, { id: 'spend' }, { id: 'saving' }, { id: 'invest' }] },
+  { id: 'budget', items: [{ id: 'income' }, { id: 'pay' }, { id: 'living' }, { id: 'spend' }, { id: 'saving' }, { id: 'invest' }] },
   { id: 'manage', items: [{ id: 'events' }, { id: 'pending' }, { id: 'history' }] },
   { id: 'ai', items: [{ id: 'statements', soon: true }, { id: 'assistant', soon: true }] },
 ]
@@ -52,7 +52,7 @@ const pathOf = (id: string) => PATH[id] ?? `/${id}`
 
 // ── Header bar (spec 010 S-4): where you are (the overview: its month and phase), search (spec 013 S-19) and
 // notifications (S-20). No light/dark switch: the theme is chosen in Settings (D-10).
-const GROUP_OF: Record<string, MessageKey> = { spend: 'shell.groupBudget', pay: 'shell.groupBudget', living: 'shell.groupBudget', saving: 'shell.groupBudget', invest: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
+const GROUP_OF: Record<string, MessageKey> = { income: 'shell.groupBudget', spend: 'shell.groupBudget', pay: 'shell.groupBudget', living: 'shell.groupBudget', saving: 'shell.groupBudget', invest: 'shell.groupBudget', events: 'shell.groupManage', pending: 'shell.groupManage', history: 'shell.groupManage', admin: 'shell.groupSystem', dev: 'shell.groupSystem' }
 const crumbPage = computed(() => (route.value.page === 'settings'
   ? t(`settings.tabs.${['general', 'theme', 'ai', 'security'].includes(route.value.sub) ? route.value.sub : 'general'}` as MessageKey)
   : label(route.value.page)))
@@ -65,10 +65,10 @@ const REPO = 'https://github.com/bluenyang/allot'
 
 // ── Phone: the bottom bar and the "더보기" sheet (spec 010 S-4). The pending page has a place on the
 // bar only while something waits there (spec 009 A-7); the budget slot opens the pay split, and
-// stays current on the spending, living, savings and investment pages too (spec 013 S-1).
+// stays current on the spending, living, savings and investment pages too (spec 013 S-1), and on income (spec 014 S-9).
 const bottom = computed(() => [
   { id: 'home', href: '/', icon: 'home', label: t('shell.tabs.home'), on: route.value.page === 'home' },
-  { id: 'budget', href: '/pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'spend', 'living', 'saving', 'invest'].includes(route.value.page) },
+  { id: 'budget', href: '/pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['income', 'pay', 'spend', 'living', 'saving', 'invest'].includes(route.value.page) },
   { id: 'events', href: '/events', icon: 'events', label: t('shell.tabs.events'), on: route.value.page === 'events' },
   ...(pendingN.value ? [{ id: 'pending', href: '/pending', icon: 'pending', label: t('shell.tabs.pending'), on: route.value.page === 'pending', badge: pendingN.value }] : []),
 ])
@@ -105,6 +105,11 @@ let grab = 0 // where on the handle it was grabbed, so the edge does not jump to
 const resizing = ref(false)
 const onGripDown = (e: PointerEvent) => {
   if (e.button !== 0 || !side.value) return
+  // no native drag or text selection from what lies under the handle (a menu link): Chrome would cancel the pointer
+  // after the first move (spec 014 A-10; the sixth budget entry put a link under it)
+  e.preventDefault()
+  // …which also keeps the click from focusing the handle: focus it, so the arrow keys work right after (review 3 F-2)
+  ;(e.currentTarget as HTMLElement).focus({ preventScroll: true })
   grab = sideWidth.value - (e.clientX - side.value.getBoundingClientRect().left)
   dragging = true
   resizing.value = true
@@ -135,7 +140,7 @@ const onGripKey = (e: KeyboardEvent) => {
 </script>
 
 <template>
-  <div class="app" :class="{ folded: sideFolded, resizing }" :style="{ '--side-w': `${sideFolded ? SIDE.folded : sideWidth}px` }">
+  <div class="app" :class="{ folded: sideFolded, resizing }" @dragstart="dragging && $event.preventDefault()" :style="{ '--side-w': `${sideFolded ? SIDE.folded : sideWidth}px` }">
     <aside id="side" ref="side" class="side">
       <div class="brand">
         <span class="logo" aria-hidden="true">A</span><span class="bn"><b>Allot</b><small>{{ t('shell.tagline') }}</small></span>
@@ -181,7 +186,7 @@ const onGripKey = (e: KeyboardEvent) => {
         <NoticeBell />
       </div>
       <header class="topbar">
-        <div v-if="route.page === 'home'" class="monthnav">
+        <div v-if="route.page === 'home' || route.page === 'income'" class="monthnav">
           <button class="btn icon" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" :stroke="2" /></button>
           <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}</span>
           <button class="btn icon" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" :stroke="2" /></button>

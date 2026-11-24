@@ -4,6 +4,8 @@
 // pay split's living target. KPIs from the data rc.1 has (spec "범위 밖"): this month's living costs, the
 // number of items, and the buffer of the account the living target is linked to.
 // rc.2 (spec 013 S-15): the 월별 기록 tab — the planned living costs of the last six months and this month.
+// spec 014 S-8 (W-6): the first KPI row is what the page sends every month (this month's living costs with the items it
+// is made of, the number of items); the buffer of the linked account moves to the second row.
 import { computed, ref } from 'vue'
 import { t } from '../i18n'
 import BudgetPage from '../components/BudgetPage.vue'
@@ -13,7 +15,7 @@ import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { addYm, bufferGauge, livingAt, monthDay, nextTransferYm, phaseAt, phaseNumbers, ymd, ymOf } from '../lib/calc'
-import { accountLine, baseAmount, itemColor, monthPlans, shareOf, type BudgetCell, type BudgetKpi, type BudgetRow } from '../lib/budget-page'
+import { accountLine, baseAmount, itemColor, monthParts, monthPlans, shareOf, type BudgetCell, type BudgetKpi, type BudgetRow } from '../lib/budget-page'
 import type { LivingItem } from '../data/types'
 import { localToday } from '../lib/now'
 
@@ -45,15 +47,21 @@ const cells = computed<BudgetCell[]>(() => {
 const kpis = computed<BudgetKpi[]>(() => {
   const a = linked.value
   const g = a ? bufferGauge(a, store, todayStr) : null
+  const sum = lv.value.sum
+  const parts = monthParts(lv.value.rows.map((r) => ({ name: r.item.name, amount: r.amount })))
+  const progs = [
+    ...parts.shown.map((r) => ({ label: r.name, value: fmtMoney(r.amount), w: shareOf(r.amount, sum) })),
+    ...(parts.rest ? [{ label: t('budget.kpiMore', { n: parts.rest.n }), value: fmtMoney(parts.rest.amount), w: shareOf(parts.rest.amount, sum) }] : []),
+  ]
   return [
-    { label: t('budget.living.kpiSum'), value: fmtMoney(lv.value.sum), sub: t('budget.living.kpiSumSub', { amount: fmtMoney(livingAt(store.livingItems, store.phases, addYm(now, 1)).sum) }) },
+    { label: t('budget.living.kpiSum'), value: fmtMoney(sum), sub: t('budget.living.kpiSumSub', { amount: fmtMoney(livingAt(store.livingItems, store.phases, addYm(now, 1)).sum) }), progs },
     {
       label: t('budget.living.kpiCount'), value: t('budget.living.kpiCountValue', { n: store.livingItems.length }),
       sub: t('budget.living.kpiCountSub', { n: store.livingItems.filter((x) => Object.keys(x.amounts ?? {}).length).length }),
     },
     g
-      ? { label: t('budget.living.kpiBuffer'), value: fmtMoney(g.buffer), sub: t('budget.living.kpiBufferSub', { used: fmtMoney(g.used), left: fmtMoney(g.left) }), tone: g.left < 0 ? 'bad' : undefined }
-      : { label: t('budget.living.kpiBuffer'), value: t('budget.notLinked'), sub: t('budget.living.kpiBufferNone') },
+      ? { label: t('budget.living.kpiBuffer'), value: fmtMoney(g.buffer), sub: t('budget.living.kpiBufferSub', { used: fmtMoney(g.used), left: fmtMoney(g.left) }), tone: g.left < 0 ? 'bad' : undefined, later: true }
+      : { label: t('budget.living.kpiBuffer'), value: t('budget.notLinked'), sub: t('budget.living.kpiBufferNone'), later: true },
   ]
 })
 

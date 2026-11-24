@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — 0.1.8
+
+Three-second screens and income. Spec 014 (`.agents/intent/014_three-second-income/spec.md`). Migrations 0037 and 0038
+add three tables (regular incomes, money received, money that came in once) with forced row-level security; no stored
+value moves: the salary stays the settings' take-home pay on the pay day.
+
+### Added
+- **Income** (`/income`, first in the 예산 menu): the salary and regular incomes (monthly, or yearly in a month), the
+  money received for each in a month (several entries add up), and money that came in once. A month counts what was
+  received, else the expected amount; the difference goes to that month's left over only.
+- MCP: `get_income`; `get_overview` gains `income` and `leftOverKrw`; `propose_changes` takes `incomes`,
+  `income-receipts` and `income-extras`, with preview lines.
+
+### Changed
+- **Home**: the month's left over (여유) first, as "what comes in − what goes out = left over", then the two sides and
+  where the left over goes; the old tabs moved under 자세히. The four summary cards are gone (the subscription figure is
+  in the 나갈 돈 list, the 31-day payments and the counts are in the tabs).
+- The money left after allocation is called **여유** (en "Left over") on every screen; API and MCP field names stay.
+- Allocation, Living, Savings, Investment and Spending start with what they send out each month; balances, totals so far
+  and projections are on the row below. Allocation's pay is what comes in that month.
+
 ## 0.1.7-fix.1 — 2026-11-24
 
 A fix release on 0.1.7, named by the user ("0.1.7-fix.1로 배포해"). The version carries a hyphen, so the release workflow

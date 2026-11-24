@@ -12,7 +12,7 @@ import { enabledSets, holidaysIn } from '../../src/lib/holidays'
 import { buildNotices, type Notice } from '../../src/lib/notices'
 import { search, type SearchKind } from '../../src/lib/search'
 import type {
-  Account, AllocationTarget, Balance, BudgetGroup, Card, CheckItem, Debt, ForeignCurrency, HolidaySet, Living, LivingItem, MonthAdjust, Phase, PlanChange, PlanEvent, RemainderSplit, ScheduleItem, Settings, Spending,
+  Account, AllocationTarget, Balance, BudgetGroup, Card, CheckItem, Debt, ForeignCurrency, HolidaySet, IncomeExtra, IncomeItem, IncomeReceipt, Living, LivingItem, MonthAdjust, Phase, PlanChange, PlanEvent, RemainderSplit, ScheduleItem, Settings, Spending,
   SubStatus, Subscription,
 } from '../../src/data/types'
 import { maturityOf } from './maturity'
@@ -49,6 +49,10 @@ export interface Data {
   schedules?: ScheduleItem[]
   /** the display settings: their time zone is the user's "today" (spec 013 S-22) */
   preferences?: { timezone?: string }
+  /** regular incomes, the money received for them and money that came in once (spec 014 S-2–S-4); absent = none */
+  incomes?: IncomeItem[]
+  incomeReceipts?: IncomeReceipt[]
+  incomeExtras?: IncomeExtra[]
 }
 
 const krw = (n: number) => Math.round(n)
@@ -142,7 +146,7 @@ export function currencyList(d: Data) {
 export function overview(d: Data, ym: string) {
   const off = offDays(d, ym, ym)
   // One-off spendings are in the month's transfer and remainder (spec 011 S-5).
-  const { dist, transfer: xfer, spend } = monthMoney(d, ym)
+  const { dist, transfer: xfer, spend, income } = monthMoney(d, ym)
   const split = dist.remainderTarget ? splitRemainder(dist.remainder, d.remainderSplit) : []
   return {
     month: ym,
@@ -174,12 +178,67 @@ export function overview(d: Data, ym: string) {
       livingKrw: dist.living,
       subscriptionsKrw: dist.subscriptions,
     },
+    /** what comes in that month (spec 014 S-10): expected, what counts (received, else expected; plus money that came in once) and the difference; get_income has the lines */
+    income: { expectedKrw: krw(income.expected), totalKrw: krw(income.total), diffKrw: krw(income.diff) },
+    /** the month's left over (여유): what is left after the distribution, the same as distribution.remainderKrw; negative = short */
+    leftOverKrw: krw(dist.remainder),
     remainderSplit: split.map((s) => ({ id: s.id, name: s.name, code: s.code, ratio: s.ratio, amountKrw: s.amount })),
     /** the month's adjustments (spec 013 S-14): they replace the target's phase amount that month (already in distribution) */
     monthAdjusts: adjustsIn(d, ym),
     payments: paymentsIn(d, ym),
     spendingRounds: spendRoundsIn(d, ym),
     planChanges: changesIn(d.planChanges, ym).map((c) => changeView(c, d)),
+  }
+}
+
+/**
+ * get_income (spec 014 S-10): what comes in in month `ym`, as incomeAt() works it out — the salary (settings.netPay on
+ * payDay; it has no income row, so its id is null and it is named "salary") and every regular income of the month, each
+ * with what is expected, what was received (the receipts of that month added up; null = nothing written down yet), what
+ * counts (received, else expected) and the difference; the money that came in once; the totals; the month's left over
+ * (monthMoney().dist.remainder, the remainder the screens call 여유); and the yearly incomes of other months with the
+ * month each comes next.
+ */
+export function incomeView(d: Data, ym: string) {
+  const { income, dist } = monthMoney(d, ym)
+  const items = d.incomes ?? []
+  const receipts = (d.incomeReceipts ?? []).filter((r) => r.ym === ym)
+  return {
+    month: ym,
+    incomes: income.rows.map((r) => {
+      const item = r.key === 'salary' ? null : items.find((i) => i.id === r.key) ?? null
+      const itemId = item ? item.id : null
+      return {
+        incomeId: itemId,
+        name: item ? item.name : 'salary',
+        salary: !item,
+        cycle: item ? item.cycle : 'monthly' as const,
+        ...(item?.cycle === 'yearly' ? { yearlyMonth: item.month ?? null } : {}),
+        day: r.day,
+        accountId: item ? item.accountId ?? null : null,
+        expectedKrw: krw(r.expected),
+        /** null = nothing received is written down for it this month */
+        receivedKrw: r.received === null ? null : krw(r.received),
+        /** what the month counts: received, else expected */
+        countedKrw: krw(r.used),
+        diffKrw: krw(r.diff),
+        receipts: receipts.filter((x) => x.itemId === itemId).map((x) => ({
+          id: x.id, amountKrw: krw(x.amount), date: x.date ?? null, ...(x.note ? { note: x.note } : {}),
+        })),
+        ...(item?.note ? { note: item.note } : {}),
+      }
+    }),
+    extras: income.extras.map((x) => ({ id: x.id, date: x.date, name: x.name, amountKrw: krw(x.amount), ...(x.note ? { note: x.note } : {}) })),
+    extrasKrw: krw(income.extraSum),
+    expectedKrw: krw(income.expected),
+    totalKrw: krw(income.total),
+    diffKrw: krw(income.diff),
+    /** every income of the month has something received written down */
+    allReceived: income.allReceived,
+    /** the month's left over (여유): what is left after the distribution of totalKrw; negative = short */
+    leftOverKrw: krw(dist.remainder),
+    /** the yearly incomes of other months, soonest first, with the month each comes next */
+    later: income.later.map((l) => ({ incomeId: l.id, name: l.name, amountKrw: krw(l.amount), month: l.ym })),
   }
 }
 
@@ -514,7 +573,7 @@ export function noticeText(n: Notice): string {
     case 'maturities': return `${n.count} savings item(s) reached maturity and still send; the user decides under Pending changes whether to stop sending.`
     case 'charge': return `${n.name} is charged ${won(n.amount)} on ${n.date} (${when(n.dday)}).`
     case 'round': return `Round ${n.round}/${n.of} of ${n.name}: ${won(n.amount)} on ${n.date} (${when(n.dday)}).`
-    case 'remainderShort': return `The remainder of ${n.month} is short by ${won(-n.remainder)}.`
+    case 'remainderShort': return `Left over (the remainder) of ${n.month} is short by ${won(-n.remainder)}.`
     case 'yearLimit': return `${n.name} has ${won(n.contribution)} of its ${won(n.limit)} yearly limit for ${n.year}${n.over ? ' (over the limit)' : ' (90% or more)'}.`
     case 'bufferShort': return `The buffer of ${n.name} (${won(n.buffer)}) is short: buffer uses took ${won(n.used)}, ${won(-n.left)} more than it holds.`
   }

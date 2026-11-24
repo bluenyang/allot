@@ -268,6 +268,65 @@ export const accountBalance = pgTable('account_balance', {
   check('account_balance_amount_nonneg', sql`${t.amount} >= 0`),
 ])
 
+/**
+ * A regular income (spec 014 S-2): monthly, or yearly in `month`. The salary is not a row: it is the settings'
+ * netPay and payDay (S-2). `day` past a month's end means that month's last day (monthDay, as payDay).
+ */
+export const incomeItem = pgTable('income_item', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  name: text('name').notNull(),
+  cycle: text('cycle').notNull(),
+  month: integer('month'),
+  day: integer('day').notNull(),
+  amount: integer('amount').notNull(),
+  accountId: text('account_id'),
+  note: text('note'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('income_item_user_id_id').on(t.userId, t.id),
+  check('income_item_cycle', sql`(${t.cycle} = 'monthly' and ${t.month} is null) or (${t.cycle} = 'yearly' and ${t.month} between 1 and 12)`),
+  check('income_item_day_range', sql`${t.day} between 1 and 31`),
+  check('income_item_amount_nonneg', sql`${t.amount} >= 0`),
+  foreignKey({ name: 'income_item_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
+])
+
+/**
+ * Money received for one income in one month (spec 014 S-3); `itemId` null is the salary. A month may hold several:
+ * their sum is what came in that month.
+ */
+export const incomeReceipt = pgTable('income_receipt', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  itemId: text('item_id'),
+  ym: text('ym').notNull(),
+  amount: integer('amount').notNull(),
+  date: date('date', { mode: 'string' }),
+  note: text('note'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('income_receipt_user_id_id').on(t.userId, t.id),
+  check('income_receipt_amount_nonneg', sql`${t.amount} >= 0`),
+  foreignKey({ name: 'income_receipt_item_fk', columns: [t.userId, t.itemId], foreignColumns: [incomeItem.userId, incomeItem.id] }).onDelete('cascade'),
+])
+
+/** Money that came in once (spec 014 S-4, "기타"): it counts in the month of its date. */
+export const incomeExtra = pgTable('income_extra', {
+  userId: owner(),
+  id: text('id').primaryKey(),
+  seq: seq(),
+  date: date('date', { mode: 'string' }).notNull(),
+  name: text('name').notNull(),
+  amount: integer('amount').notNull(),
+  note: text('note'),
+}, (t) => [
+  userScoped(t.userId),
+  unique('income_extra_user_id_id').on(t.userId, t.id),
+  check('income_extra_amount_nonneg', sql`${t.amount} >= 0`),
+])
+
 /** A card (spec 013 S-13): the account its bill is paid from, and its billing day (null = the settings' one). */
 export const card = pgTable('card', {
   userId: owner(),

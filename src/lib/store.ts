@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import type {
-  Account, AllocationTarget, Balance, Card, CheckItem, Debt, ForeignCurrency, HolidaySet, Living, LivingItem, Phase, PlanChange, PlanEvent, Preferences, Priced,
+  Account, AllocationTarget, Balance, Card, CheckItem, Debt, ForeignCurrency, HolidaySet, IncomeExtra, IncomeItem, IncomeReceipt, Living, LivingItem, Phase, PlanChange, PlanEvent, Preferences, Priced,
   RemainderSplit, ScheduleItem, Settings, MonthAdjust, Spending, Subscription,
 } from '../data/types'
 import { priced } from './calc'
@@ -34,6 +34,10 @@ export interface State {
   preferences: Preferences
   holidaySets: HolidaySet[]
   spendings: Spending[]
+  /** Regular incomes, money received for them, and money that came in once (spec 014 S-2–S-4). */
+  incomes: IncomeItem[]
+  incomeReceipts: IncomeReceipt[]
+  incomeExtras: IncomeExtra[]
   /** Proposals from an AI key that wait for the user (the sidebar badge; spec 009). */
   pendingProposals: number
 }
@@ -43,7 +47,7 @@ const empty = (): State => ({
   living: { ...DEFAULT_LIVING },
   preferences: { ...DEFAULT_PREFERENCES },
   targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [], spendings: [],
-  livingItems: [], balances: [], cards: [], monthAdjusts: [], currencies: [], schedules: [], pendingProposals: 0,
+  livingItems: [], balances: [], cards: [], monthAdjusts: [], currencies: [], schedules: [], incomes: [], incomeReceipts: [], incomeExtras: [], pendingProposals: 0,
 })
 
 export const store = reactive<State>(empty())
@@ -111,6 +115,9 @@ export const RESOURCES = {
   monthAdjusts: '/api/month-adjusts',
   currencies: '/api/currencies',
   schedules: '/api/schedules',
+  incomes: '/api/incomes',
+  incomeReceipts: '/api/income-receipts',
+  incomeExtras: '/api/income-extras',
 } as const
 
 /** Lists whose delete also changes other rows on the server (unlinks, spec 013 S-9, S-13): reload the state after one. */
@@ -151,6 +158,7 @@ export function deleteItem(key: ListKey, id: string) {
       if (key === 'subscriptions') store.planChanges = store.planChanges.filter((c) => c.subId !== id)
       if (key === 'targets') for (const p of store.phases) delete p.amounts[id]
       if (key === 'accounts') store.balances = store.balances.filter((b) => b.accountId !== id)
+      if (key === 'incomes') store.incomeReceipts = store.incomeReceipts.filter((r) => r.itemId !== id)
     })
     if (RELOAD_AFTER_DELETE.includes(key)) await loadState()
   })
@@ -222,8 +230,8 @@ export const pricedSettings = (): Priced => priced(store.settings, store.currenc
 
 /** Everything the app holds, for the JSON view in the 개발 tab. */
 export function exportJson(): string {
-  const { settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, preferences, holidaySets, spendings } = store
-  return JSON.stringify({ settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, preferences, holidaySets, spendings }, null, 2)
+  const { settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, preferences, holidaySets, spendings, incomes, incomeReceipts, incomeExtras } = store
+  return JSON.stringify({ settings, living, livingItems, targets, subscriptions, planChanges, phases, events, checks, accounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, preferences, holidaySets, spendings, incomes, incomeReceipts, incomeExtras }, null, 2)
 }
 
 export const subName = (id: string) => store.subscriptions.find((s) => s.id === id)?.name ?? id

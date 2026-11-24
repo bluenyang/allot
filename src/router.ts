@@ -20,6 +20,7 @@ const lazyPage = (loader: AsyncComponentLoader) =>
 /** Every page by id. Only the dashboard is in the first chunk (spec 010 V-1, A-24). */
 export const PAGES: Record<string, Component> = {
   home: Dashboard,
+  income: lazyPage(() => import('./pages/Income.vue')), // spec 014 S-2–S-4
   spend: lazyPage(() => loadSpendingMessages().then(() => import('./pages/Spending.vue'))),
   pay: lazyPage(() => import('./pages/Payroll.vue')),
   living: lazyPage(() => import('./pages/Living.vue')),
@@ -44,6 +45,7 @@ const tabbed = (id: string, tabs: string, first: string): RouteRecordRaw[] => [
 export const routes: RouteRecordRaw[] = [
   page('home', '/'),
   { path: '/home', redirect: keepQuery('/') },
+  page('income'),
   page('pay'),
   page('living'), // spec 013 S-1: the budget pages, no tabs
   page('saving'),

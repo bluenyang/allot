@@ -158,7 +158,7 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
  * reverting the insert of a row they point at is a conflict, like a child (review 1 F-11).
  */
 const LINKS = new Map<PgTable, [OwnedTable, PgColumn][]>([
-  [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId], [t.scheduleItem, t.scheduleItem.accountId]]],
+  [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId], [t.scheduleItem, t.scheduleItem.accountId], [t.incomeItem, t.incomeItem.accountId]]],
   [t.card, [[t.spending, t.spending.cardId]]],
 ])
 
@@ -173,6 +173,7 @@ const CHILDREN = new Map<PgTable, [OwnedTable, PgColumn][]>([
   [t.spending, [[t.spendingRound, t.spendingRound.spendingId]]],
   [t.livingItem, [[t.livingPhaseAmount, t.livingPhaseAmount.itemId]]],
   [t.bankAccount, [[t.accountBalance, t.accountBalance.accountId], [t.accountPhaseAmount, t.accountPhaseAmount.accountId]]],
+  [t.incomeItem, [[t.incomeReceipt, t.incomeReceipt.itemId]]],
 ])
 
 export const childrenOf = (table: PgTable) => CHILDREN.get(table) ?? []

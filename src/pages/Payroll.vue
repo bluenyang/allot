@@ -15,6 +15,8 @@
 // through and "조정됨 · 이번 달만".
 // spec 013 rev 1 S-16: a link may name the tab (`/pay?tab=sim`, or any tab id): it opens on entry, on a return through
 // KeepAlive and when the query changes; without one (or with an unknown one) the tab stays as it was.
+// spec 014 S-8 (W-6): the pay is what comes in that month (monthMoney's income: the salary and the other incomes,
+// received or expected), shown as 들어올 돈 with a link to the Income menu; a take-home tried on the screen still wins.
 import { t, tl } from '../i18n'
 import { computed, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -60,8 +62,9 @@ tabFromQuery()
 onActivated(tabFromQuery)
 watch(() => route.query.tab, tabFromQuery)
 const now = ymOf(localToday())
-// The month's distribution with its one-off spendings (spec 011 S-5); `pay` is a value tried on this screen.
-const dist = (ym: string, pay = store.settings.netPay) => monthMoney(store, ym, { pay }).dist
+// The month's distribution with its one-off spendings (spec 011 S-5); `pay` is a value tried on this screen. Without one
+// the pay is what comes in that month (spec 014 S-5, S-8): the salary and the other incomes, received or expected.
+const dist = (ym: string, pay?: number) => monthMoney(store, ym, pay === undefined ? {} : { pay }).dist
 
 const LEFT_COLOR = 'var(--c7)'
 const numbers = computed(() => phaseNumbers(store.phases))
@@ -73,7 +76,7 @@ function segsOf(d: ReturnType<typeof dist>) {
   return segs
 }
 const aria = (segs: { name: string; amount: number }[]) => segs.map((s) => `${s.name} ${fmtMoney(s.amount)}`).join(', ')
-/** "나머지 ₩… " or "급여 통장에 남음 ₩…" (short: 모자람) for a distribution's note. */
+/** "여유 ₩… " or "급여 통장에 남음 ₩…" (short: 모자람) for a distribution's note. */
 function restNote(d: ReturnType<typeof dist>) {
   if (d.remainderTarget) return `${d.remainderTarget.name} ${fmtMoney(d.remainder)}`
   return `${d.remainder < 0 ? t('payroll.leftoverShort') : t('payroll.leftoverName')} ${fmtMoney(Math.abs(d.remainder))}`
@@ -89,9 +92,11 @@ const phaseRows = computed(() =>
 
 // ---------- simulation ----------
 const ym = ref(now)
-/** A take-home value tried on this screen only (never saved); null = the saved one. */
+/** A take-home value tried on this screen only (never saved); null = what comes in that month. */
 const payTry = ref<number | null>(null)
-const pay = computed(() => payTry.value ?? store.settings.netPay)
+/** What comes in in the simulated month (spec 014 S-8): the pay when nothing is tried. */
+const simIncome = computed(() => monthMoney(store, ym.value).income.total)
+const pay = computed(() => payTry.value ?? simIncome.value)
 const sim = computed(() => dist(ym.value, pay.value))
 /** The salary and card one-offs taken off this month's remainder (the basis line under the table). */
 const simSpend = computed(() => { const s = monthMoney(store, ym.value).spend; return s.general + s.installment })
@@ -147,7 +152,7 @@ function openPay() {
 }
 function applyPay() {
   payTry.value = Number(payDraft.value) || 0
-  if (payTry.value === store.settings.netPay) payTry.value = null
+  if (payTry.value === simIncome.value) payTry.value = null
   payDlg.value = false
 }
 const view = ref<SimRow | null>(null)
@@ -299,7 +304,8 @@ const roundOpts = computed(() => {
 })
 
 // ---------- accounts tab ----------
-const flow = computed(() => dist(now))
+const flowMoney = computed(() => monthMoney(store, now))
+const flow = computed(() => flowMoney.value.dist)
 /** This month's money into each account (the 이번 달 column). */
 const accRows = computed(() => store.accounts.map((a) => ({ a, bank: bankLine(a), month: accountMonthIn(a, store, now, flow.value) })))
 const unlinked = computed(() => unlinkedTargets(store.targets, store.accounts))
@@ -408,6 +414,7 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
           </div>
           <span class="sum">
             <span class="hint">{{ t('payroll.netSummary', { pay: fmtMoney(pay), phase: simPhase }) }}</span>
+            <RouterLink class="btn sm ghost link" to="/income">{{ t('payroll.incomeLink') }}</RouterLink>
             <span v-if="payTry !== null" class="pill warn">{{ t('payroll.payTemp') }}</span>
             <button class="btn sm ghost link" type="button" @click="openPay">{{ t('payroll.editPay') }}</button>
           </span>
@@ -473,7 +480,8 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
               <div class="fl-m" aria-hidden="true"><span class="no">1</span><span class="ln"></span></div>
               <div class="fl-b">
                 <b>{{ t('payroll.flowIn', { day: store.settings.payDay }) }}</b>
-                <div class="box"><span>{{ t('payroll.flowPay') }}</span><b class="num">{{ fmtMoney(store.settings.netPay) }}</b></div>
+                <div class="box"><span>{{ t('payroll.flowPay') }}</span><b class="num">{{ fmtMoney(flowMoney.income.total) }}</b></div>
+                <RouterLink class="fgo" to="/income">{{ t('payroll.incomeLink') }}</RouterLink>
               </div>
             </li>
             <li>
@@ -631,9 +639,9 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
     </EditSheet>
 
     <EditSheet v-if="payDlg" :title="t('payroll.payTitle')" :desc="t('payroll.payDesc')" :save-label="t('payroll.apply')" @save="applyPay" @cancel="payDlg = false">
-      <div class="field"><span class="lbl2">{{ t('payroll.paySaved') }}</span><div class="ro"><span>{{ t('payroll.netPay') }}</span><b class="num">{{ fmtMoney(store.settings.netPay) }}</b></div></div>
+      <div class="field"><span class="lbl2">{{ t('payroll.paySaved') }}</span><div class="ro"><span>{{ t('payroll.netPay') }}</span><b class="num">{{ fmtMoney(store.settings.netPay) }}</b></div><div class="ro"><span>{{ t('payroll.payIncome') }}</span><b class="num">{{ fmtMoney(simIncome) }}</b></div></div>
       <div class="field"><label for="pay-try">{{ t('payroll.payTry') }}</label><MoneyInput id="pay-try" v-model="payDraft" /></div>
-      <button class="btn sm ghost link" type="button" style="justify-self:start" @click="payDraft = store.settings.netPay">{{ t('payroll.payReset') }}</button>
+      <button class="btn sm ghost link" type="button" style="justify-self:start" @click="payDraft = simIncome">{{ t('payroll.payReset') }}</button>
     </EditSheet>
 
     <BudgetAdjustEditor v-if="adjusting" :key="`${adjusting.id}-${ym}`" :target="adjusting" :ym="ym" :pay="pay" @close="adjusting = null" />

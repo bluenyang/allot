@@ -20,7 +20,7 @@ export function out<R extends Record<string, unknown>>(row: R, optional: string[
 export async function readState(q: Db, uid: string) {
   const list = <T extends ListTable>(table: T) =>
     q.select().from(table as never).where(eq(table.userId, uid)).orderBy(asc(table.seq)) as unknown as Promise<T['$inferSelect'][]>
-  const [[settings], livingItems, livingAmounts, subscriptions, planChanges, phases, events, checks, accounts, accountAmounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, targets, amounts, [prefs], holidaySets, spendings, spendingRounds] = await Promise.all([
+  const [[settings], livingItems, livingAmounts, subscriptions, planChanges, phases, events, checks, accounts, accountAmounts, balances, cards, monthAdjusts, currencies, schedules, debts, remainderSplit, targets, amounts, [prefs], holidaySets, spendings, spendingRounds, incomes, incomeReceipts, incomeExtras] = await Promise.all([
     q.select().from(t.settings).where(eq(t.settings.userId, uid)),
     list(t.livingItem),
     q.select().from(t.livingPhaseAmount).where(eq(t.livingPhaseAmount.userId, uid)),
@@ -44,6 +44,9 @@ export async function readState(q: Db, uid: string) {
     list(t.holidaySet),
     list(t.spending),
     q.select().from(t.spendingRound).where(eq(t.spendingRound.userId, uid)).orderBy(asc(t.spendingRound.no)),
+    list(t.incomeItem),
+    list(t.incomeReceipt),
+    list(t.incomeExtra),
   ])
   const amountsOf = (phaseId: string) =>
     Object.fromEntries(amounts.filter((a) => a.phaseId === phaseId).map((a) => [a.targetId, a.amount]))
@@ -79,5 +82,9 @@ export async function readState(q: Db, uid: string) {
       ...out(x, ['note']),
       rounds: spendingRounds.filter((r) => r.spendingId === x.id).map(({ userId: _u, spendingId: _s, ...r }) => r),
     })),
+    // spec 014
+    incomes: incomes.map((x) => out(x, ['note'])),
+    incomeReceipts: incomeReceipts.map((x) => out(x, ['note'])),
+    incomeExtras: incomeExtras.map((x) => out(x, ['note'])),
   }
 }

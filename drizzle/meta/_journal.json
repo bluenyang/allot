@@ -260,6 +260,20 @@
       "when": 1795419037179,
       "tag": "0036_rc3_rate_precision",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1795528066043,
+      "tag": "0037_income",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1795528070150,
+      "tag": "0038_force_rls_income",
+      "breakpoints": true
     }
   ]
 }

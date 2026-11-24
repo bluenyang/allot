@@ -110,6 +110,7 @@ for (const [path, resource] of [
   ['/holiday-sets', 'holiday-sets'], ['/targets', 'targets'], ['/spendings', 'spendings'],
   ['/living-items', 'living-items'], ['/balances', 'balances'], ['/cards', 'cards'], ['/month-adjusts', 'month-adjusts'], // spec 013
   ['/currencies', 'currencies'], ['/schedules', 'schedules'], // spec 013 rc.3
+  ['/incomes', 'incomes'], ['/income-receipts', 'income-receipts'], ['/income-extras', 'income-extras'], // spec 014
 ] as const) crud(routes, path, resource)
 routes.route('/', fxRoutes) // spec 013 S-23: POST /api/currencies/refresh (server/fx-routes.ts)
 

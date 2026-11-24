@@ -1,5 +1,5 @@
 import type {
-  Account, AllocationKind, AllocationTarget, Balance, BudgetGroup, Card, Currency, Cycle, DayShift, ForeignCurrency, Living, LivingItem, MonthAdjust, PayBy, Phase, Plan, PlanChange, Priced,
+  Account, AllocationKind, AllocationTarget, Balance, BudgetGroup, Card, Currency, Cycle, DayShift, ForeignCurrency, IncomeExtra, IncomeItem, IncomeReceipt, Living, LivingItem, MonthAdjust, PayBy, Phase, Plan, PlanChange, Priced,
   RemainderSplit, Settings, SpendHow, Spending, SpendingRound, SpendInterval, SplitMode, Subscription,
 } from '../data/types'
 
@@ -961,6 +961,62 @@ export interface MonthState {
   spendings?: Spending[]
   /** foreign currencies other than USD (spec 013 S-23); none = USD and KRW only */
   currencies?: ForeignCurrency[]
+  /** regular incomes, money received for them, money that came in once (spec 014 S-2–S-4) */
+  incomes?: IncomeItem[]
+  incomeReceipts?: IncomeReceipt[]
+  incomeExtras?: IncomeExtra[]
+}
+
+/** One income line of a month (spec 014 S-5): `received` is the sum of its receipts, null when none; `used` is what counts. */
+export interface IncomeLine {
+  key: string // 'salary' or the income's id
+  name: string | null // null = the salary (the screens name it)
+  day: number
+  expected: number
+  received: number | null
+  used: number
+  diff: number // used − expected (0 until something is received)
+}
+
+/** A yearly income of another month, with the month it comes next (after the month asked for). */
+export interface IncomeLater { id: string; name: string; amount: number; ym: string }
+
+/**
+ * What comes in in month `ym` (spec 014 S-5): the salary (settings.netPay on payDay) and every regular income of that
+ * month (monthly ones always, yearly ones in their month), each with what was received for it that month or else its
+ * expected amount, plus the money that came in once in that month. With no incomes, receipts or extras, `total` is
+ * netPay: the month is what it was before 0.1.8.
+ */
+export function incomeAt(state: Pick<MonthState, 'settings' | 'incomes' | 'incomeReceipts' | 'incomeExtras'>, ym: string) {
+  const receipts = (state.incomeReceipts ?? []).filter((r) => r.ym === ym)
+  const got = (itemId: string | null) => {
+    const mine = receipts.filter((r) => r.itemId === itemId)
+    return mine.length ? mine.reduce((a, r) => a + r.amount, 0) : null
+  }
+  const line = (key: string, itemId: string | null, name: string | null, day: number, expected: number): IncomeLine => {
+    const received = got(itemId)
+    const used = received ?? expected
+    return { key, name, day, expected, received, used, diff: used - expected }
+  }
+  const month = Number(ym.slice(5, 7))
+  const items = state.incomes ?? []
+  const rows: IncomeLine[] = [
+    line('salary', null, null, state.settings.payDay, state.settings.netPay),
+    // an income of another month (yearly) shows only when something was written down for it in this month: it counts
+    // with nothing expected, so a receipt is never dropped (an early bonus is this month's, and its own month still expects it)
+    ...items.filter((i) => i.cycle === 'monthly' || i.month === month || got(i.id) !== null)
+      .map((i) => line(i.id, i.id, i.name, i.day, i.cycle === 'monthly' || i.month === month ? i.amount : 0)),
+  ]
+  const extras = (state.incomeExtras ?? []).filter((x) => x.date.slice(0, 7) === ym)
+  const extraSum = extras.reduce((a, x) => a + x.amount, 0)
+  const expected = rows.reduce((a, r) => a + r.expected, 0)
+  const total = rows.reduce((a, r) => a + r.used, 0) + extraSum
+  // the yearly incomes of other months, each with the next month it comes in (after ym)
+  const later: IncomeLater[] = items.filter((i) => i.cycle === 'yearly' && i.month && i.month !== month).map((i) => {
+    const y = Number(ym.slice(0, 4)) + ((i.month as number) < month ? 1 : 0)
+    return { id: i.id, name: i.name, amount: i.amount, ym: `${y}-${String(i.month).padStart(2, '0')}` }
+  }).sort((a, b) => a.ym.localeCompare(b.ym))
+  return { rows, extras, extraSum, expected, total, diff: total - expected, allReceived: rows.every((r) => r.received !== null), later }
 }
 
 /**
@@ -974,11 +1030,12 @@ export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; p
   const spend = spendingIn(state.spendings ?? [], ym)
   const s = priced(state.settings, state.currencies)
   const transfer = transferAt(state.subscriptions, state.planChanges, s, ym, spend.subs)
+  const income = incomeAt(state, ym)
   const dist = distributionAt(
-    ym, opt.pay ?? state.settings.netPay, opt.phases ?? state.phases, state.targets, state.livingItems ?? state.living,
+    ym, opt.pay ?? income.total, opt.phases ?? state.phases, state.targets, state.livingItems ?? state.living,
     state.subscriptions, state.planChanges, s, spend.remainder, spend.subs, state.accounts ?? [], state.monthAdjusts ?? [],
   )
-  return { transfer, dist, spend }
+  return { transfer, dist, spend, income }
 }
 
 export type SpendStateName = 'cancelled' | 'paid' | 'billing' | 'planned'

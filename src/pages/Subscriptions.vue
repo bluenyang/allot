@@ -24,6 +24,8 @@ const PlanChangeEditor = defineAsyncComponent(() => import('../components/PlanCh
 
 // 구독 (spec 010 S-7): four summary cards, four views in one card, a two-step editor for a subscription
 // and one for a plan change. The CSV export (spec 013 S-17) writes the list as it is filtered.
+// spec 014 S-8 (W-6): the first card row is the monthly total and what it rests on (prices to check, the exchange rate);
+// the yearly total (a projection: × 12) is the second row.
 const tab = ref('list')
 const now = localToday()
 const ym = ref(ymOf(now))
@@ -216,16 +218,19 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
         <div class="k-v"><b class="num">{{ fmtMoney(monthlyTotal) }}</b><span class="num k-s" :class="nextDiff > 0 ? 'up' : nextDiff < 0 ? 'down' : ''">{{ monthShort(Number(addYm(ym, 1).slice(5, 7))) }} {{ fmtMoney(nextTotal) }}</span></div>
       </div>
       <div class="card kpi">
-        <div class="k-h"><span class="k-l">{{ t('subscriptions.yearlyTotal') }}</span><span class="hint">× 12</span></div>
-        <div class="k-v"><b class="num">{{ fmtMoney(monthlyTotal * 12) }}</b><span class="hint num">{{ t('subscriptions.yearlyN', { n: yearlyCount }) }}</span></div>
-      </div>
-      <div class="card kpi">
         <div class="k-h"><span class="k-l">{{ t('subscriptions.unverifiedCount') }}</span><span v-if="unverified.length" class="pill warn">{{ t('subscriptions.needCheck') }}</span></div>
         <div class="k-v"><b class="num" :class="{ sig: unverified.length }">{{ t('subscriptions.nItems', { n: unverified.length }) }}</b><span class="hint">{{ unverified[0] ? firstLine(unverified[0].p.name) + (unverified.length > 1 ? ` ${t('subscriptions.andMore', { n: unverified.length - 1 })}` : '') : '' }}</span></div>
       </div>
       <div class="card kpi">
         <div class="k-h"><span class="k-l">{{ t('subscriptions.appliedFx') }}</span><span class="hint">{{ t('subscriptions.usdN', { n: usdCount }) }}</span></div>
         <div class="k-v"><b class="num">₩{{ num(store.settings.fxRate) }}</b><span class="hint num">{{ t('subscriptions.buffer', { pct: store.settings.fxBuffer }) }}</span></div>
+      </div>
+    </section>
+
+    <section class="kpis" :aria-label="t('subscriptions.laterLabel')">
+      <div class="card kpi">
+        <div class="k-h"><span class="k-l">{{ t('subscriptions.yearlyTotal') }}</span><span class="hint">× 12</span></div>
+        <div class="k-v"><b class="num">{{ fmtMoney(monthlyTotal * 12) }}</b><span class="hint num">{{ t('subscriptions.yearlyN', { n: yearlyCount }) }}</span></div>
       </div>
     </section>
 
@@ -362,7 +367,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
 
 <style scoped>
 .soon-btn{white-space:nowrap;height:36px;padding:0 14px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface);color:var(--subtle)}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .kpi{padding:14px 18px}
 .k-h,.k-v{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .k-h{align-items:center}
@@ -429,6 +434,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
 .c-l{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed var(--border);font-size:13px;color:var(--text-2)}
 .c-l.strong{color:var(--primary-text);font-weight:700}
 @media (max-width:760px){
+  .kpis{grid-template-columns:minmax(0,1fr)}
   .kpi{padding:12px 14px}
   .dtable,.vr{display:none}
   .mlist{display:block}

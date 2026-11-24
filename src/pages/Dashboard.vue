@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onActivated, ref, watch } from 'vue'
 import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -16,13 +16,14 @@ import { offDays } from '../lib/holidays-lazy'
 import { whenShort } from '../lib/event-when'
 import { downloadCsv, wonCell, type CsvCell } from '../lib/csv'
 import {
-  addYm, clusterDots, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymd, ymOf, ymRange,
+  addYm, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymd, ymOf, ymRange,
 } from '../lib/calc'
 import {
   canUndo, changed, decide, fieldName, listFor, loadProposals, money, proposals, proposalTitle, rowFields, rowLabel, rowTitle, shown, summary, tableName, undo, when, worded,
   type Proposal,
 } from '../lib/proposals'
 import { localToday } from '../lib/now'
+import type { AllocationKind } from '../data/types'
 
 const AddRecord = defineAsyncComponent(() => import('../components/AddRecordModal.vue'))
 
@@ -31,6 +32,10 @@ const AddRecord = defineAsyncComponent(() => import('../components/AddRecordModa
 // the remainder's '관리' goes to the pay page's simulation (spec 013 S-16); '내보내기' saves the shown month's
 // summary as a CSV made here from the state (S-17).
 // "고정 지출 추이" looks ahead six months (the past is not stored; the user approved the change on 2026-11-15).
+// Spec 014 S-1, S-7, S-11 (the canvas board NextHome): the page opens with the month's 여유 — 들어올 돈 − 나갈 돈 —,
+// the two cards behind it and where the 여유 goes; the four tabs that were the page follow under '자세히', unchanged.
+// The four KPI cards are gone: their numbers are in the tabs (31일 내 결제: the payment list; 확인 필요: the tab counts),
+// the subscription total is the subscription line of 나갈 돈, and the remainder is the 여유 itself.
 const now = localToday()
 // The month comes from the header's month switch (spec 007 S-15); payments stay "from today".
 const ym = computed(() => view.ym)
@@ -55,10 +60,84 @@ const split = computed(() => (dist.value.remainderTarget ? splitRemainder(dist.v
 const subsMonthly = computed(() => xfer.value.monthlySum + xfer.value.yearlyMonthly)
 // Active in the shown month, with scheduled plan changes applied (the same set as the monthly total).
 const activeSubs = computed(() => xfer.value.items.length)
-const pct = (n: number) => (store.settings.netPay > 0 ? `${((n / store.settings.netPay) * 100).toFixed(1)}%` : '—')
+// shares of what comes in this month (spec 014 S-5): the rows are worked out from it, so the column adds up to 100%
+const pct = (n: number) => (monthNow.value.income.total > 0 ? `${((n / monthNow.value.income.total) * 100).toFixed(1)}%` : '—')
 // What the pay leaves when no target takes the remainder (negative = short).
 const spare = computed(() => unallocated(dist.value))
 const barRows = computed(() => dist.value.rows.filter((x) => x.amount > 0))
+
+// ---------- 3초: 들어올 돈 − 나갈 돈 = 여유 (spec 014 S-1, S-5) ----------
+const income = computed(() => monthNow.value.income)
+const spend = computed(() => monthNow.value.spend)
+/** 여유: what the remainder target gets, or what stays in the pay account without one (negative = short). */
+const yeo = computed(() => dist.value.remainder)
+const salary = computed(() => income.value.rows.find((r) => r.key === 'salary')!)
+/** The basis badge: every line received, the salary not yet, or some other line not yet. */
+const basis = computed(() =>
+  income.value.allReceived ? { cls: 'ok', text: t('dashboard.home.basisReceived') }
+  : salary.value.received === null ? { cls: 'acc', text: t('dashboard.home.basisBeforePay') }
+  : { cls: 'acc', text: t('dashboard.home.basisPartly') })
+// Where each target is managed (S-1: every 나갈 돈 line goes to its menu).
+const OUT_PATH: Record<AllocationKind, string> = {
+  living: '/living', subscriptions: '/spend/subs', fixed: '/pay', saving: '/saving', invest: '/invest', remainder: '/pay?tab=sim',
+}
+interface Out { key: string; name: string; sub: string; amount: number; color: string; to: string }
+/** 나갈 돈: every target but the remainder, then the month's spendings taken off the remainder. */
+const outs = computed<Out[]>(() => [
+  ...dist.value.rows.filter((r) => r.kind !== 'remainder').map((r) => ({
+    key: r.key, name: r.name, amount: r.amount, color: allocColor(r.key), to: OUT_PATH[r.kind],
+    sub: r.kind === 'subscriptions' ? t('dashboard.home.subsSub', { n: activeSubs.value, amount: fmtMoney(subsMonthly.value) }) : r.detail || kindDetail(r.kind),
+  })),
+  ...(spend.value.remainder > 0 ? [{
+    key: 'spend', name: t('dashboard.home.spendLine'), amount: spend.value.remainder, color: 'var(--c7)', to: '/spend/general',
+    sub: t('dashboard.home.spendSub', { n: spend.value.items.filter((x) => x.spending.payBy !== 'subs').length }),
+  }] : []),
+])
+const outSum = computed(() => outs.value.reduce((a, o) => a + o.amount, 0))
+/** A share of what comes in, for the legend. */
+const ofIn = (n: number) => (income.value.total > 0 ? `${((n / income.value.total) * 100).toFixed(1)}%` : '—')
+// The bar: the larger of in and out is the whole width, so a short month shows the out lines only.
+const barBase = computed(() => Math.max(income.value.total, outSum.value, 1))
+const barW = (n: number) => `${(Math.max(n, 0) / barBase.value) * 100}%`
+const inNote = computed(() => {
+  if (salary.value.received === null) return t('dashboard.home.inNoteWait', { date: mdShort(dates.value.pay.date) })
+  const got = t('dashboard.home.inNoteGot', { n: income.value.rows.filter((r) => r.received !== null).length })
+  return income.value.extras.length ? `${got} · ${t('dashboard.home.inNoteExtras', { n: income.value.extras.length })}` : got
+})
+/** The 들어올 돈 card: every income line of the month with its cycle, day and state. */
+const inRows = computed(() => income.value.rows.map((r) => {
+  const item = r.key === 'salary' ? null : store.incomes.find((i) => i.id === r.key)
+  const dated = store.incomeReceipts.filter((x) => x.ym === ym.value && x.itemId === (item ? item.id : null) && x.date).map((x) => x.date!).sort().at(-1)
+  return {
+    key: r.key, expected: r.expected, received: r.received, diff: r.diff,
+    name: r.name ?? t('dashboard.home.salary'),
+    when: item?.cycle === 'yearly' && item.month ? t('dashboard.home.yearlyOn', { month: monthShort(item.month), day: r.day }) : t('dashboard.home.monthlyOn', { day: r.day }),
+    state: r.received === null ? { cls: 'acc', text: t('dashboard.home.waiting') }
+      : { cls: 'ok', text: dated ? t('dashboard.home.gotOn', { date: mdShort(dated) }) : t('dashboard.home.got') },
+  }
+}))
+/** The next yearly income of another month (the note under the 들어올 돈 card). */
+const laterIn = computed(() => {
+  const x = income.value.later[0]
+  return x ? t('dashboard.home.laterNote', { month: monthShort(Number(x.ym.slice(5))), name: x.name, amount: fmtMoney(x.amount) }) : ''
+})
+const SPLIT_COLORS = ['var(--info)', 'var(--c5)', 'var(--c6)', 'var(--c4)', 'var(--c3)']
+/** 여유 어디에 둘까 (S-7): the remainder split, or the remainder target alone, or the pay account. */
+const places = computed(() => {
+  const d = dist.value
+  if (!d.remainderTarget) return [{ key: 'pay', name: t('dashboard.home.payAccount'), sub: t('dashboard.home.noTarget'), amount: Math.max(spare.value, 0), color: '' }]
+  if (!split.value.length) return [{ key: d.remainderTarget.id, name: d.remainderTarget.name, sub: t('dashboard.home.allOfIt'), amount: Math.max(yeo.value, 0), color: '' }]
+  return split.value.map((x, i, all) => ({
+    key: x.id, name: x.name, amount: x.amount, color: i === all.length - 1 ? '' : SPLIT_COLORS[i % SPLIT_COLORS.length]!,
+    sub: i === all.length - 1 ? t('dashboard.home.restOfIt') : t('dashboard.home.ratioOf', { pct: Math.round(x.ratio * 10_000) / 100 }),
+  }))
+})
+const why = computed(() => {
+  if (yeo.value < 0) return t('dashboard.home.whyShort', { amount: fmtMoney(-yeo.value) })
+  if (salary.value.received === null) return t('dashboard.home.whyWait')
+  const d = income.value.diff
+  return d > 0 ? t('dashboard.home.whyMore', { amount: fmtMoney(d) }) : d < 0 ? t('dashboard.home.whyLess', { amount: fmtMoney(-d) }) : ''
+})
 
 // Holidays for the day shift: the month before and after are needed too (a shift moves at most 31 days).
 const off = computed<ReadonlySet<string>>(() => {
@@ -89,11 +168,6 @@ const trendTop = computed(() => { const step = Math.max(1, Math.ceil(trendMax.va
 const ticks = computed(() => [3, 2, 1, 0].map((i) => (i ? manText(trendTop.value / 3 * i) : '0')))
 const monthName = computed(() => (lang.value === 'en' ? monthLong(month.value) : month.value))
 const monthTitle = computed(() => t('dashboard.monthText', { year: year.value, month: monthName.value }))
-// KPI 2 side note: how the next month differs from this one (hidden at 0; down when it falls).
-const nextDiff = computed(() => {
-  const d = Math.round((trend.value[1]?.v ?? 0) - (trend.value[0]?.v ?? 0))
-  return d === 0 ? null : { d, label: t(d > 0 ? 'dashboard.nextUp' : 'dashboard.nextDown', { month: monthShort(Number(trend.value[1]!.ym.slice(5))), amount: fmtMoney(Math.abs(d)) }) }
-})
 const trendLast = computed(() => trend.value.at(-1)!.ym)
 
 const tab = ref('month')
@@ -104,7 +178,6 @@ const nextChanges = computed(() =>
 const undated = computed(() => store.planChanges.filter((c) => !c.effective))
 const nextEvents = computed(() => store.events.filter((e) => e.state !== 'done' && e.when.slice(0, 7) <= horizon.value))
 const openChecks = computed(() => store.checks.filter((c) => !c.done).length)
-const needCount = computed(() => store.pendingProposals + openChecks.value)
 const tabs = computed(() => [
   { id: 'month', label: t('dashboard.tabMonth'), icon: 'chart' },
   { id: 'pending', label: t('dashboard.tabAi'), icon: 'sparkle', count: store.pendingProposals, signal: true },
@@ -153,24 +226,6 @@ function diffRows(p: Proposal) {
 }
 const cardMeta = (p: Proposal) => t('pending.meta', { key: p.keyName, at: when(p.createdAt), summary: summary(p) })
 const wcls = (d: Date) => (d.getDay() === 6 ? 'sat' : d.getDay() === 0 ? 'sun' : '')
-/** The 31-day strip: payments whose dots would touch (by the strip's rendered width) share one dot with a count (spec 010 A-27). */
-const DOT_PX = 18
-const stripEl = ref<HTMLElement | null>(null)
-const stripW = ref(240)
-let ro: ResizeObserver | undefined
-watch(stripEl, (el) => {
-  ro?.disconnect()
-  if (!el) return
-  stripW.value = el.clientWidth || stripW.value
-  if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => { stripW.value = el.clientWidth || stripW.value }); ro.observe(el) }
-}, { flush: 'post' })
-onBeforeUnmount(() => ro?.disconnect())
-const payText = (p: Pay) => `${mdd(p.date)} ${p.name} ${fmtMoney(p.krw)}`
-const dots = computed(() => clusterDots(pays.value.map((p) => p.dday), stripW.value, DOT_PX).map((c, i) => {
-  const ms = c.members.map((k) => pays.value[k]!)
-  const text = ms.length === 1 ? payText(ms[0]!) : `${t('dashboard.paymentCount', { n: ms.length })}: ${ms.map(payText).join(' · ')}`
-  return { id: ms.map((m) => m.key).join('+'), left: `${c.pct}%`, first: i === 0, n: ms.length, text }
-}))
 // ---------- 내보내기 (spec 013 S-17): the shown month's summary as CSV ----------
 // Distribution rows (target, kind, amount), the subscription transfer, the remainder (and its split), then the
 // month's subscription payments and spending rounds (date, name, amount) in date order.
@@ -213,55 +268,130 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
       <div class="mn-c"><b class="num">{{ monthTitle }}</b><small class="hint">{{ dist.phase ? phaseTag(store.phases, dist.phase) : t('shell.outOfPhase') }}</small></div>
       <button class="btn icon ghost" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
     </div>
-    <PageHeader :title="t('dashboard.title', { year, month: monthName })" class="dash-ph">
+    <PageHeader :title="monthTitle" class="dash-ph">
       <template #desc>
         {{ t('calendar.kind.pay') }} <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="note(dates.pay)">{{ note(dates.pay) }}</small></span>
         · {{ t('calendar.kind.transfer') }} <span :title="moved(dates.transfer.shifted)">{{ md(dates.transfer.date) }}<small v-if="note(dates.transfer)">{{ note(dates.transfer) }}</small></span>
-        · {{ t('calendar.kind.billing') }} <span :title="moved(dates.billing.shifted)">{{ md(dates.billing.date) }}<small v-if="note(dates.billing)">{{ note(dates.billing) }}</small></span>
-        · <button class="linkish" type="button" @click="notReady('shell.lastSync')">{{ t('shell.lastSync') }} —</button>
       </template>
       <button class="btn ph-hide" type="button" :title="t('dashboard.exportLabel', { month: monthTitle })" @click="exportCsv"><Icon name="download" />{{ t('shell.export') }}</button>
       <button class="btn pri" type="button" @click="adding = 'todo'"><Icon name="plus" />{{ t('shell.addRecord') }}</button>
     </PageHeader>
 
-    <section class="kpis" :aria-label="t('dashboard.summaryLabel')">
-      <div v-if="dist.remainderTarget" class="card kpi">
-        <div class="k-h"><span class="k-l">{{ t('dashboard.leftThisMonth', { name: dist.remainderTarget.name }) }}</span><span class="pill ok num">{{ pct(dist.remainder) }}</span></div>
-        <div class="k-v"><span class="num v" :class="fmtMoneyClass(dist.remainder)">{{ fmtMoney(dist.remainder) }}</span><span class="num hint k-side">{{ t('dashboard.ofPay', { pay: fmtMoney(store.settings.netPay) }) }}</span></div>
-        <div class="k-bar bars6" role="img" :aria-label="t('dashboard.ratioBarLabel')"><span v-for="r in barRows" :key="r.key" :style="{ flexGrow: r.amount, background: allocColor(r.key) }"></span></div>
-        <div class="k-f"><span>{{ t('dashboard.basis') }}</span><span>{{ t('dashboard.distOn', { date: md(dates.transfer.date) }) }}</span></div>
+    <!-- 3초 (spec 014 S-1): 들어올 돈 − 나갈 돈 = 여유 -->
+    <section class="card hero" :aria-label="t('dashboard.home.heroLabel')">
+      <div class="h-top">
+        <span class="h-t"><b>{{ t('dashboard.home.heroTitle', { month: monthShort(month) }) }}</b><span class="pill" :class="basis.cls">{{ basis.text }}</span></span>
+        <span class="hint more">{{ t('dashboard.home.heroHint') }}</span>
       </div>
-      <div class="card kpi">
-        <div class="k-h"><span class="k-l">{{ t('dashboard.subsMonthly') }}</span><span class="pill mute">{{ t('dashboard.active', { n: activeSubs }) }}</span></div>
-        <div class="k-v"><span class="num v">{{ fmtMoney(subsMonthly) }}</span><span v-if="nextDiff" class="num k-side diff" :class="nextDiff.d > 0 ? 'up' : 'down'">{{ nextDiff.label }}</span></div>
-        <div class="k-bar minis" role="img" :aria-label="t('dashboard.subsBarsLabel')"><span v-for="(b, i) in trend" :key="b.ym" :class="{ now: i === 0 }" :style="{ height: `${Math.max(8, (b.v / trendMax) * 100)}%` }"></span></div>
-        <div class="k-f"><span>{{ t('dashboard.transferAmt', { amount: fmtMoney(dist.subscriptions || xfer.transfer) }) }}</span><span>{{ monthShort(Number(trend[0]!.ym.slice(5))) }} → {{ monthShort(Number(trendLast.slice(5))) }}</span></div>
+      <div class="h-big">
+        <span class="num yv" :class="{ short: yeo < 0 }" data-testid="yeo">{{ fmtMoney(yeo) }}</span>
+        <b v-if="yeo < 0" class="h-short">{{ t('dashboard.home.short', { amount: fmtMoney(-yeo) }) }}</b>
+        <span v-if="income.diff !== 0" class="num h-diff" :class="income.diff > 0 ? 'plus' : 'minus'">{{ t('dashboard.home.vsExpected', { amount: signed(income.diff) }) }}</span>
       </div>
-      <div class="card kpi">
-        <div class="k-h"><span class="k-l">{{ t('dashboard.dueIn31') }}</span><span v-if="pays.length" class="pill acc">D-{{ pays[0]!.dday }}</span></div>
-        <div class="k-v"><span class="num v">{{ fmtMoney(paysSum) }}</span><span class="hint k-side">{{ t('dashboard.paymentCount', { n: pays.length }) }}</span></div>
-        <div ref="stripEl" class="k-bar dots" role="group" :aria-label="t('dashboard.dotsLabel')"><i v-for="d in dots" :key="d.id" role="img" :class="{ first: d.first, multi: d.n > 1 }" :style="{ left: d.left }" :title="d.text" :aria-label="d.text">{{ d.n > 1 ? d.n : '' }}</i></div>
-        <div class="k-f"><span v-if="pays.length">{{ t('dashboard.nextPay', { name: pays[0]!.name, amount: fmtMoney(pays[0]!.krw) }) }}</span><span v-else></span><span v-if="pays.length">{{ mdd(pays[0]!.date) }}</span></div>
+      <div class="eq">
+        <RouterLink class="eqc" to="/income" :aria-label="t('dashboard.home.inLabel', { amount: fmtMoney(income.total) })">
+          <span class="lab">{{ t('dashboard.home.in') }}</span>
+          <span class="num big">{{ fmtMoney(income.total) }}</span>
+          <span class="hint num">{{ t('dashboard.home.expected', { amount: fmtMoney(income.expected) }) }}<template v-if="income.diff !== 0"> · <b :class="income.diff > 0 ? 'plus' : 'minus'">{{ signed(income.diff) }}</b></template></span>
+          <span class="hint more">{{ inNote }}</span>
+        </RouterLink>
+        <span class="op" aria-hidden="true">−</span>
+        <div class="eqc">
+          <span class="lab">{{ t('dashboard.home.out') }}</span>
+          <span class="num big">{{ fmtMoney(outSum) }}</span>
+          <span class="hint more">{{ outs.map((o) => o.name).join(' · ') || '—' }}</span>
+          <span class="hint more">{{ t('dashboard.home.autoOn', { day: Number(dates.transfer.date.slice(8)) }) }}</span>
+        </div>
+        <span class="op" aria-hidden="true">=</span>
+        <div class="eqc yc" :class="{ short: yeo < 0 }">
+          <span class="lab">{{ t('dashboard.home.yeo') }}</span>
+          <span class="num big">{{ fmtMoney(yeo) }}</span>
+          <!-- where it goes, in the first screen too (spec 014 V-7, A-16): the split below in one line -->
+          <span v-if="yeo < 0" class="hint">{{ t('dashboard.home.short', { amount: fmtMoney(-yeo) }) }}</span>
+          <span v-else class="hint goes" data-testid="yeo-goes">{{ t('dashboard.home.goesTo', { list: places.map((x) => `${x.name} ${fmtMoney(x.amount)}`).join(' · ') }) }}</span>
+        </div>
       </div>
-      <div class="card kpi">
-        <div class="k-h"><span class="k-l">{{ t('dashboard.needCheck') }}</span><button class="btn ghost sm k-go" type="button" @click="tab = 'pending'">{{ t('dashboard.view') }}</button></div>
-        <div class="k-v"><span class="num v" :class="{ sig: needCount > 0 }">{{ needCount }}<small class="unit"> {{ t('dashboard.countUnit') }}</small></span></div>
-        <div class="k-lines">
-          <div><span class="sq acc"></span><span class="grow">{{ t('dashboard.aiWaiting') }}</span><b class="num">{{ store.pendingProposals }}</b></div>
-          <div><span class="sq"></span><span class="grow">{{ t('dashboard.checks') }}</span><b class="num">{{ openChecks }}</b></div>
+      <div>
+        <div class="sbar" role="img" :aria-label="t('dashboard.home.barLabel', { list: [...outs.map((o) => `${o.name} ${ofIn(o.amount)}`), ...(yeo > 0 ? [`${t('dashboard.home.yeo')} ${ofIn(yeo)}`] : [])].join(', ') })">
+          <span v-for="o in outs.filter((x) => x.amount > 0)" :key="o.key" :style="{ width: barW(o.amount), background: o.color }"></span>
+          <span v-if="yeo > 0" class="yeo" :style="{ width: barW(yeo) }"></span>
+        </div>
+        <div class="legend">
+          <span v-for="o in outs" :key="o.key"><i :style="{ background: o.color }"></i>{{ o.name }} <b class="num">{{ ofIn(o.amount) }}</b></span>
+          <span><i class="yeo"></i>{{ t('dashboard.home.yeo') }} <b class="num" :class="yeo < 0 ? 'minus' : 'plus'">{{ yeo < 0 ? t('dashboard.home.shortWord') : ofIn(yeo) }}</b></span>
         </div>
       </div>
     </section>
+
+    <div class="io">
+      <!-- 들어올 돈 -->
+      <section class="card iocard" :aria-label="t('dashboard.home.in')">
+        <div class="card-hd"><h2>{{ t('dashboard.home.in') }}</h2><RouterLink to="/income" class="aux">{{ t('dashboard.home.manageIncome') }}</RouterLink></div>
+        <div class="lrow lhd"><span class="l-n">{{ t('dashboard.home.colItem') }}</span><span class="l-e">{{ t('dashboard.home.colExpected') }}</span><span class="l-g">{{ t('dashboard.home.colReceived') }}</span></div>
+        <div v-for="r in inRows" :key="r.key" class="lrow">
+          <span class="l-n"><b>{{ r.name }}</b><small class="hint">{{ r.when }} · <span class="pill" :class="r.state.cls">{{ r.state.text }}</span></small></span>
+          <span class="l-e num">{{ fmtMoney(r.expected) }}</span>
+          <span class="l-g"><b class="num">{{ r.received === null ? '—' : fmtMoney(r.received) }}</b><small v-if="r.received !== null && r.diff !== 0" class="num" :class="r.diff > 0 ? 'plus' : 'minus'">{{ signed(r.diff) }}</small></span>
+        </div>
+        <div v-for="x in income.extras" :key="x.id" class="lrow">
+          <span class="l-n"><b>{{ x.name }}</b><small class="hint">{{ mdShort(x.date) }} · <span class="pill mute">{{ t('dashboard.home.extra') }}</span></small></span>
+          <span class="l-e num">—</span>
+          <span class="l-g"><b class="num">{{ fmtMoney(x.amount) }}</b><small class="plus">{{ t('dashboard.home.extraIncome') }}</small></span>
+        </div>
+        <div class="lrow lsum"><b class="l-n">{{ t('dashboard.total') }}</b><span class="l-e num">{{ fmtMoney(income.expected) }}</span><b class="l-g num">{{ fmtMoney(income.total) }}</b></div>
+        <div class="iofoot">
+          <span class="hint">{{ laterIn }}</span>
+          <RouterLink v-if="salary.received === null" class="btn sm pri" to="/income">{{ t('dashboard.home.writeSalary') }}</RouterLink>
+          <RouterLink v-else class="btn sm" to="/income">{{ t('dashboard.home.writeExtra') }}</RouterLink>
+        </div>
+      </section>
+
+      <!-- 나갈 돈 -->
+      <section class="card iocard" :aria-label="t('dashboard.home.out')">
+        <div class="card-hd"><h2>{{ t('dashboard.home.out') }}</h2><span class="aux">{{ t('dashboard.home.outAux', { day: Number(dates.transfer.date.slice(8)) }) }}</span></div>
+        <RouterLink v-for="o in outs" :key="o.key" class="lrow olink" :to="o.to">
+          <i class="sw" :style="{ background: o.color }"></i>
+          <span class="l-n"><b>{{ o.name }}</b><small class="hint">{{ o.sub }}</small></span>
+          <b class="num amt">{{ fmtMoney(o.amount) }}</b>
+          <Icon name="next" class="chev" />
+        </RouterLink>
+        <p v-if="!outs.length" class="empty">{{ t('dashboard.home.noOut') }}</p>
+        <div class="lrow lsum osum"><b>{{ t('dashboard.total') }}</b><b class="num amt">{{ fmtMoney(outSum) }}</b></div>
+      </section>
+    </div>
+
+    <!-- 여유 어디에 둘까 (S-7) -->
+    <section class="card" :aria-label="t('dashboard.home.placeLabel')">
+      <div class="card-hd wrap">
+        <h2>{{ t('dashboard.home.placeBefore') }} <span class="num" :class="yeo < 0 ? 'minus' : 'plus'">{{ fmtMoney(yeo) }}</span> {{ t('dashboard.home.placeAfter') }}</h2>
+        <RouterLink class="btn sm" to="/pay?tab=sim">{{ t('dashboard.home.editSplit') }}</RouterLink>
+      </div>
+      <div v-for="x in places" :key="x.key" class="lrow">
+        <i class="sw" :class="{ yeo: !x.color }" :style="x.color ? { background: x.color } : {}"></i>
+        <span class="l-n"><b>{{ x.name }}</b><small class="hint">{{ x.sub }}</small></span>
+        <b class="num amt">{{ fmtMoney(x.amount) }}</b>
+      </div>
+      <p v-if="why" class="why" :class="{ bad: yeo < 0 }">{{ why }}</p>
+    </section>
+
+    <div class="detail-hd">
+      <h2>{{ t('dashboard.home.details') }}</h2>
+      <span class="hint">{{ t('dashboard.home.detailsHint') }}</span>
+    </div>
 
     <div>
       <SubTabs v-model="tab" :tabs="tabs" :aria-label="t('dashboard.viewLabel')" />
 
       <!-- this month shows the split, the trend and the payments; the plan changes, the schedule and the to-check list are on their own tabs (spec 010 D-1) -->
       <div class="tabbody">
+      <p v-if="tab === 'month'" class="mhead hint">
+        {{ t('calendar.kind.billing') }} <span :title="moved(dates.billing.shifted)">{{ md(dates.billing.date) }}<small v-if="note(dates.billing)">{{ note(dates.billing) }}</small></span>
+        · <button class="linkish" type="button" @click="notReady('shell.lastSync')">{{ t('shell.lastSync') }} —</button>
+      </p>
       <div v-if="tab === 'month'" class="flexcols stretch">
         <div class="col-main">
           <section class="card">
-            <div class="card-hd"><h2>{{ t('dashboard.autoSplit', { day: dates.transfer.date.slice(8).replace(/^0/, '') }) }}</h2><span class="aux">{{ t('dashboard.takeHome', { pay: fmtMoney(store.settings.netPay) }) }}</span></div>
+            <div class="card-hd"><h2>{{ t('dashboard.autoSplit', { day: dates.transfer.date.slice(8).replace(/^0/, '') }) }}</h2><span class="aux">{{ t('dashboard.takeHome', { pay: fmtMoney(monthNow.income.total) }) }}</span></div>
             <div class="rbar">
               <div class="ratio" role="img" :aria-label="t('dashboard.ratioLabel', { list: dist.rows.map((r) => `${r.name} ${pct(r.amount)}`).join(', ') })">
                 <i v-for="r in barRows" :key="r.key" :style="{ flexGrow: r.amount, background: allocColor(r.key) }"></i>
@@ -438,41 +568,78 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
 </template>
 
 <style scoped>
-.unit{font-size:14px;font-weight:500;color:var(--muted)}
-/* KPI cards (spec 010 HM-6..11) */
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
-.kpi{padding:16px 18px;display:flex;flex-direction:column;gap:10px}
-.k-h{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:22px}
-.k-l{font-size:12px;font-weight:600;color:var(--muted)}
-.k-v{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.k-v .v{font-size:24px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
-.k-v .v.sig{color:var(--accent-text)}
-.k-side{font-size:12px;white-space:nowrap}
-.k-side.diff{font-weight:600}
-.k-f{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--subtle)}
-.k-bar{height:6px}
-.bars6{display:flex;gap:2px;border-radius:var(--r-tag);overflow:hidden}
-.bars6 span{display:block;min-width:2px}
-.minis{display:flex;align-items:flex-end;gap:4px;height:24px}
-.minis span{flex:1;background:var(--border-strong);border-radius:1px}
-.minis span.now{background:var(--primary)}
-.dots{position:relative;height:24px}
-.dots::before{content:"";position:absolute;left:0;right:0;top:11px;height:2px;background:var(--border)}
-.dots i{position:absolute;top:7px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--primary);border:2px solid var(--surface);box-sizing:content-box}
-.dots i.multi{top:3px;width:12px;height:12px;margin-left:-8px;display:grid;place-items:center;font:700 9px/1 var(--f-ui);font-style:normal;color:var(--primary-ink)}
-.dots i.first{top:6px;width:12px;height:12px;margin-left:-6px;background:var(--accent)}
-.dots i.first.multi{top:3px;width:12px;height:12px;margin-left:-8px;color:var(--accent-ink)}
-.k-go{height:22px;padding:0 6px;font-size:12px;color:var(--primary-text)}
-.k-lines{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-2)}
-.k-lines > div{display:flex;align-items:center;gap:6px}
-.sq{width:6px;height:6px;border-radius:1px;background:var(--subtle);flex:none}
-.sq.acc{background:var(--accent)}
+/* 3초 (spec 014 S-1; the canvas board NextHome) */
+.hero{padding:20px 22px;display:flex;flex-direction:column;gap:16px}
+.h-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.h-t{display:inline-flex;align-items:center;gap:8px}
+.h-t b{font-size:15px}
+.h-big{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.yv{font-size:44px;line-height:1.1;font-weight:700;letter-spacing:-.02em;color:var(--primary-text)}
+.yv.short,.h-short{color:var(--neg-text)}
+.h-short{font-size:15px}
+.h-diff{font-size:14px;font-weight:600}
+.plus{color:var(--primary-text)}
+.minus{color:var(--neg-text)}
+.eq{display:grid;grid-template-columns:minmax(0,1fr) 28px minmax(0,1fr) 28px minmax(0,1fr);align-items:stretch;gap:8px}
+.eq .op{display:grid;place-items:center;font-size:22px;font-weight:600;color:var(--subtle)}
+.eqc{border:1px solid var(--border);border-radius:var(--r-card);padding:12px 14px;display:flex;flex-direction:column;gap:4px;background:var(--surface);min-width:0;color:var(--text);text-decoration:none}
+a.eqc:hover{background:var(--surface-2)}
+.eqc .hint{overflow-wrap:anywhere}
+.eqc.yc{border:2px solid var(--primary);background:var(--primary-tint);padding:11px 13px}
+.eqc.yc .lab,.eqc.yc .big{color:var(--primary-text)}
+.eqc.yc.short{border-color:var(--neg);background:var(--neg-soft)}
+.eqc.yc.short .lab,.eqc.yc.short .big{color:var(--neg-text)}
+.lab{font-size:12px;font-weight:600;color:var(--muted)}
+.big{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.sbar{display:flex;height:14px;gap:2px;border-radius:var(--r-badge);overflow:hidden}
+.sbar span{display:block;min-width:2px}
+.yeo{background:repeating-linear-gradient(45deg,var(--primary-soft) 0 4px,var(--primary-tint) 4px 8px);box-shadow:inset 0 0 0 1px var(--primary)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:12px;color:var(--muted)}
+.legend > span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:var(--r-tag);flex:none}
+.legend b{color:var(--text-2)}
+.legend b.plus{color:var(--primary-text)}
+.legend b.minus{color:var(--neg-text)}
+.io{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:20px;align-items:stretch}
+.iocard{display:flex;flex-direction:column;min-width:0}
+.lrow{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--divider);color:var(--text);text-decoration:none}
+.lrow.lhd{padding-top:8px;padding-bottom:8px;font-size:12px;font-weight:600;color:var(--subtle);background:var(--surface-2)}
+.lrow.lsum{background:var(--surface-2);border-bottom:0}
+.osum{margin-top:auto;border-top:1px solid var(--border)}
+a.lrow:hover{background:var(--surface-2)}
+.l-n{flex:1;min-width:0;display:flex;flex-direction:column}
+.l-n b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.l-n .pill{padding:0 6px}
+.l-e{width:104px;flex:none;text-align:right;color:var(--muted)}
+.l-g{width:120px;flex:none;text-align:right;display:flex;flex-direction:column}
+.l-g small{font-size:12px}
+.sw{width:10px;height:10px;border-radius:var(--r-tag);flex:none}
+.amt{margin-left:auto;text-align:right;white-space:nowrap}
+.chev{width:16px;height:16px;flex:none;color:var(--subtle)}
+.osum .amt{margin-right:28px}
+.iofoot{margin-top:auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:12px 18px;border-top:1px solid var(--border)}
+.card-hd.wrap{flex-wrap:wrap}
+.why{margin:0;padding:10px 18px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
+.why.bad{color:var(--neg-text)}
+.detail-hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:8px}
+.detail-hd h2{margin:0;font-size:16px}
+.mhead{margin:0}
 .grow{flex-grow:1;min-width:0}
 @media (max-width:760px){
-  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-  .kpi{padding:12px;gap:4px}
-  .k-bar,.k-f,.k-lines,.k-side,.k-h > :not(:first-child){display:none}
-  .k-v .v{font-size:18px}
+  /* the equation as three low rows (label · amount, then one hint), so 들어올 돈, 나갈 돈, the split and where it goes
+     are in the first screen and no amount breaks (V-7, A-16) */
+  .hero{padding:14px;gap:12px}
+  .yv{font-size:34px}
+  .eq{grid-template-columns:minmax(0,1fr);gap:4px}
+  .eq .op{display:none}
+  .eqc{flex-direction:row;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 10px;padding:7px 10px}
+  .eqc.yc{padding:6px 9px}
+  .eqc .big{font-size:16px;white-space:nowrap}
+  .eqc .hint{flex-basis:100%;font-size:11px;line-height:1.35}
+  .hero .more{display:none}
+  .lrow{padding:10px 14px;gap:8px}
+  .l-e{width:84px}
+  .l-g{width:96px}
 }
 .col-main{flex:2 1 600px;display:flex;flex-direction:column;gap:20px}
 .col-side{flex:1 1 340px}

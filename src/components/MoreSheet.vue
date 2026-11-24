@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The phone's "더보기" (spec 010 S-4): a bottom sheet with the account, the budget pages the bottom
-// bar has no room for (living, savings and investment open since spec 013 S-1), the pages that are not in the bar, and sign out. Items for features that do
+// bar has no room for (income first since spec 014 S-9; living, savings and investment open since spec 013 S-1), the pages that are not in the bar, and sign out. Items for features that do
 // not exist yet are `Soon` (visible, inert). The API docs (spec 013 S-21) open the server's page in a new tab.
 // The shell closes it when the route changes.
 import { t, type MessageKey } from '../i18n'
@@ -22,6 +22,7 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
       <section class="mbud" :aria-label="t('shell.groupBudget')">
         <p class="hint">{{ t('shell.groupBudget') }}</p>
         <div class="tiles">
+          <RouterLink class="tile" to="/income"><span class="ti"><Icon name="income" /></span>{{ t('shell.pages.income') }}</RouterLink>
           <RouterLink class="tile" to="/living"><span class="ti"><Icon name="living" /></span>{{ t('shell.pages.living') }}</RouterLink>
           <RouterLink class="tile" to="/spend/subs"><span class="ti"><Icon name="spend" /></span>{{ t('shell.pages.spend') }}</RouterLink>
           <RouterLink class="tile" to="/saving"><span class="ti"><Icon name="saving" /></span>{{ t('shell.pages.saving') }}</RouterLink>
@@ -49,8 +50,8 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; logout: [] }>()
 .mwho small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mbud{padding:4px 8px 10px;margin-bottom:6px;border-bottom:1px solid var(--border)}
 .mbud p{margin:0 8px 6px;font-size:12px;font-weight:600}
-.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
-.tiles .tile{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;min-height:0;width:auto;padding:10px 4px;border-radius:8px;color:var(--text);text-decoration:none;font-size:13px;font-weight:600;text-align:center}
+.tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+.tiles .tile{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;min-height:0;min-width:0;width:auto;padding:10px 2px;border-radius:8px;color:var(--text);text-decoration:none;font-size:12px;font-weight:600;text-align:center;overflow-wrap:anywhere;line-height:1.25}
 .tiles .tile .ti{width:40px;height:40px;border-radius:8px;background:var(--primary-soft);color:var(--primary-text);display:grid;place-items:center}
 .tiles .tile .ti svg,.mi svg{width:20px;height:20px}
 .tiles .tile.is-soon{color:var(--subtle)}

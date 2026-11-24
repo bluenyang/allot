@@ -75,6 +75,8 @@ defineExpose({ exportCsv })
 const names = (list: Spending[]) => { const u = [...new Set(list.map((s) => s.name))]; return u.slice(0, 2).join(' · ') + (u.length > 2 ? ` +${u.length - 2}` : '') }
 const live = computed(() => general.value.filter((s) => !s.cancelled))
 
+// spec 014 S-8 (W-6): the first row is this month's card (what the month sends, by where it is taken from); the upcoming
+// spendings and the totals by payment method are the second row.
 // 1) this month: what the general spendings put on the month (spendingIn): off the remainder and onto the subscription transfer
 const k1 = computed(() => {
   const m = spendingIn(general.value, ym)
@@ -139,7 +141,9 @@ const share = (v: number, total: number) => (total ? (v / total) * 100 : 0)
           <div class="klg"><span><i style="background:var(--primary)"></i>{{ t('spending.gen.fromRem') }} <b class="num">{{ fmtMoney(k1.rem) }}</b></span><span><i style="background:var(--primary-mid)"></i>{{ t('spending.gen.toSubs') }} <b class="num">{{ fmtMoney(k1.subs) }}</b></span></div>
         </div>
       </div>
+    </section>
 
+    <section class="kp" :aria-label="t('spending.gen.laterLabel')">
       <div class="card kcard">
         <div class="k1"><span>{{ t('spending.gen.k2') }}</span><span class="hint">{{ t('spending.gen.count', { n: k2.n }) }}</span></div>
         <div class="k2"><b class="num">{{ fmtMoney(k2.total) }}</b><span class="num">{{ k2.range }}</span></div>
@@ -221,7 +225,7 @@ const share = (v: number, total: number) => (total ? (v / total) * 100 : 0)
 </template>
 
 <style scoped>
-.kp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px} /* a row of one or two cards fills the width (review 1 F-4) */
 .kcard{padding:14px 18px;display:flex;flex-direction:column;gap:2px;min-height:148px;min-width:0}
 .k1{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--muted)}
 .k2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:4px}

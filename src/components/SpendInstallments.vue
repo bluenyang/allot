@@ -232,7 +232,20 @@ const pickItem = (id: string) => { picked.value = id; error.value = '' }
 
 <template>
   <section class="page-gap inst">
+    <!-- spec 014 S-8 (W-6): the first row is what goes out every month; what is left to pay and the fees are the second -->
     <section class="kp" :aria-label="t('spending.inst.summaryLabel')">
+      <div class="card kcard">
+        <div class="k1"><span>{{ t('spending.inst.k2') }}</span><span class="hint">{{ k2.badge }}</span></div>
+        <div class="k2"><b class="num">{{ fmtMoney(k2.value) }}</b><span class="num">{{ k2.right }}</span></div>
+        <div class="hint">{{ k2.sub }}</div>
+        <div class="kvis">
+          <div class="kbars" role="img" :aria-label="k2.aria"><span v-for="(b, k) in k2.bars" :key="k" :style="{ height: `${b.h}%`, background: b.c }" :title="b.t"></span></div>
+          <div class="kaxis"><span>{{ k2.axisL }}</span><span>{{ k2.axisR }}</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="kp" :aria-label="t('spending.inst.laterLabel')">
       <div class="card kcard">
         <div class="k1"><span>{{ t('spending.inst.k1') }}</span><span class="hint">{{ t('spending.inst.count', { n: k1.n }) }}</span></div>
         <div class="k2"><b class="num">{{ fmtMoney(k1.left) }}</b><span>{{ t('spending.inst.k1Right') }}</span></div>
@@ -242,16 +255,6 @@ const pickItem = (id: string) => { picked.value = id; error.value = '' }
             <div class="krow"><span class="kl">{{ g.label }}</span><b class="num">{{ fmtMoney(g.v) }}</b></div>
             <div class="prog"><i :style="{ width: `${g.w}%`, background: 'var(--primary)' }"></i></div>
           </div>
-        </div>
-      </div>
-
-      <div class="card kcard">
-        <div class="k1"><span>{{ t('spending.inst.k2') }}</span><span class="hint">{{ k2.badge }}</span></div>
-        <div class="k2"><b class="num">{{ fmtMoney(k2.value) }}</b><span class="num">{{ k2.right }}</span></div>
-        <div class="hint">{{ k2.sub }}</div>
-        <div class="kvis">
-          <div class="kbars" role="img" :aria-label="k2.aria"><span v-for="(b, k) in k2.bars" :key="k" :style="{ height: `${b.h}%`, background: b.c }" :title="b.t"></span></div>
-          <div class="kaxis"><span>{{ k2.axisL }}</span><span>{{ k2.axisR }}</span></div>
         </div>
       </div>
 
@@ -355,7 +358,7 @@ const pickItem = (id: string) => { picked.value = id; error.value = '' }
 </template>
 
 <style scoped>
-.kp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px} /* a row of one or two cards fills the width (review 1 F-4) */
 .kcard{padding:14px 18px;display:flex;flex-direction:column;gap:2px;min-height:148px;min-width:0}
 .k1{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--muted)}
 .k2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:4px}

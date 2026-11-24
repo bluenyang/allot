@@ -1,7 +1,7 @@
 // spec 009 S-3: the fingerprint of the data and the month preview (synthetic data, no database).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { canonical, hashState, monthPreview } from '../../server/preview'
+import { canonical, hashState, incomeLine, monthPreview } from '../../server/preview'
 import { overview, type Data } from '../../server/mcp/views'
 
 const data: Data = {
@@ -88,4 +88,38 @@ test('the preview reads the living items, the savings accounts and a buffer use 
     count: 2, fee: 0, interval: null, cancelled: false, cardId: 'c1', refillFrom: '2026-11-25', rounds: [refill(1, '2026-11-25'), refill(2, '2026-12-25')],
   }] }
   for (const ym of ['2026-11', '2026-12']) assert.equal(monthPreview(base, buf, ym).remainderKrw.before - monthPreview(base, buf, ym).remainderKrw.after, 150_000)
+})
+
+// ── spec 014 S-10: income rows in words, with the left over of their month ──
+test('an income, money received and money that came in once each read as a line', () => {
+  const side = { id: 'in1', name: 'E2E-side', cycle: 'monthly' as const, month: null, day: 10, amount: 200_000, accountId: null }
+  const base: Data = { ...data, incomes: [side] }
+  // a new monthly and a yearly income
+  assert.equal(incomeLine({ table: 'income_item', op: 'insert', before: null, after: side }, data, base),
+    'New income "E2E-side": 200,000 KRW, every month on day 10.')
+  const bonus = { id: 'in2', name: 'E2E-bonus', cycle: 'yearly', month: 3, day: 15, amount: 1_000_000, accountId: null }
+  assert.equal(incomeLine({ table: 'income_item', op: 'update', before: { ...bonus, amount: 900_000 }, after: bonus }, base, base),
+    'Changed income "E2E-bonus": 900,000 KRW → 1,000,000 KRW, every March on day 15.')
+  // money received for the salary and for an income: whose, the month, the amount, and the left over before and after
+  const r1 = { id: 'r1', itemId: null, ym: '2026-11', amount: 3_100_000, date: '2026-11-25' }
+  const got: Data = { ...base, incomeReceipts: [r1] }
+  const left = (d: Data) => overview(d, '2026-11').distribution.remainderKrw.toLocaleString('en-US')
+  assert.equal(incomeLine({ table: 'income_receipt', op: 'insert', before: null, after: r1 }, base, got),
+    `New money received for salary in 2026-11: 3,100,000 KRW on 2026-11-25; left over of 2026-11: ${left(base)} KRW → ${left(got)} KRW.`)
+  assert.equal(overview(got, '2026-11').distribution.remainderKrw - overview(base, '2026-11').distribution.remainderKrw, 100_000)
+  const r2 = { id: 'r2', itemId: 'in1', ym: '2026-11', amount: 150_000, date: null }
+  const less: Data = { ...got, incomeReceipts: [r1, r2] }
+  assert.equal(incomeLine({ table: 'income_receipt', op: 'delete', before: r2, after: null }, less, got),
+    `Deleted money received for "E2E-side" in 2026-11: 150,000 KRW; left over of 2026-11: ${left(less)} KRW → ${left(got)} KRW.`)
+  // a receipt moved to another month shows both months
+  const moved = incomeLine({ table: 'income_receipt', op: 'update', before: r1, after: { ...r1, ym: '2026-12' } }, got, { ...got, incomeReceipts: [{ ...r1, ym: '2026-12' }] })!
+  assert.match(moved, /in 2026-11 → 2026-12: 3,100,000 KRW on 2026-11-25; left over of 2026-11: .+; left over of 2026-12: .+\.$/)
+  // money that came in once, in the month of its date
+  const x1 = { id: 'x1', date: '2027-01-03', name: 'E2E-refund', amount: 50_000 }
+  const extra: Data = { ...base, incomeExtras: [x1] }
+  const jan = (d: Data) => overview(d, '2027-01').distribution.remainderKrw.toLocaleString('en-US')
+  assert.equal(incomeLine({ table: 'income_extra', op: 'insert', before: null, after: x1 }, base, extra),
+    `New money that came in once "E2E-refund" on 2027-01-03: 50,000 KRW; left over of 2027-01: ${jan(base)} KRW → ${jan(extra)} KRW.`)
+  // other tables have no line
+  assert.equal(incomeLine({ table: 'subscription', op: 'insert', before: null, after: { id: 's9' } }, data, data), null)
 })

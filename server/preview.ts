@@ -1,8 +1,9 @@
 // What a proposal shows before it is confirmed (spec 009 S-3): the fingerprint of the user's data
 // and the months' transfer and distribution before and after. Pure over the rows readState()
 // returns (no database), computed with the same overview() the read tools use, so the preview
-// and the screens agree.
+// and the screens agree. The income rows (spec 014 S-10) also get a line in words, with the left over of their month.
 import { createHash } from 'node:crypto'
+import { monthMoney } from '../src/lib/calc'
 import { overview } from './mcp/views'
 import type { Data } from './mcp/views'
 
@@ -63,4 +64,60 @@ export function monthPreview(before: Data, after: Data, ym: string): MonthPrevie
     distribution: [...rows].map(([targetId, x]) => ({ targetId, name: x.name, kind: x.kind, amountKrw: { before: x.b, after: x.a } })),
     remainderKrw: { before: b.distribution.remainderKrw, after: a.distribution.remainderKrw },
   }
+}
+
+// ── Income rows in words (spec 014 S-10) ──
+type Row = Record<string, unknown>
+/** A changed row as the preview keeps it (table name, op, the row before and after). */
+export interface PreviewRow { table: string; op: 'insert' | 'update' | 'delete'; before: Row | null; after: Row | null }
+
+const won = (n: unknown) => `${Math.round(Number(n)).toLocaleString('en-US')} KRW`
+/** "a" when both sides say the same, else "a → b"; one side only: that side. */
+const both = (b: Row | null, a: Row | null, f: (r: Row) => string) => {
+  const x = b ? f(b) : null
+  const y = a ? f(a) : null
+  return x === null ? y! : y === null || x === y ? x : `${x} → ${y}`
+}
+const verb = (op: PreviewRow['op']) => (op === 'insert' ? 'New' : op === 'delete' ? 'Deleted' : 'Changed')
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/** The month's left over (여유: the remainder after the distribution), before and after, as words. */
+function leftOver(before: Data, after: Data, ym: string) {
+  const b = Math.round(monthMoney(before, ym).dist.remainder)
+  const a = Math.round(monthMoney(after, ym).dist.remainder)
+  return `left over of ${ym}: ${b === a ? won(a) : `${won(b)} → ${won(a)}`}`
+}
+
+/** The months a receipt or an extra counts in, from both sides, once each. */
+const monthsOf = (b: Row | null, a: Row | null, f: (r: Row) => string) => [...new Set([b, a].filter((r): r is Row => !!r).map(f))].sort()
+
+/**
+ * One line in words for a changed income row: an income (name, amount, when), money received for one (whose, the month,
+ * amount) or money that came in once (name, date, amount); for the last two also the left over of their month before
+ * and after the whole proposal. Any other table: null (the screens word those rows themselves).
+ */
+export function incomeLine(row: PreviewRow, before: Data, after: Data): string | null {
+  const { table, op, before: b, after: a } = row
+  if (table === 'income_item') {
+    const when = (r: Row) => (r.cycle === 'yearly' ? `every ${MONTHS[Number(r.month) - 1] ?? `month ${String(r.month)}`}` : 'every month') + ` on day ${String(r.day)}`
+    return `${verb(op)} income "${both(b, a, (r) => String(r.name))}": ${both(b, a, (r) => won(r.amount))}, ${both(b, a, when)}.`
+  }
+  if (table === 'income_receipt') {
+    const whose = (r: Row) => {
+      if (r.itemId === null || r.itemId === undefined) return 'salary'
+      const id = String(r.itemId)
+      const item = (after.incomes ?? []).find((i) => i.id === id) ?? (before.incomes ?? []).find((i) => i.id === id)
+      return item ? `"${item.name}"` : `income ${id}`
+    }
+    const months = monthsOf(b, a, (r) => String(r.ym))
+    const on = (r: Row) => (r.date ? ` on ${String(r.date)}` : '')
+    return `${verb(op)} money received for ${both(b, a, whose)} in ${both(b, a, (r) => String(r.ym))}: ${both(b, a, (r) => won(r.amount) + on(r))}; `
+      + `${months.map((m) => leftOver(before, after, m)).join('; ')}.`
+  }
+  if (table === 'income_extra') {
+    const months = monthsOf(b, a, (r) => String(r.date).slice(0, 7))
+    return `${verb(op)} money that came in once "${both(b, a, (r) => String(r.name))}" on ${both(b, a, (r) => String(r.date))}: ${both(b, a, (r) => won(r.amount))}; `
+      + `${months.map((m) => leftOver(before, after, m)).join('; ')}.`
+  }
+  return null
 }

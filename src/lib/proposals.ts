@@ -159,6 +159,13 @@ export async function undo(id: string) {
 }
 
 // ── What a row is ──
+/**
+ * The income a money-received row is for (spec 014 S-3): null is the salary; an income that is gone (its receipts went
+ * with it, so the change set shows both) reads as "정기 수입", never its id (review 2 F-5).
+ */
+export const incomeOf = (id: unknown) => id === null || id === undefined
+  ? t('income.salary' as MessageKey)
+  : store.incomes.find((x) => x.id === id)?.name ?? t('history.table.income_item' as MessageKey)
 /** A table's name; the rc.3 tables (spec 013 S-22, S-23) keep theirs in the currency messages. */
 export const tableName = (name: string) => {
   for (const k of [`history.table.${name}`, `currency.tables.${name}`]) if (te(k)) return t(k as MessageKey)
@@ -173,6 +180,10 @@ export const rowLabel = (c: RowChange) => {
   if (c.table === 'phase_amount') return `${phaseName(String(r.phaseId))} · ${targetName(String(r.targetId))}`
   // a month adjustment: its target and month (spec 013 S-14, review rc2-1 F-3)
   if (c.table === 'month_adjust') return `${targetName(String(r.targetId))} · ${monthLabel(String(r.ym))}`
+  // money received (spec 014 S-3): the income it is for (null = the salary) and its month (review 1 F-1)
+  if (c.table === 'income_receipt') {
+    return `${incomeOf(r.itemId)} · ${monthLabel(String(r.ym))}`
+  }
   const name = r.name ?? r.text ?? r.title ?? r.label
   return typeof name === 'string' && name ? name : ''
 }
@@ -208,6 +219,7 @@ const TABLE_PERCENT: Record<string, readonly string[]> = { foreign_currency: ['b
  * `table`, when known, picks a table's own reading of the field (as `fieldName` does).
  */
 export function worded(field: string, v: unknown, row?: Record<string, unknown> | null, table?: string): string {
+  if (table === 'income_receipt' && field === 'itemId') return incomeOf(v)
   if (v === null || v === undefined || v === '') return '—'
   const word = (f: () => string) => { try { return f() } catch { return String(v) } }
   if (table && TABLE_PERCENT[table]?.includes(field)) return `${String(v)}%`
