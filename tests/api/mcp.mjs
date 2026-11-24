@@ -6,8 +6,8 @@
 // written straight into the `apikey` table in the form the plugin stores them (the way a key made
 // on the screen looks in the database: SHA-256 base64url of the key); making keys through the
 // screen's API is tests/api/api-keys.mjs. No raw key is printed or written anywhere.
-//   isolation  V-5: users A and B each put marked data in; A's key calls all eleven tools and nothing of B shows, and back.
-//   tools      V-6: tools/list (eleven, read-only), get_overview for this month and three months on against calc.ts,
+//   isolation  V-5: users A and B each put marked data in; A's key calls all twelve read tools and nothing of B shows, and back.
+//   tools      V-6: tools/list (twelve, read-only; get_income: spec 014 S-10), get_overview for this month and three months on against calc.ts,
 //              get_budget and list_accounts against calc.ts (spec 013 S-10), an unknown tool and bad arguments, list_changes paging;
 //              spec 013 rev 1: search against src/lib/search.ts, list_notifications against calc.ts, list_changes since/until,
 //              the month adjustments and maturity schedule in get_budget (S-14, S-15, S-18..S-20).
@@ -93,7 +93,7 @@ const createUser = async (tag) => {
   return r.json.user.id
 }
 
-const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes', 'list_spendings', 'get_budget', 'list_accounts', 'search', 'list_notifications']
+const TOOLS = ['get_overview', 'list_subscriptions', 'list_plan_changes', 'get_allocation', 'get_schedule', 'list_changes', 'list_spendings', 'get_budget', 'list_accounts', 'search', 'list_notifications', 'get_income']
 let rpcId = 100
 /** tools/call → { status, result (the tool's result), error (JSON-RPC error), data (structuredContent) } */
 async function tool(key, name, args = {}) {
@@ -273,7 +273,7 @@ async function isolationMode() {
     ...(state.cards ?? []).map((x) => x.name), ...(state.livingItems ?? []).map((x) => x.name)].filter((x) => x.length >= 4)
   const states = {}
   for (const tag of ['A', 'B']) states[tag] = (await users[tag].api('GET', '/api/state')).json
-  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }], ['list_spendings', {}], ['get_budget', {}], ['list_accounts', {}], ['search', { query: 'ISO' }], ['list_notifications', {}]]
+  const calls = [['get_overview', {}], ['list_subscriptions', {}], ['list_plan_changes', {}], ['get_allocation', {}], ['get_schedule', { months: 12 }], ['list_changes', { limit: 50 }], ['list_spendings', {}], ['get_budget', {}], ['list_accounts', {}], ['search', { query: 'ISO' }], ['list_notifications', {}], ['get_income', {}]]
   for (const [me, other] of [['A', 'B'], ['B', 'A']]) {
     const out = {}
     const outD = {}
@@ -284,7 +284,7 @@ async function isolationMode() {
       outD[name] = t.data
     }
     const all = Object.values(out).join('\n')
-    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the eleven answers`)
+    ok(!all.includes(users[other].marker), `${me}'s key: nothing marked ${users[other].marker} in any of the twelve answers`)
     const foreignIds = uuidIds(states[other]).filter((x) => !uuidIds(states[me]).includes(x))
     ok(foreignIds.length > 0 && !foreignIds.some((x) => all.includes(x)), `${me}'s key: none of ${other}'s ${foreignIds.length} ids appear`)
     const foreignNames = ownStrings(states[other]).filter((n) => !ownStrings(states[me]).includes(n))
@@ -318,7 +318,7 @@ async function toolsMode() {
   const key = await insertKey(aId)
   const list = await mcp(A, key)
   const tools = list.json?.result?.tools ?? []
-  ok(tools.length === 11 && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the eleven tools (${tools.map((t) => t.name).join(', ')})`)
+  ok(tools.length === TOOLS.length && TOOLS.every((n) => tools.some((t) => t.name === n)), `tools/list: exactly the twelve tools (${tools.map((t) => t.name).join(', ')})`)
   ok(tools.every((t) => t.annotations?.readOnlyHint === true), 'every tool says readOnlyHint: true')
   ok(tools.every((t) => !/create|update|delete|write|set_|add_|remove/.test(t.name)), 'no tool name is a write')
   ok(tools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'descriptions are English text')
@@ -492,7 +492,7 @@ async function writeMode() {
 
   // ── V-3: scope ──
   const rn = await names(kRead.key)
-  ok(rn.length === 11 && ['list_spendings', 'get_budget', 'list_accounts', 'search', 'list_notifications'].every((n) => rn.includes(n)) && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the eleven read tools (list_spendings, get_budget, list_accounts, search and list_notifications among them) and no write tool')
+  ok(rn.length === TOOLS.length && ['list_spendings', 'get_budget', 'list_accounts', 'search', 'list_notifications', 'get_income'].every((n) => rn.includes(n)) && WRITE_TOOLS.every((n) => !rn.includes(n)), 'a read key: tools/list has the twelve read tools (list_spendings, get_budget, list_accounts, search, list_notifications and get_income among them) and no write tool')
   for (const [name, args] of [['propose_changes', { changes: [] }], ['apply_proposal', { proposalId: 'x' }], ['get_proposal', { proposalId: 'x' }], ['propose_revert', { changeSetId: 'x' }]]) {
     ok(failedCall(await tool(kRead.key, name, args)), `a read key calling ${name} is an MCP error`)
   }

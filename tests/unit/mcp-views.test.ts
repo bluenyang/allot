@@ -7,7 +7,7 @@ import {
   priced,
 } from '../../src/lib/calc'
 import type { Account, LivingItem, Spending, Subscription } from '../../src/data/types'
-import { accountList, allocation, budget, eventMonths, maturitySchedule, notificationList, overview, planChangeList, schedule, searchView, spendingList, subscriptionList, type Data } from '../../server/mcp/views'
+import { accountList, allocation, budget, eventMonths, incomeView, maturitySchedule, notificationList, overview, planChangeList, schedule, searchView, spendingList, subscriptionList, type Data } from '../../server/mcp/views'
 import { maturityOf } from '../../server/mcp/maturity'
 import { buildNotices } from '../../src/lib/notices'
 import { search } from '../../src/lib/search'
@@ -568,4 +568,64 @@ test('overview lists USD from the settings and the currency list; a subscription
   assert.equal(o.subscriptionTransfer.foreignAsMonthlyKrw, Math.round(x.foreignMonthly))
   assert.equal(o.subscriptionTransfer.fxBufferKrw, Math.round(x.buffer))
   assert.equal(overview(data, '2026-11').currencies.length, 1)
+})
+
+// ── spec 014 S-10: get_income and the income in the overview ──
+const withIncome: Data = {
+  ...data,
+  incomes: [
+    { id: 'in-side', name: 'E2E-side', cycle: 'monthly', month: null, day: 10, amount: 200_000, accountId: 'a1' },
+    { id: 'in-bonus', name: 'E2E-bonus', cycle: 'yearly', month: 3, day: 15, amount: 1_000_000, accountId: null, note: 'once a year' },
+  ],
+  // two receipts for the salary in one month add up
+  incomeReceipts: [
+    { id: 'rc1', itemId: null, ym: '2026-11', amount: 3_000_000, date: '2026-11-25' },
+    { id: 'rc2', itemId: null, ym: '2026-11', amount: 100_000, date: null, note: 'late part' },
+    { id: 'rc3', itemId: 'in-side', ym: '2026-10', amount: 150_000 },
+  ],
+  incomeExtras: [{ id: 'x1', date: '2026-11-03', name: 'E2E-refund', amount: 50_000 }],
+}
+
+test('get_income: the salary with its receipts, a monthly and a yearly income, the extra, totals and the left over', () => {
+  const g = incomeView(withIncome, '2026-11')
+  assert.equal(g.month, '2026-11')
+  assert.deepEqual(g.incomes.map((r) => [r.incomeId, r.name, r.salary, r.expectedKrw, r.receivedKrw, r.countedKrw, r.diffKrw]), [
+    [null, 'salary', true, 3_000_000, 3_100_000, 3_100_000, 100_000],
+    ['in-side', 'E2E-side', false, 200_000, null, 200_000, 0],
+  ])
+  const salary = g.incomes[0]!
+  assert.equal(salary.day, 25)
+  assert.deepEqual(salary.receipts, [{ id: 'rc1', amountKrw: 3_000_000, date: '2026-11-25' }, { id: 'rc2', amountKrw: 100_000, date: null, note: 'late part' }])
+  assert.deepEqual(g.incomes[1]!.receipts, []) // October's receipt is October's
+  assert.equal(g.incomes[1]!.accountId, 'a1')
+  assert.deepEqual(g.extras, [{ id: 'x1', date: '2026-11-03', name: 'E2E-refund', amountKrw: 50_000 }])
+  assert.equal(g.extrasKrw, 50_000)
+  assert.equal(g.expectedKrw, 3_200_000)
+  assert.equal(g.totalKrw, 3_350_000)
+  assert.equal(g.diffKrw, 150_000)
+  assert.equal(g.allReceived, false)
+  // the left over is monthMoney's remainder: what comes in above the net pay adds to it
+  assert.equal(g.leftOverKrw, Math.round(monthMoney(withIncome, '2026-11').dist.remainder))
+  assert.equal(g.leftOverKrw - Math.round(monthMoney(data, '2026-11').dist.remainder), 350_000)
+  assert.deepEqual(g.later, [{ incomeId: 'in-bonus', name: 'E2E-bonus', amountKrw: 1_000_000, month: '2027-03' }])
+  // the yearly income in its month: expected, nothing received yet
+  const march = incomeView(withIncome, '2027-03')
+  const bonus = march.incomes.find((r) => r.incomeId === 'in-bonus')!
+  assert.deepEqual([bonus.cycle, bonus.yearlyMonth, bonus.expectedKrw, bonus.receivedKrw, bonus.countedKrw, bonus.note], ['yearly', 3, 1_000_000, null, 1_000_000, 'once a year'])
+  assert.equal(march.totalKrw, 4_200_000)
+  assert.deepEqual(march.later, [])
+  // no income data: the salary alone, as before
+  const plain = incomeView(data, '2026-11')
+  assert.deepEqual(plain.incomes.map((r) => [r.name, r.expectedKrw, r.receivedKrw]), [['salary', 3_000_000, null]])
+  assert.deepEqual([plain.totalKrw, plain.diffKrw, plain.extras.length, plain.later.length], [3_000_000, 0, 0, 0])
+})
+
+test('get_overview: the income of the month and its left over', () => {
+  const o = overview(withIncome, '2026-11')
+  assert.deepEqual(o.income, { expectedKrw: 3_200_000, totalKrw: 3_350_000, diffKrw: 150_000 })
+  assert.equal(o.leftOverKrw, o.distribution.remainderKrw)
+  assert.equal(o.leftOverKrw, incomeView(withIncome, '2026-11').leftOverKrw)
+  const before = overview(data, '2026-11')
+  assert.deepEqual(before.income, { expectedKrw: 3_000_000, totalKrw: 3_000_000, diffKrw: 0 })
+  assert.equal(before.leftOverKrw, before.distribution.remainderKrw)
 })

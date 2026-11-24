@@ -8,7 +8,7 @@ process.env.BETTER_AUTH_SECRET ??= 'x'.repeat(40)
 const { app } = await import('../../server/app')
 const { bodyOf, describeRoute, docsPage, listedRoutes, mcpToolDocs } = await import('../../server/docs')
 
-const READ = ['get_overview', 'list_subscriptions', 'list_spendings', 'list_plan_changes', 'get_allocation', 'get_budget', 'list_accounts', 'get_schedule', 'list_changes', 'search', 'list_notifications']
+const READ = ['get_overview', 'list_subscriptions', 'list_spendings', 'list_plan_changes', 'get_allocation', 'get_budget', 'list_accounts', 'get_schedule', 'list_changes', 'search', 'list_notifications', 'get_income']
 const WRITE = ['propose_changes', 'propose_revert', 'get_proposal', 'apply_proposal']
 
 test('every route of the app has a line on the page', () => {
@@ -43,7 +43,7 @@ test('the data resources show their request body', () => {
   }
 })
 
-test('the MCP tools are the ones the endpoint serves to a write key, eleven read and four write', async () => {
+test('the MCP tools are the ones the endpoint serves to a write key, twelve read and four write', async () => {
   const tools = await mcpToolDocs()
   assert.deepEqual(tools.map((t) => t.name).sort(), [...READ, ...WRITE].sort())
   for (const t of tools) {

@@ -1,6 +1,6 @@
 // The MCP server of one request: built per request and bound to the user the key belongs to
-// (stateless; spec 008 S-5, S-6). Eleven read-only tools for every key (get_budget and list_accounts: spec 013
-// S-10; search and list_notifications: S-19, S-20) and, for a key with the write scope, four more that propose changes and apply them after confirmation
+// (stateless; spec 008 S-5, S-6). Twelve read-only tools for every key (get_budget and list_accounts: spec 013
+// S-10; search and list_notifications: S-19, S-20; get_income: spec 014 S-10) and, for a key with the write scope, four more that propose changes and apply them after confirmation
 // (spec 009 S-6); each runs
 // as that user under row-level security, and what the read tools compute comes from server/mcp/views.ts.
 // Descriptions and errors are in English (spec 008 S-10); the data is as the user entered it.
@@ -16,7 +16,7 @@ import { applyProposal, getProposal, MAX_OPS, pendingCount, propose, ProposalErr
 import { readState } from '../state'
 import { SEARCH_KINDS } from '../../src/lib/search'
 import { guarded, isTimestamp } from './safe'
-import { accountList, allocation, budget, notificationList, overview, planChangeList, schedule, searchView, spendingList, subscriptionList, type Data } from './views'
+import { accountList, allocation, budget, incomeView, notificationList, overview, planChangeList, schedule, searchView, spendingList, subscriptionList, type Data } from './views'
 
 const SERVER_VERSION = '0.1'
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'use YYYY-MM')
@@ -142,7 +142,7 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
 }
 
 export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServer {
-  const base = 'one person\'s Allot data: monthly salary distribution, the living, savings and investment budgets, bank accounts with their balances and cards, subscriptions, one-off spendings, scheduled plan changes and the change history. Amounts are whole KRW; dates are ISO (YYYY-MM-DD, months YYYY-MM); "today" and "this month" (every default month and D-n) are in the user\'s time zone (a display setting, default Asia/Seoul).'
+  const base = 'one person\'s Allot data: monthly salary distribution, the incomes and what was received, the living, savings and investment budgets, bank accounts with their balances and cards, subscriptions, one-off spendings, scheduled plan changes and the change history. Amounts are whole KRW; dates are ISO (YYYY-MM-DD, months YYYY-MM); "today" and "this month" (every default month and D-n) are in the user\'s time zone (a display setting, default Asia/Seoul).'
   const server = new McpServer({ name: 'allot', version: SERVER_VERSION }, {
     instructions: key
       ? `Access to ${base} You can read it and propose changes; a proposal never changes anything until the user confirms it (${key.confirm === 'ui' ? 'in the Allot app, under Pending changes' : 'in this conversation, then you call apply_proposal'}).`
@@ -154,13 +154,24 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
 
   server.registerTool('get_overview', {
     title: 'Overview of a month',
-    description: 'The month at a glance (default: this month): pay, transfer and card-billing dates (shifted off weekends and holidays when the user set that), the subscription transfer calculation, how the salary is distributed over the allocation targets (without a remainder target, what is left stays in the pay account as unallocatedKrw; a month adjustment replaces a target\'s phase amount that month), the remainder split, the month adjustments (monthAdjusts: target, amount and the planned amount it replaces), the subscription charges, the one-off spending rounds (spendingRounds, kept apart from the charges) and scheduled plan changes of that month, and the settings (net pay, pay days, exchange rate).',
+    description: 'The month at a glance (default: this month): pay, transfer and card-billing dates (shifted off weekends and holidays when the user set that), the subscription transfer calculation, how the salary is distributed over the allocation targets (without a remainder target, what is left stays in the pay account as unallocatedKrw; a month adjustment replaces a target\'s phase amount that month), the remainder split, the month adjustments (monthAdjusts: target, amount and the planned amount it replaces), the subscription charges, the one-off spending rounds (spendingRounds, kept apart from the charges) and scheduled plan changes of that month, the settings (net pay, pay days, exchange rate), what comes in that month (income: expectedKrw, totalKrw = what counts, diffKrw; the lines are in get_income) and the month\'s left over (leftOverKrw, the remainder after the distribution; negative = short).',
     inputSchema: z.object({ month: month.optional().describe('YYYY-MM; default this month') }),
     annotations: READ_ONLY,
   }, guarded('get_overview', async ({ month: ym }) => {
     const d = await data()
     const today = () => dayOf(d)
     return json(overview(d, ym ?? ymOf(today())))
+  }))
+
+  server.registerTool('get_income', {
+    title: 'Income of a month',
+    description: 'What comes in in a month (default: this month), worked out as the Income page does: incomes = the salary (salary true, incomeId null, name "salary": the settings\' net pay on the pay day) and every regular income of that month (monthly ones always, yearly ones in their month, or in another month when something was received for them there, with nothing expected), each with cycle, day, accountId, expectedKrw, receivedKrw (the receipts of that month added up; null = nothing written down yet), countedKrw (received, else expected), diffKrw (counted minus expected) and its receipts (id, amountKrw, date); extras = money that came in once that month (id, date, name, amountKrw) and extrasKrw; expectedKrw, totalKrw (what the month counts: counted amounts plus extras; the distribution splits this as the pay) and diffKrw; allReceived; leftOverKrw = the month\'s left over after the distribution (as get_overview\'s distribution.remainderKrw; negative = short); later = the yearly incomes of other months with the month each comes next. Change them with propose_changes (resources incomes, income-receipts, income-extras).',
+    inputSchema: z.object({ month: month.optional().describe('YYYY-MM; default this month') }),
+    annotations: READ_ONLY,
+  }, guarded('get_income', async ({ month: ym }) => {
+    const d = await data()
+    const today = () => dayOf(d)
+    return json(incomeView(d, ym ?? ymOf(today())))
   }))
 
   server.registerTool('list_subscriptions', {
