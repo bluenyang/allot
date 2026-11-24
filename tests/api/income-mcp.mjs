@@ -35,6 +35,7 @@ const si = await api('POST', '/api/auth/sign-in/email', { email: process.env.ADM
 ok(si.status === 200, `sign-in → ${si.status}`)
 if (failures()) process.exit(1)
 let keyId = null
+const proposals = [] // made by this run; a stop before their apply leaves them pending, so `finally` rejects them (review 3 F-3)
 arm()
 try {
   const k = await api('POST', '/api/keys', { name: NAME, expiresInDays: 1, write: true, confirm: 'chat' })
@@ -59,6 +60,7 @@ try {
   const add = (salary.receivedKrw == null ? salary.expectedKrw : 0) + 12_345
   const p = await tool('propose_changes', { note: NAME, changes: [{ resource: 'income-receipts', action: 'create', data: { itemId: null, ym: month, amount: add, note: NAME } }] })
   ok(p.status === 'pending' && !!p.proposalId, `propose a receipt → ${p.status}`)
+  if (p.proposalId) proposals.push(p.proposalId)
   const a = await tool('apply_proposal', { proposalId: p.proposalId })
   ok(a.status === 'applied' && !!a.changeSetId, `apply it → ${a.status}`)
   const inc1 = await tool('get_income', { month })
@@ -68,6 +70,7 @@ try {
   ok(inc1.totalKrw - inc0.totalKrw === 12_345, `total coming in moved by the same (${inc0.totalKrw} → ${inc1.totalKrw})`)
 
   const rv = await tool('propose_revert', { changeSetId: a.changeSetId, note: NAME })
+  if (rv.proposalId) proposals.push(rv.proposalId)
   const ra = await tool('apply_proposal', { proposalId: rv.proposalId })
   ok(ra.status === 'applied', `revert applied → ${ra.status}`)
   const inc2 = await tool('get_income', { month })
@@ -78,6 +81,14 @@ try {
   threw(e)
 } finally {
   disarm()
+  for (const id of proposals) {
+    await cleanupStep(`reject proposal ${id} if it still waits`, async () => {
+      const g = await api('GET', `/api/proposals/${id}`)
+      if (g.json?.status !== 'pending') return g.json?.status ?? g.status
+      const r = await api('POST', `/api/proposals/${id}/reject`)
+      ok(r.status === 204, `reject the waiting proposal → ${r.status}`)
+    })
+  }
   await cleanupStep('delete the key', async () => {
     if (!keyId) return 'no key'
     const d = await api('DELETE', `/api/keys/${keyId}`)
