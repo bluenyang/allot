@@ -26,7 +26,7 @@ const label = (id: string) => t(`shell.pages.${id}` as MessageKey)
 interface Entry { id: string; soon?: boolean }
 const groups: { id: 'overview' | 'budget' | 'manage' | 'ai'; items: Entry[] }[] = [
   { id: 'overview', items: [{ id: 'home' }] },
-  { id: 'budget', items: [{ id: 'pay' }, { id: 'living' }, { id: 'spend' }, { id: 'saving' }, { id: 'invest' }] },
+  { id: 'budget', items: [{ id: 'income' }, { id: 'pay' }, { id: 'living' }, { id: 'spend' }, { id: 'saving' }, { id: 'invest' }] },
   { id: 'manage', items: [{ id: 'events' }, { id: 'pending' }, { id: 'history' }] },
   { id: 'ai', items: [{ id: 'statements', soon: true }, { id: 'assistant', soon: true }] },
 ]
@@ -65,10 +65,10 @@ const REPO = 'https://github.com/bluenyang/allot'
 
 // ── Phone: the bottom bar and the "더보기" sheet (spec 010 S-4). The pending page has a place on the
 // bar only while something waits there (spec 009 A-7); the budget slot opens the pay split, and
-// stays current on the spending, living, savings and investment pages too (spec 013 S-1).
+// stays current on the spending, living, savings and investment pages too (spec 013 S-1), and on income (spec 014 S-9).
 const bottom = computed(() => [
   { id: 'home', href: '/', icon: 'home', label: t('shell.tabs.home'), on: route.value.page === 'home' },
-  { id: 'budget', href: '/pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['pay', 'spend', 'living', 'saving', 'invest'].includes(route.value.page) },
+  { id: 'budget', href: '/pay', icon: 'pay', label: t('shell.tabs.budget'), on: ['income', 'pay', 'spend', 'living', 'saving', 'invest'].includes(route.value.page) },
   { id: 'events', href: '/events', icon: 'events', label: t('shell.tabs.events'), on: route.value.page === 'events' },
   ...(pendingN.value ? [{ id: 'pending', href: '/pending', icon: 'pending', label: t('shell.tabs.pending'), on: route.value.page === 'pending', badge: pendingN.value }] : []),
 ])

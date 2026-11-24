@@ -21,7 +21,7 @@ let opener: HTMLElement | null = null
 
 /** The menus by name (the sidebar's pages), with the page they open. */
 const MENU: [string, string][] = [
-  ['home', '/'], ['pay', '/pay'], ['living', '/living'], ['spend', '/spend/general'], ['saving', '/saving'], ['invest', '/invest'],
+  ['home', '/'], ['income', '/income'], ['pay', '/pay'], ['living', '/living'], ['spend', '/spend/general'], ['saving', '/saving'], ['invest', '/invest'],
   ['events', '/events'], ['pending', '/pending'], ['history', '/history'], ['settings', '/settings/general'],
 ]
 
