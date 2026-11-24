@@ -3,21 +3,13 @@
 //   BASE=http://127.0.0.1:15174 ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/budget-rules.mjs
 // (on the throwaway test server: bash scripts/test-server/run.sh <log> node tests/api/budget-rules.mjs)
 // One sign-in. Every row it makes carries the E2E mark and is deleted by id at the end. Exit 0 only when every check passed.
+import { arm, cleanupStep, disarm, failures, ok, threw } from './lib/check.mjs'
+
 const BASE = process.env.BASE ?? 'http://127.0.0.1:15174'
 const MARK = `E2E-${Date.now().toString(36)}-rules`
 const headers = { 'content-type': 'application/json', origin: BASE }
-let failed = 0
-// The first failed check stops the run (knowledge: stop-at-first-failure; audit 0.1.7 rc.3 F-3): inside the main try it
+// The first failed check stops the run (tests/api/lib/check.mjs; audit 0.1.7 rc.3 F-3): inside the main try it
 // throws once, no further write happens, and the finally block below still cleans up. Later failures are only reported.
-class Stop extends Error {}
-let armed = false
-let stopped = false
-const ok = (cond, msg) => {
-  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
-  if (cond) return
-  failed++
-  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
-}
 
 const login = await fetch(BASE + '/api/auth/sign-in/email', { method: 'POST', headers, body: JSON.stringify({ email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD }) })
 if (login.status !== 200) throw new Error(`sign-in → ${login.status}`)
@@ -28,7 +20,7 @@ async function api(method, path, body) {
 }
 const made = [] // [path, id], deleted in reverse
 
-armed = true
+arm()
 try {
   // review 2 F-1: an account saved twice in a row with what the API answered (an empty memo)
   const a = await api('POST', '/api/accounts', { name: `${MARK}-acc`, role: '', inflow: '', outflow: '', buffer: 500_000, note: '' })
@@ -128,13 +120,15 @@ try {
   ok((await api('GET', '/api/changes?since=yesterday-ish')).status === 400, 'a since that is not a time is refused (400)')
   ok((await api('GET', '/api/changes?until=nope')).status === 400, 'an until that is not a time is refused (400)')
 } catch (e) {
-  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
+  threw(e)
 } finally {
-  stopped = true // the cleanup's own checks only report
+  disarm() // the cleanup's own checks only report; each delete runs even when one before it threw
   for (const [path, id] of made.reverse()) {
-    const r = await api('DELETE', `${path}/${id}`)
-    ok(r.status === 204, `cleanup ${path}/${id} → ${r.status}`)
+    await cleanupStep(`${path}/${id}`, async () => {
+      const r = await api('DELETE', `${path}/${id}`)
+      ok(r.status === 204, `cleanup ${path}/${id} → ${r.status}`)
+    })
   }
 }
-console.log(failed ? `FAIL: ${failed}` : 'PASS: all')
-process.exit(failed ? 1 : 0)
+console.log(failures() ? `FAIL: ${failures()}` : 'PASS: all')
+process.exit(failures() ? 1 : 0)

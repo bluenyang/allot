@@ -1,5 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 // @ts-expect-error plain .mjs without types
 import { refuse } from '../../scripts/guard-env.mjs'
 
@@ -94,4 +96,25 @@ test('deep or oversized input falls back to the raw text rules (never throws)', 
   const deep = '$('.repeat(20000) + 'docker compose up -d' + ')'.repeat(20000)
   assert.equal(refused(deep), true)
   assert.equal(refused('echo ' + 'x '.repeat(80000) + '; docker compose up -d'), true)
+})
+
+test('a recursive grep or rg over a folder holding env files is refused unless they are excluded (retro 0.1.7)', () => {
+  const base = join(resolve('.'), '.loctx', 'scratch')
+  mkdirSync(base, { recursive: true })
+  const root = mkdtempSync(join(base, 'guard-env-'))
+  try {
+    mkdirSync(join(root, 'conf', 'deep'), { recursive: true })
+    mkdirSync(join(root, 'code'))
+    writeFileSync(join(root, 'conf', 'deep', '.env.local'), 'X=1\n') // a test file, never a real env file
+    writeFileSync(join(root, 'conf', 'a.yaml'), 'a: 1\n')
+    writeFileSync(join(root, 'code', 'a.ts'), 'x\n')
+    const r = (c: string) => refuse(c, { cwd: root }) !== null
+    // rg skips dotfiles unless told to read hidden ones (retro review T-4)
+    for (const c of ['grep -rn X conf', 'grep -Rl X conf/', 'grep -r X', 'grep -r X .', 'rg --hidden X conf', 'rg -uu X', 'grep -d recurse X conf',
+      'grep -rn --exclude=*.yaml X conf', "rg --hidden -g '*.local' X conf", 'grep -rn X code conf', 'echo $(grep -r X conf)'])
+      assert.equal(r(c), true, c)
+    for (const c of ["grep -rn --exclude='.env*' X conf", "grep -rn --include='*.yaml' X conf", "rg -g '!.env*' X conf", 'rg --glob=!.env* X conf',
+      'grep -rn X code', 'rg X code', 'rg X conf', 'rg X', 'grep -n X conf/a.yaml', 'grep X conf', 'grep -r X missing-folder', 'grep -r -e conf code'])
+      assert.equal(r(c), false, c)
+  } finally { rmSync(root, { recursive: true, force: true }) }
 })

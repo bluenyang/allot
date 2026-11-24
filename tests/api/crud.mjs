@@ -9,22 +9,13 @@
 //   cleanup — delete the markers (checks DELETE), restore settings/living
 // Exit code 0 only when every check passed.
 import { readFileSync, writeFileSync } from 'node:fs'
+import { arm, cleanupStep, failures, ok, threw } from './lib/check.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:15173'
 const STATE = new URL('./.state.json', import.meta.url)
 const phase = process.argv[2] ?? 'create'
-let failed = 0
-// The first failed check stops the run (knowledge: stop-at-first-failure): it throws once (when `armed`), no
-// further write happens, and what this run made is removed by `rollback` below. Later failures are only reported.
-class Stop extends Error {}
-let armed = false
-let stopped = false
-const ok = (cond, msg) => {
-  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
-  if (cond) return
-  failed++
-  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
-}
+// The first failed check stops the run (tests/api/lib/check.mjs): it throws once (once armed), no further write
+// happens, and what this run made is removed by `rollback` below. Later failures are only reported.
 // Every row this run created (POST → 201, by path/id) and every change to existing data that must be put back.
 const made = []
 const restores = []
@@ -57,16 +48,16 @@ async function signIn() {
 async function rollback() {
   console.log(`ROLLBACK: removing ${made.length} row(s) this run made, then ${restores.length} restore(s)`)
   for (const path of [...made].reverse()) {
-    try {
+    await cleanupStep(`DELETE ${path}`, async () => {
       const d = await api('DELETE', path)
       console.log(`${d.status === 204 ? 'CLEANUP' : 'CLEANUP-FAIL'} DELETE ${path.split('/').slice(0, 3).join('/')}/<id> → ${d.status}`)
-    } catch (e) { console.log(`CLEANUP-FAIL DELETE ${path}: ${e?.message ?? e}`) }
+    })
   }
   for (const [name, fn] of [...restores].reverse()) {
-    try {
+    await cleanupStep(`restore ${name}`, async () => {
       const r = await fn()
       console.log(`${r.status === 200 ? 'CLEANUP' : 'CLEANUP-FAIL'} restore ${name} → ${r.status}`)
-    } catch (e) { console.log(`CLEANUP-FAIL restore ${name}: ${e?.message ?? e}`) }
+    })
   }
 }
 
@@ -85,7 +76,7 @@ const sub = { name: MARK, category: 'tool', plan: 'p', amount: 1.5, currency: 'U
 
 // create and verify stop at the first failed check; cleanup tries every step (a leftover is the worse outcome)
 // and still exits non-zero when any step failed.
-armed = phase !== 'cleanup'
+if (phase !== 'cleanup') arm()
 try {
 if (phase === 'create') {
   const anon = await api('GET', '/api/state')
@@ -469,46 +460,46 @@ if (phase === 'verify' || phase === 'cleanup') {
   } else {
     for (const [path, id] of [['/api/month-adjusts', ids.adjust], ['/api/spendings', ids.bufSpend], ['/api/spendings', ids.cardSpend], ['/api/cards', ids.card], ['/api/balances', ids.balance], ['/api/living-items', ids.livingItem], ['/api/accounts', ids.acc2]]) {
       if (!id) continue
-      try {
+      await cleanupStep(`DELETE ${path}/:id`, async () => {
         const d = await api('DELETE', `${path}/${id}`)
         ok(d.status === 204, `DELETE ${path}/:id → ${d.status}`)
-      } catch (e) { ok(false, `DELETE ${path}/:id threw: ${e?.message ?? e}`) }
+      })
     }
     for (const [path, id] of [['/api/plan-changes', ids.chg], ['/api/subscriptions', ids.sub], ['/api/phases', ids.phase], ['/api/events', ids.event], ['/api/checks', ids.check], ['/api/accounts', ids.account], ['/api/debts', ids.debt], ['/api/remainder-split', ids.split], ['/api/targets', ids.target], ['/api/phases', ids.racePhase], ['/api/spendings', ids.spend]]) {
       if (!id) continue
-      try {
+      await cleanupStep(`DELETE ${path}/:id`, async () => {
         const d = await api('DELETE', `${path}/${id}`)
         ok(d.status === 204, `DELETE ${path}/:id → ${d.status}`)
-      } catch (e) { ok(false, `DELETE ${path}/:id threw: ${e?.message ?? e}`) }
+      })
     }
     // after the marker phase is gone, so the restored open phase does not overlap it
     for (const p of ids.openPhases ?? []) {
       const { id, ...rest } = p
-      try {
+      await cleanupStep(`restore open phase ${p.label}`, async () => {
         const r = await api('PUT', `/api/phases/${id}`, rest)
         ok(r.status === 200 && r.json.to === null, `restore open phase ${p.label} → ${r.status}`)
-      } catch (e) { ok(false, `restore open phase ${p.label} threw: ${e?.message ?? e}`) }
+      })
     }
     // Every remaining step on its own (review 21): one that throws never skips the next.
-    try {
+    await cleanupStep('marker check', async () => {
       const again = await api('GET', '/api/state')
       const left = Object.values(again.json ?? {}).flatMap((v) => (Array.isArray(v) ? v : [])).filter((x) => JSON.stringify(x).includes(MARK))
       ok(again.status === 200 && left.length === 0, `no marker rows left (${again.status}, ${left.length})`)
-    } catch (e) { ok(false, `marker check threw: ${e?.message ?? e}`) }
-    try {
+    })
+    await cleanupStep('settings restore', async () => {
       const s = await api('PUT', '/api/settings', ids.settings)
       ok(s.status === 200, `settings restored → ${s.status}`)
-    } catch (e) { ok(false, `settings restore threw: ${e?.message ?? e}`) }
-    try {
+    })
+    await cleanupStep('living restore', async () => {
       const l = await api('PUT', '/api/living', ids.living)
       ok(l.status === 200, `living restored → ${l.status}`)
-    } catch (e) { ok(false, `living restore threw: ${e?.message ?? e}`) }
+    })
   }
 }
 } catch (e) {
-  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
+  threw(e)
   if (phase === 'create') await rollback()
 }
 
-console.log(failed === 0 ? `\nALL PASS (${phase})` : `\n${failed} FAILED (${phase})`)
-process.exit(failed === 0 ? 0 : 1)
+console.log(failures() === 0 ? `\nALL PASS (${phase})` : `\n${failures()} FAILED (${phase})`)
+process.exit(failures() === 0 ? 0 : 1)

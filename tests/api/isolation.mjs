@@ -4,18 +4,9 @@
 // A is the seeded account (has data); B is a second account with no data (tests/api/make-user.ts).
 // B's rows are removed at the end (in finally); its change history and the account stay, so run it on a
 // disposable test database. Exit code 0 only when every check passed.
-let failed = 0
-// The first failed check stops the run: it throws once (when `armed`), the `finally` below removes what was
-// made, and later failures there are only reported (knowledge: stop-at-first-failure).
-class Stop extends Error {}
-let armed = false
-let stopped = false
-const ok = (cond, msg) => {
-  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`)
-  if (cond) return
-  failed++
-  if (armed && !stopped) { stopped = true; throw new Stop(msg) }
-}
+// The first failed check stops the run: it throws once (once armed), the `finally` below removes what was
+// made, and later failures there are only reported (tests/api/lib/check.mjs; knowledge: stop-at-first-failure).
+import { arm, cleanupStep, disarm, failures, ok, settle, threw } from './lib/check.mjs'
 const BASE = process.env.BASE ?? 'http://localhost:15173'
 const MARK = 'V5-marker'
 
@@ -46,10 +37,10 @@ const B = client()
 const sa = await A('POST', '/api/auth/sign-in/email', { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })
 const sb = await B('POST', '/api/auth/sign-in/email', { email: process.env.B_EMAIL, password: process.env.B_PASSWORD })
 ok(sa.status === 200 && sb.status === 200, `sign-in A ${sa.status}, B ${sb.status}`)
-if (failed) process.exit(1)
+if (failures()) process.exit(1)
 
 // From here every write sits behind the first failed check: it stops the run, `finally` puts back what it can.
-armed = true
+arm()
 try {
 const aState = (await A('GET', '/api/state')).json
 const aSub = aState.subscriptions[0]
@@ -120,8 +111,9 @@ ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings
     const aSp = (await A('GET', '/api/state')).json.spendings.find((x) => x.id === aSpend.json.id)
     ok(aSp?.amount === 1000 && aSp.rounds.length === 1 && aSp.rounds[0].state === 'left', "A's spending and its round are unchanged")
   } finally {
-    if (aSpend.status === 201) ok((await A('DELETE', `/api/spendings/${aSpend.json.id}`)).status === 204, "A's test spending removed")
+    if (aSpend.status === 201) await cleanupStep("A's test spending", async () => ok((await A('DELETE', `/api/spendings/${aSpend.json.id}`)).status === 204, "A's test spending removed"))
   }
+  settle()
   // spec 013 V-4: A's living item, account with the new fields, balance record and card are invisible to B and out of
   // its reach; B cannot point a balance record or a card at A's account, or a spending at A's card. B's PUT /api/living
   // (above) wrote B's own coded items, not A's.
@@ -166,10 +158,13 @@ ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings
       "A's living item, account, balance record and card are unchanged")
   } finally {
     for (const [path, id] of aMade.reverse()) {
-      const d = await A('DELETE', `${path}/${id}`)
-      ok(d.status === 204, `A's ${path} row removed → ${d.status}`)
+      await cleanupStep(`A's ${path} row`, async () => {
+        const d = await A('DELETE', `${path}/${id}`)
+        ok(d.status === 204, `A's ${path} row removed → ${d.status}`)
+      })
     }
   }
+  settle()
   // spec 013 rev 1 (rc.2) S-14: A's month adjustment is invisible to B and out of its reach; B cannot adjust A's target.
   const aMade2 = []
   try {
@@ -189,10 +184,13 @@ ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings
     ok(mine.length === 1 && mine[0].amount === 1000 && mine[0].ym === '2090-05', "A's month adjustment is unchanged, and the only one on its target")
   } finally {
     for (const [path, id] of aMade2.reverse()) {
-      const d = await A('DELETE', `${path}/${id}`)
-      ok(d.status === 204, `A's ${path} row removed → ${d.status}`)
+      await cleanupStep(`A's ${path} row`, async () => {
+        const d = await A('DELETE', `${path}/${id}`)
+        ok(d.status === 204, `A's ${path} row removed → ${d.status}`)
+      })
     }
   }
+  settle()
   const aSets = (await A('GET', '/api/changes?limit=200')).json
   const bSets = (await B('GET', '/api/changes?limit=200')).json
   ok(Array.isArray(bSets) && bSets.length >= 2 && bSets.every((x) => !aSets.some((y) => y.id === x.id)), `B lists only its own change sets (${bSets.length})`)
@@ -203,12 +201,11 @@ ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings
     ok(rv.status === 404, `B revert of A's change set → ${rv.status} (want 404)`)
   } else ok(false, 'A has a change set to try')
 } catch (e) {
-  if (!(e instanceof Stop)) { failed++; console.log(`FAIL threw: ${e?.stack ?? e}`) }
+  threw(e)
 } finally {
   // cleanup: try every step even when one throws; report each, then look at B's rows for the marker
-  const step = async (name, run) => {
-    try { await run() } catch (e) { ok(false, `cleanup ${name} threw: ${e?.message ?? e}`) }
-  }
+  disarm()
+  const step = cleanupStep
   for (const [path, id] of created.reverse()) {
     await step(`DELETE ${path}`, async () => {
       const d = await B('DELETE', `${path}/${id}`)
@@ -241,5 +238,5 @@ ok(bSettings.status === 200 && bLiving.status === 200, `B saves its own settings
   })
 }
 
-console.log(failed ? `${failed} FAILED` : 'ALL PASS')
-process.exit(failed ? 1 : 0)
+console.log(failures() ? `${failures()} FAILED` : 'ALL PASS')
+process.exit(failures() ? 1 : 0)

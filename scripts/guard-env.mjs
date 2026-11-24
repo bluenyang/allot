@@ -9,6 +9,8 @@
 //
 // Exit 2 blocks the call and shows the reason to the agent; exit 0 lets it run.
 // Self-test: node scripts/guard-env.mjs --test
+import { readdirSync, statSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PH, parseShell } from './shell-words.mjs'
 
@@ -59,8 +61,142 @@ function composeTexts(cmd) {
   })
 }
 
-/** Returns the reason a command is refused, or null. */
-export function refuse(command) {
+// Recursive searches (audit rc.3 F-4, retro 0.1.7): `grep -r x docker/` reads docker/.env.example
+// although the command names no env file. A recursive grep or an rg over a folder that holds `.env*`
+// files is refused unless every such file is left out by an --exclude (grep) or a `!` glob (rg),
+// or is outside every --include / positive glob.
+const GREP_VALUE_SHORT = new Set('efmABCdD')
+const GREP_VALUE_LONG = new Set(['regexp', 'file', 'max-count', 'after-context', 'before-context', 'context', 'include', 'exclude',
+  'exclude-dir', 'exclude-from', 'directories', 'devices', 'label', 'binary-files', 'group-separator'])
+const RG_VALUE_SHORT = new Set('efgtTmABCMjErd')
+const RG_VALUE_LONG = new Set(['regexp', 'file', 'glob', 'iglob', 'type', 'type-not', 'type-add', 'type-clear', 'max-count', 'after-context',
+  'before-context', 'context', 'max-columns', 'threads', 'encoding', 'replace', 'max-depth', 'max-filesize', 'ignore-file', 'pre',
+  'pre-glob', 'sort', 'sortr', 'path-separator', 'colors', 'context-separator', 'field-match-separator', 'field-context-separator', 'dfa-size-limit', 'regex-size-limit'])
+const SKIP_DIRS = new Set(['node_modules', '.git'])
+const MAX_WALK = 20000
+
+/** A shell glob (*, ?, [..]) as a RegExp over a file's base name. */
+function globRe(glob) {
+  let re = ''
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]
+    if (c === '*') re += '[^/]*'
+    else if (c === '?') re += '[^/]'
+    else if (c === '[') {
+      const j = glob.indexOf(']', i + 2)
+      if (j < 0) { re += '\\['; continue }
+      re += `[${glob.slice(i + 1, j).replace(/^!/, '^').replace(/\\/g, '\\\\')}]`
+      i = j
+    } else re += c.replace(/[.+^${}()|\\/]/g, '\\$&')
+  }
+  return new RegExp(`^${re}$`)
+}
+const globMatches = (glob, name) => { try { return globRe(glob.split('/').pop() || glob).test(name) } catch { return false } }
+
+/** Reads the words of a grep or rg command: { recursive, paths, includes, excludes }, or null when it is neither. */
+function searchArgs(words) {
+  let k = 0
+  while (k < words.length && ASSIGN.test(words[k])) k++
+  const prog = String(words[k] ?? '').split('/').pop()
+  const isRg = prog === 'rg'
+  if (!isRg && !['grep', 'egrep', 'fgrep'].includes(prog)) return null
+  const shortV = isRg ? RG_VALUE_SHORT : GREP_VALUE_SHORT
+  const longV = isRg ? RG_VALUE_LONG : GREP_VALUE_LONG
+  // rg walks folders but skips dotfiles (.env*) unless told to read hidden files: --hidden, -. or -u twice (retro review T-4)
+  let recursive = false
+  let rgHidden = false
+  let rgU = 0
+  let patternGiven = false
+  const positional = []
+  const includes = []
+  const excludes = []
+  const option = (name, value) => {
+    if (name === 'e' || name === 'f' || name === 'regexp' || name === 'file') patternGiven = true
+    if (!isRg && (name === 'include')) includes.push(value)
+    if (!isRg && (name === 'exclude')) excludes.push(value)
+    if (!isRg && (name === 'd' || name === 'directories') && value === 'recurse') recursive = true
+    if (isRg && (name === 'g' || name === 'glob' || name === 'iglob')) (value.startsWith('!') ? excludes : includes).push(value.replace(/^!/, ''))
+  }
+  const rest = words.slice(k + 1)
+  for (let i = 0; i < rest.length; i++) {
+    const w = rest[i]
+    if (w === '--') { positional.push(...rest.slice(i + 1)); break }
+    if (w.startsWith('--')) {
+      const eq = w.indexOf('=')
+      const name = w.slice(2, eq < 0 ? undefined : eq)
+      if (!isRg && (name === 'recursive' || name === 'dereference-recursive')) recursive = true
+      if (isRg && name === 'hidden') rgHidden = true
+      if (isRg && name === 'no-hidden') rgHidden = false
+      if (eq >= 0) option(name, w.slice(eq + 1))
+      else if (longV.has(name)) option(name, rest[++i] ?? '')
+      continue
+    }
+    if (w.startsWith('-') && w.length > 1) {
+      for (let j = 1; j < w.length; j++) {
+        const c = w[j]
+        if (!isRg && (c === 'r' || c === 'R')) recursive = true
+        if (isRg && c === '.') rgHidden = true
+        if (isRg && c === 'u') rgU++
+        if (shortV.has(c)) { option(c, j + 1 < w.length ? w.slice(j + 1) : (rest[++i] ?? '')); break }
+      }
+      continue
+    }
+    positional.push(w)
+  }
+  if (isRg) recursive = rgHidden || rgU >= 2
+  if (!recursive) return null
+  const paths = positional.slice(patternGiven ? 0 : 1) // without -e/-f the first word is the pattern
+  return { paths: paths.length ? paths : ['.'], includes, excludes }
+}
+
+/** Base names of the `.env*` files under `path` (a folder), or null when the walk is cut short. */
+function envFilesUnder(path) {
+  const found = new Set()
+  const stack = [path]
+  let seen = 0
+  while (stack.length) {
+    const dir = stack.pop()
+    let entries
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { continue }
+    for (const e of entries) {
+      if (++seen > MAX_WALK) return null
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) stack.push(join(dir, e.name)) } else if (/^\.env/.test(e.name)) found.add(e.name)
+    }
+  }
+  return [...found]
+}
+
+/** The reason a recursive grep or rg over folders holding env files is refused, or null. */
+function recursiveSearch(raw, cwd) {
+  for (const seg of parseShell(raw)) {
+    const s = searchArgs(seg.words)
+    if (!s) continue
+    for (const p of s.paths) {
+      const hint = `Exclude env files (grep --exclude='.env*', rg -g '!.env*') or name the folders without them.`
+      if (p.includes(PH)) return `A recursive search over a path only known at run time (${p.replaceAll(PH, '$')}) could read an env file. ${hint}`
+      // a path the shell expands (glob, braces, ~) is not the word seen here (retro review T-1): refused unless env files are excluded
+      if (/[*?[{]/.test(p) || p.startsWith('~')) {
+        if (s.excludes.some((g) => ['.env', '.env.example', '.env.x'].every((n) => globMatches(g, n)))) continue
+        return `A recursive search over ${p} (the shell expands it) could read an env file. ${hint}`
+      }
+      const abs = resolve(cwd, p)
+      let st
+      try { st = statSync(abs) } catch { continue }
+      if (!st.isDirectory()) continue
+      const names = envFilesUnder(abs)
+      if (names === null) {
+        if (s.excludes.some((g) => ['.env', '.env.example', '.env.x'].every((n) => globMatches(g, n)))) continue
+        return `A recursive search over ${p} (too large to scan for env files) could read one. ${hint}`
+      }
+      const read = names.filter((n) => !s.excludes.some((g) => globMatches(g, n)) && (s.includes.length === 0 || s.includes.some((g) => globMatches(g, n))))
+      if (read.length) return `A recursive search over ${p} would read ${read.join(', ')} (AGENTS.md Red lines, C4). ${hint}`
+    }
+  }
+  return null
+}
+
+/** Returns the reason a command is refused, or null. `cwd`: where the command runs (the hook input's cwd). */
+export function refuse(command, { cwd = process.cwd() } = {}) {
   const raw = String(command ?? '')
   let texts
   try {
@@ -68,6 +204,9 @@ export function refuse(command) {
   } catch {
     return 'The command is malformed (unterminated quote or substitution), too large or too deeply nested to check. Fix or split it into simple commands.'
   }
+  let search = null
+  try { search = recursiveSearch(raw, cwd) } catch { search = 'The command could not be checked for a recursive search over env files. Split it into simple commands.' }
+  if (search) return search
   for (const cmd of texts) {
   if (/\bdocker[ -]compose\b/.test(cmd)) {
     // `config` prints env_file values unless told not to resolve them
@@ -125,6 +264,45 @@ if (!isMain) {
     ['sudo docker compose up -d', true],
     ['sh -c "docker compose up -d"', true],
     ['docker compose logs -f api', true],
+    // recursive searches over a folder that holds env files (audit rc.3 F-4); run from the repository root
+    ['grep -rn SECRET docker/', true],
+    ['grep -R SECRET docker', true],
+    ['grep --recursive SECRET docker', true],
+    ['grep -r SECRET .', true],
+    ['grep -r SECRET', true],
+    ['grep -rn -e SECRET docker', true],
+    ['rg SECRET docker', false], // rg skips dotfiles by default (retro review T-4)
+    ['rg -n SECRET', false],
+    ['rg --hidden SECRET docker', true],
+    ['rg -. SECRET docker', true],
+    ['rg -uu SECRET docker', true],
+    ['rg -u -u SECRET docker', true],
+    ['rg -u SECRET docker', false],
+    ['rg --hidden -g !.env* SECRET docker', false],
+    ['grep -r SECRET src docker', true],
+    ['cd x && grep -rl SECRET docker/ | head', true],
+    ["grep -rn --include='*.yaml' SECRET docker", false],
+    ["grep -rn --include='*' SECRET docker", true],
+    ["grep -rn --exclude='.env*' SECRET docker/", false],
+    ['grep -rn --exclude=.env* SECRET docker/', false],
+    ["grep -rn --exclude '.env*' SECRET docker/", false],
+    ["rg -g '!.env*' SECRET docker", false],
+    ["rg --glob '!.env*' SECRET docker", false],
+    ['rg --glob=!.env* SECRET docker', false],
+    ['grep -rn "$X" docker --exclude=*.md', true],
+    ['grep -rn SECRET "$DIR"', true],
+    // a named non-env file, or folders without env files, stay allowed
+    ['grep -n SECRET docker/compose.yaml', false],
+    ['grep SECRET docker', false],
+    ['grep -rn SECRET src/ server/ tests/', false],
+    ['grep -r SECRET */', true], // the shell expands it (retro review T-1)
+    ['grep -r SECRET {docker,src}', true],
+    ['grep -r SECRET ~/x/docker', true],
+    ['grep -r SECRET d?cker', true],
+    ['grep -r --exclude=.env* SECRET */', false],
+    ['rg -n SECRET src server', false],
+    ['grep -rn docker src', false],
+    ['grep -r -e docker -- src', false],
   ]
   let bad = 0
   for (const [c, want] of cases) {
@@ -139,8 +317,13 @@ if (!isMain) {
   process.stdin.on('data', (d) => { input += d })
   process.stdin.on('end', () => {
     let command = ''
-    try { command = JSON.parse(input)?.tool_input?.command ?? '' } catch { process.exit(0) }
-    const why = refuse(command)
+    let cwd = process.cwd()
+    try {
+      const j = JSON.parse(input)
+      command = j?.tool_input?.command ?? ''
+      if (typeof j?.cwd === 'string' && j.cwd) cwd = j.cwd
+    } catch { process.exit(0) }
+    const why = refuse(command, { cwd })
     if (why) { console.error(`guard-env: ${why}`); process.exit(2) }
     process.exit(0)
   })
