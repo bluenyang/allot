@@ -222,6 +222,38 @@ export const balance = z.object({
   note: memo,
 })
 
+/** A regular income (spec 014 S-2): a yearly one names its month, a monthly one has none. */
+export const income = z.object({
+  name: text.min(1, 'nameReq'),
+  cycle,
+  month: z.number().int().min(1).max(12).nullable().optional(),
+  day,
+  amount: won,
+  accountId: text.min(1).nullable().optional(),
+  note: memo,
+}).superRefine((x, ctx) => {
+  const has = x.month !== null && x.month !== undefined
+  if (x.cycle === 'yearly' && !has) ctx.addIssue({ code: 'custom', path: ['month'], message: 'incomeMonthReq' })
+  if (x.cycle === 'monthly' && has) ctx.addIssue({ code: 'custom', path: ['month'], message: 'incomeMonthMonthly' })
+})
+
+/** Money received for an income in a month (spec 014 S-3); itemId null = the salary. */
+export const incomeReceipt = z.object({
+  itemId: text.min(1).nullable(),
+  ym,
+  amount: won,
+  date: date.nullable().optional(),
+  note: memo,
+})
+
+/** Money that came in once (spec 014 S-4). */
+export const incomeExtra = z.object({
+  date,
+  name: text.min(1, 'nameReq'),
+  amount: won,
+  note: memo,
+})
+
 export const card = z.object({
   name: text.min(1, 'nameReq'),
   last4: last4,

@@ -316,6 +316,7 @@ export const RESOURCES = {
       await unlink(q, rec, uid, t.card, t.card.accountId, id)
       await unlink(q, rec, uid, t.allocationTarget, t.allocationTarget.accountId, id)
       await unlink(q, rec, uid, t.scheduleItem, t.scheduleItem.accountId, id)
+      await unlink(q, rec, uid, t.incomeItem, t.incomeItem.accountId, id)
     },
   }),
   // One month's amount of a target (spec 013 S-14): fixed, saving and invest targets only. The check holds the
@@ -332,6 +333,20 @@ export const RESOURCES = {
     },
   }),
   balances: list(t.accountBalance, v.balance, {
+    optional: ['note'],
+    toRow: (x) => ({ ...x, note: x.note || null }),
+  }),
+  // spec 014 S-2–S-4: the incomes, the money received for them, and money that came in once
+  incomes: list(t.incomeItem, v.income, {
+    optional: ['note'],
+    keepOmitted: true,
+    toRow: (x) => ({ ...x, month: x.cycle === 'yearly' ? x.month ?? null : null, ...(x.note === undefined ? {} : { note: x.note || null }) }),
+  }),
+  'income-receipts': list(t.incomeReceipt, v.incomeReceipt, {
+    optional: ['note'],
+    toRow: (x) => ({ ...x, date: x.date ?? null, note: x.note || null }),
+  }),
+  'income-extras': list(t.incomeExtra, v.incomeExtra, {
     optional: ['note'],
     toRow: (x) => ({ ...x, note: x.note || null }),
   }),
@@ -446,7 +461,7 @@ export const resourceOf = (name: string): ListResource | SingleResource | Living
     : Object.hasOwn(SINGLES, name) ? SINGLES[name as keyof typeof SINGLES] : undefined)
 
 /** What an AI may change (spec 009 S-2, spec 013 S-10): not debts, holiday sets or display settings. */
-export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings', 'living-items', 'accounts', 'balances', 'cards', 'month-adjusts', 'currencies', 'schedules'] as const
+export const AI_LISTS = ['subscriptions', 'plan-changes', 'phases', 'targets', 'remainder-split', 'events', 'checks', 'spendings', 'living-items', 'accounts', 'balances', 'cards', 'month-adjusts', 'currencies', 'schedules', 'incomes', 'income-receipts', 'income-extras'] as const
 export const AI_SINGLES = ['settings', 'living'] as const
 export type AiResource = (typeof AI_LISTS)[number] | (typeof AI_SINGLES)[number]
 export const AI_RESOURCES: readonly string[] = [...AI_LISTS, ...AI_SINGLES]

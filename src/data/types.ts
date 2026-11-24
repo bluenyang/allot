@@ -236,6 +236,40 @@ export interface Balance {
   note?: string
 }
 
+/** A regular income (spec 014 S-2). The salary is not one: it is `Settings.netPay` on `Settings.payDay`. */
+export interface IncomeItem {
+  id: string
+  name: string
+  cycle: 'monthly' | 'yearly'
+  /** 1–12 for a yearly income, null for a monthly one */
+  month?: number | null
+  /** day of the month (past the month's end = its last day) */
+  day: number
+  /** the expected amount */
+  amount: number
+  accountId?: string | null
+  note?: string
+}
+
+/** Money received for one income in one month (spec 014 S-3); `itemId` null = the salary. A month may hold several. */
+export interface IncomeReceipt {
+  id: string
+  itemId: string | null
+  ym: string // YYYY-MM
+  amount: number
+  date?: string | null // YYYY-MM-DD
+  note?: string
+}
+
+/** Money that came in once ("기타", spec 014 S-4); it counts in the month of `date`. */
+export interface IncomeExtra {
+  id: string
+  date: string // YYYY-MM-DD
+  name: string
+  amount: number
+  note?: string
+}
+
 /** A card (spec 013 S-13): its bill is paid from `accountId` on `billingDay` (null = the settings' billing day). */
 export interface Card {
   id: string
