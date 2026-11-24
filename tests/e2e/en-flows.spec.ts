@@ -139,7 +139,7 @@ test('pay split: delete the remainder target, the leftover stays in the pay acco
 
     await page.getByRole('tab', { name: 'Monthly simulation' }).click()
     await expect(page.getByRole('row', { name: /Stays in the pay account/ })).toBeVisible()
-    await expect(page.getByText('There is no remainder target, so there is nothing to split')).toBeVisible()
+    await expect(page.getByText('There is no left-over target, so there is nothing to split')).toBeVisible()
     expect(((await mine('GET', '/api/state')).json as State).remainderSplit.length, 'the split items are kept').toBe(splits)
 
     // the way back is the History revert, through the modal

@@ -134,8 +134,12 @@ test('(V-6, S-3) two receipts for the salary in the shown month add up; the row,
     await row.getByRole('button').click()
     if (had) await sheet(page, title).getByRole('button', { name: '+ 추가' }).click()
     await sheet(page, title).locator('#rc-amount').fill(String(r1))
-    await saveSheet(page, title)
-    if (had) await sheet(page, title).getByRole('button', { name: '닫기' }).last().click()
+    if (had) {
+      // saved from the list, the sheet goes back to the list (same title): close it there
+      await sheet(page, title).getByRole('button', { name: '저장', exact: true }).click()
+      await expect(page.getByTestId('receipt-list')).toBeVisible()
+      await sheet(page, title).getByRole('button', { name: '닫기' }).last().click()
+    } else await saveSheet(page, title)
     await expect(row.getByTestId('received')).toHaveText(won(sum0 + r1))
 
     // the second: the row now opens the list; the editor's difference counts the first one too
@@ -146,7 +150,8 @@ test('(V-6, S-3) two receipts for the salary in the shown month add up; the row,
     const e = sheet(page, title)
     await e.locator('#rc-amount').fill(String(r2))
     await expect(e.getByTestId('receipt-diff')).toContainText(signed(sum0 + r1 + r2 - pay))
-    await saveSheet(page, title)
+    // saved from the list, the sheet goes back to the list (same title), so it does not close
+    await e.getByRole('button', { name: '저장', exact: true }).click()
     // back on the list, with both
     await expect(page.getByTestId('receipt-list').locator('li')).toHaveCount((had ? st.incomeReceipts.filter((r) => r.itemId === null && r.ym === ym).length : 0) + 2)
     await expect(sheet(page, title)).toContainText(`합계 ${won(sum0 + r1 + r2)}`)
