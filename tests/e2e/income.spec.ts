@@ -264,3 +264,27 @@ test('(V-6, S-2) the salary\'s expected amount is Payroll\'s 월 실수령: an e
     if (now.netPay !== p0 || now.payDay !== day0) expect((await api(request, 'PUT', '/api/settings', { ...now, netPay: p0, payDay: day0 })).status).toBe(200)
   }
 })
+
+test('(V-6, S-10) the change history names a money-received row by its income and month, also after the income is deleted', async ({ page, request }) => {
+  const name = `${MARK}-hist`
+  const ym = '2090-01'
+  const inc = (await api(request, 'POST', '/api/incomes', { name, cycle: 'monthly', day: 10, amount: 100_000, note: '' })).json as { id: string }
+  const sal = (await api(request, 'POST', '/api/income-receipts', { itemId: null, ym, amount: 1_000, date: null, note: '' })).json as { id: string }
+  let incGone = false
+  try {
+    expect((await api(request, 'POST', '/api/income-receipts', { itemId: inc.id, ym, amount: 2_000, date: null, note: '' })).status).toBe(201)
+    await page.goto('/history')
+    const list = page.getByRole('list', { name: '변경 목록' })
+    await expect(list.getByRole('listitem').filter({ hasText: `받은 금액 추가 · ${name} · ${ym}` })).toBeVisible()
+    await expect(list.getByRole('listitem').filter({ hasText: `받은 금액 추가 · 월급 · ${ym}` })).toBeVisible()
+    // the income goes, its receipt with it: the history still names it (from the loaded history), never its id
+    expect((await api(request, 'DELETE', `/api/incomes/${inc.id}`)).status).toBe(204)
+    incGone = true
+    await page.reload()
+    await expect(list.getByRole('listitem').filter({ hasText: `받은 금액 삭제 · ${name} · ${ym}` })).toBeVisible()
+    await expect(list).not.toContainText(inc.id)
+  } finally {
+    if (!incGone) await api(request, 'DELETE', `/api/incomes/${inc.id}`)
+    await api(request, 'DELETE', `/api/income-receipts/${sal.id}`)
+  }
+})
