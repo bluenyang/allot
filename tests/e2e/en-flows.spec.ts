@@ -465,7 +465,7 @@ test.describe('shell', () => {
       await page.goto('/')
       await heading(page).waitFor()
       const bar = page.getByRole('navigation', { name: 'Menu' }).last()
-      for (const [label, title] of [['Budget', 'Pay split'], ['Schedule', 'Schedule'], ['Overview', /overview$/]] as const) {
+      for (const [label, title] of [['Budget', 'Pay split'], ['Schedule', 'Schedule'], ['Overview', /^[A-Z][a-z]+ \d{4}$/]] as const) {
         await bar.getByRole('link', { name: label }).click()
         await expect(heading(page)).toHaveText(title)
       }

@@ -10,7 +10,7 @@ const tab = (page: Page, name: string | RegExp) => page.getByRole('tab', { name 
 
 // [old hash, new path, page title, selected tab (or null)]
 const OLD: [string, string, string | RegExp, string | RegExp | null][] = [
-  ['#home', '/', /현황$/, null],
+  ['#home', '/', /^\d{4}년 \d{1,2}월$/, null],
   ['#pay', '/pay', '월급 분배', null],
   ['#spend', '/spend/general', '지출', /^일반/],
   ['#spend/general', '/spend/general', '지출', /^일반/],
@@ -29,7 +29,7 @@ const OLD: [string, string, string | RegExp, string | RegExp | null][] = [
   ['#settings/nope', '/settings/general', '설정', '일반'],
   ['#account', '/settings/security', '설정', '로그인·보안'],
   ['#admin', '/admin', '관리', null],
-  ['#nope', '/', /현황$/, null], // not an old app address: the overview as before
+  ['#nope', '/', /^\d{4}년 \d{1,2}월$/, null], // not an old app address: the overview as before
 ]
 
 const pathOf = (page: Page) => { const u = new URL(page.url()); return u.pathname + u.search + u.hash }
@@ -66,7 +66,7 @@ test('(S-1) an unknown hash typed on another page shows the overview, as 0.1.5 d
   await expect(h1(page)).toHaveText('월급 분배')
   await page.evaluate(() => { location.hash = '#nope' })
   await expect.poll(() => pathOf(page)).toBe('/')
-  await expect(page.locator('header.ph h1')).toHaveText(/현황$/)
+  await expect(page.locator('header.ph h1')).toHaveText(/^\d{4}년 \d{1,2}월$/)
 })
 
 for (const [from, title] of [
@@ -127,7 +127,7 @@ test('(S-1) deep addresses reload to the same screen; /home, unknown addresses a
 test('(S-4) menu, tabs and in-page links go to new addresses; Back and Forward go between them, each from the top', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
-  await expect(h1(page)).toHaveText(/현황$/)
+  await expect(h1(page)).toHaveText(/^\d{4}년 \d{1,2}월$/)
   const side = page.locator('aside.side')
   for (const [name, path] of [['월급 분배', '/pay'], ['지출', '/spend/general'], ['일정', '/events'], ['변경 내역', '/history'], ['설정', '/settings/general'], ['현황', '/']] as const) {
     const link = side.getByRole('link', { name, exact: true })

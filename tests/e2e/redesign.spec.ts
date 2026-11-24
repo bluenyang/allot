@@ -36,7 +36,7 @@ test('(V-6 a) general settings: date format and amount unit apply, survive a rel
     await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText(/\d{4}\. \d{2}\. 15\./)
     await expect(page.getByRole('row', { name: new RegExp(MARK) })).toContainText('1만원')
     await page.goto('/')
-    await expect(page.getByRole('region', { name: '이번 달 요약' }).or(page.locator('section[aria-label="이번 달 요약"]'))).toContainText('만원')
+    await expect(page.getByRole('region', { name: '이번 달 여유' })).toContainText('만원')
   } finally {
     await api(request, 'PUT', '/api/preferences', s0.preferences)
     await api(request, 'DELETE', `/api/subscriptions/${sub.json.id}`)
@@ -230,7 +230,7 @@ test.describe('(V-9 a) phone width', () => {
     }
     // spec 010 S-4: the bar reaches 현황, 예산 (월급 분배), 일정; the rest is in the "더보기" sheet
     const bar = page.getByRole('navigation', { name: '메뉴' }).last()
-    for (const [label, title] of [['현황', /현황$/], ['예산', '월급 분배'], ['일정', '일정']] as const) {
+    for (const [label, title] of [['현황', /^\d{4}년 \d{1,2}월$/], ['예산', '월급 분배'], ['일정', '일정']] as const) {
       await bar.getByRole('link', { name: label }).click()
       await expect(page.locator('header.ph h1')).toHaveText(title)
     }
@@ -283,7 +283,7 @@ test('(V-13 b) a 429 on the session check shows a wait note, not the login form,
     await expect(page.getByLabel('비밀번호')).toHaveCount(0)
     await page.waitForTimeout(1000)
   }
-  await expect(page.locator('header.ph h1')).toContainText('현황', { timeout: 30_000 })
+  await expect(page.locator('header.ph h1')).toHaveText(/^\d{4}년 \d{1,2}월$/, { timeout: 30_000 })
   expect(times.length).toBeGreaterThanOrEqual(3)
   expect(times[1]! - times[0]!, 'the second check waits the 6 s the server gave').toBeGreaterThanOrEqual(5900)
   expect(times[2]! - times[1]!, 'and again').toBeGreaterThanOrEqual(5900)
@@ -403,7 +403,7 @@ test.describe('(V-8, V-9) shell', () => {
   test('(b) the header has no theme button; the content column is in the middle at 1600', async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 })
     await page.goto('/')
-    await page.locator('.kpis').waitFor()
+    await page.locator('.hero').waitFor()
     await expect(page.locator('header.topbar').getByRole('button', { name: /모드/ })).toHaveCount(0)
     const m = await page.evaluate(() => {
       const r = (e: Element) => e.getBoundingClientRect()
@@ -661,10 +661,10 @@ test.describe('(V-17) sidebar and content on a wide screen', () => {
     for (const width of [1920, 1440]) {
       await page.setViewportSize({ width, height: 1000 })
       await page.goto('/')
-      await page.locator('.kpis').waitFor()
+      await page.locator('.hero').waitFor()
       const m = await page.evaluate(() => {
         const r = (e: Element) => e.getBoundingClientRect()
-        const col = r(document.querySelector('.col')!), strip = r(document.querySelector('.kpis')!)
+        const col = r(document.querySelector('.col')!), strip = r(document.querySelector('.hero')!)
         const nav = r(document.querySelector('header.topbar .monthnav')!), last = r([...document.querySelectorAll('header.topbar .tb')].at(-1)!)
         return { left: strip.left - col.left, right: col.right - strip.right, headL: nav.left - strip.left, headR: last.right - strip.right }
       })
