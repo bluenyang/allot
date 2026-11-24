@@ -63,6 +63,9 @@ const BODIES: Record<string, z.ZodType> = {
 /** What a data resource holds, where its name alone does not say it; added to its create line. */
 const RESOURCE_NOTES: Partial<Record<ListName, string>> = {
   schedules: 'Your own monthly dates (spec 013 S-22): name, day 1..31, accountId or null, direction in or out, note; no amount.',
+  incomes: 'Regular incomes besides the salary (spec 014 S-2): name, cycle monthly or yearly, month 1..12 (yearly only), day 1..31, amount (expected, whole KRW), accountId or null, note. The salary is the settings netPay on payDay. Deleting one deletes its money-received rows.',
+  'income-receipts': 'Money received for an income in a month (spec 014 S-3): itemId (null = the salary), ym, amount, date or null, note. Several in one month add up; with none the month counts the expected amount.',
+  'income-extras': 'Money that came in once (spec 014 S-4): date, name, amount, note; it counts in the month of its date.',
   currencies: 'Foreign currencies other than KRW and USD (spec 013 S-23): code, rate, buffer 0..100, auto; one in use by a subscription, plan change or spending cannot be deleted or renamed. The USD rate is in the settings (fxRate, fxBuffer, fxAuto).',
 }
 
