@@ -158,7 +158,7 @@ summary_for_user: |
 - 기존 `mcp.mjs`·`api-keys.mjs`를 `/mcp`와 `/api/mcp` 둘에 돌린다(`disposable.sh`).
 
 ## 작업 단위
-- [ ] W-1 의존성: Better Auth 다섯 패키지를 한 버전으로, 취약점 기록, 로그인 회귀(S-1).
+- [x] W-1 의존성: Better Auth 다섯 패키지를 한 버전으로, 취약점 기록, 로그인 회귀(S-1). — 1.7.27(2026-11-25 08:48 UTC, 1.7.28은 아직 하루 전), `pnpm audit` "No known vulnerabilities found", GitHub advisories 다섯 패키지 0건(08:49 UTC); 로그인 회귀는 V-3에서.
 - [ ] W-2 데이터: OAuth 테이블·jwks, `mcp_proposal.source_kind`, 마지막 사용, 마이그레이션, `pnpm check:migrations`(S-2, S-9).
 - [ ] W-3 OAuth 서버: 플러그인 설정, 루트 메타데이터, 외부 앱 연결 스위치(서버), 닫는 경로, 개발 프록시(S-2, S-3, S-8, S-10 서버, S-12).
 - [ ] W-4 동의 화면과 로그인 이어가기(S-4, S-5).
