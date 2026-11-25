@@ -136,8 +136,9 @@ const GIT_OPTS = new Map(Object.entries({
   'check-ignore': '-[vqn]+|--verbose|--quiet|--non-matching|--no-index',
   stash: '-[uqmp]|--include-untracked|--quiet|--stat|--patch',
 }).map(([k, v]) => [k, new RegExp(`^(?:${v})$`)]))
-const GIT_COMMIT_BARE = new Set(['-q', '-a', '-s', '-am', '-qm', '--amend', '--no-edit', '--allow-empty'])
-const GIT_COMMIT_VALUED = new Set(['-m', '-F', '--message', '--file'])
+const GIT_COMMIT_BARE = new Set(['-q', '-a', '-s', '--amend', '--no-edit', '--allow-empty'])
+// -am and -qm end in -m: the next word is the message (review 5 N-1)
+const GIT_COMMIT_VALUED = new Set(['-m', '-am', '-qm', '-F', '--message', '--file'])
 const GH_BANNED = new Set(['--web', '-w', '-F', '--body-file', '--editor', '-e'])
 
 /** `gh` words (after gh): a subcommand that only reads or edits, never creates or merges. */

@@ -144,6 +144,8 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
   for (const c of [
     "git add -- '*.ts' src/*.ts; grep 'gh pr merge' a.log", "git diff --stat -- *.md; grep 'gh pr merge' a.log",
     "git log --oneline -3 -- 'docs/*'; grep 'gh pr merge' a.log",
+    // -am and -qm take the message (review 5 N-1)
+    'git commit -am "docs: gh pr merge wording"', 'git commit -q -qm "docs: gh pr merge wording"',
   ]) assert.equal(isCandidate(asInput(c)), false, c)
   for (const c of [
     'gh pr view 24 --json body -q .body | grep "gh pr merge"', 'gh -R o/r pr view 24; grep "gh pr merge" a.log',
