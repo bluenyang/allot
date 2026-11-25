@@ -95,6 +95,7 @@ export const ko = {
     // notifications (spec 013 S-20)
     noticeBell: '알림 · 읽지 않음 {n}건',
     noticeReadAll: '모두 읽음',
+    noticeSaveFailed: '알림 표시를 저장하지 못했어요. 다시 해 주세요.',
     noticeFilter: '알림 종류',
     noticeGroups: { all: '전체', pending: '대기 중', pay: '결제', budget: '예산' },
     noticeUnread: '읽지 않음',
