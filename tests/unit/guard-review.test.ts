@@ -149,6 +149,14 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     "git -C {fd}<<EOF switch -c 'core.fsmonitor=gh pr merge 1;:' status\nx\nEOF",
     "git -C {fd}<<-EOF switch -c 'core.fsmonitor=gh pr merge 1;:' status\n\tx\n\tEOF",
     "git -C 3<<'EOF' switch -c 'core.fsmonitor=gh pr merge 1;:' status\nx\nEOF",
+    // bash and zsh read 12> and {a[0]}> differently: such a line is never plain (review 8 J-1, J-2)
+    "cd 'd;gh pr merge 1;:' && git -C {a[0]}>/dev/null --config-env=core.fsmonitor=PWD status",
+    "cd 'd;gh pr merge 1;:' && git -C {a[0]}</dev/null --config-env=core.fsmonitor=PWD status",
+    "cd 'd;gh pr merge 1;:' && git -C {a[0]}<<EOF --config-env=core.fsmonitor=PWD status\nx\nEOF",
+    "cd 'd;gh pr merge 1;:' && git -C 12<<EOF --config-env=core.fsmonitor=PWD status\nx\nEOF",
+    "cd 'd;gh pr merge 1;:' && git -C 12>/dev/null --config-env=core.fsmonitor=PWD status",
+    "cd 'd;gh pr merge 1;:' && git -C 12</dev/null --config-env=core.fsmonitor=PWD status",
+    "cd 'd;gh pr merge 1;:' && git -C 12>&2 --config-env=core.fsmonitor=PWD status",
     // a glob can expand to a file named like an option (review 5 G-3)
     "mkdir -p g && cd g && mkdir -- '--upload-pack=gh pr merge 1;:' && git ls-remote * ../repo",
     "cd g && git ls-remote ''* ../repo; grep 'gh pr merge' a.log", "cd g && git pull -- * ../repo; grep 'gh pr merge' a.log",
