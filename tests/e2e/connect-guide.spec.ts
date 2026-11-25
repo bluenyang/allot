@@ -3,6 +3,7 @@
 // the OAuth-only apps are dimmed and say why; the skills download gives a ZIP; phone width has no horizontal scroll;
 // what the card showed before (the MCP address, the old address, the connected apps) is still there (S-6).
 // Run on the test server (:15174). Nothing is written.
+import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 
 const APPS = [
@@ -24,7 +25,7 @@ test('nine apps; each dialog has this server\'s address, copy and the official h
     await expect(dlg.getByRole('heading', { name })).toBeVisible()
     // the address is in a code box of every app (as the value or inside a command)
     await expect(dlg.locator('code', { hasText: url }).first()).toBeVisible()
-    const links = dlg.getByRole('link')
+    const links = dlg.locator('.ca-help').getByRole('link')
     expect(await links.count()).toBeGreaterThan(0)
     for (const a of await links.all()) {
       expect(await a.getAttribute('href')).toMatch(/^https:\/\//)
@@ -67,8 +68,8 @@ test('the skills download gives each skill as a ZIP', async ({ page }) => {
   await expect(skills).toContainText('급여 정산')
   const [download] = await Promise.all([page.waitForEvent('download'), skills.getByRole('listitem').filter({ hasText: '급여 정산' }).getByRole('link', { name: '받기' }).click()])
   expect(download.suggestedFilename()).toBe('allot-payday.zip')
-  const head = await (await download.createReadStream()).read(2)
-  expect(String(head)).toBe('PK')
+  const head = readFileSync(await download.path()).subarray(0, 2).toString('latin1')
+  expect(head).toBe('PK')
 })
 
 test('what the card showed before is still there (S-6)', async ({ page, baseURL }) => {
