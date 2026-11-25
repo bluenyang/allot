@@ -8,7 +8,8 @@
 #
 # It starts postgres:16 (127.0.0.1 only), creates a role that is not a superuser and its database (row-level
 # security applies, as on allot-rc), runs the migrations and creates the admin (`pnpm db:admin`), starts the API of
-# this working tree with tsx, waits for /healthz, runs the command with BASE, DATABASE_URL, ADMIN_EMAIL and
+# this working tree with tsx on port 15184 (server/index.ts listens on every interface, so the run is reachable from the
+# LAN while it lasts: fake data, a random account; BASE is 127.0.0.1), waits for /healthz, runs the command with BASE, DATABASE_URL, ADMIN_EMAIL and
 # ADMIN_PASSWORD set (after scripts/test-server/seed.mjs puts its fake rows in), and removes the database container and the API at the end, also on a failure. Every
 # password and key is random for this run and passed by name only: no value is printed or logged. Nothing touches
 # :15173, :15174 or their database. Log: $LOG_DIR/<log-name>.log (check it with `pnpm check:logs`); the API's own
