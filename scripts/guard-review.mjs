@@ -138,6 +138,11 @@ function isPlainData(seg) {
   if (args.length === 0 || args[0].includes(PH)) return false
   const prog = args[0]
   const rest = args.slice(1)
+  // git and gh read their words as a subcommand: a standalone redirection operator (which may be a quoted "<" the
+  // parser cannot tell apart) or a here-string would move a word in or out of that reading. Allowed only before
+  // /dev/null or a descriptor (review 3 H-1, I-1).
+  if ((prog === 'git' || prog === 'gh') && seg.words.some((w, i) => /^\d*<<</.test(w) ||
+    (REDIR_ONLY.test(w) && !/^(?:\/dev\/null|\d+-?|-)$/.test(seg.words[i + 1] ?? '')))) return false
   if (PLAIN_OPTIONS[prog]) {
     return rest.every((x) => !x.startsWith('-') || x === '-' || PLAIN_OPTIONS[prog].test(x))
   }

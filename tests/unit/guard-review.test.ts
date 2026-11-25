@@ -99,6 +99,11 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     // `>& file` writes the file; uniq writes its second operand (review 2 G-2)
     "printf 'x: gh pr merge 24' >& lefthook-local.yml && git commit -m x", "printf 'x: gh pr merge 24' 2>& hooks.yml; git push -q origin x",
     "uniq - lefthook-local.yml <<'E'\ngh pr merge 24\nE\ngit push -q origin x", 'uniq -c a.txt b.txt; grep "gh pr merge" a.txt',
+    // a here-string or a quoted "<" moves the word git or gh reads as its subcommand (review 3 H-1, I-1)
+    'gh <<< run pr merge 24', 'gh <<< issue pr create --head x', 'gh 0<<< run pr merge 24',
+    'git <<< status filter-branch -f --tree-filter "gh pr merge 24;:" HEAD',
+    'git -C <<< x status filter-branch -f --tree-filter "gh pr merge 24;:" HEAD',
+    'mkdir -p "<" && git -C "<" filter-branch -f --tree-filter "gh pr merge 24;:" HEAD',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
   // writing nowhere (/dev/null, another descriptor) keeps a git line plain
   for (const c of [
