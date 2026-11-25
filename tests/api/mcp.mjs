@@ -498,7 +498,7 @@ async function writeMode() {
   }
   const un = await mcp(A, kUi.key)
   const utools = un.json?.result?.tools ?? []
-  ok(utools.length === 15 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: fifteen tools (${utools.length})`)
+  ok(utools.length === 16 && WRITE_TOOLS.every((n) => utools.some((t) => t.name === n)), `a write key: sixteen tools (twelve read with get_income, spec 014 S-10, and four write) (${utools.length})`)
   ok(utools.find((t) => t.name === 'apply_proposal')?.annotations?.destructiveHint === true && utools.find((t) => t.name === 'get_proposal')?.annotations?.readOnlyHint === true && utools.find((t) => t.name === 'propose_changes')?.annotations?.readOnlyHint === false, 'annotations: apply is destructive, get is read-only, propose is not read-only')
   ok(utools.every((t) => typeof t.description === 'string' && /^[\x20-\x7e]+$/.test(t.description)), 'write tool descriptions are English text')
   const pc = utools.find((t) => t.name === 'propose_changes')
