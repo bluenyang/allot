@@ -74,7 +74,7 @@ summary_for_user: |
 - [x] W-4 MCP `list_notifications`(S-4).
 - [x] W-5 비밀번호 추가 경로와 화면, 빼기 확인(S-5, S-6, S-8).
 - [x] W-6 문서.
-- [ ] W-7 시험.
+- [x] W-7 시험.
 
 ## 검증 기준
 모든 검사는 `scripts/check-run.sh`로 돌리고 `pnpm check:logs`를 통과해야 증거로 친다. 시험 서버는 :15174만 쓴다. DB에 직접 쓰는 검사는 `disposable.sh`로 돈다.
