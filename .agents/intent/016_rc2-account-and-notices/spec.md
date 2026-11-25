@@ -1,7 +1,8 @@
 ---
 intent: "016"
-status: draft
-approvals: []
+status: accepted
+approvals:
+  - { role: user, kind: summary, by: BlueNyang, at: "2026-11-26", words: "진행", rev: 7fb2856 }
 summary_for_user: |
   0.1.9-rc.2는 작업 단위 7개(W-1~W-7)입니다. 순서는 데이터 → 서버 경로 → 화면(알림·만기 카드) → MCP → 비밀번호 → 문서 → 시험입니다.
   알림 읽음과 만기 카드의 "계속 보내기"는 계정별 표 하나(`notice_mark`, 행 수준 보안)에 둡니다. rc.2를 처음 연 브라우저는 자기 localStorage의 기록을 한 번 올리고 지웁니다. 변경 내역에는 남기지 않습니다(화면 상태라서).
