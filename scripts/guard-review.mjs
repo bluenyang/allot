@@ -176,6 +176,13 @@ function isPlainData(seg) {
   // a word whose value the shell computes ($x, $(..), $_, brace expansion {a,b} or {a..b}) can turn into an option
   // of a program that reads options as commands; `stash@{0}` has no comma (review 4 F-3)
   if (['git', 'gh', 'sort', 'uniq'].includes(prog) && rest.some((w) => w.includes(PH) || /\{[^{}]*(?:,|\.\.)[^{}]*\}/.test(w))) return false
+  // a glob that starts a word (*, ?, [ unquoted) can expand to a file named like an option (`--upload-pack=...`);
+  // for git, words after `--` are paths (but pull hands them to fetch) — review 5 G-3
+  if (['git', 'gh', 'sort', 'uniq'].includes(prog)) {
+    let end = seg.words.length
+    if (prog === 'git' && !seg.words.includes('pull')) { const d = seg.words.indexOf('--'); if (d >= 0) end = d }
+    if (seg.words.slice(0, end).some((w, i) => !seg.quoted[i] && /^[*?[]/.test(w))) return false
+  }
   if (PLAIN_OPTIONS[prog]) {
     return rest.every((x) => !x.startsWith('-') || x === '-' || PLAIN_OPTIONS[prog].test(x))
   }
