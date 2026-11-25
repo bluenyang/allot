@@ -286,3 +286,7 @@ E2E는 시스템 Chrome(`channel: 'chrome'`)을 쓴다. 로그인 시도는 1분
 - `server/` API: `app.ts`(라우팅·세션 확인), `routes.ts`(CRUD), `auth.ts`(Better Auth), `validation.ts`(zod 검증), `mcp/`(MCP 서버와 도구, 제안), `db/`(스키마·마이그레이션·시드).
 - `drizzle/` 커밋된 SQL 마이그레이션.
 - `scripts/` 개발 도구: `test-server/`(:15173 스테이징을 올리는 `stage.sh`, 시험 서버, 일회용 DB 검사), `check-run.sh`(증거 로그), `guard-*.mjs`(에이전트 명령 guard, `.claude/settings.json`의 PreToolUse 훅).
+
+## 라이선스
+
+[GNU AGPL v3.0 이상](LICENSE) (`AGPL-3.0-or-later`). 고친 Allot을 네트워크 서비스로 운영하면 그 소스를 사용자에게 공개해야 한다.
