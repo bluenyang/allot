@@ -8,6 +8,7 @@ import { docsPage } from './docs'
 import { keyRoutes } from './keys'
 import { oauthAppRoutes } from './oauth-apps'
 import { noticeMarkRoutes } from './notice-marks'
+import { accountPasswordRoutes } from './account-password'
 import { mountMcp, mountRootMcp } from './mcp'
 import { oauthOn } from './oauth'
 import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
@@ -93,6 +94,7 @@ app.post('/app-login/ticket', async (c) => {
 app.route('/keys', keyRoutes)
 app.route('/oauth-apps', oauthAppRoutes)
 app.route('/notices/marks', noticeMarkRoutes)
+app.route('/account/password', accountPasswordRoutes)
 app.route('/admin', adminRoutes)
 app.route('/', routes)
 

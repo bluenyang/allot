@@ -128,6 +128,10 @@ const ko = {
   // external app connections (spec 015)
   oauthRequestBad: '연결 요청이 올바르지 않거나 만료됐어요. 앱에서 다시 연결해 주세요.',
   oauthAppNotFound: '연결된 앱이 없어요.',
+  // adding a password (spec 016)
+  passwordOff: '관리자가 비밀번호 로그인을 꺼 두었어요. 비밀번호를 추가할 수 없어요.',
+  passwordReauth: '보안을 위해 다시 로그인한 뒤 비밀번호를 만들 수 있어요(로그인한 지 하루가 지났어요).',
+  passwordAlreadySet: '이미 비밀번호가 있어요. 비밀번호 변경에서 바꿔 주세요.',
   providerUnknown: '없는 로그인 방식이에요.',
   nothingToChange: '바꿀 항목이 없어요.',
   passwordToggleOnly: '비밀번호는 켜고 끄기만 할 수 있어요.',
@@ -301,6 +305,9 @@ const en: Record<MsgKey, string> = {
   envLocked: 'Settings fixed by env cannot be changed here.',
   oauthRequestBad: 'This connection request is not valid or has expired. Connect again from the app.',
   oauthAppNotFound: 'No such connected app.',
+  passwordOff: 'The admin turned password sign-in off, so a password cannot be added.',
+  passwordReauth: 'For security, sign in again before adding a password (you signed in more than a day ago).',
+  passwordAlreadySet: 'This account already has a password. Change it under Change password.',
   providerUnknown: 'No such login method.',
   nothingToChange: 'Nothing to change.',
   passwordToggleOnly: 'Password login can only be turned on or off.',
