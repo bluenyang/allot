@@ -1,6 +1,6 @@
 ---
 name: allot-receipt
-description: Receipt to Allot (영수증 분석) — read a receipt or payment screenshot the user shares, and propose it as a one-off spending, or mark a subscription's receipt as checked, for the user to confirm. Use when the user shares a receipt, an order confirmation or a card notification and wants it in Allot.
+description: Receipt to Allot (영수증 분석) — read a receipt or payment screenshot the user shares, and propose it as a one-off spending for the user to confirm, or match it to a subscription. Use when the user shares a receipt, an order confirmation or a card notification and wants it in Allot.
 ---
 
 # Allot: receipts · 영수증 분석
@@ -17,9 +17,11 @@ Never guess an amount.
 ## Is it a subscription?
 Check `list_subscriptions` (or `search` with the shop name). If the receipt is a charge of a subscription
 already in Allot:
-- the amount matches: propose marking it checked (resource `subscriptions`, update with `verified: true`;
-  send the whole row as `list_subscriptions` shows it);
-- the amount differs: say by how much and ask whether the plan changed before proposing anything.
+- the amount matches: say so, and that the user can tick its receipt check (영수증 확인) on the Subscriptions screen.
+  Do not propose an update of the subscription row: an update sends the whole stored row, and `list_subscriptions`
+  shows a computed view (this month's plan, `nextPayment`, `payPath`, `receiptVerified`), not that row;
+- the amount differs: say by how much and ask whether the plan changed. If it did, propose a plan change from the
+  date it started (resource `plan-changes`, `effective` and the changed fields in `to`, as `list_plan_changes` shows).
 
 ## Otherwise: a one-off spending
 Check `list_spendings` for the same purchase first (no duplicates). Then propose it: `propose_changes`, resource
