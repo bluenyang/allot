@@ -1,0 +1,1 @@
+ALTER TYPE "public"."actor_kind" ADD VALUE 'oauth_app';

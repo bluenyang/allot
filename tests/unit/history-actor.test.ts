@@ -17,3 +17,10 @@ test('each chip lists what it counts', () => {
   assert.deepEqual(byActor(sets, 'ai').map((s) => s.id), ['k1'])
   assert.deepEqual(byActor([], 'me'), [])
 })
+
+test('spec 015 S-9: the AI chip also lists what an app connected with OAuth did', () => {
+  const withApp = [...sets, { id: 'o1', actorKind: 'oauth_app' }]
+  assert.deepEqual(byActor(withApp, 'ai').map((s) => s.id), ['k1', 'o1'])
+  assert.deepEqual(byActor(withApp, 'me').map((s) => s.id), ['u1', 'u2'])
+  assert.equal(byActor(withApp, 'all').length, 5)
+})

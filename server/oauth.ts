@@ -32,8 +32,30 @@ const CONFIRM_OF: Record<AllotScope, Confirm | null> = { 'allot:read': null, 'al
 export function allotScopeOf(scopes: readonly string[]): AllotScope | undefined {
   return ALLOT_SCOPES.find((s) => scopes.includes(s))
 }
+/**
+ * spec 015 S-7, S-9: what a token may do now: the narrower of what it was given and what the user's connection to that
+ * app holds now (read < propose < apply). A later consent can narrow a token at once, never widen it.
+ */
+export function effectiveScope(token: readonly string[], connection: readonly string[]): AllotScope | undefined {
+  const t = allotScopeOf(token)
+  const c = allotScopeOf(connection)
+  if (!t || !c) return undefined
+  return ALLOT_SCOPES[Math.min(ALLOT_SCOPES.indexOf(t), ALLOT_SCOPES.indexOf(c))]
+}
 /** null = read-only, 'ui' = proposals confirmed on the screen, 'chat' = confirmed in the chat (server/keys.ts confirmOf). */
 export const confirmOfScope = (s: AllotScope): Confirm | null => CONFIRM_OF[s]
+
+/** The name an app goes by: its registered name, else the host of its client id when that is a URL (CIMD), else the id. */
+export function appName(c: { name: string | null; clientId: string }) {
+  if (c.name?.trim()) return c.name.trim()
+  try { return new URL(c.clientId).host || c.clientId } catch { return c.clientId }
+}
+
+/** May a connection with these granted scopes propose changes (either confirmation method)? */
+export const scopesCanWrite = (scopes: readonly string[]) => {
+  const s = allotScopeOf(scopes)
+  return s === 'allot:propose' || s === 'allot:apply'
+}
 
 /** The public origin (BETTER_AUTH_URL without a trailing slash), or '' when unset. */
 export const publicBase = (raw = process.env.BETTER_AUTH_URL) => {

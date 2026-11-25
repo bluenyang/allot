@@ -14,19 +14,13 @@ import type { AppEnv } from './app-env'
 import { db } from './db/client'
 import * as a from './db/auth-schema'
 import { msg } from './messages'
-import { ALLOT_SCOPES, allotScopeOf, type AllotScope } from './oauth'
+import { ALLOT_SCOPES, allotScopeOf, appName, type AllotScope } from './oauth'
 
 export const oauthAppRoutes = new Hono<AppEnv>()
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
 const hostOf = (uri: string) => { try { return new URL(uri).host } catch { return '' } }
 const isLoopback = (uri: string) => { try { return LOOPBACK.has(new URL(uri).hostname) } catch { return false } }
-
-/** The name an app goes by: its registered name, else the host of its client id when that is a URL (CIMD), else the id. */
-export function appName(c: { name: string | null; clientId: string }) {
-  if (c.name?.trim()) return c.name.trim()
-  return hostOf(c.clientId) || c.clientId
-}
 
 oauthAppRoutes.get('/request', async (c) => {
   const q = c.req.query('q') ?? ''

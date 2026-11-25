@@ -17,8 +17,8 @@ export type RowKey = Record<string, string>
 export { same, stillAsLogged }
 type Row = Record<string, unknown>
 
-/** Who made a set: the user, an AI key, or the server itself (the daily rate refresh, spec 013 S-23). */
-export interface Actor { kind: 'user' | 'api_key' | 'system'; id: string }
+/** Who made a set: the user, an AI key, the server itself (the daily rate refresh, spec 013 S-23) or an app connected with OAuth (spec 015 S-9). */
+export interface Actor { kind: 'user' | 'api_key' | 'system' | 'oauth_app'; id: string }
 
 /** One row change as the recorder saw it. */
 export interface Collected { table: string; key: RowKey; op: 'insert' | 'update' | 'delete'; before: Row | null; after: Row | null }
