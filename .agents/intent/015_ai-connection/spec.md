@@ -198,6 +198,7 @@ summary_for_user: |
   - Codex·Gemini CLI·Antigravity CLI는 이 기계에 설치돼 있으면 같은 확인을 하고, 없으면 매니페스트 형식만 확인한다. 어느 쪽인지 기록한다.
   - 실패 = 검증이나 연결 실패.
 - V-9 **사용자 확인** (rc를 사용자 서버에 올린 뒤, 실제 데이터, 사용자가 함):
+  - (A-24로 넘겨 받은 것) OIDC·GitHub·Google로 로그인한 뒤 동의 화면으로 이어지는지, Codex·Antigravity·Claude Code에서 실제 도구 호출.
   - Claude: claude.ai 커넥터, 휴대폰, Claude Code 플러그인.
   - ChatGPT: 웹(요금제가 허용하는 범위), Codex.
   - Gemini: CLI(또는 Antigravity).
@@ -225,9 +226,11 @@ summary_for_user: |
 - A-17 (2026-11-25, W-5, 리뷰 1 R1-4) 지금 연결(동의 행)이 생기기 전에 발급된 토큰은 거절 · 끊었다가 다시 연결하면 끊기 전 토큰이 다시 통했음(S-7 "끊으면 바로 401") · f2748d8 · 예전 입력 거부·새 제한: 없음(S-7의 뜻)
 - A-18 (2026-11-25, W-4, 리뷰 1 R1-3) `/oauth/*` 화면에 `frame-ancestors 'none'`·`X-Frame-Options: DENY`(운영 이미지의 서버) · 다른 사이트가 동의 화면을 프레임에 넣어 '허락'을 누르게 하지 못하게. 이 두 경로에만, 다른 화면의 프레임은 그대로. `vite preview`(:15173)는 OAuth를 쓸 수 없어(A-5) 두지 않음 · 728da86 · 예전 입력 거부·새 제한: 없음
 - A-19 (2026-11-25, W-7, 리뷰 1 R1-2) 구독 스킬은 해지·플랜 변경을 `plan-changes`로만 제안하고, 영수증 스킬은 구독과 맞으면 구독 화면의 영수증 확인을 안내 · `list_subscriptions`는 계산된 보기라 구독 행 수정에 보낼 저장 행(`nextDate`·기본 플랜)이 없음 · 1bb4b29 · 예전 입력 거부·새 제한: 없음
-- A-20 (2026-11-25, W-11, 시험 V-7) 낡은 E2E 기대값 둘을 spec대로 고침: `api-keys.spec.ts`는 설정의 주소가 `/mcp`이고 키 주소 `/api/mcp` 줄과 '연결된 앱'이 보이는지 봄(전엔 `/api/mcp`와 '0.1.11' 준비 중 문구), `redesign.spec.ts`의 준비 중 목록에서 '연결된 앱 관리'를 뺌 · W-6이 S-10·S-11대로 화면을 바꿀 때 이 두 시험을 같이 고쳤어야 함(전체 E2E 1회차 `test/v7-e2e-all.log`에서 실패) · 2665251 · 예전 입력 거부·새 제한: 없음
+- A-20 (2026-11-25, W-11, 시험 V-7) 낡은 E2E 기대값 둘을 spec대로 고침: `api-keys.spec.ts`는 설정의 주소가 `/mcp`이고 키 주소 `/api/mcp` 줄과 '연결된 앱'이 보이는지 봄(전엔 `/api/mcp`와 '0.1.11' 준비 중 문구), `redesign.spec.ts`의 준비 중 목록에서 '연결된 앱 관리'를 뺌 · W-6이 S-10·S-11대로 화면을 바꿀 때 이 두 시험을 같이 고쳤어야 함(전체 E2E 1회차 `test/v7-e2e-all.log`에서 실패) — 1차 감사 F-6: 동기화가 늦은 것 자체가 절차 위반(knowledge `2026-11-24_stale-test-expectations`), 고친 내용은 감사가 '통과시키려고 바꾼 것 아님'으로 판정 · 2665251 · 예전 입력 거부·새 제한: 없음
 - A-21 (2026-11-25, W-10, 시험 V-8) README와 두 플러그인 README에 '`allot`과 `allot-key` 중 하나만 설치' · 둘 다 켜고 둘 다 설정하면 `claude mcp list`에 `plugin:allot:allot` 하나만 나옴(Claude Code 2.1.327, `test/v8-dedup.log`; 리뷰 4 R4-1: 처음 인용한 `v8-allot-key-1-dedup.log`는 설정 반영 전이라 원인을 가르지 못함). `allot`을 끄면 `allot-key`가 목록에 나옴(`test/v8-dedup-off.log`; 리뷰 5 R5-1). 시험 키로의 연결과 폐기 뒤 401은 `v8-allot-key.log` · c87b633 · 예전 입력 거부·새 제한: 없음
-- A-22 (2026-11-25, W-8, 1차 감사 F-3) 저장소에 `LICENSE`(GNU AGPL v3, FSF 원문 그대로 — 이 기계의 세 패키지 사본과 sha256 같음)를 두고 `package.json`·두 plugin.json에 `license: AGPL-3.0-or-later`, README에 라이선스 절 · 설계의 "LICENSE가 있다"가 빠져 있었음. 라이선스와 표기는 사용자가 고름("AGPL-3.0", "AGPL-3.0-or-later") · 이 커밋 · 예전 입력 거부·새 제한: 없음
+- A-22 (2026-11-25, W-8, 1차 감사 F-3) 저장소에 `LICENSE`(GNU AGPL v3, FSF 원문 그대로 — 이 기계의 세 패키지 사본과 sha256 같음)를 두고 `package.json`·두 plugin.json에 `license: AGPL-3.0-or-later`, README에 라이선스 절 · 설계의 "LICENSE가 있다"가 빠져 있었음. 라이선스와 표기는 사용자가 고름("AGPL-3.0", "AGPL-3.0-or-later") · 26e100e · 예전 입력 거부·새 제한: 없음
+- A-23 (2026-11-25, W-7, 리뷰 2 R2-1, 1차 감사 F-5) 두 스킬의 플랜 변경 제안 안내에 입력 필드(`subId`·`effective`·`to`·`note`)를 적음 — A-19의 후속 · `list_plan_changes`의 `subscriptionId`를 그대로 보내면 거부됨 · c75003a · 예전 입력 거부·새 제한: 없음(스킬 글만). 기록의 한계(F-5): A-16~A-19의 '예전 입력 거부·새 제한' 칸은 구현 커밋 뒤의 기록 커밋 7e4cce4에서 처음 커밋됐고, 구현 커밋 전에 적었는지는 기록으로 확인할 수 없음. 판단은 리뷰 1 보고서(`refuses-input: no`)에 있었음
+- A-24 (2026-11-25, 시험, 1차 감사 F-1·F-2 — 사용자 처리) 이 버전에서 돌리지 못한 검사를 V-9로 넘김: V-3의 Dex 검사(`login-methods.mjs`·`oidc-flows.mjs`; :15174에 Dex 없음, 0.1.8과 같은 한계), V-7·S-5의 OIDC·GitHub·Google 로그인 뒤 동의로 이어지기, V-8의 Codex·Antigravity 도구 호출과 Claude Code의 개별 도구 호출. rc를 사용자 서버에 올린 뒤 V-9에서 확인. F-2(:15174 겹침)는 다시 돌리지 않고 수용. 사용자: "V-9로 넘김 (추천)", "그대로 수용" · 기록만 · 예전 입력 거부·새 제한: 없음
 
 ## 우려
 - **Better Auth를 올리면 로그인이 흔들릴 수 있다**(1.7.18 → 1.7.27/28): V-3으로 막는다. 문제가 나면 1.7.18 + pnpm override(조사 A.3 (a))로 돌아가고, 조정 기록에 남긴다.
