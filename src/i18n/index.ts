@@ -22,6 +22,8 @@ import { incomeEn } from './income.en'
 import { incomeKo, type IncomeMessages } from './income.ko'
 import { oauthEn } from './oauth.en'
 import { oauthKo, type OAuthMessages } from './oauth.ko'
+import { connectEn } from './connect.en'
+import { connectKo, type ConnectMessages } from './connect.ko'
 
 export type Lang = 'ko' | 'en'
 export const LANGS: readonly Lang[] = ['ko', 'en']
@@ -30,7 +32,7 @@ type Path<T, P extends string = ''> = {
   [K in keyof T & string]: T[K] extends string ? `${P}${K}` : Path<T[K], `${P}${K}.`>
 }[keyof T & string]
 /** A key of the message lists, e.g. 'shell.menu' (the 지출 page's lazy parts are in spending.ko.ts). */
-export type MessageKey = Path<Messages & SpendingMessages & BudgetMessages & AccountsMessages & GoalsMessages & ScheduleMessages & CurrencyMessages & SecurityMessages & IncomeMessages & OAuthMessages>
+export type MessageKey = Path<Messages & SpendingMessages & BudgetMessages & AccountsMessages & GoalsMessages & ScheduleMessages & CurrencyMessages & SecurityMessages & IncomeMessages & OAuthMessages & ConnectMessages>
 
 const KEY = 'allot.lang'
 
@@ -67,8 +69,8 @@ export const i18n = createI18n({
   fallbackLocale: 'ko',
   // spec 013: the budget pages, accounts, goal cards and the rc.3 settings keep their messages in their own modules, merged here
   messages: {
-    ko: { ...ko, ...budgetKo, ...accountsKo, ...goalsKo, ...scheduleKo, ...currencyKo, ...securityKo, ...incomeKo, ...oauthKo },
-    en: { ...en, ...budgetEn, ...accountsEn, ...goalsEn, ...scheduleEn, ...currencyEn, ...securityEn, ...incomeEn, ...oauthEn },
+    ko: { ...ko, ...budgetKo, ...accountsKo, ...goalsKo, ...scheduleKo, ...currencyKo, ...securityKo, ...incomeKo, ...oauthKo, ...connectKo },
+    en: { ...en, ...budgetEn, ...accountsEn, ...goalsEn, ...scheduleEn, ...currencyEn, ...securityEn, ...incomeEn, ...oauthEn, ...connectEn },
   },
   missingWarn: false,
   fallbackWarn: false,
