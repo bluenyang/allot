@@ -389,6 +389,14 @@ export const keyCreate = z.object({
 
 /** PUT /api/admin/api-keys */
 export const keyPolicy = z.object({ noExpiry: z.boolean() }).strict()
+/** spec 016 S-8: a mark is a notice id or `accountId@YYYY-MM`, 1–200 characters; one request adds and drops at most 500. */
+const markKey = z.string().min(1, 'invalidInput').max(200, 'invalidInput')
+const markList = z.array(markKey).max(500, 'invalidInput')
+export const noticeMarks = z.object({
+  read: z.object({ add: markList.optional(), drop: markList.optional() }).strict().optional(),
+  maturityKept: z.object({ add: markList.optional() }).strict().optional(),
+}).strict().refine((b) => (b.read?.add?.length ?? 0) + (b.read?.drop?.length ?? 0) + (b.maturityKept?.add?.length ?? 0) <= 500, 'invalidInput')
+
 /** spec 015 S-10: the external app connection (OAuth) switch. */
 export const oauthSwitch = z.object({ enabled: z.boolean() }).strict()
 
