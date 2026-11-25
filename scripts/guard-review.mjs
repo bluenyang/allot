@@ -143,6 +143,9 @@ function isPlainData(seg) {
   }
   if (DATA_PROGS.has(prog)) return true
   if (prog === 'git') {
+    // the parser drops quotes, so a quoted "<" or ">&" looks like a redirection and stripRedirs drops the word after it:
+    // look for an option that runs a program among all the words (review 2 G-1)
+    if (seg.words.some(gitRuns)) return false
     // `git -C <dir>` only changes the folder; any other option before the subcommand (-c, --exec-path, ...) is not plain
     let k = 0
     while (rest[k] === '-C' && rest[k + 1] !== undefined && !rest[k + 1].includes(PH)) k += 2

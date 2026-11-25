@@ -93,6 +93,9 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     'git log -1 --o=.git/config --format="[core]%n fsmonitor = gh pr merge 24;:" && git status',
     'uniq notes.txt .git/config; grep "gh pr merge 24" notes.txt; git status',
     'sort --compress-program=gh notes.txt; grep "gh pr merge" notes.txt', 'sort -o out notes.txt; grep "gh pr merge" notes.txt',
+    // a quoted "<" or ">&" is an argument, not a redirection: the word after it is still read (review 2 G-1)
+    'git fetch . "<" "--upload-pack=gh pr merge 24;:"', 'git fetch . ">&" "--upl=gh pr merge 24;:"',
+    'git pull . "<" "--upload-pack=gh pr merge 24;:"', 'git commit -m x "<" "--exec=gh pr merge 24"',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
   // writing nowhere (/dev/null, another descriptor) keeps a git line plain
   for (const c of [
