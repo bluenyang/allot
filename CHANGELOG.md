@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8 — 2026-11-25
+
+Three-second screens and income: the same code as 0.1.8-rc.1 below. Released on the user's instruction ("stable 내어봐")
+after the screen check of 0.1.8-rc.1 on the staging stack (V-8, user: "확인했음, stable"). Migrations 0037 and 0038 run at
+start.
+
 ## 0.1.8-rc.1 — 2026-11-25
 
 Three-second screens and income, released as a prerelease after the merge (PR #59; the user: "머지하고 rc까지").
