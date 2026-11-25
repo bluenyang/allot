@@ -22,7 +22,7 @@ import {
 // one change set (it shows in 변경 내역 as "AI · key name"). A decided card stays on the screen.
 // Above them, the goal cards (spec 013 S-7): worked out from the state (src/lib/goals.ts), not stored. 멈추기 writes
 // the account's stop month, 계속 보내기 its goal acknowledgement; each is one account save (one change set, revertible).
-// The maturity cards (spec 013 S-15) look the same: 멈추기 writes the stop month; 계속 보내기 is kept in this browser only.
+// The maturity cards (spec 013 S-15) look the same: 멈추기 writes the stop month; 계속 보내기 is kept on the account (spec 016 S-1).
 const filter = ref<'waiting' | 'handled' | 'all'>('waiting')
 const opened = reactive<Record<string, boolean>>({})
 // Waiting cards are open, handled ones closed, until the user toggles one.

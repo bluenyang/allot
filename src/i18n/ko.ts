@@ -100,7 +100,7 @@ export const ko = {
     noticeGroups: { all: '전체', pending: '대기 중', pay: '결제', budget: '예산' },
     noticeUnread: '읽지 않음',
     noticeEmpty: '지금은 알림이 없어요',
-    noticeFoot: '결제·회차는 3일 전부터 · 읽음 표시는 이 브라우저에만 남아요',
+    noticeFoot: '결제·회차는 3일 전부터 · 읽음 표시는 계정에 남아 기기마다 같아요',
     noticeToday: '오늘',
     noticeDday: 'D-{n}',
     notice: {
