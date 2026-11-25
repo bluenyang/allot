@@ -83,7 +83,11 @@ test('keys: make one, see it once, use it, see when it was used, revoke it', asy
   // spec 015 S-11: the address is the root /mcp; keys still work at /api/mcp, which the next line names
   await expect(page.getByText(`${new URL(baseURL!).origin}/mcp`, { exact: true })).toBeVisible()
   await expect(page.getByText(`${new URL(baseURL!).origin}/api/mcp`).first()).toBeVisible()
-  await expect(page.getByText(`claude mcp add --transport http allot ${new URL(baseURL!).origin}/mcp`)).toBeVisible()
+  // spec 017 S-6: the key command moved from this card into the app connection card's 'API key, directly' dialog
+  await page.getByRole('button', { name: 'API 키로 직접(Claude Code) 연결 방법' }).click()
+  await expect(page.getByRole('dialog').getByText(`claude mcp add --transport http allot ${new URL(baseURL!).origin}/mcp`)).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   // spec 015 S-10: the connected apps are listed where the 준비 중 note was
   await expect(page.getByText('연결된 앱', { exact: true })).toBeVisible()
 
