@@ -84,6 +84,8 @@ const PLAIN_OPTIONS = {
   head: /^-(?:[qv]|n|c|\d+)$/,
   tail: /^-(?:[qvf]|n|c|\d+)$/,
   wc: /^-[lwcmL]+$/,
+  // sort: no -o/--output (writes a file) and no --compress-program (runs one) — review 1 F-2
+  sort: /^-[bdfghiMnrRsuVz]*(?:[kt].*)?$/,
   grep: /^(?:-[a-zA-Z]+|--(?:ignore-case|invert-match|line-number|count|files-with-matches|files-without-match|word-regexp|line-regexp|regexp|extended-regexp|fixed-strings|no-messages|quiet|recursive|include|exclude|no-filename|with-filename|only-matching|max-count|context|after-context|before-context|null)(?:=.*)?)$/,
 }
 PLAIN_OPTIONS.egrep = PLAIN_OPTIONS.grep
@@ -92,15 +94,15 @@ const GREP_PROGRAMS = new Set(['grep', 'egrep', 'fgrep'])
 // grep options that name a file of patterns or take a value: harmless, but `-f` reads a file only
 // More plain programs (retro 0.1.8, user: "보호는 두고 오탐만 줄임" — about ten harmless lines were refused in 0.1.8):
 // they read, list, compare or move files and never run a command they are given, whatever their options.
-const DATA_PROGS = new Set(['ls', 'cd', 'pwd', 'mkdir', 'sort', 'uniq', 'cut', 'tr', 'diff', 'cmp', 'date', 'basename', 'dirname',
+const DATA_PROGS = new Set(['ls', 'cd', 'pwd', 'mkdir', 'uniq', 'cut', 'tr', 'diff', 'cmp', 'date', 'basename', 'dirname',
   'realpath', 'readlink', 'stat', 'du', 'df', 'file', 'nl', 'tac', 'rev', 'column', 'jq', 'true', 'false'])
 // git subcommands that run no command of the user's; with any option that can (an exec, a pack or diff program) they are not plain
 const GIT_DATA = new Set(['status', 'log', 'show', 'diff', 'add', 'restore', 'rm', 'mv', 'fetch', 'pull', 'push', 'branch', 'checkout',
   'switch', 'merge', 'rev-parse', 'rev-list', 'merge-base', 'ls-remote', 'ls-files', 'worktree', 'tag', 'remote', 'describe',
   'shortlog', 'blame', 'reflog', 'cat-file', 'check-ignore', 'stash'])
-// Long options that run a program. git takes any unambiguous prefix of a long option (`--upl` is
-// `--upload-pack`), so a word counts when it is a prefix of one of these, however short (review 1 F-1).
-const GIT_RUN_LONG = ['exec', 'upload-pack', 'receive-pack', 'ext-diff', 'extcmd', 'tool', 'textconv', 'config']
+// Long options that run a program, or write a file (`--output`, review 1 F-2). git takes any unambiguous prefix of a long
+// option (`--upl` is `--upload-pack`), so a word counts when it is a prefix of one of these, however short (review 1 F-1).
+const GIT_RUN_LONG = ['exec', 'upload-pack', 'receive-pack', 'ext-diff', 'extcmd', 'tool', 'textconv', 'config', 'output']
 function gitRuns(x) {
   const m = /^--([^=]+)/.exec(x)
   if (m) return GIT_RUN_LONG.some((o) => o.startsWith(m[1]))
@@ -165,7 +167,23 @@ function isPlainData(seg) {
  */
 function isPlainLine(command) {
   const segs = parseShell(command)
-  return !segs.weird && segs.length > 0 && segs.every(isPlainData)
+  if (segs.weird || segs.length === 0 || !segs.every(isPlainData)) return false
+  // git runs what its config, attributes and hooks name: a line that runs git and also writes a file
+  // (anything but /dev/null or another descriptor) or names a git file is not plain (review 1 F-2)
+  if (!segs.some((s) => stripRedirs(s.words).args[0] === 'git')) return true
+  return !segs.some((s) => writesFile(s.words) || s.words.some((w) => GIT_FILE.test(w)))
+}
+
+const GIT_FILE = /(?:^|[/=:])\.git(?:$|\/|attributes|config|modules)|\/git\/(?:config|attributes)$/
+/** A word that writes to a file. Any `>` counts, also inside a word: the parser leaves `a>f` as one word. */
+function writesFile(words) {
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    if (!w.includes('>') || /^\d*>&\d*-?$/.test(w) || /^\d*(?:>>?|&>>?|>\|)\/dev\/null$/.test(w)) continue
+    if (/^\d*(?:>>?|&>>?|>\|)$/.test(w) && words[i + 1] === '/dev/null') { i++; continue }
+    return true
+  }
+  return false
 }
 
 const MAX_INPUT = 100000

@@ -85,7 +85,20 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     'git fetch --upload-pa="gh pr merge 24;:" .', 'git fetch --upl "gh pr merge 24;:" .', 'git pull --upl="gh pr merge 24;:" .',
     'git ls-remote --upl="gh pr merge 24;:" .', 'git -C wt ls-remote --upl="gh pr merge 24;:" .', 'git diff --ext="gh pr merge 24"',
     'git diff --e="gh pr merge 24"',
+    // a line that writes what git runs, then runs git (review 1 F-2)
+    'echo "[core] fsmonitor = gh pr merge 24;:" >> .git/config; git status',
+    "printf '[diff]\\n external = gh pr merge 24 #\\n' >> .git/config && git diff",
+    "printf '[diff]\\n external = gh pr merge 24 #\\n'>cfg && git diff",
+    'git log -1 --output=.git/config --format="[core]%n fsmonitor = gh pr merge 24;:" && git status',
+    'git log -1 --o=.git/config --format="[core]%n fsmonitor = gh pr merge 24;:" && git status',
+    'uniq notes.txt .git/config; grep "gh pr merge 24" notes.txt; git status',
+    'sort --compress-program=gh notes.txt; grep "gh pr merge" notes.txt', 'sort -o out notes.txt; grep "gh pr merge" notes.txt',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
+  // writing nowhere (/dev/null, another descriptor) keeps a git line plain
+  for (const c of [
+    'git log --oneline -3 2>/dev/null; grep -h "gh pr merge" notes.md',
+    'git status --short >&2; grep -c "gh pr create" a.log 2>&1', 'git fetch -q origin 2> /dev/null && sort -n -k2 notes | grep "gh pr merge"',
+  ]) assert.equal(isCandidate(asInput(c)), false, c)
 })
 test('isCandidate: command words are found behind separators, wrappers, substitutions and shells', () => {
   for (const c of [
