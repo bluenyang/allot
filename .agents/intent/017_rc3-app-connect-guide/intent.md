@@ -2,9 +2,15 @@
 id: "017"
 slug: rc3-app-connect-guide
 version: 0.1.9
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-26"
+    words: "승인"
+    rev: da6a0a1
+    note: "PM 질문 '이대로 intent 017을 승인하실까요?'에 대한 답. 열린 질문 1~4는 그 전에 답함(질의서 기록)."
 waivers: []
 supersedes: null
 ---
