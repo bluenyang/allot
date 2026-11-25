@@ -42,6 +42,8 @@ supersedes: null
   - Claude: claude.ai와 휴대폰 앱(사용자 지정 커넥터), Claude Code.
   - ChatGPT: chatgpt.com의 사용자 지정 MCP 서버, Codex.
   - Gemini: Gemini CLI. Gemini 앱의 사용자 지정 앱은 지금 미국·영어·만 18세 이상 개인 계정만 쓸 수 있어 사용자가 확인할 수 없다(조사). 표준대로 맞추되 확인은 하지 않는다.
+    - 조사 정정(`chat-byok.md`): 무료 사용자의 Gemini CLI는 2026-06-18에 Antigravity CLI로 바뀌었고, Gemini CLI는 유료 API 키나 Code Assist가 있어야 한다. Antigravity CLI가 원격 MCP를 받는지는 확인하지 못했다. 그래서 spec에서 Antigravity CLI를 먼저 확인하고, 되면 그쪽 묶음도 만든다. 안 되면 Gemini는 유료 키가 있는 Gemini CLI까지만 한다.
+  - ChatGPT 사용자에게는 Codex(데스크톱 앱의 Codex 모드, Codex CLI)가 요금제 제한 없이 쓰기까지 되는 길이다(조사: "included across ChatGPT plans, including Free and Go"). 문서에서 Claude Code 옆에 둔다.
 - **세 AI의 설치 묶음**: 같은 스킬 묶음을 세 AI가 함께 쓴다.
   - Claude Code 플러그인: 이 저장소를 마켓플레이스로 둔다.
   - Codex 플러그인.
@@ -120,7 +122,8 @@ supersedes: null
   - 갱신 토큰은 쓸 때마다 새 것으로 바꾼다(refresh token rotation, 사용자 승인). Google은 바꾸지 않는 갱신 토큰을 권하지만, 보안 쪽을 따른다. 그래서 Gemini에서 문제가 생기면 기록하고, 바꾸지는 않는다.
 - **RLS 예외**: OAuth·passkey 테이블은 사용자를 알기 전에 읽히므로 행 수준 보안(RLS)을 걸 수 없다. 지금의 Better Auth 테이블(`auth-schema.ts`)처럼 RLS 예외로 두고, 앱 조건으로 사용자를 나눈다. 초안의 "RLS"를 이렇게 바꾼다(조사).
 - **공개 HTTPS**: 원격 커넥터(claude.ai·휴대폰·ChatGPT·Gemini 앱)는 그 회사 쪽에서 Allot 서버로 접속한다. 사용자의 설치는 이미 공개 HTTPS 주소가 있다(사용자). LAN 전용 설치는 Claude Code·Codex·Gemini CLI만, 그것도 API 키로만 쓸 수 있다. Claude Code는 http 주소로는 OAuth를 보내지 않는다(조사).
-- **요금제**: ChatGPT에서 쓰기 도구는 Business·Enterprise/Edu 요금제에서만 된다. Pro는 읽기만 되고, Plus는 확인하지 못했다(조사). 문서에 적는다.
+- **요금제**: ChatGPT에서 쓰기 도구는 Business·Enterprise/Edu 요금제에서만 된다. Pro는 읽기만 되고, Free·Go·Plus는 확인하지 못했다(조사). 문서에 적는다.
+- **도구 표시를 속이지 않는다**: ChatGPT는 `readOnlyHint`만 보고 읽기·쓰기를 가른다. 그래도 제안을 저장하는 `propose_changes`를 읽기 전용으로 표시해 요금제 제한을 피하지 않는다(OpenAI 지침에도 어긋남, 조사).
 - **입력 거부·새 제한**: 예전 입력을 거부하거나 새 제한을 거는 변경은 spec에 적고 승인받는다(AGENTS.md).
 - **공개 저장소**: 실제 데이터, 계정, 금액은 어디에도 넣지 않는다. 사용자의 서버 주소도 문서·예시·시험에 넣지 않고 `<your-host>`로 쓴다(PM 판단).
 - **실제 서버**: 사용자의 서버에는 실제 데이터가 있다. 자동 검사는 그곳에 돌리지 않는다. 실제 클라이언트 연결 확인은 사용자가 한다.
