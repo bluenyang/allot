@@ -60,11 +60,10 @@ supersedes: null
 - **`/mcp` 주소**: MCP 주소를 `/mcp`로 한다. 지금의 `/api/mcp`는 API 키용 별칭으로 남겨 이미 연결된 키가 그대로 동작한다.
 - **연결된 앱 관리**: 설정 › AI·연동에서 연결된 앱을 보고 끊는다. 끊으면 바로 401이 된다. '준비 중' 표시는 없어진다.
 - **권한은 키와 같다**: OAuth로 연결해도 읽기 또는 쓰기 제안, 확인 방식, 키 주인의 데이터만 보는 범위가 API 키와 똑같다. 동의 화면에서 고른다.
-- **패스키 로그인**: 로그인 방식에 패스키를 하나 더한다. 기본은 꺼짐이고, 로그인한 사용자가 자기 계정에 등록한다. 가입 경로는 아니다.
 
 ## 계획
 (PM의 순서, 각 단계는 spec의 W-n이 됨)
-1. **의존성**: `@better-auth/mcp`, `@better-auth/oauth-provider`, `@better-auth/cimd`, `@better-auth/passkey`를 1.7.18로 맞춘다. Better Auth 1.7에서는 예전 `mcp()`·`oidcProvider()`가 빠졌다(설치본에서 확인).
+1. **의존성**: `@better-auth/mcp`, `@better-auth/oauth-provider`, `@better-auth/cimd`를 1.7.18로 맞춘다. Better Auth 1.7에서는 예전 `mcp()`·`oidcProvider()`가 빠졌다(설치본에서 확인).
    - 조사에 따르면 `@better-auth/mcp`가 `oauth-provider ^1.7.18`을 끌어와 1.7.27로 풀릴 수 있다. Better Auth 전체를 함께 올릴지, pnpm override로 고정할지 spec에서 정한다. 사용자: 전체를 올려도 문제 없으면 올림, 알려진 취약점(npm audit, GitHub advisories)을 확인한다.
 2. **OAuth 서버**:
    - 인가와 동의 화면(Vue): Allot에 로그인한 뒤 범위를 고른다.
@@ -88,16 +87,12 @@ supersedes: null
    - claude.ai용 스킬 ZIP을 만드는 스크립트.
    - 설치는 모두 이 저장소 주소로 한다. 공식 디렉터리·갤러리에는 올리지 않는다(사용자: "공식 디렉터리는 그냥 패스하자. 그냥 우리 저장소 쓰는 거로.").
 7. **MCP 서버 안내문**: 서버의 `instructions`를 쓴다. ChatGPT 웹과 Gemini 앱은 묶음 파일을 읽지 않으므로, 이 안내문으로 기본 흐름을 전한다. 앞 512자가 중요하다(조사).
-8. **패스키**:
-   - `@better-auth/passkey`를 로그인 방식의 하나로 둔다. 다른 방식과 같은 켜기·끄기와 정책을 따른다.
-   - `rpID`는 `BETTER_AUTH_URL`의 도메인으로 한다.
-   - IP 주소로 여는 LAN 설치에서는 쓸 수 없다고 문서에 적는다.
-9. **문서**:
+8. **문서**:
    - README "AI 연결": 세 AI별 연결 방법, 요금제 제약, 공개 HTTPS 요건(LAN 전용이면 Claude Code와 API 키만), Anthropic·OpenAI가 접속하는 IP.
    - CHANGELOG.
-10. **검사**:
+9. **검사**:
     - :15174에서 가짜 클라이언트로 OAuth 흐름 전체를 돈다: 등록(CIMD·DCR) → 인가 → 동의 → 토큰 → `/mcp` 호출 → 갱신 → 끊기 → 401.
-    - 함께 확인할 것: 범위별 도구 목록, 사용자 격리, `/api/mcp` 키 회귀, 패스키 등록·로그인(가상 인증기 E2E).
+    - 함께 확인할 것: 범위별 도구 목록, 사용자 격리, `/api/mcp` 키 회귀.
     - 실제 AI 클라이언트로 연결하는 확인은 사용자가 rc를 사용자 서버에 올린 뒤 한다(화면 확인과 같은 방식).
       - Claude: claude.ai·휴대폰·Claude Code
       - ChatGPT: 웹(요금제가 허용하는 범위)·Codex
@@ -108,9 +103,9 @@ supersedes: null
   - `server/auth.ts`: 플러그인.
   - 루트 경로 `/mcp`와 `/.well-known/*`(`server/app.ts`; 지금은 API가 `/api` 아래에만 있다).
   - `server/mcp/index.ts`: 인증.
-  - 스키마와 마이그레이션: OAuth 클라이언트·토큰·동의·리소스·jwks, passkey.
+  - 스키마와 마이그레이션: OAuth 클라이언트·토큰·동의·리소스·jwks.
   - 로그인 방식 설정(`methodOf` 등).
-- **화면**: 동의 화면, 설정 › AI·연동(연결된 앱, MCP 주소 `/mcp`), 관리 › 로그인 방식(외부 앱 연결, 패스키), 계정 화면(패스키 등록).
+- **화면**: 동의 화면, 설정 › AI·연동(연결된 앱, MCP 주소 `/mcp`), 관리 › 로그인 방식(외부 앱 연결).
 - **개발 서버**: Vite 프록시에 `/mcp`, `/.well-known`을 더한다.
 - **저장소**: `.claude-plugin/`, Codex·Gemini 묶음, `skills/`, README, CHANGELOG.
 - **기존 동작**: API 키, MCP 도구, 쓰기 제안의 동작은 바뀌지 않는다. `/api/mcp`도 그대로다.
@@ -120,7 +115,7 @@ supersedes: null
   - PKCE(S256)는 필수다. 돌아갈 주소는 정확히 같아야 한다. Claude Code의 localhost 콜백은 포트만 다를 수 있다.
   - 동의 없이 발급하지 않는다. 관리자도 다른 사용자의 연결을 만들지 못한다.
   - 갱신 토큰은 쓸 때마다 새 것으로 바꾼다(refresh token rotation, 사용자 승인). Google은 바꾸지 않는 갱신 토큰을 권하지만, 보안 쪽을 따른다. 그래서 Gemini에서 문제가 생기면 기록하고, 바꾸지는 않는다.
-- **RLS 예외**: OAuth·passkey 테이블은 사용자를 알기 전에 읽히므로 행 수준 보안(RLS)을 걸 수 없다. 지금의 Better Auth 테이블(`auth-schema.ts`)처럼 RLS 예외로 두고, 앱 조건으로 사용자를 나눈다. 초안의 "RLS"를 이렇게 바꾼다(조사).
+- **RLS 예외**: OAuth 테이블은 사용자를 알기 전에 읽히므로 행 수준 보안(RLS)을 걸 수 없다. 지금의 Better Auth 테이블(`auth-schema.ts`)처럼 RLS 예외로 두고, 앱 조건으로 사용자를 나눈다. 초안의 "RLS"를 이렇게 바꾼다(조사).
 - **공개 HTTPS**: 원격 커넥터(claude.ai·휴대폰·ChatGPT·Gemini 앱)는 그 회사 쪽에서 Allot 서버로 접속한다. 사용자의 설치는 이미 공개 HTTPS 주소가 있다(사용자). LAN 전용 설치는 Claude Code·Codex·Gemini CLI만, 그것도 API 키로만 쓸 수 있다. Claude Code는 http 주소로는 OAuth를 보내지 않는다(조사).
 - **요금제**: ChatGPT에서 쓰기 도구는 Business·Enterprise/Edu 요금제에서만 된다. Pro는 읽기만 되고, Free·Go·Plus는 확인하지 못했다(조사). 문서에 적는다.
 - **도구 표시를 속이지 않는다**: ChatGPT는 `readOnlyHint`만 보고 읽기·쓰기를 가른다. 그래도 제안을 저장하는 `propose_changes`를 읽기 전용으로 표시해 요금제 제한을 피하지 않는다(OpenAI 지침에도 어긋남, 조사).
@@ -142,12 +137,13 @@ supersedes: null
 - 2026-11-25 사용자 제안 다섯 → 조사 → PM이 고른 반영(위 바라는 결과·계획, 아래 하지 않을 것):
   - HTTPS 주소가 이미 있음: 반영. 실제 클라이언트 확인을 사용자 서버에서 사용자가 한다.
   - 세 AI: 반영. Gemini 앱만 지역 제한으로 확인하지 않는다.
-  - 패스키: 반영. 기본 꺼짐.
+  - 패스키: 반영. 기본 꺼짐(뒤에 사용자가 미룸, 아래).
   - 공식 디렉터리: Gemini CLI 갤러리만 반영. 나머지는 하지 않을 것으로.
   - AWS 서비스: 이 버전에서 빼고 로드맵 검토 항목으로.
   - `/mcp`: 반영.
 - 2026-11-25 개정안을 본 뒤 사용자:
   - "공식 디렉터리는 그냥 패스하자. 그냥 우리 저장소 쓰는 거로." → Gemini CLI 갤러리(저장소 주제 태그)도 뺀다.
+  - "패스키를 이번에 꼭 추가해야 하나? 있으면 좋은데, 조금 미뤄도 됨. 지원이 가능했으면은 당장 필요한 게 아니라서" → 패스키는 이 intent에서 빼고 로드맵 Later로 돌린다(조사 자료는 `betterauth-hosting.md` A-2에 남김).
   - "AWS는 0.1.10까지 한 뒤 따로 검토해보는 거로"
   - 조사하며 정한 것: "등록 방식 승인", "연결 끊으면 401 승인", "RLS 관련도 승인", "갱신 토큰은 RTR처럼 한다는 거지? 승인"(쓸 때마다 새 토큰으로 바꾸는 refresh token rotation이 맞음), "스킬은 있는 MCP만. 승인. 기능이 업데이트 되면 스킬도 업데이트", "Better Auth 패키지 버전을 spec에서 정하기 승인. 전체를 올려도 문제 없으면 올려도 좋을 거 같아. vulnerabilities 잘 확인해보고."
   - 앱 안 채팅·영수증 분석: "우리 서비스에 API 키를 넣어서 영수증 분석이나 채팅이 되는 거로 아는데 맞아? … 채팅으로 어떻게는 붙어서 작업할 수 있는 방법이 있는지 조사해줘." → PM 확인: 지금은 없음(설정의 'AI 모델'과 사이드바 'AI 어시스턴트'·'명세서 분석'은 '준비 중', 로드맵 Later). 조사 중(`.loctx/reports/0.1.9/research/chat-byok.md`).
@@ -181,4 +177,5 @@ supersedes: null
 - AWS 등 공개 서비스 운영과 그 준비(위).
 - 앱 안 AI 채팅·영수증 분석(사용자 LLM 키): 명세서 분석과 함께 0.1.11로(사용자). 조사 자료는 그 버전 intent에 쓴다.
 - MCP 도구의 추가나 변경(0.1.10 항목 3·8의 도구 설명 수정 포함).
-- Allot 자체 로그인의 다른 변경(패스키 추가 밖).
+- 패스키 로그인(사용자가 미룸, 로드맵 Later).
+- Allot 자체 로그인의 변경.
