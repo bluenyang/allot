@@ -14,7 +14,7 @@ import type { AppEnv } from './app-env'
 import { db } from './db/client'
 import * as a from './db/auth-schema'
 import { msg } from './messages'
-import { ALLOT_SCOPES, allotScopeOf, appName, type AllotScope } from './oauth'
+import { ALLOT_SCOPES, allotScopeOf, appName, oauthOn, type AllotScope } from './oauth'
 
 export const oauthAppRoutes = new Hono<AppEnv>()
 
@@ -64,7 +64,8 @@ oauthAppRoutes.get('/', async (c) => {
     connectedAt: r.createdAt.toISOString(),
     lastUsedAt: uses.find((u) => u.clientId === r.clientId)?.lastUsedAt.toISOString() ?? null,
   })).sort((x, y) => y.connectedAt.localeCompare(x.connectedAt))
-  return c.json({ apps })
+  // enabled: may an app connect right now (the switch, and a public URL that can carry it)
+  return c.json({ enabled: oauthOn(), apps })
 })
 
 /** Remove one user's connection to one app: consent, refresh tokens, access tokens, last use. */

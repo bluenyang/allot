@@ -1311,8 +1311,6 @@ export const en = {
     modelText: 'Statement analysis and the AI assistant ask the provider directly with a key you add. Requests are sent from the server only; the browser never receives the key.',
     notConnected: 'Not connected',
     ledeOnly: 'propose',
-    oauthTitle: 'Remote connector (OAuth)',
-    connectedApps: 'Manage connected apps',
     addTitle: 'Add in Claude Code',
     makeBtn: 'Create key',
     nameHint: 'Write where the key is used, so you can tell it apart when you revoke it.',
@@ -1391,7 +1389,6 @@ export const en = {
     connect: 'How to connect',
     mcpUrl: 'MCP address',
     keyScope: 'The key works only at this address and cannot be used for other APIs. Once revoked, it stops working at once.',
-    later: 'The claude.ai remote connector and phone apps need OAuth sign-in, which is planned for 0.1.11.',
   },
   admin: {
     summary: '{n} · active {active} · waiting {waiting}',

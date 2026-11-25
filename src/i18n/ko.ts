@@ -1311,8 +1311,6 @@ export const ko = {
     modelText: '명세서 분석과 AI 어시스턴트는 내가 넣은 키로 제공자에 직접 요청해요. 요청은 서버에서만 보내고, 브라우저는 키를 받지 않아요.',
     notConnected: '연결 안 함',
     ledeOnly: '제안만',
-    oauthTitle: '원격 커넥터 (OAuth)',
-    connectedApps: '연결된 앱 관리',
     addTitle: 'Claude Code에서 추가',
     makeBtn: '키 만들기',
     nameHint: '이 키를 쓰는 곳을 적어 두면 나중에 폐기할 때 알아보기 쉬워요.',
@@ -1391,7 +1389,6 @@ export const ko = {
     connect: '연결 방법',
     mcpUrl: 'MCP 주소',
     keyScope: '키는 이 주소에서만 통하고 다른 API에는 쓸 수 없어요. 폐기하면 바로 쓸 수 없게 돼요.',
-    later: 'claude.ai의 원격 커넥터와 휴대폰 앱은 OAuth 로그인이 필요해서 0.1.11에서 지원할 예정이에요.',
   },
   admin: {
     summary: '{n}개 · 활성 {active} · 승인 대기 {waiting}',
