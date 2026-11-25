@@ -5,6 +5,7 @@
   "author": { "name": "BlueNyang" },
   "homepage": "https://github.com/bluenyang/allot",
   "repository": "https://github.com/bluenyang/allot",
+  "license": "AGPL-3.0-or-later",
   "keywords": ["allot", "budget", "money", "mcp"],
   "userConfig": {
     "server_url": {

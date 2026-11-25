@@ -227,6 +227,7 @@ summary_for_user: |
 - A-19 (2026-11-25, W-7, 리뷰 1 R1-2) 구독 스킬은 해지·플랜 변경을 `plan-changes`로만 제안하고, 영수증 스킬은 구독과 맞으면 구독 화면의 영수증 확인을 안내 · `list_subscriptions`는 계산된 보기라 구독 행 수정에 보낼 저장 행(`nextDate`·기본 플랜)이 없음 · 1bb4b29 · 예전 입력 거부·새 제한: 없음
 - A-20 (2026-11-25, W-11, 시험 V-7) 낡은 E2E 기대값 둘을 spec대로 고침: `api-keys.spec.ts`는 설정의 주소가 `/mcp`이고 키 주소 `/api/mcp` 줄과 '연결된 앱'이 보이는지 봄(전엔 `/api/mcp`와 '0.1.11' 준비 중 문구), `redesign.spec.ts`의 준비 중 목록에서 '연결된 앱 관리'를 뺌 · W-6이 S-10·S-11대로 화면을 바꿀 때 이 두 시험을 같이 고쳤어야 함(전체 E2E 1회차 `test/v7-e2e-all.log`에서 실패) · 2665251 · 예전 입력 거부·새 제한: 없음
 - A-21 (2026-11-25, W-10, 시험 V-8) README와 두 플러그인 README에 '`allot`과 `allot-key` 중 하나만 설치' · 둘 다 켜고 둘 다 설정하면 `claude mcp list`에 `plugin:allot:allot` 하나만 나옴(Claude Code 2.1.327, `test/v8-dedup.log`; 리뷰 4 R4-1: 처음 인용한 `v8-allot-key-1-dedup.log`는 설정 반영 전이라 원인을 가르지 못함). `allot`을 끄면 `allot-key`가 목록에 나옴(`test/v8-dedup-off.log`; 리뷰 5 R5-1). 시험 키로의 연결과 폐기 뒤 401은 `v8-allot-key.log` · c87b633 · 예전 입력 거부·새 제한: 없음
+- A-22 (2026-11-25, W-8, 1차 감사 F-3) 저장소에 `LICENSE`(GNU AGPL v3, FSF 원문 그대로 — 이 기계의 세 패키지 사본과 sha256 같음)를 두고 `package.json`·두 plugin.json에 `license: AGPL-3.0-or-later`, README에 라이선스 절 · 설계의 "LICENSE가 있다"가 빠져 있었음. 라이선스와 표기는 사용자가 고름("AGPL-3.0", "AGPL-3.0-or-later") · 이 커밋 · 예전 입력 거부·새 제한: 없음
 
 ## 우려
 - **Better Auth를 올리면 로그인이 흔들릴 수 있다**(1.7.18 → 1.7.27/28): V-3으로 막는다. 문제가 나면 1.7.18 + pnpm override(조사 A.3 (a))로 돌아가고, 조정 기록에 남긴다.
