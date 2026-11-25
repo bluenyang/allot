@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — 0.1.9
+
+AI connections: Allot becomes the OAuth authorization server of its own MCP endpoint, and the repository is a plugin
+marketplace with seven skills. Spec 015 (`.agents/intent/015_ai-connection/spec.md`). Migrations 0039–0041 add the
+OAuth tables (Better Auth's oauth-provider, jwt and cimd schemas), `oauth_app_use`, `mcp_proposal.source_kind`
+(existing proposals: `api_key`), the `oauth` app setting and the change-history actor `oauth_app`. Nothing an API key,
+a tool or `/api/mcp` accepted before is refused.
+
+### Added
+- **`/mcp`** at the root: API keys as before, and OAuth access tokens while external app connections are on. Its 401
+  names the protected resource metadata (RFC 9728); `/api/mcp` is unchanged (keys only).
+- **OAuth** (off by default; Admin › Login methods, or `ALLOT_OAUTH_ENABLED`): discovery at `/.well-known/…`, dynamic
+  client registration and Client ID Metadata Documents, PKCE S256, audience-bound JWT access tokens (1 h), refresh
+  tokens that rotate (30 days, no reuse). Needs `BETTER_AUTH_URL` on https (http on localhost for tests).
+- **Consent screen** (`/oauth/consent`): the app, where it goes back (with a warning for localhost-only apps), and one of
+  read / propose (confirm on the screen) / propose (confirm in the chat) — the same three as a key.
+- **Connected apps** in Settings › AI: permission, connected, last used, disconnect (refused at once). Proposals and
+  change sets made by an app show its name ("AI · app").
+- **Plugins and skills**: `.claude-plugin/marketplace.json` with `allot` (OAuth) and `allot-key` (API key) for Claude
+  Code; Codex and Antigravity install the same skills; a Gemini CLI extension; `scripts/skills-zip.mjs` for claude.ai.
+  Skills: month start, payday, month end, subscriptions, receipts, spending plan, assets.
+
+### Changed
+- Better Auth 1.7.18 → 1.7.27 (with `@better-auth/mcp`, `oauth-provider`, `cimd`).
+- The MCP server's instructions say what Allot is, what the connection may do and where to start, in the first 512
+  characters.
+- Settings › AI shows `/mcp` as the MCP address; the 준비 중 note about remote connectors is gone.
+
 ## 0.1.8 — 2026-11-25
 
 Three-second screens and income: the same code as 0.1.8-rc.1 below. Released on the user's instruction ("stable 내어봐")

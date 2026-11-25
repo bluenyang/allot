@@ -197,7 +197,7 @@ export async function docsPage(all: readonly RouteInfo[]): Promise<string> {
 ${rows}
 </tbody></table>
 <h2 id="mcp">MCP tools</h2>
-<p>Endpoint <code>POST /api/mcp</code> with <code>Authorization: Bearer &lt;API key&gt;</code>. A read key sees the read tools; a key with the write scope also sees the proposal tools, whose changes wait for the user's confirmation. ${toolList.length} tools.</p>
+<p>Endpoint <code>POST /mcp</code> (spec 015) with <code>Authorization: Bearer &lt;API key&gt;</code>, or an OAuth access token while external app connections are on (discovery at <code>/.well-known/oauth-protected-resource/mcp</code>; the consent screen gives read, propose on the screen, or propose in the chat). <code>POST /api/mcp</code> takes API keys only, as before. A read key or permission sees the read tools; a write one also sees the proposal tools, whose changes wait for the user's confirmation. ${toolList.length} tools.</p>
 ${toolHtml}
 </main></body></html>`
 }

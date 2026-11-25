@@ -105,16 +105,33 @@ GitHub Actions → **Allot Release** → Run workflow(수동 실행).
 - 순서: 버전 계산 → (바뀌었을 때만) `package.json` 커밋 → 태그 → 게이트 → 이미지 푸시 → Release 초안.
 - 먼저 `dry_run`으로 돌려 보고, 초안 Release를 확인한 뒤 공개한다.
 
-## MCP로 AI 연결
+## AI 연결
 
-0.1.3부터 `POST /api/mcp`가 MCP 서버(Streamable HTTP)다. AI 클라이언트가 내 월급 분배·구독·플랜 전환 일정·변경 내역을 읽을 수 있다. 0.1.4부터는 쓰기 범위를 준 키로 변경을 "제안"할 수도 있다(아래). 기본 키는 읽기 전용이다. 도구는 키 주인의 권한으로만 돈다(다른 사용자의 데이터는 보이지 않는다).
+Allot은 MCP 서버(Streamable HTTP)다. AI 앱이 내 월급 분배·수입·예산·통장·구독·일정·변경 내역을 읽고, 쓰기 권한이 있으면 변경을 "제안"한다(아래). 제안은 내가 확인하기 전에는 아무것도 바꾸지 않는다. 도구는 연결한 사람의 권한으로만 돈다(다른 사용자의 데이터는 보이지 않는다).
 
-1. **설정 › AI·연동**(영어 화면: Settings › AI & integrations)에서 키를 만든다. 이름과 만료일(1~365일)을 정하면 키가 한 번만 보인다. 그 자리에서 복사한다.
-2. MCP 주소는 `https://<your-host>/api/mcp`다. 키는 이 주소에서만 통하고 다른 API에는 쓸 수 없다. 키는 화면에서 바로 폐기할 수 있고, 마지막 사용 시각이 목록에 보인다.
-3. 클라이언트에 연결한다.
-   - **Claude Code**: `claude mcp add --transport http allot https://<your-host>/api/mcp --header "Authorization: Bearer <key>"`
-   - **Claude Desktop**: 원격 커넥터는 claude.ai 규칙을 따르고, 대부분의 계정에서는 헤더를 직접 넣을 수 없다. 로컬 stdio 다리(`mcp-remote`의 `--header` 등)로 이어 붙이는 방법은 커뮤니티에서 쓰는 방식이지 공식 방법이 아니다.
-   - **claude.ai와 모바일 앱**: OAuth가 필요하다. 0.1.9에서 Claude Code 플러그인과 함께 계획하고 있다.
+- **MCP 주소**: `https://<your-host>/mcp`(0.1.9). API 키와 OAuth 둘 다 받는다. 예전 주소 `https://<your-host>/api/mcp`는 API 키만 받고 그대로 된다.
+- **두 가지 연결 방법**
+  - **OAuth(외부 앱 연결)**: 앱에 주소만 넣으면 Allot 로그인 화면과 동의 화면이 열린다. 동의 화면에서 권한 셋 중 하나를 고른다: 읽기 / 쓰기 제안·화면에서 확인 / 쓰기 제안·대화에서 확인(키를 만들 때의 세 경우와 같다). 키가 필요 없다.
+  - **API 키**: **설정 › AI·연동**(Settings › AI & integrations)에서 키를 만든다. 이름·만료일(1~365일)·권한을 정하면 키가 한 번만 보인다.
+- **OAuth를 쓰려면** 관리자가 **관리 › 로그인 방식**의 "외부 앱이 OAuth로 연결하게 허용"을 켠다(기본은 꺼짐, 또는 `ALLOT_OAUTH_ENABLED=true`; env 값이 있으면 화면에서는 잠긴다). 서버 주소(`BETTER_AUTH_URL`)가 https여야 한다(localhost의 http는 시험용으로만 된다). 끄면 이미 연결된 앱도 그 순간부터 거절된다.
+- **연결된 앱**: 설정 › AI·연동 › 연결된 앱에서 앱마다 권한·연결한 날·마지막 사용을 보고 "끊기"로 끊는다. 끊으면 그 앱의 토큰은 바로 401이고, 다시 쓰려면 앱에서 다시 연결해 동의해야 한다.
+- **공개 주소 요건**: claude.ai·휴대폰 앱·ChatGPT는 각 회사의 서버가 내 서버에 접속한다. 인터넷에서 열리는 https 주소(443)가 있어야 하고, 방화벽을 둔다면 Anthropic(`160.79.104.0/21`, `153.61.208.0/20`, https://platform.claude.com/docs/en/api/ip-addresses)과 OpenAI(https://developers.openai.com/api/docs/guides/ip-addresses)의 주소를 연다. LAN에만 있는 서버는 Claude Code·Codex·Gemini CLI에서 API 키로만 쓸 수 있다.
+
+### 앱별 방법 (2026-11 기준, 각 회사의 요금제·화면은 바뀔 수 있다)
+
+- **claude.ai·Claude 데스크톱·휴대폰 앱**: Customize › Connectors › Add custom connector에 `https://<your-host>/mcp`를 넣는다(Team·Enterprise는 조직 소유자가 더한다). 휴대폰 앱은 웹에서 더한 커넥터를 쓴다. 스킬은 아래 "스킬"의 ZIP을 Customize › Skills에 올린다.
+- **Claude Code**: 이 저장소가 플러그인 마켓플레이스다.
+  - OAuth: `/plugin marketplace add bluenyang/allot` → `/plugin install allot@allot` → MCP 주소를 넣으면 처음 쓸 때 브라우저에서 로그인·동의.
+  - API 키: `/plugin install allot-key@allot` → 주소와 키를 넣는다(키는 비밀값으로 저장). 또는 플러그인 없이 `claude mcp add --transport http allot https://<your-host>/mcp --header "Authorization: Bearer <key>"`.
+  - 두 플러그인 모두 스킬 7개가 들어 있다.
+- **ChatGPT(웹)**: chatgpt.com의 Plugins › + › Add custom MCP server에 `https://<your-host>/mcp`를 넣고 OAuth로 연결한다. OpenAI 안내로는 쓰기(제안)까지는 Business·Enterprise/Edu, Pro는 읽기만 되고, 만들기는 웹에서만 된다. ChatGPT는 API 키를 받지 않는다.
+- **Codex**: `codex plugin marketplace add bluenyang/allot` → `codex plugin add allot@allot`(스킬) → `codex mcp add allot --url https://<your-host>/mcp` → `codex mcp login allot`(브라우저에서 로그인·동의). 키를 쓰려면 `codex mcp add allot --url https://<your-host>/mcp --bearer-token-env-var ALLOT_API_KEY`처럼 키를 담은 환경변수를 지정한다.
+- **Gemini CLI**: `gemini extensions install https://github.com/bluenyang/allot`(스킬과 안내) → `gemini mcp add --transport http allot https://<your-host>/mcp`. Gemini CLI는 이제 유료 키나 Code Assist가 있어야 한다. Gemini 앱(웹)의 MCP 연결은 미국·영어에서만 열려 있어 확인하지 않았다.
+- **Antigravity CLI(agy)**: `agy plugin install <이 저장소의 plugins/allot 폴더>`로 스킬을 넣고, `agy mcp add allot https://<your-host>/mcp`로 서버를 더한다.
+
+### 스킬
+
+`skills/`의 스킬 7개는 어느 앱에서나 같은 `SKILL.md`다: 월초 점검(`allot-month-start`), 급여 정산(`allot-payday`), 월말 정산(`allot-month-end`), 구독 최적화 제안(`allot-subscriptions`), 영수증 분석(`allot-receipt`), 소비·지출 계획(`allot-spending-plan`), 자산관리(`allot-assets`). 지금 MCP 도구만 쓰고, 바꾸는 것은 모두 제안으로 한다. claude.ai에 올릴 ZIP은 `node scripts/skills-zip.mjs`가 `dist-skills/`에 만든다. 스킬을 고친 뒤에는 `node scripts/plugins-sync.mjs`로 두 플러그인에 복사한다(단위 시험이 다르면 실패한다).
 
 읽기 도구(12개):
 - `get_overview`: 한 달 요약. 날짜, 구독 이체 계산, 분배, 나머지 분배, 그달의 결제·일회성 지출 회차와 플랜 전환, 수입(`income`)과 여유(`leftOverKrw`, 0.1.8).
@@ -132,22 +149,23 @@ GitHub Actions → **Allot Release** → Run workflow(수동 실행).
 
 ### 쓰기: 제안과 확인 (0.1.4)
 
-키를 만들 때 "쓰기 허용"을 고르면 그 키로 변경을 제안할 수 있다. 쓰기 범위와 확인 방식은 키를 만들 때 정하고 나중에 바꿀 수 없다(바꾸려면 새 키). 확인 방식은 둘이다.
+키를 만들 때 "쓰기 허용"을 고르면 그 키로 변경을 제안할 수 있다. 확인 방식은 둘이다. OAuth로 연결한 앱은 동의 화면에서 고른 권한이 같은 뜻이다(다시 연결해 바꾸면 전에 받은 토큰도 그 순간 좁아진다).
 
 - **화면에서 확인**(기본): 제안이 **대기 중인 변경** 화면(사이드바에 대기 개수 배지)에 쌓이고, 내가 미리보기를 보고 확인하거나 거절한다. AI는 이 제안을 적용할 수 없다. 24시간 안에 확인하지 않으면 만료된다.
 - **대화에서 확인**: 대화에서 내가 동의하면 AI가 `apply_proposal`로 적용한다. 15분 안에 적용하지 않으면 만료된다.
 
-쓰기 도구: `propose_changes`(변경 1~20개를 한꺼번에 제안, 전부 적용되거나 전부 안 된다), `propose_revert`(변경 내역의 한 묶음을 되돌리는 제안), `get_proposal`(제안 상태), `apply_proposal`(대화 확인 키 전용).
+쓰기 도구: `propose_changes`(변경 1~20개를 한꺼번에 제안, 전부 적용되거나 전부 안 된다), `propose_revert`(변경 내역의 한 묶음을 되돌리는 제안), `get_proposal`(제안 상태), `apply_proposal`(대화에서 확인하는 키·연결 전용).
 
 - 제안만으로는 아무것도 바뀌지 않는다. 미리보기는 적용해 본 뒤 되돌려서 만들고, 바뀌는 행의 전후와 이번 달·다음 달의 구독 이체액·월급 분배 전후를 보여 준다.
 - AI가 바꿀 수 있는 것: 구독, 일회성 지출(회차를 함께 보냄), 플랜 전환, 단계(고정 금액 포함), 분배 대상, 나머지 분배, 일정 이벤트, 점검 항목, 설정(실수령·급여일·환율), 생활비. 삭제도 된다. 계좌·부채·공휴일 세트·표시 설정, 키·로그인·관리자 기능은 바꿀 수 없다.
-- 적용할 때 모든 것을 다시 검사한다. 제안한 뒤 데이터가 바뀌었거나, 만료됐거나, 키가 폐기·만료되었거나 쓰기 범위를 잃었으면 적용되지 않는다. 대기 중인 제안은 20개까지다.
-- 적용된 제안은 변경 내역에 "AI · 키 이름"인 변경 묶음 하나로 남고, 다른 변경처럼 되돌릴 수 있다. AI의 `propose_revert`도 AI가 바꿀 수 있는 자원의 묶음만 되돌린다.
+- 적용할 때 모든 것을 다시 검사한다. 제안한 뒤 데이터가 바뀌었거나, 만료됐거나, 키가 폐기·만료되었거나 쓰기 범위를 잃었으면(앱은 연결이 끊겼거나 외부 앱 연결이 꺼졌으면) 적용되지 않는다. 대기 중인 제안은 20개까지다.
+- 적용된 제안은 변경 내역에 "AI · 키 이름"(OAuth 앱은 "AI · 앱 이름")인 변경 묶음 하나로 남고, 다른 변경처럼 되돌릴 수 있다. AI의 `propose_revert`도 AI가 바꿀 수 있는 자원의 묶음만 되돌린다.
 - 한계: 새 분배 대상과 그 대상을 쓰는 단계 금액은 한 제안에 담을 수 없다(서버가 새 대상의 id를 정한다). 제안을 두 번 해야 하고, 도구 설명이 AI에게 그렇게 알려 준다.
 
-- 키는 계정당 10개까지이고, 해시로만 저장한다. 인증에 실패하면 이유와 상관없이 같은 401이다. 같은 주소에서 10분에 20번 실패하면 잠시 막히고(429), 키 하나는 분당 120번까지 쓸 수 있다.
+- 키는 계정당 10개까지이고, 해시로만 저장한다. 인증에 실패하면 이유와 상관없이 같은 401이다. 같은 주소에서 10분에 20번 실패하면 잠시 막히고(429), 키 하나(OAuth는 사용자와 앱 하나)는 분당 120번까지 쓸 수 있다.
+- OAuth의 제한(0.1.9): 돌아갈 주소는 등록한 것과 정확히 같아야 한다(localhost·127.0.0.1·[::1]의 포트만 예외). PKCE는 S256만. 액세스 토큰 1시간, 갱신 토큰 30일(쓸 때마다 새로 주고 예전 것은 다시 못 쓴다), 인가 코드 10분. 클라이언트 등록은 1분에 5번, 토큰 1분에 20번, 인가 1분에 30번. CIMD 메타데이터는 공개 https 주소에서만 가져온다.
 - 만료 없는 키는 기본으로 막혀 있다(키 수명 최대 365일). 관리 화면의 "API 키" 탭에서, 또는 `ALLOT_API_KEY_NO_EXPIRY=true`로 허용한다. env 값이 있으면 화면에서는 잠긴다. 끄면 만료 없는 키는 그 시점부터 1년 뒤에 만료된다.
-- 인터넷에 열어 둘 때는 `TRUSTED_ORIGINS`를 꼭 설정한다. 이 엔드포인트는 그 호스트(와 `BETTER_AUTH_URL`)가 아닌 요청을 거절한다.
+- 인터넷에 열어 둘 때는 `TRUSTED_ORIGINS`를 꼭 설정한다. 이 엔드포인트는 그 호스트(와 `BETTER_AUTH_URL`)가 아닌 요청을 거절한다. 리버스 프록시를 경로로 나눠 두었다면 `/api` 말고도 `/mcp`와 `/.well-known/`을 Allot으로 보내야 한다(예시 `docker/compose.yaml`의 Traefik은 호스트 전체를 보내므로 그대로 된다).
 
 ## 화면 언어
 
