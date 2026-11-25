@@ -17,6 +17,11 @@ test('each plugin carries exactly the shared skills', () => {
   for (const p of ['allot', 'allot-key']) assert.deepEqual(tree(join(ROOT, 'plugins', p, 'skills')), source, `plugins/${p}/skills differs from skills/: run node scripts/plugins-sync.mjs`)
 })
 
+test('each plugin carries the repository LICENSE (an installed plugin is its own folder)', () => {
+  const lic = readFileSync(join(ROOT, 'LICENSE'), 'utf8')
+  for (const p of ['allot', 'allot-key']) assert.equal(readFileSync(join(ROOT, 'plugins', p, 'LICENSE'), 'utf8'), lic, `plugins/${p}/LICENSE differs: run node scripts/plugins-sync.mjs`)
+})
+
 test('every skill names itself after its folder and has only name and description', () => {
   const dirs = readdirSync(join(ROOT, 'skills'))
   assert.equal(dirs.length, 7)
