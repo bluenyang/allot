@@ -8,7 +8,7 @@ summary_for_user: |
   알림 읽음과 만기 카드의 "계속 보내기"는 계정별 표 하나(`notice_mark`, 행 수준 보안)에 둡니다. rc.2를 처음 연 브라우저는 자기 localStorage의 기록을 한 번 올리고 지웁니다. 변경 내역에는 남기지 않습니다(화면 상태라서).
   MCP `list_notifications`는 알림마다 `read`를 주고, "계속 보내기"한 만기는 빼고 보여 줍니다(앱과 같음).
   비밀번호 추가는 설정 › 로그인·보안의 새 칸에서 합니다. 비밀번호 빼기는 지금도 목록의 '해제'로 되므로(마지막 한 방식은 못 뺌) 그대로 쓰고 시험만 더합니다.
-  비밀번호 추가는 로그인한 지 1일 안의 세션만 받습니다(Better Auth 기본, 사용자 "1일 (Better Auth 기본, 추천)"). 넘으면 다시 로그인 안내.
+  비밀번호 추가는 로그인한 지 1일 안의 세션만 받습니다(Better Auth의 freshAge 기본값, 사용자 "1일 (Better Auth 기본, 추천)"). 넘으면 다시 로그인 안내.
   새 제한(S-8)을 승인해 주세요: 관리자가 비밀번호 로그인을 꺼 두면 서버도 거부, 읽음·만기 기록 하나의 글자 수 200자·한 번에 500개·사용자당 종류별 2000개(넘으면 오래된 것부터 지움, 화면에 나오는 알림 수와는 관계없음).
 ---
 ## 요구 해석
@@ -28,7 +28,7 @@ summary_for_user: |
 - S-6 **비밀번호 빼기** (사용자 "빼기도 함"): 이미 된다 — 로그인 방식 목록의 '비밀번호' 줄에 '해제'가 있고, Better Auth `unlink-account`가 마지막 한 방식은 거부한다(`FAILED_TO_UNLINK_LAST_ACCOUNT`, 화면도 버튼을 막음). 코드를 바꾸지 않고 시험(V-6·V-7)으로 확인한다. 뺀 뒤 그 비밀번호로는 로그인되지 않는다.
 - S-7 **rc.1과의 관계**: 0.1.9-rc.1(intent 015)의 OAuth·`/mcp`·플러그인은 바꾸지 않는다. `list_notifications`의 결과 모양은 S-4만큼 넓어진다(필드 추가, 기계가 읽는 기존 필드는 그대로).
 - S-8 **새 제한** (AGENTS.md "새 제한은 spec에 적고 승인"). 전부 새 기능에만 걸린다. 기존 입력(로그인, 비밀번호 바꾸기, 키, 도구)은 하나도 거부하지 않는다.
-  - (새 제한 아님) 비밀번호 추가는 로그인한 지 1일 안의 세션만 받는다 — Better Auth `setPassword`의 기본 검사(`freshAge` 1일) 그대로, 사용자 "1일 (Better Auth 기본, 추천)". 넘으면 403과 안내.
+  - 비밀번호 추가는 로그인한 지 1일 안의 세션만 받는다 — Better Auth의 `freshAge`(기본 1일) 값, 사용자 "1일 (Better Auth 기본, 추천)". 넘으면 403과 안내. 검사는 Allot 경로가 한다(A-3: `setPassword`는 신선함을 보지 않음).
   - 관리자가 비밀번호 로그인을 꺼 두었으면 **서버도 비밀번호 추가를 거부**한다(409, 안내). 화면만 흐리게 하면 API로는 만들 수 있게 되므로. (끈다 = 관리 › 로그인 방식에서 '비밀번호' 방식을 꺼서 모두 OIDC·GitHub·Google로만 로그인하게 하는 것. 관리자 누구에게도 외부 로그인이 없으면 서버가 끄지 못하게 막는다 — spec 006 S-11.)
   - 이미 비밀번호가 있으면 거부(Better Auth `PASSWORD_ALREADY_SET` → 409). 바꾸기는 지금의 '비밀번호 변경'으로.
   - 읽음·만기 기록: 기록 하나(알림 id나 `계좌id@YYYY-MM` 문자열)는 1~200자, 한 요청에 더하기·빼기 합쳐 500개까지, 사용자당 종류별 2000개까지(넘으면 오래된 것부터 지움, 거부하지 않음). 화면에 나오는 알림 수를 줄이지 않는다 — 목록에서 사라진 알림의 읽음은 함께 지워지므로 보통 수십 개.
@@ -55,7 +55,7 @@ summary_for_user: |
 - `state`·`hashState`에는 넣지 않는다: 넣으면 알림을 읽기만 해도 대기 제안이 stale이 된다.
 
 ### 비밀번호 (W-5)
-- `POST /api/account/password` `{ newPassword }`(`server/account-routes.ts` 또는 routes): 비밀번호 로그인을 쓸 수 없으면 409 `{ code: 'PASSWORD_OFF' }`; 그다음 `getAuth().api.setPassword({ body, headers })`(정책 최소 길이는 기존 훅). Better Auth가 1일 신선함을 보고 `SESSION_NOT_FRESH`를 내면 403 `{ code: 'REAUTH' }`로 바꿔 답한다. 이미 있으면 409.
+- `POST /api/account/password` `{ newPassword }`(`server/account-routes.ts` 또는 routes): 비밀번호 로그인을 쓸 수 없으면 409 `{ code: 'PASSWORD_OFF' }`; 세션의 로그인 시각이 Better Auth `freshAge`(1일)보다 오래면 403 `{ code: 'REAUTH' }`(A-3); 그다음 `getAuth().api.setPassword({ body, headers })`(정책 최소 길이는 기존 훅). 이미 있으면 409.
 - `src/pages/Account.vue`: `hasPassword()`가 거짓이면 "비밀번호 추가" 칸(만들기·복사 포함). 성공하면 목록을 다시 읽는다. 문구는 ko/en.
 - 빼기는 기존 '해제'(S-6). '비밀번호' 줄의 확인 문구만 "이 비밀번호로는 더 로그인할 수 없어요"를 더할지는 화면을 보고(바꾸면 조정 기록).
 
@@ -91,6 +91,7 @@ summary_for_user: |
 <!-- - A-n (YYYY-MM-DD, W-n) 무엇을 · 왜 · 커밋 · 예전 입력 거부·새 제한: 있음|없음 -->
 - A-1 (2026-11-26, W-5) 비밀번호 로그인이 꺼졌을 때의 409(S-8)를 따로 판단 함수로 빼서 단위 시험하지 않음(V-5 문장 바꿈) · 그 함수가 값 하나를 그대로 돌려줄 뿐이라 시험할 것이 없고, 실제로 끄려면 관리자에게 외부 로그인이 연결되고 그 공급자가 설정돼 있어야 해(spec 006 S-11) 일회용 서버로는 만들기 어려움. 경로의 첫 줄(`usable(getAuthConfig(), 'password')`)을 리뷰로 확인 · 이 커밋 · 예전 입력 거부·새 제한: 없음
 - A-2 (2026-11-26, W-7) E2E 파일 이름을 `tests/e2e/account-notices.spec.ts`로(설계의 `rc2.spec.ts` 대신) · `rc2.spec.ts`는 0.1.7 rc.2의 시험으로 이미 있음 · W-7 커밋 · 예전 입력 거부·새 제한: 없음
+- A-3 (2026-11-26, W-5, W-7에서 발견) '로그인한 지 1일 안' 검사를 Allot 경로(`server/account-password.ts`)가 직접 함 · PM이 spec을 쓸 때 Better Auth `setPassword`가 1일 신선함을 본다고 적었으나 틀림: 1.7.27의 `setPassword`는 `sensitiveSessionMiddleware`(세션만 확인)를 쓰고 신선함(`freshSessionMiddleware`)은 보지 않음. API 검사에서 이틀 전 세션이 200을 받아 드러남(개발 확인 `wt2/.loctx/scratch/logs/nm-dev4.log`). 기준 값은 Better Auth의 `sessionConfig.freshAge`(기본 1일)를 그대로 읽음 — 사용자가 고른 '1일'과 같음 · 이 커밋 · 예전 입력 거부·새 제한: 없음(사용자가 고른 1일 제한을 실제로 걸 뿐, 기존 입력은 그대로)
 
 ## 우려
 - **처음 올리기와 계정**: 한 브라우저를 두 계정이 번갈아 쓰면 localStorage의 읽음이 어느 계정 것인지 알 수 없다(지금도 계정을 가리지 않음). 그 브라우저에서 rc.2로 처음 로그인한 계정에 올린다. 알림 id에는 계정의 행 id가 들어 있어 다른 계정에서는 대개 맞는 알림이 없어 해가 작다.
