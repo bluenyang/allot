@@ -66,6 +66,22 @@ test('isCandidate: text that only mentions a PR operation is data (false positiv
     'echo $(gh pr view 24 --json state) "merge"',
   ]) assert.equal(isCandidate(asInput(c)), false, c)
 })
+test('isCandidate: lines of file, listing and git commands that only mention a PR are data (false positives of 0.1.8)', () => {
+  for (const c of [
+    'cd wt && git merge --ff-only -q fix/x; git log --oneline -1; grep -h "gh pr merge" notes.md',
+    'git -C wt status --short; git log --format="%h %s" -3 -- notes/pr-merge.md',
+    'ls reports; cd reports && grep -c "gh pr create" a.log b.log',
+    'git diff --stat a..b; git show b:docs/x.md | grep -n "gh pr merge"',
+    'mkdir -p out && cut -c1-80 log | sort | uniq -c',
+    'git worktree add -q -b fix/x wt/x origin/master; git branch -d feat/y',
+    'git push -q -u origin docs/x; git fetch -q origin; git rev-parse v1^{commit}',
+  ]) assert.equal(isCandidate(asInput(c)), false, c)
+  for (const c of [
+    'cd wt && gh pr merge 24', 'git -c alias.m="!gh pr merge 24" m', 'git rebase -x "gh pr merge 24" master',
+    'git push --receive-pack="gh pr merge 24" origin x', 'find . -exec gh pr merge 1 \\;', 'ls; gh pr create --head x',
+    'git log --oneline -1 && gh pr merge 24', 'git difftool -x "gh pr merge 24"',
+  ]) assert.equal(isCandidate(asInput(c)), true, c)
+})
 test('isCandidate: command words are found behind separators, wrappers, substitutions and shells', () => {
   for (const c of [
     'git push x && gh pr merge 24', 'echo x; gh pr create --head x', 'echo x | gh pr merge 24', 'echo x\ngh pr merge 24',
