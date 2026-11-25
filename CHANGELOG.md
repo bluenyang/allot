@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased — 0.1.9
+## 0.1.9-rc.1 — 2026-11-25
 
 AI connections: Allot becomes the OAuth authorization server of its own MCP endpoint, and the repository is a plugin
-marketplace with seven skills. Spec 015 (`.agents/intent/015_ai-connection/spec.md`). Migrations 0039–0041 add the
+marketplace with seven skills. Released as a prerelease after the merge (PR #66, merged by the user: "머지함"). The version
+carries a hyphen, so the image is `ghcr.io/bluenyang/allot:0.1.9-rc.1` and `latest` does not move. Licensed under the GNU
+AGPL v3.0 or later from this version (`LICENSE`). Spec 015 (`.agents/intent/015_ai-connection/spec.md`). Migrations 0039–0041 add the
 OAuth tables (Better Auth's oauth-provider, jwt and cimd schemas), `oauth_app_use`, `mcp_proposal.source_kind`
 (existing proposals: `api_key`), the `oauth` app setting and the change-history actor `oauth_app`. Nothing an API key,
 a tool or `/api/mcp` accepted before is refused.
