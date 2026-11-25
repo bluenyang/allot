@@ -52,29 +52,35 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
   function runInner(closer, asBody) {
     let seg = null
     let word = null
-    let wq = false // the current word starts with a quoted or escaped character
+    let wq = false // the first character of the current word was quoted or escaped
+    let wany = false // some part of the current word was quoted or escaped
     const pending = []
     const getSeg = () => (seg ??= { words: [], quoted: [], dyn: false, ansi: false, heredocs: [] })
-    const endWord = () => { if (word !== null) { getSeg().words.push(word); getSeg().quoted.push(wq); word = null; wq = false } }
+    const endWord = () => { if (word !== null) { getSeg().words.push(word); getSeg().quoted.push(wq); word = null; wq = false; wany = false } }
     const endSeg = () => { endWord(); if (seg) { out.push(seg); seg = null } }
-    const add = (t) => { word = (word ?? '') + t }
+    // q: the text comes from quotes or an escape (`''*` is a glob: its first character is not quoted)
+    const add = (t, q = false) => {
+      if (q) wany = true
+      if ((word ?? '') === '' && t !== '') wq = q
+      word = (word ?? '') + t
+    }
     const mark = () => { getSeg().dyn = true; add(PH) }
 
     const dq = (end = '"') => { // i is just after the opening quote (end: null = to the end of the text)
-      add('')
+      add('', true)
       while (i < n && s[i] !== end) {
         const d = s[i]
         if (d === '\\') {
           const nx = s[i + 1]
           if (nx === '\n') { i += 2; continue }
-          if (nx !== undefined && '"\\$`'.includes(nx)) { add(nx); i += 2; continue }
-          add(d); i++; continue
+          if (nx !== undefined && '"\\$`'.includes(nx)) { add(nx, true); i += 2; continue }
+          add(d, true); i++; continue
         }
         if (d === '$' && s[i + 1] === '(') { i += 2; mark(); run(')'); continue }
         if (d === '`') { i++; mark(); run('`'); continue }
         if (d === '$' && s[i + 1] === '{') { mark(); skipBraces(); continue }
         if (d === '$' && /[A-Za-z_0-9@*#?!$-]/.test(s[i + 1] ?? '')) { mark(); i++; continue }
-        add(d); i++
+        add(d, true); i++
       }
       if (end !== null && i >= n) throw new Error("malformed: unterminated quote")
       i++
@@ -87,20 +93,16 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
       if (closer && c === closer) { i++; endSeg(); return }
       if (c === "'") {
         const j = s.indexOf("'", i + 1)
-        if (word === null) wq = true
-        add('')
-        if (j < 0) { throw new Error("malformed: unterminated quote"); add(s.slice(i + 1)); i = n } else { add(s.slice(i + 1, j)); i = j + 1 }
+        add('', true)
+        if (j < 0) { throw new Error("malformed: unterminated quote"); add(s.slice(i + 1)); i = n } else { add(s.slice(i + 1, j), true); i = j + 1 }
       } else if (c === '"') {
-        if (word === null) wq = true
         i++; dq()
       } else if (c === '$' && s[i + 1] === "'") {
-        if (word === null) wq = true
         i += 2; mark(); getSeg().ansi = true
         while (i < n && s[i] !== "'") i += s[i] === '\\' ? 2 : 1
         if (i >= n) throw new Error("malformed: unterminated $'")
         i++
       } else if (c === '$' && s[i + 1] === '"') {
-        if (word === null) wq = true
         i += 2; mark(); getSeg().ansi = true; dq()
       } else if (c === '$' && s[i + 1] === '(') {
         i += 2; mark(); run(')')
@@ -112,10 +114,10 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
         i++; mark(); run('`')
       } else if (c === '\\') {
         if (s[i + 1] === '\n') i += 2
-        else { if (i + 1 < n) { if (word === null) wq = true; add(s[i + 1]) } i += 2 }
+        else { if (i + 1 < n) add(s[i + 1], true); i += 2 }
       } else if (c === '#' && word === null) {
         while (i < n && s[i] !== '\n') i++
-      } else if ((c === '<' || c === '>') && word !== null && !(!wq && /^\d*[<>&]*$/.test(word))) {
+      } else if ((c === '<' || c === '>') && word !== null && !(!wany && /^\d*[<>&]*$/.test(word))) {
         // an unquoted < or > ends the word before it (`o/r>`, `''>`, `.<`), unless that word is a descriptor number
         // (`2>`) or the operator itself (`>>`, `&>`): the shell does the same (review 5 G-2). The operator is read next.
         endWord()
