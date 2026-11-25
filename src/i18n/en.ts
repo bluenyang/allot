@@ -100,7 +100,7 @@ export const en = {
     noticeGroups: { all: 'All', pending: 'Pending', pay: 'Payments', budget: 'Budget' },
     noticeUnread: 'Unread',
     noticeEmpty: 'No notifications right now',
-    noticeFoot: 'Payments and rounds from 3 days before · read marks stay in this browser only',
+    noticeFoot: 'Payments and rounds from 3 days before · read marks are kept on your account, the same on every device',
     noticeToday: 'today',
     noticeDday: 'in {n} d',
     notice: {

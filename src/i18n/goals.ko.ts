@@ -21,8 +21,8 @@ export const goalsKo = {
     toHistory: '변경 내역',
     maturityTitle: '만기',
     maturityBody: '{name} · {ym} 만기예요. 이 통장으로 보내기를 멈출까요?',
-    maturityHint: '멈추면 {ym}부터 이 상품 금액이 0이 되어 여유로 남아요. 변경 내역에서 되돌릴 수 있어요. 계속 보내기는 이 브라우저에만 기억해요.',
-    maturityKept: '{name}으로 계속 보내요. 이 브라우저에만 기억해요',
+    maturityHint: '멈추면 {ym}부터 이 상품 금액이 0이 되어 여유로 남아요. 변경 내역에서 되돌릴 수 있어요. 계속 보내기는 계정에 기억해서 다른 기기에서도 다시 묻지 않아요.',
+    maturityKept: '{name}으로 계속 보내요. 다른 기기에서도 다시 묻지 않아요',
   },
 } as const
 
