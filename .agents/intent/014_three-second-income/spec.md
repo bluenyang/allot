@@ -8,6 +8,19 @@ approvals:
     at: "2026-11-24"
     words: "진행"
     rev: 4e6e094
+  - role: user
+    kind: screen-check
+    by: BlueNyang
+    at: "2026-11-25"
+    words: "확인했음, stable"
+    rev: 603b0ad
+    note: "V-8: 0.1.8-rc.1을 :15173에 올린 뒤(stage 603b0ad) PM 질문 'rc.1 화면 확인을 보셨나요?'에 고른 답. rc는 하나(rc.1)뿐."
+  - role: user
+    kind: stable
+    by: BlueNyang
+    at: "2026-11-25"
+    words: "stable 내어봐."
+    rev: 603b0ad
 summary_for_user: |
   0.1.8은 작업 단위 8개(W-1~W-8)입니다. 데이터와 계산, 수입 화면, 새 홈(3초), '여유'라는 말, 다른 예산 화면의 첫 줄, MCP, 시험·문서를 차례로 합니다.
   지금의 '월 실수령'은 옮기지 않고 그대로 '월급'의 예상 금액으로 씁니다. 그래서 마이그레이션은 새 표 셋만 더하고, 수입을 하나도 적지 않은 사용자는 모든 금액이 지금과 같습니다.
