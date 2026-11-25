@@ -117,9 +117,10 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
         else { if (i + 1 < n) add(s[i + 1], true); i += 2 }
       } else if (c === '#' && word === null) {
         while (i < n && s[i] !== '\n') i++
-      } else if ((c === '<' || c === '>') && word !== null && !(!wany && /^\d*[<>&]*$/.test(word))) {
+      } else if ((c === '<' || c === '>') && word !== null && !(!wany && /^(?:\d*|\{[A-Za-z_]\w*\})[<>&]*$/.test(word))) {
         // an unquoted < or > ends the word before it (`o/r>`, `''>`, `.<`), unless that word is a descriptor number
-        // (`2>`) or the operator itself (`>>`, `&>`): the shell does the same (review 5 G-2). The operator is read next.
+        // (`2>`), a named one (`{fd}>`, review 6 H-1) or the operator itself (`>>`, `&>`): the shell does the same
+        // (review 5 G-2). The operator is read next.
         endWord()
       } else if (c === '<' && s.startsWith('<<<', i)) {
         add('<<<'); i += 3
