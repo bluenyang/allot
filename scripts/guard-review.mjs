@@ -94,7 +94,7 @@ const GREP_PROGRAMS = new Set(['grep', 'egrep', 'fgrep'])
 // More plain programs (retro 0.1.8, user: "보호는 두고 오탐만 줄임" — about ten harmless lines were refused in 0.1.8):
 // they read, list or compare files and run no program named in their arguments, whatever their options
 // (sort can, so it has an option list above). A line that also runs git is checked for writes (isPlainLine).
-const DATA_PROGS = new Set(['ls', 'cd', 'pwd', 'mkdir', 'uniq', 'cut', 'tr', 'diff', 'cmp', 'date', 'basename', 'dirname',
+const DATA_PROGS = new Set(['ls', 'cd', 'pwd', 'mkdir', 'cut', 'tr', 'diff', 'cmp', 'date', 'basename', 'dirname',
   'realpath', 'readlink', 'stat', 'du', 'df', 'file', 'nl', 'tac', 'rev', 'column', 'jq', 'true', 'false'])
 // git subcommands that run no command of the user's; with any option that can (an exec, a pack or diff program) they are not plain
 const GIT_DATA = new Set(['status', 'log', 'show', 'diff', 'add', 'restore', 'rm', 'mv', 'fetch', 'pull', 'push', 'branch', 'checkout',
@@ -142,6 +142,17 @@ function isPlainData(seg) {
     return rest.every((x) => !x.startsWith('-') || x === '-' || PLAIN_OPTIONS[prog].test(x))
   }
   if (DATA_PROGS.has(prog)) return true
+  // uniq writes its second operand: one operand at most, and only the listed options (review 2 G-2)
+  if (prog === 'uniq') {
+    let operands = 0
+    for (let i = 0; i < rest.length; i++) {
+      const x = rest[i]
+      if (/^-[fsw]$/.test(x)) { i++; continue }
+      if (x === '-' || !x.startsWith('-')) operands++
+      else if (!/^-(?:[cdDiuz]+|[fsw]\d+)$/.test(x)) return false
+    }
+    return operands <= 1
+  }
   if (prog === 'git') {
     // the parser drops quotes, so a quoted "<" or ">&" looks like a redirection and stripRedirs drops the word after it:
     // look for an option that runs a program among all the words (review 2 G-1)
@@ -182,7 +193,9 @@ const GIT_FILE = /(?:^|[/=:])\.git(?:$|\/|attributes|config|modules)|\/git\/(?:c
 function writesFile(words) {
   for (let i = 0; i < words.length; i++) {
     const w = words[i]
-    if (!w.includes('>') || /^\d*>&\d*-?$/.test(w) || /^\d*(?:>>?|&>>?|>\|)\/dev\/null$/.test(w)) continue
+    // `>&2` copies a descriptor; a standalone `>&` before a word that is not a descriptor writes that file (review 2 G-2)
+    if (/^\d*>&$/.test(w)) { if (/^(?:\d+-?|-)$/.test(words[i + 1] ?? '')) { i++; continue } return true }
+    if (!w.includes('>') || /^\d*>&\d+-?$|^\d*>&-$/.test(w) || /^\d*(?:>>?|&>>?|>\|)\/dev\/null$/.test(w)) continue
     if (/^\d*(?:>>?|&>>?|>\|)$/.test(w) && words[i + 1] === '/dev/null') { i++; continue }
     return true
   }

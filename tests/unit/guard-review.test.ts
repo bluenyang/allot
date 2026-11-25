@@ -96,11 +96,15 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     // a quoted "<" or ">&" is an argument, not a redirection: the word after it is still read (review 2 G-1)
     'git fetch . "<" "--upload-pack=gh pr merge 24;:"', 'git fetch . ">&" "--upl=gh pr merge 24;:"',
     'git pull . "<" "--upload-pack=gh pr merge 24;:"', 'git commit -m x "<" "--exec=gh pr merge 24"',
+    // `>& file` writes the file; uniq writes its second operand (review 2 G-2)
+    "printf 'x: gh pr merge 24' >& lefthook-local.yml && git commit -m x", "printf 'x: gh pr merge 24' 2>& hooks.yml; git push -q origin x",
+    "uniq - lefthook-local.yml <<'E'\ngh pr merge 24\nE\ngit push -q origin x", 'uniq -c a.txt b.txt; grep "gh pr merge" a.txt',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
   // writing nowhere (/dev/null, another descriptor) keeps a git line plain
   for (const c of [
     'git log --oneline -3 2>/dev/null; grep -h "gh pr merge" notes.md',
     'git status --short >&2; grep -c "gh pr create" a.log 2>&1', 'git fetch -q origin 2> /dev/null && sort -n -k2 notes | grep "gh pr merge"',
+    'git log --oneline -3 2>& 1; grep -h "gh pr merge" notes.md', 'git log -3 | uniq -c -f 1 | grep "gh pr merge"',
   ]) assert.equal(isCandidate(asInput(c)), false, c)
 })
 test('isCandidate: command words are found behind separators, wrappers, substitutions and shells', () => {
