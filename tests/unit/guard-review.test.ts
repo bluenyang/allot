@@ -110,6 +110,7 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     'git log --oneline -3 2>/dev/null; grep -h "gh pr merge" notes.md',
     'git status --short >&2; grep -c "gh pr create" a.log 2>&1', 'git fetch -q origin 2> /dev/null && sort -n -k2 notes | grep "gh pr merge"',
     'git log --oneline -3 2>& 1; grep -h "gh pr merge" notes.md', 'git log -3 | uniq -c -f 1 | grep "gh pr merge"',
+    'git log -3 >& /dev/null; grep -h "gh pr merge" notes.md', 'git log -3 | uniq --count --skip-fields=1 | grep "gh pr merge"',
   ]) assert.equal(isCandidate(asInput(c)), false, c)
 })
 test('isCandidate: command words are found behind separators, wrappers, substitutions and shells', () => {
