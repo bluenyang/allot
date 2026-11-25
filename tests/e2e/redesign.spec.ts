@@ -759,7 +759,8 @@ test('(V-8, W-8) 설정 and 관리: what does not exist yet is a visible, inert 
   await expect(page.getByRole('button', { name: /일정 추가/ })).toBeVisible()
   await expect(page.getByText('원화 고정', { exact: false }).first()).toBeVisible()
   const cases: [string, string[]][] = [
-    ['settings/ai', ['+ 모델 연결', '연결된 앱 관리']],
+    // '연결된 앱 관리' is a real list since spec 015 S-10 (tests/e2e/oauth.spec.ts)
+    ['settings/ai', ['+ 모델 연결']],
   ]
   for (const [route, names] of cases) {
     await page.goto(`/${route}`)
