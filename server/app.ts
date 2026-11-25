@@ -113,6 +113,14 @@ root.on(['GET', 'HEAD'], '/.well-known/openid-configuration', forwardToAuth)
 root.all('/.well-known/*', (c) => c.json({ error: 'not found' }, 404))
 mountRootMcp(root, clientIp)
 
+// spec 015, review 1 R1-3: the OAuth sign-in and consent screens are never shown inside another site's frame
+// (their Allow button must not be clickjacked). Only these paths: framing elsewhere is unchanged.
+root.use('/oauth/*', async (c, next) => {
+  await next()
+  c.header('Content-Security-Policy', "frame-ancestors 'none'")
+  c.header('X-Frame-Options', 'DENY')
+})
+
 // Production image: serve the built front end, and index.html for any other path (SPA).
 const staticDir = process.env.STATIC_DIR
 if (staticDir) {
