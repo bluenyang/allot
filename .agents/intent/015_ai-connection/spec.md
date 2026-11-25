@@ -168,7 +168,7 @@ summary_for_user: |
 - [x] W-8 설치 묶음: Claude Code 마켓플레이스·플러그인 둘, Codex 확인과 묶음, Gemini 확장(Antigravity 확인), 스킬 ZIP 스크립트(S-14).
 - [x] W-9 서버 안내문과 도구 annotations 확인(S-15, S-16).
 - [x] W-10 문서: README, API 문서, CHANGELOG, env 예시.
-- [ ] W-11 시험: OAuth API 검사, E2E, 키 회귀.
+- [x] W-11 시험: OAuth API 검사, E2E, 키 회귀.
 
 ## 검증 기준
 모든 검사는 `scripts/check-run.sh`로 돌리고 `pnpm check:logs`를 통과해야 증거로 친다. 시험 서버는 :15174만 쓴다. DB에 직접 쓰는 검사는 `disposable.sh`로 돈다.
