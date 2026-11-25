@@ -22,7 +22,7 @@ export const connectKo = {
       title: '스킬 받기',
       desc: '스킬마다 ZIP 하나예요. claude.ai에서는 Customize › Skills에 하나씩 올려요.',
       download: '받기',
-      none: '이 서버에는 스킬 ZIP이 없어요(이미지로 띄운 서버에만 있어요).',
+      none: '이 서버에는 스킬이 없어요(서버 폴더에 skills/가 없어요).',
       failed: '스킬 목록을 불러오지 못했어요.',
       names: {
         'allot-month-start': '월초 점검',

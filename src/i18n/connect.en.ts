@@ -24,7 +24,7 @@ export const connectEn: ConnectMessages = {
       title: 'Download the skills',
       desc: 'One ZIP per skill. On claude.ai, upload them one by one under Customize › Skills.',
       download: 'Download',
-      none: 'This server has no skill ZIPs (only a server started from the image has them).',
+      none: 'This server has no skills (its folder has no skills/).',
       failed: 'Could not load the skills.',
       names: {
         'allot-month-start': 'Month start',
