@@ -37,9 +37,11 @@ async function readInOneSeenInAnother(page: Page, browser: Browser) {
   await bell.click()
   await page.getByRole('button', { name: '모두 읽음' }).click()
   await expect(page.getByRole('button', { name: '알림 · 읽지 않음 0건' })).toBeVisible()
-  const after = await marks(page)
-  added = after.read.filter((id) => !before.read.includes(id))
-  expect(added.length).toBeGreaterThan(0)
+  // the screen shows them at once; the save goes after the read the bell started when it opened (review rc.2-1 R1-1, R1-2)
+  await expect.poll(async () => {
+    added = (await marks(page)).read.filter((id) => !before.read.includes(id))
+    return added.length
+  }, { timeout: 15_000 }).toBeGreaterThan(0)
 
   // the same account in another browser context (its own storage): the marks come from the account
   const other = await browser.newContext({ storageState: 'tests/e2e/.auth.json', locale: 'ko-KR', timezoneId: 'Asia/Seoul' })
