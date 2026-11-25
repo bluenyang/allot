@@ -12,6 +12,7 @@ import { listSets } from '../changes'
 import { asUser } from '../db/scope'
 import { issueText } from '../messages'
 import { AI_LISTS, AI_SINGLES, RESOURCES, singleSchema } from '../ops'
+import { instructionsFor } from './instructions'
 import { applyProposal, getProposal, MAX_OPS, pendingCount, propose, ProposalError, proposalText, type KeyInfo, type ProposalView } from '../proposals'
 import { readState } from '../state'
 import { SEARCH_KINDS } from '../../src/lib/search'
@@ -145,12 +146,7 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
 }
 
 export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServer {
-  const base = 'one person\'s Allot data: monthly salary distribution, the incomes and what was received, the living, savings and investment budgets, bank accounts with their balances and cards, subscriptions, one-off spendings, scheduled plan changes and the change history. Amounts are whole KRW; dates are ISO (YYYY-MM-DD, months YYYY-MM); "today" and "this month" (every default month and D-n) are in the user\'s time zone (a display setting, default Asia/Seoul). The remainder (what comes in leaves after every allocation target and the month\'s spendings; the fields keep the name remainder) is called 여유 in the Korean app and Left over in the English one: use that word with the user.'
-  const server = new McpServer({ name: 'allot', version: SERVER_VERSION }, {
-    instructions: key
-      ? `Access to ${base} You can read it and propose changes; a proposal never changes anything until the user confirms it (${key.confirm === 'ui' ? 'in the Allot app, under Pending changes' : 'in this conversation, then you call apply_proposal'}).`
-      : `Read-only access to ${base}`,
-  })
+  const server = new McpServer({ name: 'allot', version: SERVER_VERSION }, { instructions: instructionsFor(key) })
   const data = () => asUser(uid, (q) => readState(q, uid)) as Promise<Data>
   /** "Today" in the user's time zone (spec 013 S-22). */
   const dayOf = (d: Data) => todayIn(d.preferences?.timezone)
