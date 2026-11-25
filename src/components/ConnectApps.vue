@@ -70,7 +70,7 @@ function show(app: ConnectApp) {
 </script>
 
 <template>
-  <section class="card" :aria-labelledby="'ca-title'">
+  <section class="card ca-card" :aria-labelledby="'ca-title'">
     <div class="ch"><h2 id="ca-title">{{ t('connect.title') }} <span class="hint plain">{{ t('connect.sub') }}</span></h2></div>
     <p v-if="off" class="hint ca-off" role="note">{{ t('connect.oauthOff') }}</p>
     <ul class="ca-apps" :aria-label="t('connect.title')">
@@ -128,6 +128,9 @@ function show(app: ConnectApp) {
 </template>
 
 <style>
+.ca-card .ch{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.ca-card .ch h2{margin:0;font-size:15px;font-weight:600}
+.ca-card .hint.plain{font-weight:400}
 .ca-apps{list-style:none;margin:0;padding:12px 18px 4px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
 .ca-app{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:56px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);color:var(--text);text-align:left;cursor:pointer}
 .ca-app:hover,.ca-app:focus-visible{border-color:var(--border-strong);background:var(--surface-2)}
@@ -141,8 +144,9 @@ function show(app: ConnectApp) {
 .ca-t{flex:1;margin:0;font-size:17px;font-weight:700}
 .ca-d{margin:4px 0 12px;font-size:12px}
 .ca-warn{margin:0 0 12px;padding:10px 12px;border-radius:var(--r-ctl);background:var(--warn-soft, var(--fill));color:var(--text);font-size:13px}
-.ca-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px}
-.ca-steps li{display:flex;flex-direction:column;gap:6px;line-height:1.5}
+.ca-steps{margin:0;padding:0;list-style:none;counter-reset:ca;display:flex;flex-direction:column;gap:12px}
+.ca-steps li{counter-increment:ca;position:relative;padding-left:30px;display:flex;flex-direction:column;gap:6px;line-height:1.5}
+.ca-steps li::before{content:counter(ca);position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:50%;background:var(--fill);color:var(--text-2);font-size:12px;font-weight:600;display:grid;place-items:center}
 .ca-steps li.dim > span:first-child{opacity:.55}
 .ca-why{font-size:12px}
 .ca-notes{margin:14px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
