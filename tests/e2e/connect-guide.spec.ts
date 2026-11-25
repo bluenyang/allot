@@ -66,7 +66,11 @@ test('with OAuth off, the OAuth-only apps are dimmed and say why; the others are
 
 test('a failed oauth-apps answer dims nothing; the dialog also closes with 닫기 and a click outside (review rc.3-1 R1-5)', async ({ page }) => {
   await page.route('**/api/oauth-apps', (r) => r.fulfill({ status: 500, json: { error: 'x' } }))
+  // both readers (this card and the connected-apps list) got the failure before the check (review rc.3-2 R2-1)
+  let answered = 0
+  page.on('response', (r) => { if (r.url().endsWith('/api/oauth-apps')) answered++ })
   await page.goto('/settings/ai')
+  await expect.poll(() => answered).toBeGreaterThanOrEqual(2)
   for (const name of APPS) await expect(tile(page, name)).not.toHaveClass(/dim/)
   await tile(page, 'ChatGPT').click()
   await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
