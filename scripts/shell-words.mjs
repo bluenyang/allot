@@ -41,6 +41,7 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
   const scanBody = (text) => {
     const inner = parseShell(text, { nlSpace, body: true })
     if (inner.weird) out.weird = true
+    if (inner.ambiguous) out.ambiguous = true
     out.push(...inner)
   }
 
@@ -92,8 +93,9 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
       const c = s[i]
       if (closer && c === closer) { i++; endSeg(); return }
       // bash and zsh read these differently before < or >: bash takes `12` and `{a[0]}` as descriptors, zsh as words
-      // (its descriptors are 0-9 and {name}). No reading suits both shells: the line is weird (review 8 J-1, J-2).
-      if ((c === '<' || c === '>') && word !== null && !wany && /^(?:\d{2,}|\{[A-Za-z_]\w*\[[^\]]*\]\})$/.test(word)) out.weird = true
+      // (its descriptors are 0-9 and {name}). No reading suits both shells: the line is `ambiguous` (review 8 J-1, J-2),
+      // a flag of its own so guard-env, which reads `weird` its own way, decides as before (review 9 K-1).
+      if ((c === '<' || c === '>') && word !== null && !wany && /^(?:\d{2,}|\{[A-Za-z_]\w*\[[^\]]*\]\})$/.test(word)) out.ambiguous = true
       if (c === "'") {
         const j = s.indexOf("'", i + 1)
         add('', true)
