@@ -1,0 +1,31 @@
+{
+  "name": "allot-key",
+  "version": "0.1.9",
+  "description": "Connect your self-hosted Allot server with an Allot API key and use seven money skills: month start, payday, month end, subscriptions, receipts, spending plan, assets. Every change is a proposal you confirm.",
+  "author": { "name": "BlueNyang" },
+  "homepage": "https://github.com/bluenyang/allot",
+  "repository": "https://github.com/bluenyang/allot",
+  "keywords": ["allot", "budget", "money", "mcp"],
+  "userConfig": {
+    "server_url": {
+      "type": "string",
+      "title": "Allot MCP address",
+      "description": "Your Allot server's MCP address, e.g. https://allot.example.com/mcp or http://192.168.0.10:15173/mcp (Settings › AI in Allot shows it).",
+      "required": true
+    },
+    "api_key": {
+      "type": "string",
+      "title": "Allot API key",
+      "description": "An API key made in Allot under Settings › AI (allot_…). It is kept as a secret.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "mcpServers": {
+    "allot": {
+      "type": "http",
+      "url": "${user_config.server_url}",
+      "headers": { "Authorization": "Bearer ${user_config.api_key}" }
+    }
+  }
+}

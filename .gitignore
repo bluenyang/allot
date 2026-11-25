@@ -23,3 +23,6 @@ tests/e2e/.auth.json
 test-results/
 playwright-report/
 dist-server/
+
+# claude.ai skill uploads (scripts/skills-zip.mjs)
+dist-skills/

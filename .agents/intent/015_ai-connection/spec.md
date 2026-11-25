@@ -165,7 +165,7 @@ summary_for_user: |
 - [x] W-5 `/mcp`: 키와 OAuth, 연결 확인, 범위→도구, 호출 제한, 제안 출처·적용·변경 내역(S-6, S-7, S-9, S-11).
 - [x] W-6 연결된 앱: 경로, 설정 화면 목록·끊기, 관리 스위치 화면(S-10).
 - [x] W-7 스킬 7개(S-13).
-- [ ] W-8 설치 묶음: Claude Code 마켓플레이스·플러그인 둘, Codex 확인과 묶음, Gemini 확장(Antigravity 확인), 스킬 ZIP 스크립트(S-14).
+- [x] W-8 설치 묶음: Claude Code 마켓플레이스·플러그인 둘, Codex 확인과 묶음, Gemini 확장(Antigravity 확인), 스킬 ZIP 스크립트(S-14).
 - [ ] W-9 서버 안내문과 도구 annotations 확인(S-15, S-16).
 - [ ] W-10 문서: README, API 문서, CHANGELOG, env 예시.
 - [ ] W-11 시험: OAuth API 검사, E2E, 키 회귀.
@@ -217,6 +217,9 @@ summary_for_user: |
 - A-10 (2026-11-25, W-5) 변경 내역의 행위자 종류 `oauth_app`을 enum에 더함(마이그레이션 0041), 변경 내역의 AI 칩은 `api_key`와 `oauth_app`을 함께 셈. 대기 중인 변경은 앱의 연결이 끊기면 "앱의 연결이 끊겼거나…"로 안내 · 설계의 `{ kind: 'oauth_app', id }`를 그대로 하려면 필요 · 이 커밋 · 예전 입력 거부·새 제한: 없음
 - A-11 (2026-11-25, W-5) 루트 `/mcp`에 토큰 없이 온 첫 요청은 주소별 실패로 세지 않음 · OAuth 클라이언트는 401을 받고서야 인가를 시작하므로; 틀린 키·토큰은 지금처럼 셈 · 이 커밋 · 예전 입력 거부·새 제한: 없음
 - A-12 (2026-11-25, W-7) 스킬은 잔액 기록을 통장 화면으로 안내하지 않고 `propose_changes`의 `balances`로 제안함 · S-13의 예("잔액 기록은 AI가 바꿀 수 없으니")가 틀림: 0.1.7(spec 013 S-10)부터 잔액 기록은 제안할 수 있음(`server/ops.ts` AI_LISTS). 못 하는 일 안내는 은행·카드사·명세서 읽기, 돈 옮기기, 표시 설정 등으로 · 이 커밋 · 예전 입력 거부·새 제한: 없음
+- A-13 (2026-11-25, W-8) 두 플러그인을 `plugins/allot`·`plugins/allot-key`에 두고(설계의 루트 `./` 대신), 스킬은 루트 `skills/` 하나를 `scripts/plugins-sync.mjs`로 복사해 커밋, `tests/unit/plugins.test.ts`가 같은지 봄 · 루트를 플러그인으로 하면 CLAUDE.md를 플러그인으로 읽어 `--strict`가 실패하고 설치 때 저장소 전체가 복사됨; 설치된 플러그인은 자기 폴더 밖을 못 읽음(설계가 정한 "아니면 스크립트로 복사") · MCP 설정은 `.mcp.json` 대신 plugin.json 안에(루트 `.mcp.json`은 이 저장소를 여는 Claude Code가 프로젝트 MCP로 읽음) · 이 커밋 · 예전 입력 거부·새 제한: 없음
+- A-14 (2026-11-25, W-8) Gemini 확장의 맥락 파일 이름을 `ALLOT.md`로(설계의 `GEMINI.md` 대신) · 루트 `GEMINI.md`는 이 저장소에서 Gemini CLI를 여는 개발자에게 프로젝트 맥락으로 읽혀 잘못 안내함 · 이 커밋 · 예전 입력 거부·새 제한: 없음
+- A-15 (2026-11-25, W-8) Codex용 따로 묶음 없음 · 확인 결과(codex-cli 0.167.0, 격리한 CODEX_HOME): Codex가 `.claude-plugin/marketplace.json`을 읽고 `allot@allot`을 설치해 스킬 7개가 들어감. 플러그인의 MCP 주소(`${user_config.server_url}`)는 풀지 않지만 `codex mcp add allot --url …`로 더한 사용자 설정이 같은 이름을 덮음. Antigravity CLI(agy 1.5.14, 격리한 HOME)도 Claude Code 플러그인을 변환해 스킬 7개를 설치, MCP는 `agy mcp add`. 이 기계의 Gemini CLI는 0.1.9(확장 명령 없음)라 Gemini 확장은 형식만 확인(단위 시험) · 이 커밋 · 예전 입력 거부·새 제한: 없음
 - A-7 (2026-11-25, W-3) 스위치 값은 `app_setting`의 `oauth` 행(마이그레이션 0040이 id 검사에 `oauth`를 더함) · 키 정책과 같은 자리 · 이 커밋 · 예전 입력 거부·새 제한: 없음
 
 ## 우려

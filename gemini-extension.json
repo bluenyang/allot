@@ -1,0 +1,6 @@
+{
+  "name": "allot",
+  "version": "0.1.9",
+  "description": "Seven money skills for your self-hosted Allot server: month start, payday, month end, subscriptions, receipts, spending plan, assets. Add the server with: gemini mcp add --transport http allot https://<your-host>/mcp",
+  "contextFileName": "ALLOT.md"
+}

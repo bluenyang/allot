@@ -1,0 +1,19 @@
+{
+  "name": "allot",
+  "owner": { "name": "BlueNyang" },
+  "metadata": {
+    "description": "Allot, a self-hosted money planner: connect your own Allot server to Claude and use its skills."
+  },
+  "plugins": [
+    {
+      "name": "allot",
+      "source": "./plugins/allot",
+      "description": "Connect your self-hosted Allot server over OAuth (sign in and consent in Allot) and get seven money skills: month start, payday, month end, subscriptions, receipts, spending plan, assets."
+    },
+    {
+      "name": "allot-key",
+      "source": "./plugins/allot-key",
+      "description": "The same Allot skills, connected with an Allot API key instead of OAuth (for a server on a private network, or when OAuth is off)."
+    }
+  ]
+}
