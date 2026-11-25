@@ -14,6 +14,9 @@ test('parseShell: each word says whether its first character was quoted or escap
   const [seg] = parseShell(`git fetch . "<" x 2>/dev/null \\< 'a'b c"d" <"/dev/null" 2>'f'`)
   assert.deepEqual(seg.words, ['git', 'fetch', '.', '<', 'x', '2>/dev/null', '<', 'ab', 'cd', '</dev/null', '2>f'])
   assert.deepEqual(seg.quoted, [false, false, false, true, false, false, true, true, false, false, false])
+  // an unquoted < or > ends the word before it, but not a descriptor number or the operator itself
+  assert.deepEqual(parseShell(`x o/r> v ''>f .<g 2>>e 2>&1 &>/dev/null a>>b`)[0].words,
+    ['x', 'o/r', '>', 'v', '', '>f', '.', '<g', '2>>e', '2>&1', '&>/dev/null', 'a', '>>b'])
 })
 
 const script = resolve('scripts/guard-review.mjs')
@@ -130,6 +133,9 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     // gh takes the word after a flag as its value: only -R/--repo/-H/--hostname may stand before a subcommand (review 5 G-1)
     'gh pr -t view merge 1', 'gh pr --subject view merge 1', 'gh pr -b view merge 1', 'gh pr --body view merge 1',
     'gh -t run pr merge 1', 'gh pr --title view create --head x',
+    // an unquoted < or > ends the word before it, as in the shell (review 5 G-2)
+    'gh pr -R o/r> view merge 1', "gh -R ''> run pr merge 1", 'gh -R o/r< run pr merge 1',
+    "mkdir -p switch && git -C .< switch -c 'core.fsmonitor=gh pr merge 1;:' status",
   ]) assert.equal(isCandidate(asInput(c)), true, c)
   for (const c of [
     'gh pr view 24 --json body -q .body | grep "gh pr merge"', 'gh -R o/r pr view 24; grep "gh pr merge" a.log',

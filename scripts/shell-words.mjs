@@ -115,6 +115,10 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
         else { if (i + 1 < n) { if (word === null) wq = true; add(s[i + 1]) } i += 2 }
       } else if (c === '#' && word === null) {
         while (i < n && s[i] !== '\n') i++
+      } else if ((c === '<' || c === '>') && word !== null && !(!wq && /^\d*[<>&]*$/.test(word))) {
+        // an unquoted < or > ends the word before it (`o/r>`, `''>`, `.<`), unless that word is a descriptor number
+        // (`2>`) or the operator itself (`>>`, `&>`): the shell does the same (review 5 G-2). The operator is read next.
+        endWord()
       } else if (c === '<' && s.startsWith('<<<', i)) {
         add('<<<'); i += 3
       } else if (c === '<' && s[i + 1] === '<') {
