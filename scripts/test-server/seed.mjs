@@ -1,4 +1,4 @@
-// Idempotent FAKE data for the test account on the throwaway test server (:15174 only), so the E2E
+// Idempotent FAKE data for the test account on a throwaway server (:15174, or the disposable API of disposable.sh on :15184; lib.mjs refuses any other), so the E2E
 // find what they assume: settings and living costs, one target of each kind, a subscription with a
 // plan change, a phase covering the current month with an amount for the fixed target, a check item.
 // Every row is made up and named "Seed ..."; a row is created only if it is missing, so a second
