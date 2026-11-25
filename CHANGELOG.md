@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — 0.1.9-rc.3
+
+How to connect each AI app, inside the app. Spec 017 (`.agents/intent/017_rc3-app-connect-guide/spec.md`). No migration.
+
+### Added
+- **Connect an app** (Settings › AI & integrations): nine apps — Claude Code (plugin with OAuth, plugin with an API key),
+  claude.ai with the desktop and phone apps, ChatGPT, Codex, Gemini CLI, Antigravity CLI, an API key directly, and other
+  agents by hand. Each opens a dialog with the steps, this server's MCP address in the commands, copy buttons and the
+  official help links. When external app connections (OAuth) are not possible on the server, the apps that need them
+  are dimmed with the reason. The key command that card showed before is in the API key dialog.
+- **Skills download**: each of the seven skills as a ZIP for claude.ai (`GET /api/skills`, `GET /api/skills/<name>.zip`,
+  signed in). The image carries `skills/`; `scripts/skills-zip.mjs` makes the same bytes.
+- **MCP server description**: `initialize` gives `title` "Allot", a one-line `description` and `websiteUrl`; `name` and
+  `version` are unchanged.
+
 ## 0.1.9-rc.2 — 2026-11-26
 
 The bell's marks follow the account, and accounts that sign in externally can add a password. Released as a prerelease
