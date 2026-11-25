@@ -10,10 +10,10 @@ import { gitFreeEnv } from './git-env'
 // @ts-expect-error plain .mjs without types
 import { parseShell } from '../../scripts/shell-words.mjs'
 
-test('parseShell: each word says whether part of it was quoted or escaped', () => {
-  const [seg] = parseShell(`git fetch . "<" x 2>/dev/null \\< 'a'b c"d"`)
-  assert.deepEqual(seg.words, ['git', 'fetch', '.', '<', 'x', '2>/dev/null', '<', 'ab', 'cd'])
-  assert.deepEqual(seg.quoted, [false, false, false, true, false, false, true, true, true])
+test('parseShell: each word says whether its first character was quoted or escaped', () => {
+  const [seg] = parseShell(`git fetch . "<" x 2>/dev/null \\< 'a'b c"d" <"/dev/null" 2>'f'`)
+  assert.deepEqual(seg.words, ['git', 'fetch', '.', '<', 'x', '2>/dev/null', '<', 'ab', 'cd', '</dev/null', '2>f'])
+  assert.deepEqual(seg.quoted, [false, false, false, true, false, false, true, true, false, false, false])
 })
 
 const script = resolve('scripts/guard-review.mjs')
@@ -117,6 +117,10 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     'git log -1 --outp=x; grep "gh pr merge" a.log', 'git --exec-path=. log; grep "gh pr merge" a.log',
     'git filter-branch -f --tree-filter "gh pr merge 24;:" HEAD', 'git bisect run gh pr merge 24',
     'git --no-pager -c core.pager="gh pr merge 24" log',
+    // a redirection with a quoted target is still a redirection (review 4 F-1)
+    `git -C <"/dev/null" switch -c 'core.fsmonitor=gh pr merge 24;:' status`,
+    `git -C >"/dev/null" switch -c 'core.fsmonitor=gh pr merge 24;:' status`,
+    `git -C 2>'/dev/null' switch -c 'core.fsmonitor=gh pr merge 24;:' status`,
   ]) assert.equal(isCandidate(asInput(c)), true, c)
   // writing nowhere (/dev/null, another descriptor) keeps a git line plain
   for (const c of [
