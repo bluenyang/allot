@@ -18,6 +18,8 @@ screen) or propose (confirm in the chat). Your Allot admin must turn on external
 (Admin › Login methods), and the server must be on https (or http on localhost).
 
 On a private network without https, use the `allot-key` plugin with an API key instead.
+Install only one of `allot` and `allot-key`: when two plugins name the same MCP address, Claude Code keeps only one of
+the two servers.
 
 ## Privacy
 

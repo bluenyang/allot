@@ -123,7 +123,7 @@ Allot은 MCP 서버(Streamable HTTP)다. AI 앱이 내 월급 분배·수입·�
 - **Claude Code**: 이 저장소가 플러그인 마켓플레이스다.
   - OAuth: `/plugin marketplace add bluenyang/allot` → `/plugin install allot@allot` → MCP 주소를 넣으면 처음 쓸 때 브라우저에서 로그인·동의.
   - API 키: `/plugin install allot-key@allot` → 주소와 키를 넣는다(키는 비밀값으로 저장). 또는 플러그인 없이 `claude mcp add --transport http allot https://<your-host>/mcp --header "Authorization: Bearer <key>"`.
-  - 두 플러그인 모두 스킬 7개가 들어 있다.
+  - 두 플러그인 모두 스킬 7개가 들어 있다. **둘 중 하나만 설치한다**: 같은 주소의 MCP 서버가 둘이면 Claude Code는 하나만 남긴다(2.1.327에서 확인).
 - **ChatGPT(웹)**: chatgpt.com의 Plugins › + › Add custom MCP server에 `https://<your-host>/mcp`를 넣고 OAuth로 연결한다. OpenAI 안내로는 쓰기(제안)까지는 Business·Enterprise/Edu, Pro는 읽기만 되고, 만들기는 웹에서만 된다. ChatGPT는 API 키를 받지 않는다.
 - **Codex**: `codex plugin marketplace add bluenyang/allot` → `codex plugin add allot@allot`(스킬) → `codex mcp add allot --url https://<your-host>/mcp` → `codex mcp login allot`(브라우저에서 로그인·동의). 키를 쓰려면 `codex mcp add allot --url https://<your-host>/mcp --bearer-token-env-var ALLOT_API_KEY`처럼 키를 담은 환경변수를 지정한다.
 - **Gemini CLI**: `gemini extensions install https://github.com/bluenyang/allot`(스킬과 안내) → `gemini mcp add --transport http allot https://<your-host>/mcp`. Gemini CLI는 이제 유료 키나 Code Assist가 있어야 한다. Gemini 앱(웹)의 MCP 연결은 미국·영어에서만 열려 있어 확인하지 않았다.
