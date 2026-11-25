@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased — 0.1.9-rc.2
+## 0.1.9-rc.2 — 2026-11-26
 
-The bell's marks follow the account, and accounts that sign in externally can add a password. Spec 016
+The bell's marks follow the account, and accounts that sign in externally can add a password. Released as a prerelease
+after the merge (PR #68, merged by the user: "머지 함"); the image is `ghcr.io/bluenyang/allot:0.1.9-rc.2` and `latest`
+does not move. Spec 016
 (`.agents/intent/016_rc2-account-and-notices/spec.md`). Migrations 0042 and 0043 add `notice_mark` with forced row-level
 security.
 
