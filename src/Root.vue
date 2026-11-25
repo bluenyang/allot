@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import App from './App.vue'
 import Login from './pages/Login.vue'
+import OAuthConsent from './pages/OAuthConsent.vue'
 import { authClient, lastRetryAfter } from './lib/auth-client'
 import { ApiError, api, onUnauthorized } from './lib/api'
 import { loadState, newSession, status, store } from './lib/store'
@@ -37,6 +38,9 @@ const appReturn = (() => {
   if (!h.startsWith('#app-login')) return ''
   return new URLSearchParams(h.slice(h.indexOf('?') + 1)).get('return') ?? ''
 })()
+// spec 015 S-5: an external app's authorization sends the browser to /oauth/login (sign in, also when signed in
+// already: the app may ask for a fresh sign-in) and then to /oauth/consent. Neither shows the app shell.
+const oauthPage = window.location.pathname === '/oauth/consent' ? 'consent' : window.location.pathname === '/oauth/login' ? 'login' : ''
 const relay = ref<'idle' | 'sending' | 'error'>('idle')
 const relayError = ref('')
 async function handOver() {
@@ -57,6 +61,7 @@ watch(
     resetProposals() // a proposal screen belongs to one account's session
     hideToast() // and so does a message about what that account just did
     if (id && appReturn) handOver()
+    else if (id && oauthPage) return // the OAuth screens need no data
     else if (id) loadState()
     else status.loaded = false
   },
@@ -67,7 +72,8 @@ watch(
 <template>
   <p v-if="session.isPending" class="muted" style="padding:24px">{{ t('boot.session') }}</p>
   <div v-else-if="limited" class="boot" role="status"><p class="muted">{{ t('boot.tooMany') }}</p></div>
-  <Login v-else-if="!session.data" :app-return="!!appReturn" />
+  <Login v-else-if="!session.data || oauthPage === 'login'" :app-return="!!appReturn" />
+  <OAuthConsent v-else-if="oauthPage === 'consent'" />
   <div v-else-if="appReturn" class="boot" role="status">
     <p v-if="relay === 'error'" class="err" role="alert">{{ relayError }}</p>
     <p v-else class="muted">{{ t('boot.returning') }}</p>

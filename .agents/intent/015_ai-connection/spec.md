@@ -161,7 +161,7 @@ summary_for_user: |
 - [x] W-1 의존성: Better Auth 다섯 패키지를 한 버전으로, 취약점 기록, 로그인 회귀(S-1). — 1.7.27(2026-11-25 08:48 UTC, 1.7.28은 아직 하루 전), `pnpm audit` "No known vulnerabilities found", GitHub advisories 다섯 패키지 0건(08:49 UTC); 로그인 회귀는 V-3에서.
 - [x] W-2 데이터: OAuth 테이블·jwks, `mcp_proposal.source_kind`, 마지막 사용, 마이그레이션, `pnpm check:migrations`(S-2, S-9).
 - [x] W-3 OAuth 서버: 플러그인 설정, 루트 메타데이터, 외부 앱 연결 스위치(서버), 닫는 경로, 개발 프록시(S-2, S-3, S-8, S-10 서버, S-12).
-- [ ] W-4 동의 화면과 로그인 이어가기(S-4, S-5).
+- [x] W-4 동의 화면과 로그인 이어가기(S-4, S-5).
 - [ ] W-5 `/mcp`: 키와 OAuth, 연결 확인, 범위→도구, 호출 제한, 제안 출처·적용·변경 내역(S-6, S-7, S-9, S-11).
 - [ ] W-6 연결된 앱: 경로, 설정 화면 목록·끊기, 관리 스위치 화면(S-10).
 - [ ] W-7 스킬 7개(S-13).
@@ -212,6 +212,7 @@ summary_for_user: |
 - A-4 (2026-11-25, W-3) JWT 발급자를 BETTER_AUTH_URL의 origin으로 · 그래야 AS 메타데이터가 RFC 8414 그대로 루트 `/.well-known/oauth-authorization-server`에 있음(S-2) · 이 커밋 · 예전 입력 거부·새 제한: 없음
 - A-5 (2026-11-25, W-3) OAuth 플러그인은 BETTER_AUTH_URL이 https이거나 loopback의 http일 때만 붙임 · `@better-auth/mcp`가 그 밖의 resource로는 시작을 거부함(LAN http의 :15173이 멈춤). 그 밖이면 외부 앱 연결은 쓸 수 없고(관리 화면에 표시) 키는 그대로 됨 — W-10의 "공개 HTTPS 요건"과 같은 말 · 이 커밋 · 예전 입력 거부·새 제한: 없음(새 기능이 서는 조건이며 기존 입력은 그대로)
 - A-6 (2026-11-25, W-3) DCR의 `application_type` 기본을 `infer`로 · 이를 빼먹는 네이티브 클라이언트(loopback 콜백)가 web으로 보아 거부되지 않게; 웹 클라이언트 규칙은 그대로 · 이 커밋 · 예전 입력 거부·새 제한: 없음(받는 쪽을 넓힘)
+- A-8 (2026-11-25, W-4) 동의 화면이 앱 이름·돌아갈 주소·요청한 권한을 Allot 경로 `GET /api/oauth-apps/request`에서 받음(서명을 서버가 확인) · 주소창의 값을 그대로 보이지 않고 서명된 요청만 믿기 위해. 앱이 요청하지 않은 권한은 고를 수 없게 흐리게 둠(`/oauth2/consent`가 요청한 범위 밖을 거부함, S-4 "넓어질 수 없다") · 이 커밋 · 예전 입력 거부·새 제한: 없음
 - A-7 (2026-11-25, W-3) 스위치 값은 `app_setting`의 `oauth` 행(마이그레이션 0040이 id 검사에 `oauth`를 더함) · 키 정책과 같은 자리 · 이 커밋 · 예전 입력 거부·새 제한: 없음
 
 ## 우려
