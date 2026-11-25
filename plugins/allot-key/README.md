@@ -7,6 +7,8 @@ confirm a proposal (where depends on the key: in Allot under Pending changes, or
 
 Use this plugin when your server is only on a private network (no https), or when external app connections (OAuth)
 are off. Otherwise the `allot` plugin signs in with OAuth and needs no key.
+Install only one of `allot` and `allot-key`: when two plugins name the same MCP address, Claude Code keeps only one of
+the two servers.
 
 ## Install
 
