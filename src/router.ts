@@ -34,6 +34,9 @@ export const PAGES: Record<string, Component> = {
   dev: lazyPage(() => import('./pages/Dev.vue')), // no menu entry: reached by its address only
 }
 
+/** Nothing: src/Root.vue shows the OAuth screens itself. */
+const OAuthBlank: Component = { render: () => null }
+
 const keepQuery = (path: string) => (to: { query: LocationQuery }) => ({ path, query: to.query })
 const page = (id: string, path = `/${id}`): RouteRecordRaw => ({ path, component: PAGES[id]!, meta: { page: id } })
 const tabbed = (id: string, tabs: string, first: string): RouteRecordRaw[] => [
@@ -57,6 +60,10 @@ export const routes: RouteRecordRaw[] = [
   ...tabbed('settings', 'general|theme|ai|security', 'general'),
   page('admin'),
   page('dev'),
+  // spec 015 S-5: the OAuth sign-in and consent screens. src/Root.vue shows them in place of the app shell; the
+  // routes only keep these addresses (and their signed query) from the redirect below.
+  { path: '/oauth/login', component: OAuthBlank },
+  { path: '/oauth/consent', component: OAuthBlank },
   // an unknown address shows the overview, as an unknown hash did
   { path: '/:rest(.*)*', redirect: keepQuery('/') },
 ]

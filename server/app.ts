@@ -6,6 +6,7 @@ import { allowedReturn } from './app-login'
 import { publicMethods } from './auth-config'
 import { docsPage } from './docs'
 import { keyRoutes } from './keys'
+import { oauthAppRoutes } from './oauth-apps'
 import { mountMcp, mountRootMcp } from './mcp'
 import { oauthOn } from './oauth'
 import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
@@ -89,6 +90,7 @@ app.post('/app-login/ticket', async (c) => {
   return c.json({ url: url.toString() })
 })
 app.route('/keys', keyRoutes)
+app.route('/oauth-apps', oauthAppRoutes)
 app.route('/admin', adminRoutes)
 app.route('/', routes)
 
