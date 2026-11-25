@@ -80,6 +80,11 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     'cd wt && gh pr merge 24', 'git -c alias.m="!gh pr merge 24" m', 'git rebase -x "gh pr merge 24" master',
     'git push --receive-pack="gh pr merge 24" origin x', 'find . -exec gh pr merge 1 \\;', 'ls; gh pr create --head x',
     'git log --oneline -1 && gh pr merge 24', 'git difftool -x "gh pr merge 24"',
+    // git takes abbreviated long options (review 1 F-1)
+    'git push --rece="gh pr merge 24;:" origin x', 'git push --exe="gh pr merge 24;:" origin x',
+    'git fetch --upload-pa="gh pr merge 24;:" .', 'git fetch --upl "gh pr merge 24;:" .', 'git pull --upl="gh pr merge 24;:" .',
+    'git ls-remote --upl="gh pr merge 24;:" .', 'git -C wt ls-remote --upl="gh pr merge 24;:" .', 'git diff --ext="gh pr merge 24"',
+    'git diff --e="gh pr merge 24"',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
 })
 test('isCandidate: command words are found behind separators, wrappers, substitutions and shells', () => {

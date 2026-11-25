@@ -98,7 +98,14 @@ const DATA_PROGS = new Set(['ls', 'cd', 'pwd', 'mkdir', 'sort', 'uniq', 'cut', '
 const GIT_DATA = new Set(['status', 'log', 'show', 'diff', 'add', 'restore', 'rm', 'mv', 'fetch', 'pull', 'push', 'branch', 'checkout',
   'switch', 'merge', 'rev-parse', 'rev-list', 'merge-base', 'ls-remote', 'ls-files', 'worktree', 'tag', 'remote', 'describe',
   'shortlog', 'blame', 'reflog', 'cat-file', 'check-ignore', 'stash'])
-const GIT_RUNS = /^(?:-x|--exec|--upload-pack|--receive-pack|--ext-diff|--extcmd|--tool|--textconv|-c$|--config)/
+// Long options that run a program. git takes any unambiguous prefix of a long option (`--upl` is
+// `--upload-pack`), so a word counts when it is a prefix of one of these, however short (review 1 F-1).
+const GIT_RUN_LONG = ['exec', 'upload-pack', 'receive-pack', 'ext-diff', 'extcmd', 'tool', 'textconv', 'config']
+function gitRuns(x) {
+  const m = /^--([^=]+)/.exec(x)
+  if (m) return GIT_RUN_LONG.some((o) => o.startsWith(m[1]))
+  return /^-x/.test(x) || x === '-c'
+}
 const GIT_COMMIT_BARE = new Set(['-q', '-a', '-s', '-am', '-qm', '--amend', '--no-edit', '--allow-empty'])
 const GIT_COMMIT_VALUED = new Set(['-m', '-F', '--message', '--file'])
 const GH_BANNED = new Set(['--web', '-w', '-F', '--body-file', '--editor', '-e'])
@@ -138,7 +145,7 @@ function isPlainData(seg) {
     let k = 0
     while (rest[k] === '-C' && rest[k + 1] !== undefined && !rest[k + 1].includes(PH)) k += 2
     const sub = rest[k]
-    if (sub !== 'commit') return GIT_DATA.has(sub) && !rest.slice(k + 1).some((x) => GIT_RUNS.test(x))
+    if (sub !== 'commit') return GIT_DATA.has(sub) && !rest.slice(k + 1).some(gitRuns)
     const opts = rest.slice(k + 1)
     for (let i = 0; i < opts.length; i++) {
       const x = opts[i]
