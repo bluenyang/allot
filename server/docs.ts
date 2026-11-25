@@ -31,6 +31,8 @@ const ROUTES: Record<string, string> = {
   'PUT /api/admin/providers/:id': 'Admin: change a sign-in provider.',
   'GET /api/admin/api-keys': 'Admin: the API key policy.',
   'PUT /api/admin/api-keys': 'Admin: change the API key policy.',
+  'GET /api/skills': 'The skills this server offers for download, one ZIP each (for claude.ai: Customize › Skills).',
+  'GET /api/skills/:file': 'One skill as a ZIP (`<name>.zip`); 404 for a name that is not one of the listed skills.',
   'POST /api/account/password': 'Add a password to an account that signs in with OIDC, GitHub or Google only: needs password sign-in on, a session signed in within a day, and the admin\'s minimum length. Remove it by unlinking the password login.',
   'GET /api/notices/marks': 'The bell\'s marks of this account: notice ids read, and maturity cards answered 계속 보내기 (spec 016), oldest first.',
   'POST /api/notices/marks': 'Add read marks (and drop those of notices no longer listed) or kept maturities; answers the marks. At most 500 a request, 2000 of each kind are kept.',

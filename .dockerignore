@@ -16,4 +16,5 @@ playwright-report
 .github
 *.md
 !README.md
+!skills/*/SKILL.md
 dist-skills
