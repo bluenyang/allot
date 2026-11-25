@@ -64,6 +64,20 @@ test('with OAuth off, the OAuth-only apps are dimmed and say why; the others are
   await expect(page.getByRole('dialog').getByText('이 단계는 외부 앱 연결(OAuth)이 켜져 있어야 돼요', { exact: false }).first()).toBeVisible()
 })
 
+test('a failed oauth-apps answer dims nothing; the dialog also closes with 닫기 and a click outside (review rc.3-1 R1-5)', async ({ page }) => {
+  await page.route('**/api/oauth-apps', (r) => r.fulfill({ status: 500, json: { error: 'x' } }))
+  await page.goto('/settings/ai')
+  for (const name of APPS) await expect(tile(page, name)).not.toHaveClass(/dim/)
+  await tile(page, 'ChatGPT').click()
+  await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(tile(page, 'ChatGPT')).toBeFocused()
+  await tile(page, 'Codex').click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.mouse.click(8, 8)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+})
+
 test('the skills download gives each skill as a ZIP', async ({ page }) => {
   await page.goto('/settings/ai')
   await tile(page, 'claude.ai · 데스크톱 · 휴대폰').click()
