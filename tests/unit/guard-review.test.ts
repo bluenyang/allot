@@ -7,6 +7,14 @@ import { join, resolve } from 'node:path'
 // @ts-expect-error plain .mjs without types
 import { check, isCandidate, tokenize, decide, recordFile } from '../../scripts/guard-review.mjs'
 import { gitFreeEnv } from './git-env'
+// @ts-expect-error plain .mjs without types
+import { parseShell } from '../../scripts/shell-words.mjs'
+
+test('parseShell: each word says whether part of it was quoted or escaped', () => {
+  const [seg] = parseShell(`git fetch . "<" x 2>/dev/null \\< 'a'b c"d"`)
+  assert.deepEqual(seg.words, ['git', 'fetch', '.', '<', 'x', '2>/dev/null', '<', 'ab', 'cd'])
+  assert.deepEqual(seg.quoted, [false, false, false, true, false, false, true, true, true])
+})
 
 const script = resolve('scripts/guard-review.mjs')
 
@@ -104,6 +112,11 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     'git <<< status filter-branch -f --tree-filter "gh pr merge 24;:" HEAD',
     'git -C <<< x status filter-branch -f --tree-filter "gh pr merge 24;:" HEAD',
     'mkdir -p "<" && git -C "<" filter-branch -f --tree-filter "gh pr merge 24;:" HEAD',
+    // git takes only the options of GIT_OPTS: any other one, however spelled, puts the line under the text rules
+    'git fetch --upload-pac "gh pr merge 24;:" .', 'git push --recv="gh pr merge 24;:" origin x', 'git ls-remote -qu "gh pr merge 24;:" .',
+    'git log -1 --outp=x; grep "gh pr merge" a.log', 'git --exec-path=. log; grep "gh pr merge" a.log',
+    'git filter-branch -f --tree-filter "gh pr merge 24;:" HEAD', 'git bisect run gh pr merge 24',
+    'git --no-pager -c core.pager="gh pr merge 24" log',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
   // writing nowhere (/dev/null, another descriptor) keeps a git line plain
   for (const c of [
@@ -111,6 +124,11 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     'git status --short >&2; grep -c "gh pr create" a.log 2>&1', 'git fetch -q origin 2> /dev/null && sort -n -k2 notes | grep "gh pr merge"',
     'git log --oneline -3 2>& 1; grep -h "gh pr merge" notes.md', 'git log -3 | uniq -c -f 1 | grep "gh pr merge"',
     'git log -3 >& /dev/null; grep -h "gh pr merge" notes.md', 'git log -3 | uniq --count --skip-fields=1 | grep "gh pr merge"',
+    // git with its habit options (GIT_OPTS); values and paths after `--` are data (review 3 false positives)
+    'git --no-pager log --oneline -5 2>&1 | head; grep "gh pr merge" a.log', 'git log --grep="-c" --oneline; grep "gh pr merge" a.log',
+    'git commit -q -m "-x flag docs" ; grep "gh pr merge" a.log', 'git diff -- -x.md; grep "gh pr merge" a.log',
+    'git status -sb; git branch --show-current; git rev-parse --abbrev-ref HEAD; grep "gh pr create" a.log',
+    'git fetch . "<"; grep "gh pr merge" a.log',
   ]) assert.equal(isCandidate(asInput(c)), false, c)
 })
 test('isCandidate: command words are found behind separators, wrappers, substitutions and shells', () => {
