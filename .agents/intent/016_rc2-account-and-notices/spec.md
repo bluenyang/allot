@@ -68,7 +68,7 @@ summary_for_user: |
 - E2E `tests/e2e/rc2.spec.ts`(:15174): 두 브라우저 컨텍스트에서 읽음 맞음, 처음 올리기(localStorage에 넣고 열기 → 다른 컨텍스트에서 읽음), 만기 "계속 보내기"가 다른 컨텍스트에서도 사라짐(데이터가 있을 때, 없으면 건너뜀을 기록), 로그인·보안의 비밀번호 추가 칸과 오류 안내, 휴대폰 폭.
 
 ## 작업 단위
-- [ ] W-1 데이터: `notice_mark`, 마이그레이션, FORCE RLS, OWNED(S-1, S-3).
+- [x] W-1 데이터: `notice_mark`, 마이그레이션, FORCE RLS, OWNED(S-1, S-3).
 - [ ] W-2 서버 경로: 읽기·쓰기, 제한, API 문서(S-1, S-8).
 - [ ] W-3 화면: 종 알림·만기 카드가 서버 기록을 씀, 처음 한 번 올리기(S-1, S-2).
 - [ ] W-4 MCP `list_notifications`(S-4).
