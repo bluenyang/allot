@@ -601,6 +601,8 @@ export const changeLog = pgTable('change_log', {
 export const mcpProposal = pgTable('mcp_proposal', {
   userId: owner(),
   id: text('id').primaryKey(),
+  /** 'api_key': key_id/key_name are the API key's; 'oauth': the OAuth client's id and app name (spec 015 S-9). */
+  sourceKind: text('source_kind').notNull().default('api_key'),
   keyId: text('key_id').notNull(),
   keyName: text('key_name').notNull(),
   /** Where it is confirmed: 'ui' (Pending changes) or 'chat' (the apply tool). Copied from the key. */
@@ -624,6 +626,7 @@ export const mcpProposal = pgTable('mcp_proposal', {
   unique('mcp_proposal_user_id_id').on(t.userId, t.id),
   index('mcp_proposal_user_status').on(t.userId, t.status),
   check('mcp_proposal_confirm', sql`${t.confirm} in ('ui', 'chat')`),
+  check('mcp_proposal_source_kind', sql`${t.sourceKind} in ('api_key', 'oauth')`),
   check('mcp_proposal_status', sql`${t.status} in ('pending', 'applied', 'rejected', 'expired', 'stale')`),
   check('mcp_proposal_decided_by', sql`${t.decidedBy} is null or ${t.decidedBy} in ('user', 'key')`),
 ])

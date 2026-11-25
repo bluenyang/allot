@@ -159,7 +159,7 @@ summary_for_user: |
 
 ## 작업 단위
 - [x] W-1 의존성: Better Auth 다섯 패키지를 한 버전으로, 취약점 기록, 로그인 회귀(S-1). — 1.7.27(2026-11-25 08:48 UTC, 1.7.28은 아직 하루 전), `pnpm audit` "No known vulnerabilities found", GitHub advisories 다섯 패키지 0건(08:49 UTC); 로그인 회귀는 V-3에서.
-- [ ] W-2 데이터: OAuth 테이블·jwks, `mcp_proposal.source_kind`, 마지막 사용, 마이그레이션, `pnpm check:migrations`(S-2, S-9).
+- [x] W-2 데이터: OAuth 테이블·jwks, `mcp_proposal.source_kind`, 마지막 사용, 마이그레이션, `pnpm check:migrations`(S-2, S-9).
 - [ ] W-3 OAuth 서버: 플러그인 설정, 루트 메타데이터, 외부 앱 연결 스위치(서버), 닫는 경로, 개발 프록시(S-2, S-3, S-8, S-10 서버, S-12).
 - [ ] W-4 동의 화면과 로그인 이어가기(S-4, S-5).
 - [ ] W-5 `/mcp`: 키와 OAuth, 연결 확인, 범위→도구, 호출 제한, 제안 출처·적용·변경 내역(S-6, S-7, S-9, S-11).
