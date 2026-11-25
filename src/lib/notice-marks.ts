@@ -39,13 +39,23 @@ function oldList(key: string): string[] {
   }
 }
 
-/** The changes that send `read` and `kept` in requests of at most MAX_PER_REQUEST marks (pure; for the tests). */
-export function uploadChunks(read: readonly string[], kept: readonly string[]): MarkChange[] {
+/**
+ * One change as requests of at most MAX_PER_REQUEST marks each (the server refuses more; review rc.2-1 R1-3): drops first,
+ * then read adds, then kept maturities, in order (pure; for the tests).
+ */
+export function splitChange(change: MarkChange): MarkChange[] {
   const out: MarkChange[] = []
-  for (let i = 0; i < read.length; i += MAX_PER_REQUEST) out.push({ read: { add: read.slice(i, i + MAX_PER_REQUEST) } })
-  for (let i = 0; i < kept.length; i += MAX_PER_REQUEST) out.push({ maturityKept: { add: kept.slice(i, i + MAX_PER_REQUEST) } })
+  const push = (list: readonly string[], make: (part: string[]) => MarkChange) => {
+    for (let i = 0; i < list.length; i += MAX_PER_REQUEST) out.push(make(list.slice(i, i + MAX_PER_REQUEST)))
+  }
+  push(change.read?.drop ?? [], (drop) => ({ read: { drop } }))
+  push(change.read?.add ?? [], (add) => ({ read: { add } }))
+  push(change.maturityKept?.add ?? [], (add) => ({ maturityKept: { add } }))
   return out
 }
+
+/** This browser's old marks as requests (S-2). */
+export const uploadChunks = (read: readonly string[], kept: readonly string[]) => splitChange({ read: { add: [...read] }, maturityKept: { add: [...kept] } })
 
 /** S-2: send this browser's old marks to the account once; they are removed only after every request succeeded. */
 async function uploadOld(scope: ReturnType<typeof sessionScope>) {
@@ -87,8 +97,9 @@ export async function saveMarks(change: MarkChange) {
   marks.read = read
   marks.kept = kept
   try {
-    const m = await api<Marks>('POST', '/api/notices/marks', change)
-    if (scope.alive()) apply(m)
+    let m: Marks | null = null
+    for (const part of splitChange(change)) m = await api<Marks>('POST', '/api/notices/marks', part)
+    if (m && scope.alive()) apply(m)
   } catch {
     if (!scope.alive()) return
     showToast(t('shell.noticeSaveFailed'), { error: true })
