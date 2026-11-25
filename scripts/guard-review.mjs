@@ -34,6 +34,11 @@ import { PH, parseShell } from './shell-words.mjs'
 // with no env assignment, wrapper or unlisted option, joined
 // only by ; && || | and newlines. One other command anywhere puts the whole line back under the text
 // rules. Input the parser cannot handle (too large or nested) is refused.
+// Known limit (retro 0.1.8 follow-up, six reviews; user: "셋 고치고, 확인 리뷰로 끝"): the exemption trusts a small
+// shell parser. Every one-line spelling the reviews found (abbreviated options, quoted or glued redirections,
+// here-strings, brace and glob expansion, flags that take the next word) is closed and has a test; a shell trick
+// they did not try may still pass. Two tool calls (write a config or hook file, then run git) are outside a
+// one-line check, as before.
 //
 // Allowlist: a command that looks like a PR operation is allowed only in one canonical form,
 // standing alone; everything else is refused with the forms to use.
