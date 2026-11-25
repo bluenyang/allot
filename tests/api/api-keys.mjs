@@ -49,7 +49,7 @@ function client() {
 
 /** One MCP request with a key as Bearer (no cookie); the endpoint is spec 008 W-3. */
 const mcp = (A, key, body = { jsonrpc: '2.0', id: 1, method: 'tools/list' }) =>
-  A.noCookie('POST', '/api/mcp', body, { authorization: `Bearer ${key}`, accept: 'application/json, text/event-stream' })
+  A.noCookie('POST', process.env.MCP_PATH ?? '/api/mcp', body, { authorization: `Bearer ${key}`, accept: 'application/json, text/event-stream' })
 
 const within = (iso, ms, tol = 60_000) => !!iso && Math.abs(new Date(iso).getTime() - (Date.now() + ms)) <= tol
 

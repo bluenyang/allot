@@ -34,6 +34,9 @@ const drop = (api, path) => cleanupStep(`DELETE ${path.replace(/\/[^/]+$/, '/<id
   return r.status === 204 ? undefined : r.status
 })
 const BASE = process.env.BASE ?? 'http://127.0.0.1:3000'
+/** spec 015 V-5: the same checks on the root /mcp (MCP_PATH=/mcp, external app connections off) and on /api/mcp (the default). */
+const MCP_PATH = process.env.MCP_PATH ?? '/api/mcp'
+if (!['/api/mcp', '/mcp'].includes(MCP_PATH)) throw new Error('MCP_PATH is /api/mcp or /mcp')
 const sql = postgres(process.env.DATABASE_URL, { max: 1 })
 const sha = (k) => createHash('sha256').update(k).digest('base64url')
 const LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -66,7 +69,7 @@ const ACCEPT = 'application/json, text/event-stream'
 const bearer = (k) => `Bearer ${k}`
 /** One MCP request: `auth` is the whole Authorization value (null: none), no cookie, no Origin unless given. */
 const mcpAuth = (A, auth, body = RPC, extra = {}) =>
-  A('POST', '/api/mcp', body, { accept: ACCEPT, ...(auth === null ? {} : { authorization: auth }), origin: undefined, ...extra }, false)
+  A('POST', MCP_PATH, body, { accept: ACCEPT, ...(auth === null ? {} : { authorization: auth }), origin: undefined, ...extra }, false)
 const mcp = (A, key, body = RPC, extra = {}) => mcpAuth(A, bearer(key), body, extra)
 
 /** Insert a key the way the plugin stores it. */
@@ -151,15 +154,15 @@ async function authMode() {
   ok(same && new Set(seen.map((s) => `${s.status}|${s.text}|${s.www}`)).size === 1, 'all refusals are byte-identical')
 
   // ── other ways in and out ──
-  const cookieOnly = await A('POST', '/api/mcp', RPC, { accept: ACCEPT })
-  ok(cookieOnly.status === 401, `a session cookie alone on /api/mcp → ${cookieOnly.status} (want 401)`)
+  const cookieOnly = await A('POST', MCP_PATH, RPC, { accept: ACCEPT })
+  ok(cookieOnly.status === 401, `a session cookie alone on ${MCP_PATH} → ${cookieOnly.status} (want 401)`)
   for (const [m, p] of [['GET', '/api/state'], ['GET', '/api/me'], ['GET', '/api/keys']]) {
     const r = await A(m, p, undefined, { authorization: `Bearer ${good}` }, false)
     ok(r.status === 401, `the key on ${m} ${p} → ${r.status} (want 401)`)
   }
   for (const m of ['GET', 'DELETE', 'PUT']) {
-    const r = await A(m, '/api/mcp', undefined, { accept: ACCEPT, authorization: `Bearer ${good}` }, false)
-    ok(r.status === 405 && r.headers.get('allow') === 'POST', `${m} /api/mcp → ${r.status} (want 405, Allow POST)`)
+    const r = await A(m, MCP_PATH, undefined, { accept: ACCEPT, authorization: `Bearer ${good}` }, false)
+    ok(r.status === 405 && r.headers.get('allow') === 'POST', `${m} ${MCP_PATH} → ${r.status} (want 405, Allow POST)`)
   }
   const big = await mcp(A, good, JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: { pad: 'x'.repeat(65 * 1024) } }))
   ok(big.status === 413, `a 65 KB body → ${big.status} (want 413)`)
