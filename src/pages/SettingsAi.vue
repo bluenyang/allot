@@ -2,6 +2,7 @@
 import { computed, onActivated, onDeactivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import Soon from '../components/Soon.vue'
+import ConnectedApps from '../components/ConnectedApps.vue'
 import { ApiError } from '../lib/api'
 import { lang, t } from '../i18n'
 import { countProposalsByKey, createKey, listKeys, revokeKey, updateKey, type KeyChange, type KeyItem } from '../lib/keys'
@@ -11,7 +12,8 @@ import { extendChoices } from '../lib/key-extend'
 
 // 설정 › AI·연동 (spec 008 S-4, redrawn by spec 010 S-11): API keys for the MCP endpoint and how to connect.
 // A key's text is shown once, in the box after it is made; the server keeps only its hash. Its name, scope and
-// expiry can be changed in the manage sheet (spec 013 S-25, PATCH /api/keys/:id); '연결된 앱 관리' stays 준비 중.
+// expiry can be changed in the manage sheet (spec 013 S-25, PATCH /api/keys/:id). The apps connected with OAuth are listed
+// under the connection steps (spec 015 S-10, components/ConnectedApps.vue).
 const keys = ref<KeyItem[]>([])
 const noExpiry = ref(false)
 const max = ref(10)
@@ -200,7 +202,9 @@ async function copy(text: string, what: string) {
 }
 
 // ── how to connect ──
-const url = `${window.location.origin}/api/mcp`
+// spec 015 S-11: the root /mcp takes keys and OAuth; /api/mcp keeps taking keys.
+const url = `${window.location.origin}/mcp`
+const oldUrl = `${window.location.origin}/api/mcp`
 const command = computed(() => `claude mcp add --transport http allot ${url} --header "Authorization: Bearer ${t('settingsAi.keyPh')}"`)
 
 const used = (at: string | null) => (at ? new Date(at).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }) : t('settingsAi.neverUsed'))
@@ -280,11 +284,8 @@ const PROVIDERS = [['Anthropic Claude', 'AC'], ['OpenAI', 'OA'], ['Google Gemini
           <div class="cbrow"><code class="codebox cmd">{{ command }}</code><button class="btn" type="button" @click="copy(command, t('settingsAi.whatCommand'))">{{ t('settingsAi.copy') }}</button></div>
           <i18n-t keypath="settingsAi.addHow" tag="span" class="hint"><template #ph><span class="mono">{{ t('settingsAi.keyPh') }}</span></template></i18n-t></div>
         <p class="hint" style="margin:0">{{ t('settingsAi.keyScope') }}</p>
-        <div class="oauth">
-          <span class="lbl">{{ t('settingsAi.oauthTitle') }}</span>
-          <p>{{ t('settingsAi.later') }}</p>
-          <Soon class="btn sm">{{ t('settingsAi.connectedApps') }}</Soon>
-        </div>
+        <i18n-t keypath="oauth.apps.keyPath" tag="p" class="hint" style="margin:0"><template #old><span class="mono">{{ oldUrl }}</span></template></i18n-t>
+        <ConnectedApps />
       </div>
     </section>
 
@@ -399,9 +400,6 @@ td b{font-weight:600}
 .codebox.cmd{white-space:pre-wrap;overflow-wrap:anywhere}
 .url{overflow-wrap:anywhere}
 .ro{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
-.oauth{border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
-.oauth .lbl{margin:0}
-.oauth p{margin:0;font-size:13px;color:var(--text-2)}
 .fresh{border-color:var(--accent-line);background:var(--accent-soft)}
 .fresh .ch{border-color:var(--accent-line)}
 .fresh h2{color:var(--accent-text)}

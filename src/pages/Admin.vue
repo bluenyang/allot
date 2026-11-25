@@ -287,10 +287,30 @@ async function toggleNoExpiry(e: Event) {
   }
 }
 
+// ── external app connections (spec 015 S-10): off by default; env ALLOT_OAUTH_ENABLED locks it ──
+interface OAuthSwitch { enabled: boolean; source: 'default' | 'db' | 'env'; locked: boolean; possible: boolean }
+const oauth = ref<OAuthSwitch | null>(null)
+async function toggleOAuth(e: Event) {
+  const box = e.target as HTMLInputElement
+  const next = box.checked
+  if (!next && !confirm(t('oauth.admin.confirmOff'))) { box.checked = true; return }
+  busy.value = true
+  error.value = ''
+  try {
+    oauth.value = await api<OAuthSwitch>('PUT', '/api/admin/oauth', { enabled: next })
+    say(next ? t('oauth.admin.on') : t('oauth.admin.offDone'))
+  } catch (err) {
+    box.checked = !next
+    fail(err, t('admin.saveFailed'))
+  } finally {
+    busy.value = false
+  }
+}
+
 async function load() {
   try {
     meId.value = (await api<{ user: { id: string } }>('GET', '/api/me')).user.id
-    await Promise.all([loadUsers(), loadProviders(), getKeyPolicy().then((p) => { keyPolicy.value = p }), loadPwPolicy()])
+    await Promise.all([loadUsers(), loadProviders(), getKeyPolicy().then((p) => { keyPolicy.value = p }), loadPwPolicy(), api<OAuthSwitch>('GET', '/api/admin/oauth').then((o) => { oauth.value = o })])
   } catch (e) {
     fail(e, t('admin.loadFailed'))
   }
@@ -396,6 +416,18 @@ onActivated(load)
           <button class="btn sm" type="button" :aria-label="t('admin.configLabel', { name: TITLE(p.id) })" @click="openProvider(p)">{{ t('admin.config') }}</button>
         </section>
       </div>
+
+      <section v-if="oauth" class="card">
+        <div class="ch"><h2>{{ t('oauth.admin.title') }}</h2><span class="pill" :class="oauth.enabled && oauth.possible ? 'ok' : oauth.enabled ? 'acc' : 'mute'">{{ oauth.enabled && oauth.possible ? t('common.on') : oauth.enabled ? t('admin.onUnusable') : t('common.off') }}</span></div>
+        <div class="fs">
+          <label class="swrow">
+            <span><b>{{ t('oauth.admin.label') }}</b><span class="hint">{{ t('oauth.admin.desc') }}</span></span>
+            <span class="swin"><input type="checkbox" role="switch" :aria-label="t('oauth.admin.label')" :checked="oauth.enabled" :disabled="oauth.locked || busy" @change="toggleOAuth"><span></span></span>
+          </label>
+          <p v-if="!oauth.possible" class="small" style="color:var(--neg-text);margin:0">{{ t('oauth.admin.impossible') }}</p>
+          <i18n-t v-if="oauth.locked" keypath="admin.envLocked" tag="p" class="small muted"><template #env><span class="mono">ALLOT_OAUTH_ENABLED</span></template></i18n-t>
+        </div>
+      </section>
 
       <EditSheet v-if="pedit && current()" v-model:step="pstep" :width="640" :title="t('admin.providerTitle', { name: TITLE(pedit.id) })" :desc="pedit.id === 'password' ? t('admin.pwSub') : t('admin.extSub')"
         :steps="pedit.id === 'password' ? undefined : [t('admin.stepConnect'), t('admin.stepSignup')]" :hint="pedit.id === 'password' ? t('admin.pwFoot') : pstep === 0 ? t('admin.foot1') : t('admin.foot2')"
