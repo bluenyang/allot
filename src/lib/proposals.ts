@@ -23,6 +23,8 @@ export interface MonthPreview {
 export type Status = 'pending' | 'applied' | 'rejected' | 'expired' | 'stale'
 export interface Proposal {
   id: string
+  /** spec 015 S-9: made with an API key, or by an app connected with OAuth (then keyName is the app's name) */
+  source?: 'api_key' | 'oauth'
   keyName: string
   keyUsable: boolean
   confirm: 'ui' | 'chat'

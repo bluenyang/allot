@@ -554,7 +554,8 @@ export const remainderSplit = pgTable('remainder_split', {
 
 // ── Change sets: one write request = one set, like a commit (spec 005 S-3) ──
 /** system: the server itself (the daily rate refresh, spec 013 S-23). */
-export const actorKind = pgEnum('actor_kind', ['user', 'api_key', 'system'])
+/** user · api_key (an AI with an API key) · system (the server itself) · oauth_app (an AI app connected with OAuth, spec 015 S-9) */
+export const actorKind = pgEnum('actor_kind', ['user', 'api_key', 'system', 'oauth_app'])
 export const changeOp = pgEnum('change_op', ['insert', 'update', 'delete'])
 
 export const changeSet = pgTable('change_set', {

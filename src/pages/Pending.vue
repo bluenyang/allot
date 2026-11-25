@@ -212,7 +212,7 @@ function handledNote(p: Proposal): string {
         <template v-if="p.status === 'pending'">
           <div class="note small">
             <span>{{ t('pending.expires', { at: when(p.expiresAt) }) }}<template v-if="p.confirm === 'chat'"> · {{ t('pending.inChat') }}</template></span>
-            <p v-if="!p.keyUsable" class="warn" role="note">{{ t('pending.keyGone') }}</p>
+            <p v-if="!p.keyUsable" class="warn" role="note">{{ p.source === 'oauth' ? t('pending.appGone') : t('pending.keyGone') }}</p>
           </div>
           <button class="btn sm bad" type="button" :disabled="!!proposals.busy" @click="decide(p, 'reject')">{{ t('pending.rejectBtn') }}</button>
           <button class="btn sm pri" type="button" :disabled="!!proposals.busy || !p.keyUsable" @click="decide(p, 'apply')">{{ t('pending.confirmBtn') }}</button>

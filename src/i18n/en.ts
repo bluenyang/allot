@@ -1180,6 +1180,7 @@ export const en = {
     expires: 'You can confirm until {at}',
     inChat: 'can also be confirmed in the chat',
     keyGone: 'The key that proposed this can no longer be used (revoked or expired), so it cannot be applied. You can only reject it.',
+    appGone: 'The app that proposed this is disconnected or has no write permission, so it cannot be applied. You can only reject it.',
     confirmBtn: 'Confirm and apply',
     rejectBtn: 'Reject',
     failed: 'Could not complete that.',

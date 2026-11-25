@@ -502,7 +502,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
           <div class="pfoot">
             <template v-if="p.status === 'pending'">
               <span class="note">{{ t('pending.expires', { at: when(p.expiresAt) }) }}<template v-if="p.confirm === 'chat'"> · {{ t('pending.inChat') }}</template></span>
-              <p v-if="!p.keyUsable" class="small warn" role="note">{{ t('pending.keyGone') }}</p>
+              <p v-if="!p.keyUsable" class="small warn" role="note">{{ p.source === 'oauth' ? t('pending.appGone') : t('pending.keyGone') }}</p>
               <RouterLink class="btn sm ghost" to="/pending">{{ t('dashboard.detailsLink') }}</RouterLink>
               <button class="btn sm bad" type="button" :disabled="!!proposals.busy" @click="decide(p, 'reject')">{{ t('pending.rejectBtn') }}</button>
               <button class="btn sm pri" type="button" :disabled="!!proposals.busy || !p.keyUsable" @click="decide(p, 'apply')">{{ t('pending.confirmBtn') }}</button>

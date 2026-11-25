@@ -131,7 +131,7 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
     description: 'The state of a proposal this key made: pending, applied, rejected, expired (not confirmed in time) or stale (the data changed after it was proposed), with its preview. Use it to see whether the user confirmed a proposal in Allot.',
     inputSchema: z.object({ proposalId: z.string().min(1).max(100) }).strict(),
     annotations: READ_ONLY,
-  }, proposalTool('get_proposal', async ({ proposalId }) => json(proposalOut(await getProposal(uid, proposalId, key.id)))))
+  }, proposalTool('get_proposal', async ({ proposalId }) => json(proposalOut(await getProposal(uid, proposalId, { id: key.id, source: key.source ?? 'api_key' })))))
 
   server.registerTool('apply_proposal', {
     title: 'Apply a confirmed proposal',
@@ -139,7 +139,7 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
     inputSchema: z.object({ proposalId: z.string().min(1).max(100) }).strict(),
     annotations: APPLY,
   }, proposalTool('apply_proposal', async ({ proposalId }) => {
-    const done = await applyProposal(uid, proposalId, { kind: 'key', keyId: key.id })
+    const done = await applyProposal(uid, proposalId, { kind: 'key', keyId: key.id, source: key.source ?? 'api_key' })
     return json({ proposalId, status: 'applied', changeSetId: done.changeSetId })
   }))
 }

@@ -35,7 +35,7 @@ interface ChangeSet {
   id: string
   at: string
   /** system: the server's daily rate refresh (spec 013 S-23) */
-  actorKind: 'user' | 'api_key' | 'system'
+  actorKind: 'user' | 'api_key' | 'system' | 'oauth_app'
   /** The AI key's name when an AI key made the set (spec 009). */
   actorLabel: string | null
   method: string
@@ -149,7 +149,8 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
 const valueOf = (k: string, v: unknown, table?: string) =>
   table === 'income_receipt' && k === 'itemId' ? incomeLabel(v) // the income's name; null = the salary (review 3 F-1)
   : k === 'targetId' && typeof v === 'string' ? targetName(v) : show(v)
-const actorOf = (s: ChangeSet) => (s.actorKind === 'api_key' ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : s.actorKind === 'system' ? t('currency.system') : t('history.you'))
+const isAi = (s: ChangeSet) => s.actorKind === 'api_key' || s.actorKind === 'oauth_app'
+const actorOf = (s: ChangeSet) => (isAi(s) ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : s.actorKind === 'system' ? t('currency.system') : t('history.you'))
 
 // ---------- filters ----------
 const actor = ref<ActorFilter>('all')
@@ -236,7 +237,7 @@ async function revert() {
               <button type="button" class="disc" :aria-expanded="open.has(s.id) ? 'true' : 'false'" :aria-label="t('history.openLabel', { title: summary(s) })" @click="toggle(s.id)">
                 <Icon name="chev" :stroke="2" :style="{ transform: open.has(s.id) ? 'rotate(90deg)' : 'none' }" />
               </button>
-              <span class="pill" :class="s.actorKind === 'api_key' ? 'acc' : 'mute'">{{ actorOf(s) }}</span>
+              <span class="pill" :class="isAi(s) ? 'acc' : 'mute'">{{ actorOf(s) }}</span>
               <span class="tx">
                 <span class="op">{{ parts(s).op }}</span> <span v-if="parts(s).target" class="sep" aria-hidden="true">·</span> <b v-if="parts(s).target" :class="{ struck: !!s.revertedBy }">{{ parts(s).target }}</b>
                 <span v-if="s.revertedBy" class="pill mute">{{ t('history.revertOf') }}</span>
