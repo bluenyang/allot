@@ -141,6 +141,9 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     "git -C {fd}>&2 switch -c 'core.fsmonitor=gh pr merge 1;:' status", "git -C {fd}>&- switch -c 'core.fsmonitor=gh pr merge 1;:' status",
     "git -C {fd}>>/dev/null switch -c 'core.fsmonitor=gh pr merge 1;:' status",
     "git -C {fd}</dev/null switch -c 'core.fsmonitor=gh pr merge 1;:' status",
+    // bash also names a descriptor with an array element (review 7 I-1)
+    "git -C {a[0]}>/dev/null switch -c 'core.fsmonitor=gh pr merge 1;:' status",
+    "git -C {a[1]}</dev/null switch -c 'core.fsmonitor=gh pr merge 1;:' status",
     // a glob can expand to a file named like an option (review 5 G-3)
     "mkdir -p g && cd g && mkdir -- '--upload-pack=gh pr merge 1;:' && git ls-remote * ../repo",
     "cd g && git ls-remote ''* ../repo; grep 'gh pr merge' a.log", "cd g && git pull -- * ../repo; grep 'gh pr merge' a.log",
