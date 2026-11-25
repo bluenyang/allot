@@ -1,18 +1,21 @@
 <script setup lang="ts">
 // The bell (spec 013 S-20, canvas AppHome "알림 팝오버"): a button with the unread count and a 400px popover on
 // Reka's Popover with the computed notifications (src/lib/notices.ts), a kind filter and "모두 읽음". Opening a
-// notification marks it read and goes to its page; read marks stay in this browser (src/lib/notice-store.ts).
+// notification marks it read and goes to its page; read marks are on the account (src/lib/notice-store.ts) and are
+// read again each time the bell opens (review rc.2-1 R1-1).
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { ymLabel } from '../lib/calc'
 import { fmtDate, fmtMoney } from '../lib/display'
+import { refreshMarks } from '../lib/notice-marks'
 import { isRead, markAllRead, markRead, notices, unread } from '../lib/notice-store'
 import type { Notice, NoticeGroup } from '../lib/notices'
 import Icon from './Icon.vue'
 
 const open = ref(false)
+watch(open, (o) => { if (o) void refreshMarks() })
 const router = useRouter()
 const GROUPS = ['all', 'pending', 'pay', 'budget'] as const
 const filter = ref<(typeof GROUPS)[number]>('all')

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import App from './App.vue'
 import Login from './pages/Login.vue'
 import OAuthConsent from './pages/OAuthConsent.vue'
@@ -7,7 +7,7 @@ import { authClient, lastRetryAfter } from './lib/auth-client'
 import { ApiError, api, onUnauthorized } from './lib/api'
 import { loadState, newSession, status, store } from './lib/store'
 import { hideToast } from './lib/toast'
-import { loadMarks, resetMarks } from './lib/notice-marks'
+import { loadMarks, refreshMarks, resetMarks } from './lib/notice-marks'
 import { resetProposals } from './lib/proposals'
 import { applyTheme } from './lib/theme'
 import { applyPreference, languageBeforeSignIn, setLang, t } from './i18n'
@@ -70,6 +70,13 @@ watch(
   },
   { immediate: true },
 )
+
+// review rc.2-1 R1-1: back in view (another tab, the phone app reopened), the bell's marks are read again
+const onVisible = () => {
+  if (document.visibilityState === 'visible' && session.value.data?.session.id && !oauthPage) void refreshMarks()
+}
+onMounted(() => document.addEventListener('visibilitychange', onVisible))
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible))
 </script>
 
 <template>

@@ -23,8 +23,23 @@ const apply = (m: Marks) => {
   marks.kept = new Set(m.maturityKept)
 }
 
+// Review rc.2-1 R1-2: saves go one after another, a read waits for the saves before it, and an answer is applied only
+// when no later save or read has started since (an older answer never replaces newer marks on screen).
+let queue: Promise<unknown> = Promise.resolve()
+let latest = 0
+const inTurn = <T>(run: () => Promise<T>): Promise<T> => {
+  const next = queue.then(run, run)
+  queue = next.catch(() => undefined)
+  return next
+}
+const ticket = () => {
+  const mine = ++latest
+  return () => mine === latest
+}
+
 /** The session ended or changed: forget the marks of the last account. */
 export function resetMarks() {
+  latest++
   marks.read = new Set()
   marks.kept = new Set()
 }
@@ -58,7 +73,7 @@ export function splitChange(change: MarkChange): MarkChange[] {
 export const uploadChunks = (read: readonly string[], kept: readonly string[]) => splitChange({ read: { add: [...read] }, maturityKept: { add: [...kept] } })
 
 /** S-2: send this browser's old marks to the account once; they are removed only after every request succeeded. */
-async function uploadOld(scope: ReturnType<typeof sessionScope>) {
+async function uploadOld(scope: ReturnType<typeof sessionScope>, current: () => boolean) {
   const chunks = uploadChunks(oldList(OLD_READ_KEY), oldList(OLD_KEPT_KEY))
   if (!chunks.length) return
   let last: Marks | null = null
@@ -70,20 +85,36 @@ async function uploadOld(scope: ReturnType<typeof sessionScope>) {
     globalThis.localStorage?.removeItem(OLD_READ_KEY)
     globalThis.localStorage?.removeItem(OLD_KEPT_KEY)
   } catch { /* storage blocked: it had nothing to send */ }
-  if (last && scope.alive()) apply(last)
+  if (last && scope.alive() && current()) apply(last)
 }
 
 /** Read the account's marks (after sign-in), then send the old ones of this browser if there are any. */
 export async function loadMarks() {
   const scope = sessionScope()
+  const current = ticket()
   try {
-    const m = await api<Marks>('GET', '/api/notices/marks')
-    if (!scope.alive()) return
-    apply(m)
-    await uploadOld(scope)
+    await inTurn(async () => {
+      const m = await api<Marks>('GET', '/api/notices/marks')
+      if (!scope.alive()) return
+      if (current()) apply(m)
+      await uploadOld(scope, current)
+    })
   } catch {
     // the bell works without them (everything shows unread); the next load tries again, the old marks stay until then
   }
+}
+
+/**
+ * Read the marks again (review rc.2-1 R1-1): when the bell opens and when the page comes back into view, so marks made on
+ * another device show without a reload. A failed read keeps what is on screen.
+ */
+export async function refreshMarks() {
+  const scope = sessionScope()
+  const current = ticket()
+  try {
+    const m = await inTurn(() => api<Marks>('GET', '/api/notices/marks'))
+    if (scope.alive() && current()) apply(m)
+  } catch { /* keep the marks on screen */ }
 }
 
 /** Save a change. The marks show at once; a refused or failed save puts the server's marks back and says so. */
@@ -96,10 +127,14 @@ export async function saveMarks(change: MarkChange) {
   for (const k of change.maturityKept?.add ?? []) kept.add(k)
   marks.read = read
   marks.kept = kept
+  const current = ticket()
   try {
-    let m: Marks | null = null
-    for (const part of splitChange(change)) m = await api<Marks>('POST', '/api/notices/marks', part)
-    if (m && scope.alive()) apply(m)
+    const m = await inTurn(async () => {
+      let last: Marks | null = null
+      for (const part of splitChange(change)) last = await api<Marks>('POST', '/api/notices/marks', part)
+      return last
+    })
+    if (m && scope.alive() && current()) apply(m)
   } catch {
     if (!scope.alive()) return
     showToast(t('shell.noticeSaveFailed'), { error: true })
