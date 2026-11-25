@@ -205,7 +205,8 @@ function isPlainData(seg) {
     const ok = GIT_OPTS.get(sub)
     if (!ok) return false
     for (const x of opts) {
-      if (x === '--') return true
+      // after `--` come paths, except for pull, which hands those words to fetch as options (review 4 F-2)
+      if (x === '--' && sub !== 'pull') return true
       if (x.startsWith('-') && !ok.test(x)) return false
     }
     return true

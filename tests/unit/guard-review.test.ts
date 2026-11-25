@@ -121,6 +121,8 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     `git -C <"/dev/null" switch -c 'core.fsmonitor=gh pr merge 24;:' status`,
     `git -C >"/dev/null" switch -c 'core.fsmonitor=gh pr merge 24;:' status`,
     `git -C 2>'/dev/null' switch -c 'core.fsmonitor=gh pr merge 24;:' status`,
+    // git pull passes the words after -- to fetch as options (review 4 F-2)
+    'git pull -- --upload-pack="gh pr merge 24;:" .', 'git pull -q -- --upl="gh pr merge 24;:" .',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
   // writing nowhere (/dev/null, another descriptor) keeps a git line plain
   for (const c of [
