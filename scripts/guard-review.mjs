@@ -91,9 +91,9 @@ const PLAIN_OPTIONS = {
 PLAIN_OPTIONS.egrep = PLAIN_OPTIONS.grep
 PLAIN_OPTIONS.fgrep = PLAIN_OPTIONS.grep
 const GREP_PROGRAMS = new Set(['grep', 'egrep', 'fgrep'])
-// grep options that name a file of patterns or take a value: harmless, but `-f` reads a file only
 // More plain programs (retro 0.1.8, user: "보호는 두고 오탐만 줄임" — about ten harmless lines were refused in 0.1.8):
-// they read, list, compare or move files and never run a command they are given, whatever their options.
+// they read, list or compare files and run no program named in their arguments, whatever their options
+// (sort can, so it has an option list above). A line that also runs git is checked for writes (isPlainLine).
 const DATA_PROGS = new Set(['ls', 'cd', 'pwd', 'mkdir', 'uniq', 'cut', 'tr', 'diff', 'cmp', 'date', 'basename', 'dirname',
   'realpath', 'readlink', 'stat', 'du', 'df', 'file', 'nl', 'tac', 'rev', 'column', 'jq', 'true', 'false'])
 // git subcommands that run no command of the user's; with any option that can (an exec, a pack or diff program) they are not plain
@@ -190,7 +190,8 @@ const MAX_INPUT = 100000
 
 /**
  * Candidate check on the raw hook input. A line of plain data commands (echo, printf, grep, cat,
- * head, tail, wc, `git commit -m`, read-only `gh`) is not a candidate: the PR
+ * head, tail, wc, sort, `git commit -m`, read-only `gh`, DATA_PROGS and the git subcommands of
+ * GIT_DATA; see isPlainData and isPlainLine) is not a candidate: the PR
  * words in its quoted arguments and here-documents are data. Every other line is read with the text
  * rules below, exactly as before: any reading of the text that spells a PR operation.
  * Fails closed: input too large or too nested for the parser is a candidate.
