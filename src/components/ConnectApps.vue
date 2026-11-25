@@ -9,7 +9,7 @@ import { api } from '../lib/api'
 import { copyText } from '../lib/clipboard'
 import { CONNECT_APPS, blockedWithoutOauth, filled, type ConnectApp } from '../lib/connect-guide'
 import { sessionScope } from '../lib/store'
-import { t } from '../i18n'
+import { t, type MessageKey } from '../i18n'
 
 const origin = window.location.origin
 const fill = computed(() => ({ url: `${origin}/mcp`, origin, keyPh: t('settingsAi.keyPh') }))
@@ -18,6 +18,9 @@ const oauthOn = ref<boolean | null>(null)
 const open = ref<ConnectApp | null>(null)
 const status = ref('')
 const failed = ref('')
+/** The skills this server offers (S-4): null until asked, then the list (empty when the server has no skills/ folder). */
+const skills = ref<{ name: string; file: string; bytes: number }[] | null>(null)
+const skillsError = ref('')
 
 async function load() {
   const scope = sessionScope()
@@ -40,10 +43,29 @@ async function copy(text: string) {
   if (await copyText(text)) status.value = t('connect.copied')
   else failed.value = t('connect.copyFailed')
 }
+async function loadSkills() {
+  if (skills.value) return
+  const scope = sessionScope()
+  skillsError.value = ''
+  try {
+    const r = await api<{ skills: { name: string; file: string; bytes: number }[] }>('GET', '/api/skills')
+    if (scope.alive()) skills.value = r.skills
+  } catch {
+    if (scope.alive()) skillsError.value = t('connect.skills.failed')
+  }
+}
+const skillTitle = (name: string) => {
+  const key = `connect.skills.names.${name}` as MessageKey
+  const s = t(key)
+  return s === key ? name : s
+}
+const kb = (n: number) => `${Math.max(1, Math.round(n / 1024))} KB`
+
 function show(app: ConnectApp) {
   status.value = ''
   failed.value = ''
   open.value = app
+  if (app.skills) void loadSkills()
 }
 </script>
 
@@ -83,6 +105,16 @@ function show(app: ConnectApp) {
           <ul v-if="open.notes?.length" class="ca-notes">
             <li v-for="n in open.notes" :key="n" class="hint">{{ t(n) }}</li>
           </ul>
+          <section v-if="open.skills" class="ca-skills" :aria-label="t('connect.skills.title')">
+            <h3>{{ t('connect.skills.title') }}</h3>
+            <p class="hint">{{ t('connect.skills.desc') }}</p>
+            <p v-if="skillsError" class="save-err" role="alert">{{ skillsError }}</p>
+            <p v-else-if="skills && !skills.length" class="hint">{{ t('connect.skills.none') }}</p>
+            <ul v-else-if="skills">
+              <li v-for="sk in skills" :key="sk.name"><span><b>{{ skillTitle(sk.name) }}</b> <span class="hint mono">{{ sk.file }} · {{ kb(sk.bytes) }}</span></span>
+                <a class="btn sm" :href="`/api/skills/${encodeURIComponent(sk.file)}`" :download="sk.file">{{ t('connect.skills.download') }}</a></li>
+            </ul>
+          </section>
           <div class="ca-help">
             <span class="lbl">{{ t('connect.help') }}</span>
             <a v-for="h in open.help" :key="h.url" :href="h.url" target="_blank" rel="noopener noreferrer">{{ h.title }}</a>
@@ -115,6 +147,11 @@ function show(app: ConnectApp) {
 .ca-why{font-size:12px}
 .ca-notes{margin:14px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .ca-notes li{font-size:12px}
+.ca-skills{margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+.ca-skills h3{margin:0 0 4px;font-size:14px}
+.ca-skills p{margin:0 0 8px;font-size:12px}
+.ca-skills ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ca-skills li{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .ca-help{margin-top:14px;display:flex;flex-direction:column;gap:4px;font-size:13px}
 .ca-help a{color:var(--primary-text);overflow-wrap:anywhere}
 .ca-status,.ca-dlg .save-err{margin:10px 0 0}
