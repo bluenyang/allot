@@ -1,25 +1,14 @@
 // The bell's list and read marks (spec 013 S-20), read from the store. The list is buildNotices() over the state; the
-// read marks stay in this browser only (localStorage; a blocked storage keeps them for this page only), so another
-// browser or device starts unread. Shared by every bell (the phone bar's and the header's).
-import { computed, ref } from 'vue'
+// read marks are the account's (spec 016 S-1, src/lib/notice-marks.ts), so every browser and device shows the same.
+// Shared by every bell (the phone bar's and the header's).
+import { computed } from 'vue'
 import { ymd } from './calc'
 import { goalCards, maturityCards, maturityKey } from './goals'
 import { offDays } from './holidays-lazy'
 import { buildNotices, keptMarks, unreadCount } from './notices'
 import { store } from './store'
 import { localToday } from './now'
-
-const KEY = 'allot.notices.read'
-
-function load(): Set<string> {
-  try {
-    const v = JSON.parse(localStorage.getItem(KEY) ?? '[]') as unknown
-    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
-  } catch {
-    return new Set()
-  }
-}
-const read = ref<Set<string>>(load())
+import { marks, saveMarks } from './notice-marks'
 
 /** The notifications now. The yearly contribution needs the holidays only when dates move off them (as the goal check). */
 export const notices = computed(() => {
@@ -35,20 +24,19 @@ export const notices = computed(() => {
   })
 })
 
-export const unread = computed(() => unreadCount(notices.value, read.value))
-export const isRead = (id: string) => read.value.has(id)
+export const unread = computed(() => unreadCount(notices.value, marks.read))
+export const isRead = (id: string) => marks.read.has(id)
 
-function save(next: Set<string>) {
-  read.value = next
-  try {
-    localStorage.setItem(KEY, JSON.stringify([...next]))
-  } catch { /* storage blocked: the marks last for this page only */ }
+/** The read marks of notices no longer listed: dropped when a mark is saved (as before, `keptMarks`). */
+const stale = () => {
+  const kept = new Set(keptMarks(notices.value, marks.read))
+  return [...marks.read].filter((id) => !kept.has(id))
 }
 
 /** Mark one notice read (the marks of notices no longer listed are dropped then). */
 export function markRead(id: string) {
-  save(new Set([...keptMarks(notices.value, read.value), id]))
+  void saveMarks({ read: { add: [id], drop: stale() } })
 }
 export function markAllRead() {
-  save(new Set(notices.value.map((n) => n.id)))
+  void saveMarks({ read: { add: notices.value.map((n) => n.id), drop: stale() } })
 }

@@ -7,6 +7,7 @@ import { authClient, lastRetryAfter } from './lib/auth-client'
 import { ApiError, api, onUnauthorized } from './lib/api'
 import { loadState, newSession, status, store } from './lib/store'
 import { hideToast } from './lib/toast'
+import { loadMarks, resetMarks } from './lib/notice-marks'
 import { resetProposals } from './lib/proposals'
 import { applyTheme } from './lib/theme'
 import { applyPreference, languageBeforeSignIn, setLang, t } from './i18n'
@@ -60,6 +61,8 @@ watch(
     newSession() // loads still on their way belong to the session that ended
     resetProposals() // a proposal screen belongs to one account's session
     hideToast() // and so does a message about what that account just did
+    resetMarks() // the bell's marks belong to one account
+    if (id && !oauthPage) void loadMarks()
     if (id && appReturn) handOver()
     else if (id && oauthPage) return // the OAuth screens need no data
     else if (id) loadState()

@@ -3,12 +3,13 @@
 // argument so the unit tests run them without a store; `goalCards` and `goalCount` read the store for the screens
 // (the page's cards, the waiting count and the sidebar badge).
 // The maturity cards (spec 013 S-15, rc.2) have the same shape: a Savings item whose maturity month has come and which
-// still sends. 멈추기 writes its stop month (in the database, revertible); 계속 보내기 is kept in this browser only
-// (localStorage, per account and maturity month: no new column), so another browser asks again.
-import { computed, ref } from 'vue'
+// still sends. 멈추기 writes its stop month (in the database, revertible); 계속 보내기 is kept with the account's bell marks
+// (spec 016 S-1, src/lib/notice-marks.ts: per account and maturity month, not in the change history), so every device agrees.
+import { computed } from 'vue'
 import { addYm, goalAlerts, itemSent, lastBalance, maturityAlerts, monthMoney, ymd, type AccountState, type GoalAlert } from './calc'
 import { offDays } from './holidays-lazy'
 import { store } from './store'
+import { marks, saveMarks } from './notice-marks'
 import type { Account } from '../data/types'
 import { localToday } from './now'
 
@@ -69,25 +70,11 @@ export const goalCards = computed(() => {
 })
 
 // ---------- maturity cards (S-15) ----------
-const KEPT_KEY = 'allot.maturityKept'
 /** The key of one maturity the user chose to keep sending past. */
 export const maturityKey = (accountId: string, ym: string) => `${accountId}@${ym}`
-function readKept(): Set<string> {
-  try {
-    const v: unknown = JSON.parse(globalThis.localStorage?.getItem(KEPT_KEY) ?? '[]')
-    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
-  } catch {
-    return new Set()
-  }
-}
-/** The maturities kept in this browser (read once, when the module loads). */
-const kept = ref<Set<string>>(readKept())
-/** 계속 보내기 on a maturity card: remembered in this browser only; nothing is saved on the server. */
+/** 계속 보내기 on a maturity card: saved with the account's marks; nothing of the plan changes. */
 export function keepMaturity(accountId: string, ym: string) {
-  const next = new Set(kept.value)
-  next.add(maturityKey(accountId, ym))
-  kept.value = next
-  try { globalThis.localStorage?.setItem(KEPT_KEY, JSON.stringify([...next])) } catch { /* private mode: kept for this visit only */ }
+  void saveMarks({ maturityKept: { add: [maturityKey(accountId, ym)] } })
 }
 
 /** The maturity cards now (read from the store): this month's or past maturities still sending, each with what stopping changes. */
@@ -97,7 +84,7 @@ export const maturityCards = computed(() => {
   // only the next transfer month needs the holidays (this month's transfer date)
   const off: ReadonlySet<string> = (s.dayShift ?? 'none') === 'none' ? new Set()
     : offDays(store.holidaySets, `${addYm(now.slice(0, 7), -1)}-01`, `${addYm(now.slice(0, 7), 3)}-01`) ?? new Set()
-  const done = kept.value
+  const done = marks.kept
   return maturityAlerts(store, now, off, (id, ym) => done.has(maturityKey(id, ym))).map((alert) => ({ alert, preview: stopPreview(store, alert) }))
 })
 

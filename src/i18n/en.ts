@@ -95,6 +95,7 @@ export const en = {
     // notifications (spec 013 S-20)
     noticeBell: 'Notifications · {n} unread',
     noticeReadAll: 'Mark all read',
+    noticeSaveFailed: 'Could not save the notice marks. Please try again.',
     noticeFilter: 'Kind of notification',
     noticeGroups: { all: 'All', pending: 'Pending', pay: 'Payments', budget: 'Budget' },
     noticeUnread: 'Unread',
