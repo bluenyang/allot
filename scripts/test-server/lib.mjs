@@ -1,13 +1,17 @@
-// Shared by cleanup.mjs and seed.mjs: the API client for the throwaway test server (:15174 only).
-// The account comes from ADMIN_EMAIL / ADMIN_PASSWORD (scripts/test-server/run.sh loads them by name).
+// Shared by cleanup.mjs and seed.mjs: the API client for the throwaway test server (:15174) or the throwaway API of
+// disposable.sh (127.0.0.1:15184), nothing else. The account comes from ADMIN_EMAIL / ADMIN_PASSWORD (run.sh and
+// disposable.sh set them by name).
 export const TEST_BASE = 'http://127.0.0.1:15174'
+export const DISPOSABLE_BASE = 'http://127.0.0.1:15184'
 
-/** Exits 1 unless BASE is exactly the throwaway test server: these scripts write and delete rows. */
+/** Exits 1 unless BASE is exactly one of the throwaway servers: these scripts write and delete rows. Returns BASE. */
 export function requireTestServer() {
-  if (process.env.BASE !== TEST_BASE) {
-    console.log(`refuse: BASE is not the test server (${TEST_BASE})`)
+  const base = process.env.BASE
+  if (base !== TEST_BASE && base !== DISPOSABLE_BASE) {
+    console.log(`refuse: BASE is not a throwaway server (${TEST_BASE} or ${DISPOSABLE_BASE})`)
     process.exit(1)
   }
+  return base
 }
 
 /**
@@ -22,12 +26,12 @@ export const LISTS = {
 
 /** Signs in once and returns { api, state }. */
 export async function connect() {
-  requireTestServer()
+  const base = requireTestServer()
   let cookie = ''
   const api = async (method, path, body) => {
-    const r = await fetch(TEST_BASE + path, {
+    const r = await fetch(base + path, {
       method,
-      headers: { 'content-type': 'application/json', origin: TEST_BASE, ...(cookie ? { cookie } : {}) },
+      headers: { 'content-type': 'application/json', origin: base, ...(cookie ? { cookie } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
     const set = r.headers.getSetCookie?.() ?? []
