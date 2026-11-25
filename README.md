@@ -119,6 +119,8 @@ Allot은 MCP 서버(Streamable HTTP)다. AI 앱이 내 월급 분배·수입·�
 
 ### 앱별 방법 (2026-11 기준, 각 회사의 요금제·화면은 바뀔 수 있다)
 
+앱 안에서는 **설정 › AI·연동 › 앱 연결**에 같은 방법이 있다(0.1.9-rc.3): 앱을 고르면 이 서버의 주소를 채운 명령과 복사 버튼, 각 회사의 공식 도움말 링크가 나온다. 외부 앱 연결(OAuth)이 꺼져 있으면 OAuth로만 되는 앱은 흐리게 보인다.
+
 - **claude.ai·Claude 데스크톱·휴대폰 앱**: Customize › Connectors › Add custom connector에 `https://<your-host>/mcp`를 넣는다(Team·Enterprise는 조직 소유자가 더한다). 휴대폰 앱은 웹에서 더한 커넥터를 쓴다. 스킬은 아래 "스킬"의 ZIP을 Customize › Skills에 올린다.
 - **Claude Code**: 이 저장소가 플러그인 마켓플레이스다.
   - OAuth: `/plugin marketplace add bluenyang/allot` → `/plugin install allot@allot` → MCP 주소를 넣으면 처음 쓸 때 브라우저에서 로그인·동의.
@@ -131,7 +133,7 @@ Allot은 MCP 서버(Streamable HTTP)다. AI 앱이 내 월급 분배·수입·�
 
 ### 스킬
 
-`skills/`의 스킬 7개는 어느 앱에서나 같은 `SKILL.md`다: 월초 점검(`allot-month-start`), 급여 정산(`allot-payday`), 월말 정산(`allot-month-end`), 구독 최적화 제안(`allot-subscriptions`), 영수증 분석(`allot-receipt`), 소비·지출 계획(`allot-spending-plan`), 자산관리(`allot-assets`). 지금 MCP 도구만 쓰고, 바꾸는 것은 모두 제안으로 한다. claude.ai에 올릴 ZIP은 `node scripts/skills-zip.mjs`가 `dist-skills/`에 만든다. 스킬을 고친 뒤에는 `node scripts/plugins-sync.mjs`로 두 플러그인에 복사한다(단위 시험이 다르면 실패한다).
+`skills/`의 스킬 7개는 어느 앱에서나 같은 `SKILL.md`다: 월초 점검(`allot-month-start`), 급여 정산(`allot-payday`), 월말 정산(`allot-month-end`), 구독 최적화 제안(`allot-subscriptions`), 영수증 분석(`allot-receipt`), 소비·지출 계획(`allot-spending-plan`), 자산관리(`allot-assets`). 지금 MCP 도구만 쓰고, 바꾸는 것은 모두 제안으로 한다. claude.ai에 올릴 ZIP은 앱의 **설정 › AI·연동 › 앱 연결 › claude.ai**에서 스킬마다 받는다(`GET /api/skills/<이름>.zip`, 로그인 필요, 0.1.9-rc.3). 저장소에서는 `node scripts/skills-zip.mjs`가 같은 ZIP을 `dist-skills/`에 만든다. 스킬을 고친 뒤에는 `node scripts/plugins-sync.mjs`로 두 플러그인에 복사한다(단위 시험이 다르면 실패한다).
 
 읽기 도구(12개):
 - `get_overview`: 한 달 요약. 날짜, 구독 이체 계산, 분배, 나머지 분배, 그달의 결제·일회성 지출 회차와 플랜 전환, 수입(`income`)과 여유(`leftOverKrw`, 0.1.8).
