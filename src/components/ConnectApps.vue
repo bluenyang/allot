@@ -98,7 +98,7 @@ function show(app: ConnectApp) {
           <ol class="ca-steps">
             <li v-for="(s, i) in steps" :key="i" :class="{ dim: off && s.mode === 'oauth' }">
               <span>{{ s.text === 'connect.step.keyCommand' ? t(s.text, { key: fill.keyPh }) : t(s.text) }}</span>
-              <span v-if="off && s.mode === 'oauth'" class="hint ca-why">{{ t('connect.stepOauthOff') }}</span>
+              <span v-if="off && s.mode === 'oauth' && open.auth === 'both'" class="hint ca-why">{{ t('connect.stepOauthOff') }}</span>
               <div v-if="s.value" class="cbrow"><code class="codebox cmd">{{ s.value }}</code><button class="btn sm" type="button" @click="copy(s.value)">{{ t('connect.copy') }}</button></div>
             </li>
           </ol>

@@ -55,6 +55,8 @@ test('with OAuth off, the OAuth-only apps are dimmed and say why; the others are
   // a dimmed app still opens, with the reason on top; an app that takes either marks its OAuth steps
   await tile(page, 'ChatGPT').click()
   await expect(page.getByRole('dialog').getByRole('note')).toContainText('관리자가 외부 앱 연결(OAuth)을 켜야 해요')
+  // an OAuth-only app has no key way, so its steps do not point to one (review rc.3-1 R1-2)
+  await expect(page.getByRole('dialog').getByText('아래 API 키 방법을 쓰세요', { exact: false })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await tile(page, 'Codex').click()
   // an app that also takes a key gets no note on top, only beside its OAuth steps (review rc.3-1 R1-1)
