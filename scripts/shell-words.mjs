@@ -125,6 +125,8 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
       } else if (c === '<' && s.startsWith('<<<', i)) {
         add('<<<'); i += 3
       } else if (c === '<' && s[i + 1] === '<') {
+        // `3<<EOF` and `{fd}<<EOF`: the word before << is the descriptor, not an argument (review 7 I-2)
+        if (word !== null && !wany && /^(?:\d+|\{[A-Za-z_]\w*(?:\[[^\]]*\])?\})$/.test(word)) { word = null; wq = false }
         endWord()
         i += 2
         const strip = s[i] === '-'
