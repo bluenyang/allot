@@ -2,9 +2,15 @@
 id: "016"
 slug: rc2-account-and-notices
 version: 0.1.9
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-26"
+    words: "승인"
+    rev: e275a80
+    note: "PM 질문 '이대로 intent 016을 승인하실까요?'에 대한 답. 열린 질문 1~5는 그 전에 답함(질의서 기록)."
 waivers: []
 supersedes: null
 ---
