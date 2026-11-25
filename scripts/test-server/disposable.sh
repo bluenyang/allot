@@ -21,8 +21,9 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$HERE/common.sh"
 . "$ROOT/scripts/check-run.sh"
 DB=allot-disp-db
-PGPORT=${DISP_PG_PORT:-15183}
-APIPORT=${DISP_API_PORT:-15184}
+# fixed: lib.mjs accepts only this API base besides :15174, and no override can point a run at :15173 or :15174 (review 1 F-4)
+PGPORT=15183
+APIPORT=15184
 PIDS="$LOG_DIR/${name%.log}.api.pid"
 APILOG="$LOG_DIR/${name%.log}.api.log"
 rnd() { openssl rand -hex 24; }
@@ -40,6 +41,7 @@ export BETTER_AUTH_URL=$BASE
 
 begin "$name" "$LOG_DIR/${name%.log}.log"
 step "no earlier container" node "$HERE/no-container.mjs" "$DB"
+step "ports free" node "$HERE/port-free.mjs" "$PGPORT" "$APIPORT"
 step "start postgres" docker run -d --rm --name "$DB" -e POSTGRES_PASSWORD -p "127.0.0.1:${PGPORT}:5432" postgres:16.15-alpine3.24
 cleanup "remove postgres" docker rm -f "$DB"
 step "role and database" node "$HERE/disposable-db.mjs"

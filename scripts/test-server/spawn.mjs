@@ -17,5 +17,11 @@ if (!a || !b || rest.length === 0) { console.log('usage: spawn.mjs <pidfile> <lo
 const out = openSync(b, 'a')
 const child = spawn(rest[0], rest.slice(1), { detached: true, stdio: ['ignore', out, out] })
 writeFileSync(a, String(child.pid))
+// a command that dies at once (a taken port, a syntax error) fails this step (review 1 F-4)
+let exited = null
+child.once('exit', (code, signal) => { exited = signal ?? code })
+child.once('error', (e) => { exited = e.code ?? 'error' })
+await new Promise((r) => setTimeout(r, 3000))
+if (exited !== null) { console.log(`${rest[0]} exited at once (${exited}); see ${b}`); rmSync(a, { force: true }); process.exit(1) }
 child.unref()
 console.log(`started ${rest.slice(0, 4).join(' ')} as process group ${child.pid}, output to ${b}`)
