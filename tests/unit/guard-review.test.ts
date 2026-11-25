@@ -127,7 +127,14 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     "git ls-remote {--upload-pack='gh pr merge 24;:',.}", "git -C {.,-c,'core.fsmonitor=gh pr merge 24;:'} status",
     'git ls-remote "${X:---upload-pack=gh pr merge 24;:}" .', 'git ls-remote "$(echo x--upload-pack=gh pr merge 24 | cut -c2-)" .',
     "true '--upload-pack=gh pr merge 24;:' && git ls-remote $_ .", "sort {-o,lefthook-local.yml} notes.txt; grep 'gh pr merge' notes.txt",
+    // gh takes the word after a flag as its value: only -R/--repo/-H/--hostname may stand before a subcommand (review 5 G-1)
+    'gh pr -t view merge 1', 'gh pr --subject view merge 1', 'gh pr -b view merge 1', 'gh pr --body view merge 1',
+    'gh -t run pr merge 1', 'gh pr --title view create --head x',
   ]) assert.equal(isCandidate(asInput(c)), true, c)
+  for (const c of [
+    'gh pr view 24 --json body -q .body | grep "gh pr merge"', 'gh -R o/r pr view 24; grep "gh pr merge" a.log',
+    'gh pr --repo=o/r checks 24; grep "gh pr merge" a.log', 'gh run list -L 5; grep "gh pr merge" a.log',
+  ]) assert.equal(isCandidate(asInput(c)), false, c)
   // writing nowhere (/dev/null, another descriptor) keeps a git line plain
   for (const c of [
     'git log --oneline -3 2>/dev/null; grep -h "gh pr merge" notes.md',

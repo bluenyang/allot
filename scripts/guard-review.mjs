@@ -142,11 +142,14 @@ const GH_BANNED = new Set(['--web', '-w', '-F', '--body-file', '--editor', '-e']
 
 /** `gh` words (after gh): a subcommand that only reads or edits, never creates or merges. */
 function ghSafe(rest) {
+  // Before a subcommand name only -R/--repo/-H/--hostname with their value: gh takes the word after any other flag
+  // (-t, --subject, ...) as that flag's value and the next word as the subcommand (review 5 G-1).
   const nextNonFlag = (from) => {
     let j = from
     while (j < rest.length) {
       if (GH_VALUE_FLAGS.has(rest[j])) { j += 2; continue }
-      if (rest[j].startsWith('-')) { j++; continue }
+      if (/^--(?:repo|hostname)=/.test(rest[j])) { j++; continue }
+      if (rest[j].startsWith('-')) return -1
       return j
     }
     return -1
