@@ -3,9 +3,9 @@
 //   POST /api/account/password  { newPassword } → { ok: true }
 // Better Auth's `setPassword` is server-only; this route is the way to it. It refuses, in this order:
 //   409 PASSWORD_OFF        the admin turned password login off (the screen dims the form; the server agrees)
-//   400 PASSWORD_TOO_SHORT  below the admin's minimum (the auth hook's policy check, server/password-policy.ts)
 //   403 REAUTH              the session was signed in longer ago than Better Auth's `freshAge` (1 day by default). Better
 //                           Auth's setPassword itself only needs a session (sensitiveSessionMiddleware), so the check is here.
+//   400 PASSWORD_TOO_SHORT  below the admin's minimum (the auth hook's policy check, server/password-policy.ts)
 //   409 PASSWORD_ALREADY_SET the account has a password: change it with the password form instead
 // Removing it is the existing unlink of the 'credential' account (S-6), which never removes the last way in.
 import { Hono } from 'hono'
