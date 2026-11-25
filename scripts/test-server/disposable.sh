@@ -45,6 +45,8 @@ step "ports free" node "$HERE/port-free.mjs" "$PGPORT" "$APIPORT"
 step "start postgres" docker run -d --rm --name "$DB" -e POSTGRES_PASSWORD -p "127.0.0.1:${PGPORT}:5432" postgres:16.15-alpine3.24
 cleanup "remove postgres" docker rm -f "$DB"
 step "role and database" node "$HERE/disposable-db.mjs"
+# the superuser password is for the two steps above only: the API and the checks get the app role alone (review 1, notes)
+unset POSTGRES_PASSWORD PG_SUPER_URL APP_PW
 step "migrations and admin" pnpm -s db:admin
 step "start api" node "$HERE/spawn.mjs" "$PIDS" "$APILOG" pnpm exec tsx server/index.ts
 cleanup "stop api" node "$HERE/spawn.mjs" --stop "$PIDS"
