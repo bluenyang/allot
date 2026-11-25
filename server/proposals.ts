@@ -11,7 +11,7 @@ import { db, type Db } from './db/client'
 import * as a from './db/auth-schema'
 import * as t from './db/schema'
 import { asUser, lockFor } from './db/scope'
-import { appName, oauthOn, scopesCanWrite } from './oauth'
+import { allotScopeOf, appName, oauthOn, scopesCanWrite } from './oauth'
 import { m, text, type Msg } from './messages'
 import type { Data } from './mcp/views'
 import { AI_LISTS, AI_SINGLES, applyOps, constraintMessage, OpInvalid, OpRejected, parseOp, Rejected, RESOURCES, SINGLES, type Op } from './ops'
@@ -107,14 +107,15 @@ async function liveKeys(uid: string, ids: string[]): Promise<Map<string, LiveKey
  * spec 015 S-9: the apps connected with OAuth whose connection can still apply a proposal of `uid`: external app
  * connections are on, and the user's consent for that app is there with a write permission.
  */
-async function liveApps(q: Db, uid: string, ids: string[], lock = false): Promise<Map<string, LiveKey>> {
+async function liveApps(q: Db, uid: string, ids: string[], lock = false, mayApply = false): Promise<Map<string, LiveKey>> {
   if (!ids.length || !oauthOn()) return new Map()
   const query = q.select({ clientId: a.oauthConsent.clientId, scopes: a.oauthConsent.scopes, name: a.oauthClient.name })
     .from(a.oauthConsent).innerJoin(a.oauthClient, eq(a.oauthClient.clientId, a.oauthConsent.clientId))
     .where(and(eq(a.oauthConsent.userId, uid), inArray(a.oauthConsent.clientId, ids)))
   const rows = lock ? await query.for('share', { of: a.oauthConsent }) : await query
   const live = new Map<string, LiveKey>()
-  for (const r of rows) if (scopesCanWrite(r.scopes)) live.set(r.clientId, { id: r.clientId, name: appName(r) })
+  // mayApply: the app applies a chat proposal itself, so its connection must still confirm in the chat (review 1 R1-1)
+  for (const r of rows) if (mayApply ? allotScopeOf(r.scopes) === 'allot:apply' : scopesCanWrite(r.scopes)) live.set(r.clientId, { id: r.clientId, name: appName(r) })
   return live
 }
 
@@ -141,8 +142,8 @@ async function keyFor(q: Db, uid: string, keyId: string): Promise<LiveKey | null
 }
 
 /** What made a proposal (its key, or its app's connection: spec 015 S-9), when it can still apply it; locked as keyFor. */
-async function sourceFor(q: Db, uid: string, p: { keyId: string; sourceKind: string }): Promise<LiveKey | null> {
-  if (p.sourceKind === 'oauth') return (await liveApps(q, uid, [p.keyId], true)).get(p.keyId) ?? null
+async function sourceFor(q: Db, uid: string, p: { keyId: string; sourceKind: string }, byApp = false): Promise<LiveKey | null> {
+  if (p.sourceKind === 'oauth') return (await liveApps(q, uid, [p.keyId], true, byApp)).get(p.keyId) ?? null
   return keyFor(q, uid, p.keyId)
 }
 
@@ -306,7 +307,8 @@ export async function getProposal(uid: string, id: string, byKey?: MadeBy): Prom
 }
 
 // ── Decide ──
-export type Decider = { kind: 'user' } | { kind: 'key'; keyId: string; source?: Source }
+/** `confirm`: how the caller's key or connection confirms now (an app's token may have been narrowed since it proposed). */
+export type Decider = { kind: 'user' } | { kind: 'key'; keyId: string; source?: Source; confirm?: Confirm }
 
 /**
  * Apply a proposal as one change set. The user's own confirmation on the screen works for either
@@ -326,7 +328,9 @@ export async function applyProposal(uid: string, id: string, by: Decider): Promi
     if (by.kind === 'key' && p.confirm !== 'chat') throw new ProposalError('wrong_confirm', m('proposalUiOnly'), undefined, 'This proposal is confirmed in the Allot screen (Pending changes), not by the AI. Ask the user to confirm it there.')
     const decided = { decidedAt: new Date().toISOString() }
     if (!(await accountUsable(q, uid))) throw new ProposalError('key_unusable', m('proposalAccount'))
-    const key = await sourceFor(q, uid, p)
+    // spec 015 A-9, review 1 R1-1: an app applies only while both its token and its connection confirm in the chat
+    if (by.kind === 'key' && p.sourceKind === 'oauth' && by.confirm !== 'chat') throw new ProposalError('wrong_confirm', m('proposalUiOnly'), undefined, 'This connection now confirms proposals in the Allot screen (Pending changes), not in the chat. Ask the user to confirm it there.')
+    const key = await sourceFor(q, uid, p, by.kind === 'key')
     if (!key) throw new ProposalError('key_unusable', m(p.sourceKind === 'oauth' ? 'proposalAppGone' : 'proposalKeyGone'))
     // Expiry is checked last, after every wait for a lock above (the account and key rows can be held for a while),
     // and right before the proposal is applied.

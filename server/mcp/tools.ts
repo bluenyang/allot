@@ -140,7 +140,7 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
     inputSchema: z.object({ proposalId: z.string().min(1).max(100) }).strict(),
     annotations: APPLY,
   }, proposalTool('apply_proposal', async ({ proposalId }) => {
-    const done = await applyProposal(uid, proposalId, { kind: 'key', keyId: key.id, source: key.source ?? 'api_key' })
+    const done = await applyProposal(uid, proposalId, { kind: 'key', keyId: key.id, source: key.source ?? 'api_key', confirm: key.confirm })
     return json({ proposalId, status: 'applied', changeSetId: done.changeSetId })
   }))
 }
