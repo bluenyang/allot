@@ -21,7 +21,7 @@ already in Allot:
   Do not propose an update of the subscription row: an update sends the whole stored row, and `list_subscriptions`
   shows a computed view (this month's plan, `nextPayment`, `payPath`, `receiptVerified`), not that row;
 - the amount differs: say by how much and ask whether the plan changed. If it did, propose a plan change from the
-  date it started (resource `plan-changes`, `effective` and the changed fields in `to`, as `list_plan_changes` shows).
+  date it started (resource `plan-changes`: `subId` = the subscription's id, `effective`, `to` = only the changed plan fields, `note`).
 
 ## Otherwise: a one-off spending
 Check `list_spendings` for the same purchase first (no duplicates). Then propose it: `propose_changes`, resource
