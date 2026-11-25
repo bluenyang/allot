@@ -14,8 +14,8 @@ export const PH = '\u0001'
 
 /**
  * Parses `src` into simple commands: `{ words, quoted, dyn, heredocs }` each, flattened (substitutions
- * included). `words` have their quotes removed; `quoted[i]` is true when any part of `words[i]` was quoted or escaped
- * (so `"<"` is an argument, not a redirection); `dyn` is true when a word holds a PH marker;
+ * included). `words` have their quotes removed; `quoted[i]` is true when the first character of `words[i]` was quoted
+ * or escaped (so `"<"` and `\\<` are arguments, while `<"f"` is still a redirection); `dyn` is true when a word holds a PH marker;
  * `heredocs` are the bodies of the here-documents attached to the command.
  * `nlSpace`: a newline separates words instead of commands (the reading `gh<NL>pr<NL>merge`).
  */
@@ -52,7 +52,7 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
   function runInner(closer, asBody) {
     let seg = null
     let word = null
-    let wq = false // the current word has a quoted or escaped part
+    let wq = false // the current word starts with a quoted or escaped character
     const pending = []
     const getSeg = () => (seg ??= { words: [], quoted: [], dyn: false, ansi: false, heredocs: [] })
     const endWord = () => { if (word !== null) { getSeg().words.push(word); getSeg().quoted.push(wq); word = null; wq = false } }
@@ -87,17 +87,21 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
       if (closer && c === closer) { i++; endSeg(); return }
       if (c === "'") {
         const j = s.indexOf("'", i + 1)
-        add(''); wq = true
+        if (word === null) wq = true
+        add('')
         if (j < 0) { throw new Error("malformed: unterminated quote"); add(s.slice(i + 1)); i = n } else { add(s.slice(i + 1, j)); i = j + 1 }
       } else if (c === '"') {
-        i++; wq = true; dq()
+        if (word === null) wq = true
+        i++; dq()
       } else if (c === '$' && s[i + 1] === "'") {
-        i += 2; mark(); getSeg().ansi = true; wq = true
+        if (word === null) wq = true
+        i += 2; mark(); getSeg().ansi = true
         while (i < n && s[i] !== "'") i += s[i] === '\\' ? 2 : 1
         if (i >= n) throw new Error("malformed: unterminated $'")
         i++
       } else if (c === '$' && s[i + 1] === '"') {
-        i += 2; mark(); getSeg().ansi = true; wq = true; dq()
+        if (word === null) wq = true
+        i += 2; mark(); getSeg().ansi = true; dq()
       } else if (c === '$' && s[i + 1] === '(') {
         i += 2; mark(); run(')')
       } else if (c === '$' && s[i + 1] === '{') {
@@ -108,7 +112,7 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
         i++; mark(); run('`')
       } else if (c === '\\') {
         if (s[i + 1] === '\n') i += 2
-        else { if (i + 1 < n) { add(s[i + 1]); wq = true } i += 2 }
+        else { if (i + 1 < n) { if (word === null) wq = true; add(s[i + 1]) } i += 2 }
       } else if (c === '#' && word === null) {
         while (i < n && s[i] !== '\n') i++
       } else if (c === '<' && s.startsWith('<<<', i)) {
