@@ -1,7 +1,8 @@
 ---
 intent: "017"
-status: draft
-approvals: []
+status: accepted
+approvals:
+  - { role: user, kind: summary, by: BlueNyang, at: "2026-11-26", words: "진행", rev: 78a3fa8 }
 summary_for_user: |
   0.1.9-rc.3은 작업 단위 6개(W-1~W-6)입니다. 순서는 안내 내용 → 화면(카드·모달) → 스킬 ZIP → MCP 서버 자기소개 → 문서 → 시험입니다.
   설정 › AI·연동에 '앱 연결' 카드를 두고 앱 아홉 가지를 보여 줍니다: Claude Code(플러그인·OAuth), Claude Code(플러그인·API 키), claude.ai·데스크톱·휴대폰, ChatGPT, Codex, Gemini CLI, Antigravity CLI, API 키로 직접, 그 밖의 에이전트(수동).
