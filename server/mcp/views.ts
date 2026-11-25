@@ -581,12 +581,14 @@ export function noticeText(n: Notice): string {
 
 /**
  * list_notifications: what the bell lists on `now` (src/lib/notices.ts) — pending proposals (`proposals`, counted by the
- * caller), goal cards and maturity cards (a Savings item due this month or past that still sends; the "keep sending"
- * choice is kept in the user's browser and cannot be seen here, so a maturity kept there is listed until it is stopped;
- * review rc2-1 F-5), the charges and rounds of the next three days, this month's remainder short, a yearly limit used 90%
- * or more, a buffer short — each with a sentence. The read marks are the browser's and are not here.
+ * caller), goal cards and maturity cards (a Savings item due this month or past that still sends, less those the user
+ * answered "keep sending" — `marks.maturityKept`, spec 016 S-4), the charges and rounds of the next three days, this
+ * month's remainder short, a yearly limit used 90% or more, a buffer short — each with a sentence and `read` (the
+ * account's read marks, as the app's bell shows them).
  */
-export function notificationList(d: Data, now: Date, proposals: number) {
+export function notificationList(d: Data, now: Date, proposals: number, marks: { read: readonly string[]; maturityKept: readonly string[] } = { read: [], maturityKept: [] }) {
+  const read = new Set(marks.read)
+  const kept = new Set(marks.maturityKept)
   const st = accountState(d)
   const today = ymd(now)
   const ym = ymOf(now)
@@ -594,7 +596,7 @@ export function notificationList(d: Data, now: Date, proposals: number) {
   const jan = `${ym.slice(0, 4)}-01`
   const off = offDays(d, firstRec && firstRec < jan ? firstRec : jan, addYm(ym, 3))
   const goals = goalAlerts(st, today, off)
-  const due = maturityAlerts(st, today, off)
+  const due = maturityAlerts(st, today, off, (id, ym) => kept.has(`${id}@${ym}`))
   const list = buildNotices(st, today, off, { proposals, goalAccounts: goals.map((g) => g.account.id), maturities: due.map((m) => `${m.account.id}@${m.month}`) })
   return {
     date: today,
@@ -603,6 +605,7 @@ export function notificationList(d: Data, now: Date, proposals: number) {
       ...(n.kind === 'goals' ? { accounts: goals.map((g) => ({ accountId: g.account.id, name: g.account.name, goalMonth: g.month, stopFrom: g.stopFrom })) } : {}),
       ...(n.kind === 'maturities' ? { accounts: due.map((m) => ({ accountId: m.account.id, name: m.account.name, maturityMonth: m.month, stopFrom: m.stopFrom })) } : {}),
       message: noticeText(n),
+      read: read.has(n.id),
     })),
   }
 }
