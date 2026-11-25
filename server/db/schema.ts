@@ -632,6 +632,23 @@ export const mcpProposal = pgTable('mcp_proposal', {
   check('mcp_proposal_decided_by', sql`${t.decidedBy} is null or ${t.decidedBy} in ('user', 'key')`),
 ])
 
+/**
+ * What the user did with the bell's notices (spec 016 S-1): `read` — a notice id they read (src/lib/notices.ts), and
+ * `maturity_kept` — a maturity card they answered 계속 보내기 (`accountId@YYYY-MM`, src/lib/goals.ts). Kept per account so
+ * every device shows the same; screen state, so not in the change history. At most 2000 per kind (server/notice-marks.ts).
+ */
+export const noticeMark = pgTable('notice_mark', {
+  userId: owner(),
+  kind: text('kind').$type<'read' | 'maturity_kept'>().notNull(),
+  key: text('key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+}, (t) => [
+  userScoped(t.userId),
+  primaryKey({ columns: [t.userId, t.kind, t.key] }),
+  check('notice_mark_kind', sql`${t.kind} in ('read', 'maturity_kept')`),
+  index('notice_mark_user_kind_created').on(t.userId, t.kind, t.createdAt),
+])
+
 // ── Data keys for envelope encryption (spec 006 S-5, server/crypto/) ──
 /** One data key per user, wrapped by the master key whose id is `kid`. */
 export const userKey = pgTable('user_key', {
