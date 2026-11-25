@@ -30,7 +30,7 @@ import { PH, parseShell } from './shell-words.mjs'
 // Detection is safe by default: every command line is read as text (any reading that spells a PR
 // operation), exactly as before. The one exemption is a whole line of plain data commands
 // (scripts/shell-words.mjs parses it): echo, printf, grep, cat, head, tail, wc, `git commit -m`,
-// read-only `gh`, the file and listing programs of DATA_PROGS and the git subcommands of GIT_DATA (retro 0.1.8),
+// read-only `gh`, the file and listing programs of DATA_PROGS and git with the options of GIT_OPTS (retro 0.1.8),
 // with no env assignment, wrapper or unlisted option, joined
 // only by ; && || | and newlines. One other command anywhere puts the whole line back under the text
 // rules. Input the parser cannot handle (too large or nested) is refused.
@@ -62,15 +62,18 @@ const GH_VALUE_FLAGS = new Set(['-R', '--repo', '-H', '--hostname'])
 const REDIR = /^\d*(?:>>?|<|<>|>\||>&|&>)/
 const REDIR_ONLY = /^\d*(?:>>?|<|<>|>\||>&|&>)$/
 
-/** Words without redirections (`2>/dev/null`, `> f`, `< f`, `>&2`); `hasIn` when stdin comes from a file. */
-function stripRedirs(words) {
+/**
+ * Words without redirections (`2>/dev/null`, `> f`, `< f`, `>&2`, `<<< w`); `hasIn` when stdin comes from a file.
+ * A quoted word (`quoted[i]`, from parseShell) is an argument, never a redirection (`"<"`; review 3).
+ */
+function stripRedirs(words, quoted = []) {
   const args = []
   let hasIn = false
   for (let i = 0; i < words.length; i++) {
     const w = words[i]
-    if (!REDIR.test(w)) { args.push(w); continue }
+    if (quoted[i] || !REDIR.test(w)) { args.push(w); continue }
     if (/^\d*<(?!<)/.test(w)) hasIn = true
-    if (REDIR_ONLY.test(w)) i++ // the operator stands alone: its target is the next word
+    if (REDIR_ONLY.test(w) || /^\d*<<<$/.test(w)) i++ // the operator stands alone: its target is the next word
   }
   return { args, hasIn }
 }
@@ -96,18 +99,43 @@ const GREP_PROGRAMS = new Set(['grep', 'egrep', 'fgrep'])
 // (sort can, so it has an option list above). A line that also runs git is checked for writes (isPlainLine).
 const DATA_PROGS = new Set(['ls', 'cd', 'pwd', 'mkdir', 'cut', 'tr', 'diff', 'cmp', 'date', 'basename', 'dirname',
   'realpath', 'readlink', 'stat', 'du', 'df', 'file', 'nl', 'tac', 'rev', 'column', 'jq', 'true', 'false'])
-// git subcommands that run no command of the user's; with any option that can (an exec, a pack or diff program) they are not plain
-const GIT_DATA = new Set(['status', 'log', 'show', 'diff', 'add', 'restore', 'rm', 'mv', 'fetch', 'pull', 'push', 'branch', 'checkout',
-  'switch', 'merge', 'rev-parse', 'rev-list', 'merge-base', 'ls-remote', 'ls-files', 'worktree', 'tag', 'remote', 'describe',
-  'shortlog', 'blame', 'reflog', 'cat-file', 'check-ignore', 'stash'])
-// Long options that run a program, or write a file (`--output`, review 1 F-2). git takes any unambiguous prefix of a long
-// option (`--upl` is `--upload-pack`), so a word counts when it is a prefix of one of these, however short (review 1 F-1).
-const GIT_RUN_LONG = ['exec', 'upload-pack', 'receive-pack', 'ext-diff', 'extcmd', 'tool', 'textconv', 'config', 'output']
-function gitRuns(x) {
-  const m = /^--([^=]+)/.exec(x)
-  if (m) return GIT_RUN_LONG.some((o) => o.startsWith(m[1]))
-  return /^-x/.test(x) || x === '-c'
-}
+// git: each subcommand with the options an agent writes by habit (user, after three reviews of the denylist found a
+// way through each time: "git은 허용 옵션 목록으로"). Any other option — one that runs a program (--exec,
+// --upload-pack, --ext-diff, -x, ...), writes a file (--output), or an abbreviation git would accept — makes the
+// command not plain. Words that are not options (paths, refs, values) and everything after `--` are data.
+const LOG_OPTS = String.raw`-\d+|-n\d*|-[psiS]|-[SG].+|--oneline|--stat|--shortstat|--numstat|--name-only|--name-status|--summary|--graph|--decorate(?:=\w+)?|--no-decorate|--all|--reverse|--no-merges|--merges|--first-parent|--follow|--abbrev-commit|--left-right|--cherry-pick|--no-patch|--patch|--source|--boundary|--no-color|--color(?:=\w+)?|--date=[\w-]+|--(?:format|pretty|since|until|after|before|author|committer|grep|max-count|skip|diff-filter|abbrev)=.*`
+const GIT_OPTS = new Map(Object.entries({
+  status: String.raw`-[sbz]+|-u(?:no|normal|all)?|--short|--branch|--porcelain(?:=v[12])?|--untracked-files(?:=(?:no|normal|all))?|--ignored|--ahead-behind|--no-ahead-behind`,
+  log: LOG_OPTS,
+  show: `${LOG_OPTS}|-q|--quiet`,
+  diff: String.raw`-U\d+|-[wbRM]|--stat(?:=[\d,]+)?|--shortstat|--numstat|--name-only|--name-status|--summary|--cached|--staged|--check|--unified=\d+|--word-diff(?:=\w+)?|--color(?:=\w+)?|--no-color|--quiet|--exit-code|--ignore-all-space|--ignore-space-change|--diff-filter=\w+|--no-index|--merge-base|--find-renames`,
+  add: '-[AuNfvn]+|--all|--update|--intent-to-add|--force|--verbose|--dry-run',
+  restore: '-[SWqs]+|--staged|--worktree|--quiet|--source=.+',
+  rm: '-[rfq]+|--cached|--quiet|--force',
+  mv: '-[fkvn]+',
+  fetch: String.raw`-[qpv]+|--quiet|--prune|--tags|--no-tags|--all|--depth=\d+|--unshallow|--verbose|--dry-run`,
+  pull: '-[qv]+|--quiet|--ff-only|--ff|--no-ff|--rebase|--no-rebase|--prune|--tags|--no-edit',
+  push: '-[qunvd]+|--quiet|--set-upstream|--tags|--follow-tags|--force-with-lease(?:=.+)?|--delete|--dry-run|--no-verify|--verbose',
+  branch: '-[arvdDmMfu]+|--list|--show-current|--all|--remotes|--merged|--no-merged|--contains|--delete|--move|--force|--verbose|--no-color|--(?:set-upstream-to|sort|format)=.+',
+  checkout: '-[bBqft]+|--detach|--track|--quiet|--force',
+  switch: '-[cCqd]+|--detach|--create|--force-create|--quiet|--discard-changes',
+  merge: '-[qm]|--quiet|--ff-only|--ff|--no-ff|--no-edit|--squash|--abort|--continue',
+  'rev-parse': String.raw`-q|--quiet|--short(?:=\d+)?|--abbrev-ref|--verify|--show-toplevel|--git-dir|--git-common-dir|--absolute-git-dir|--is-inside-work-tree|--show-prefix|--symbolic-full-name`,
+  'rev-list': String.raw`-n|-\d+|--count|--all|--left-right|--max-count=\d+|--reverse|--first-parent|--no-merges|--merges|--oneline`,
+  'merge-base': '--is-ancestor|--all|--fork-point|--octopus',
+  'ls-remote': '-[htbq]+|--heads|--tags|--branches|--refs|--quiet|--exit-code|--symref',
+  'ls-files': '-[cdmosiuz]+|--others|--modified|--deleted|--cached|--stage|--exclude-standard|--error-unmatch|--ignored|--full-name',
+  worktree: '-[bBfqv]+|--force|--detach|--porcelain|--quiet|--verbose|--expire=.+',
+  tag: String.raw`-[lda]|-n\d*|-m|--list|--delete|--contains|--points-at|--(?:sort|format)=.+`,
+  remote: '-v|--verbose',
+  describe: String.raw`--tags|--always|--dirty|--exact-match|--long|--all|--abbrev=\d+`,
+  shortlog: '-[sne]+|--summary|--numbered|--email|--all|--no-merges|--since=.+',
+  blame: String.raw`-L.*|-[wselnf]+|--porcelain|--line-porcelain|--date=[\w-]+`,
+  reflog: String.raw`-n\d*|-\d+|--oneline|--all|--date=[\w-]+|--format=.+`,
+  'cat-file': '-[tspe]',
+  'check-ignore': '-[vqn]+|--verbose|--quiet|--non-matching|--no-index',
+  stash: '-[uqmp]|--include-untracked|--quiet|--stat|--patch',
+}).map(([k, v]) => [k, new RegExp(`^(?:${v})$`)]))
 const GIT_COMMIT_BARE = new Set(['-q', '-a', '-s', '-am', '-qm', '--amend', '--no-edit', '--allow-empty'])
 const GIT_COMMIT_VALUED = new Set(['-m', '-F', '--message', '--file'])
 const GH_BANNED = new Set(['--web', '-w', '-F', '--body-file', '--editor', '-e'])
@@ -134,15 +162,14 @@ function ghSafe(rest) {
 
 /** A plain data command: no env assignment, no wrapper, no option outside the small lists. */
 function isPlainData(seg) {
-  const { args } = stripRedirs(seg.words)
+  const { args } = stripRedirs(seg.words, seg.quoted)
   if (args.length === 0 || args[0].includes(PH)) return false
   const prog = args[0]
   const rest = args.slice(1)
-  // git and gh read their words as a subcommand: a standalone redirection operator (which may be a quoted "<" the
-  // parser cannot tell apart) or a here-string would move a word in or out of that reading. Allowed only before
-  // /dev/null or a descriptor (review 3 H-1, I-1).
-  if ((prog === 'git' || prog === 'gh') && seg.words.some((w, i) => /^\d*<<</.test(w) ||
-    (REDIR_ONLY.test(w) && !/^(?:\/dev\/null|\d+-?|-)$/.test(seg.words[i + 1] ?? '')))) return false
+  // git and gh read their words as a subcommand: a here-string, or a standalone redirection operator before anything
+  // but /dev/null or a descriptor, is not plain for them (review 3 H-1)
+  if ((prog === 'git' || prog === 'gh') && seg.words.some((w, i) => w.includes('<<<') ||
+    (!seg.quoted[i] && REDIR_ONLY.test(w) && !/^(?:\/dev\/null|\d+-?|-)$/.test(seg.words[i + 1] ?? '')))) return false
   if (PLAIN_OPTIONS[prog]) {
     return rest.every((x) => !x.startsWith('-') || x === '-' || PLAIN_OPTIONS[prog].test(x))
   }
@@ -159,18 +186,27 @@ function isPlainData(seg) {
     return operands <= 1
   }
   if (prog === 'git') {
-    // the parser drops quotes, so a quoted "<" or ">&" looks like a redirection and stripRedirs drops the word after it:
-    // look for an option that runs a program among all the words (review 2 G-1)
-    if (seg.words.some(gitRuns)) return false
-    // `git -C <dir>` only changes the folder; any other option before the subcommand (-c, --exec-path, ...) is not plain
+    // `git -C <dir>` and `--no-pager` only; any other option before the subcommand (-c, --exec-path, ...) is not plain
     let k = 0
-    while (rest[k] === '-C' && rest[k + 1] !== undefined && !rest[k + 1].includes(PH)) k += 2
+    for (;;) {
+      if (rest[k] === '-C' && rest[k + 1] !== undefined && !rest[k + 1].includes(PH)) k += 2
+      else if (rest[k] === '--no-pager') k++
+      else break
+    }
     const sub = rest[k]
-    if (sub !== 'commit') return GIT_DATA.has(sub) && !rest.slice(k + 1).some(gitRuns)
     const opts = rest.slice(k + 1)
-    for (let i = 0; i < opts.length; i++) {
-      const x = opts[i]
-      if (GIT_COMMIT_VALUED.has(x)) { if (opts[++i] === undefined) return false } else if (!GIT_COMMIT_BARE.has(x)) return false
+    if (sub === 'commit') {
+      for (let i = 0; i < opts.length; i++) {
+        const x = opts[i]
+        if (GIT_COMMIT_VALUED.has(x)) { if (opts[++i] === undefined) return false } else if (!GIT_COMMIT_BARE.has(x)) return false
+      }
+      return true
+    }
+    const ok = GIT_OPTS.get(sub)
+    if (!ok) return false
+    for (const x of opts) {
+      if (x === '--') return true
+      if (x.startsWith('-') && !ok.test(x)) return false
     }
     return true
   }
@@ -189,7 +225,7 @@ function isPlainLine(command) {
   if (segs.weird || segs.length === 0 || !segs.every(isPlainData)) return false
   // git runs what its config, attributes and hooks name: a line that runs git and also writes a file
   // (anything but /dev/null or another descriptor) or names a git file is not plain (review 1 F-2)
-  if (!segs.some((s) => stripRedirs(s.words).args[0] === 'git')) return true
+  if (!segs.some((s) => stripRedirs(s.words, s.quoted).args[0] === 'git')) return true
   return !segs.some((s) => writesFile(s.words) || s.words.some((w) => GIT_FILE.test(w)))
 }
 
@@ -211,8 +247,8 @@ const MAX_INPUT = 100000
 
 /**
  * Candidate check on the raw hook input. A line of plain data commands (echo, printf, grep, cat,
- * head, tail, wc, sort, `git commit -m`, read-only `gh`, DATA_PROGS and the git subcommands of
- * GIT_DATA; see isPlainData and isPlainLine) is not a candidate: the PR
+ * head, tail, wc, sort, `git commit -m`, read-only `gh`, DATA_PROGS and git with the options of
+ * GIT_OPTS; see isPlainData and isPlainLine) is not a candidate: the PR
  * words in its quoted arguments and here-documents are data. Every other line is read with the text
  * rules below, exactly as before: any reading of the text that spells a PR operation.
  * Fails closed: input too large or too nested for the parser is a candidate.
