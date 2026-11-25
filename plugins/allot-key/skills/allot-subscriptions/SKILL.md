@@ -24,8 +24,10 @@ Give each suggestion with its monthly and yearly effect.
 
 ## Proposing
 Only what the user picks. A cancellation or a plan change from a date: `propose_changes`, resource
-`plan-changes` (a scheduled change) or `subscriptions` (update the row; send the whole row as
-`list_subscriptions` shows it). Show the preview: the subscription transfer before and after.
+`plan-changes` (a scheduled change, in the shape `list_plan_changes` shows; a cancellation is a change to status
+`cancelled` in `to`, from its `effective` date). Do not update the subscription row itself: an update sends the whole stored row, and
+`list_subscriptions` shows a computed view (this month's plan, `nextPayment`, `payPath`), not that row.
+Show the preview: the subscription transfer before and after.
 The user confirms in Allot under Pending changes, or in this conversation when your connection confirms in the
 chat (`apply_proposal` only after they agree).
 
