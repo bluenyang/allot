@@ -389,6 +389,8 @@ export const keyCreate = z.object({
 
 /** PUT /api/admin/api-keys */
 export const keyPolicy = z.object({ noExpiry: z.boolean() }).strict()
+/** spec 015 S-10: the external app connection (OAuth) switch. */
+export const oauthSwitch = z.object({ enabled: z.boolean() }).strict()
 
 // ── Password policy and API key management (spec 013 rc.3 W-20: S-24, S-25, S-26) ──
 const wholeIn = (lo: number, hi: number, msg: MsgKey) => z.number(msg).int(msg).min(lo, msg).max(hi, msg)

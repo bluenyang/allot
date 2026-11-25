@@ -86,7 +86,12 @@ async function handle(c: Context, clientIp: (c: Context) => string): Promise<Res
   }
 }
 
-/** Register /mcp. Called before the session check in app.ts: a key is not a session. */
+/** Register /api/mcp (keys only, as before). Called before the session check in app.ts: a key is not a session. */
 export function mountMcp(app: Hono<AppEnv>, clientIp: (c: Context) => string) {
   app.all('/mcp', (c) => handle(c, clientIp))
+}
+
+/** Register the root /mcp (spec 015 S-6): the address the connection screen shows. */
+export function mountRootMcp(root: Hono, clientIp: (c: Context) => string) {
+  root.all('/mcp', (c) => handle(c, clientIp))
 }

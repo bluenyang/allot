@@ -673,13 +673,13 @@ export const authProvider = pgTable('auth_provider', {
 // ── Server-wide settings (spec 008 S-3): one row per setting; no user_id, so no row-level security
 // (like auth_provider). Env values win over these (server/api-key-policy.ts). ──
 export const appSetting = pgTable('app_setting', {
-  /** api_keys | password */
+  /** api_keys | password | oauth */
   id: text('id').primaryKey(),
-  /** api_keys: { noExpiry: boolean } · password: { minLength, lockout: { enabled, attempts, minutes } } (spec 013 S-24) */
+  /** api_keys: { noExpiry: boolean } · password: { minLength, lockout: { enabled, attempts, minutes } } (spec 013 S-24) · oauth: { enabled } (spec 015 S-10) */
   value: jsonb('value').$type<Record<string, unknown>>().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text('updated_by'),
-}, (t) => [check('app_setting_id', sql`${t.id} in ('api_keys', 'password')`)])
+}, (t) => [check('app_setting_id', sql`${t.id} in ('api_keys', 'password', 'oauth')`)])
 
 /**
  * Failed password sign-ins per email (spec 013 S-24, A-37): only counted while the admin's lockout is on. Keyed by the

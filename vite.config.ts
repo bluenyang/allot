@@ -9,6 +9,18 @@ const dex = process.env.DEX_URL
 // Shown in the footer (spec 007 S-2).
 const version = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version
 
+// The api trusts only this header for the client IP (login rate limit), so always overwrite it with
+// the real socket address. `vite preview` uses the same proxy (preview.proxy defaults to server.proxy).
+const toApi = {
+  target: api,
+  changeOrigin: false,
+  configure: (proxy: { on: (e: 'proxyReq', f: (req: { setHeader: (k: string, v: string) => void }, incoming: { socket: { remoteAddress?: string } }) => void) => void }) => {
+    proxy.on('proxyReq', (req, incoming) => {
+      req.setHeader('x-allot-client-ip', incoming.socket.remoteAddress ?? 'unknown')
+    })
+  },
+}
+
 export default defineConfig({
   plugins: [vue()],
   define: { __APP_VERSION__: JSON.stringify(version) },
@@ -19,17 +31,10 @@ export default defineConfig({
       deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.loctx/**', '**/server/**', '**/tests/**', '**/docker/**', '**/drizzle/**', '*.md', '**/.auth.json', '**/.state.json'],
     },
     proxy: {
-      '/api': {
-        target: api,
-        changeOrigin: false,
-        // The api trusts only this header for the client IP (login rate limit),
-        // so always overwrite it with the real socket address.
-        configure: (proxy) => {
-          proxy.on('proxyReq', (req, incoming) => {
-            req.setHeader('x-allot-client-ip', incoming.socket.remoteAddress ?? 'unknown')
-          })
-        },
-      },
+      '/api': toApi,
+      // spec 015 S-2, S-6: the MCP endpoint and the OAuth discovery documents sit at the root.
+      '/mcp': toApi,
+      '/.well-known': toApi,
       ...(dex ? { '/dex': { target: dex, changeOrigin: false } } : {}),
     },
   },

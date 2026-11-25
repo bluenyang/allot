@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { root } from './app'
 import { enforceKeyPolicyAtStart } from './api-key-policy'
 import { initAuth } from './auth'
+import { initOAuthPolicy } from './oauth'
 import { promoteEnvAdmin } from './auth-policy'
 import { masterKeys } from './crypto/envelope'
 import { forgetLostKeys, rotateDataKeys } from './crypto/keys'
@@ -34,6 +35,7 @@ if (process.argv[2] === 'keys:rotate') {
 }
 
 await promoteEnvAdmin()
+await initOAuthPolicy()
 await initAuth()
 await enforceKeyPolicyAtStart()
 // `node dist-server/index.mjs keys:forget-lost` (pnpm keys:forget-lost): after a master key is lost

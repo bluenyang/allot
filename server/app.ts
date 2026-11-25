@@ -6,7 +6,8 @@ import { allowedReturn } from './app-login'
 import { publicMethods } from './auth-config'
 import { docsPage } from './docs'
 import { keyRoutes } from './keys'
-import { mountMcp } from './mcp'
+import { mountMcp, mountRootMcp } from './mcp'
+import { oauthOn } from './oauth'
 import { CLIENT_IP_HEADER, getAuth, getAuthConfig } from './auth'
 import type { AppEnv } from './app-env'
 import { routes } from './routes'
@@ -93,6 +94,22 @@ app.route('/', routes)
 
 root.route('/', app)
 root.all('/api/*', (c) => c.json({ error: 'not found' }, 404))
+
+// spec 015 S-2, S-6: the OAuth discovery documents and the MCP endpoint at the root, where MCP clients look
+// for them. Better Auth serves them (the issuer is the origin: server/auth.ts); while external app connections
+// are off they are 404. Before the front end's files and the SPA fallback.
+const forwardToAuth = (c: Context) => {
+  if (!oauthOn()) return c.json({ error: 'not found' }, 404)
+  const headers = new Headers(c.req.raw.headers)
+  headers.set(CLIENT_IP_HEADER, clientIp(c))
+  return getAuth().handler(new Request(c.req.raw, { headers }))
+}
+root.on(['GET', 'HEAD'], '/.well-known/oauth-protected-resource', forwardToAuth)
+root.on(['GET', 'HEAD'], '/.well-known/oauth-protected-resource/mcp', forwardToAuth)
+root.on(['GET', 'HEAD'], '/.well-known/oauth-authorization-server', forwardToAuth)
+root.on(['GET', 'HEAD'], '/.well-known/openid-configuration', forwardToAuth)
+root.all('/.well-known/*', (c) => c.json({ error: 'not found' }, 404))
+mountRootMcp(root, clientIp)
 
 // Production image: serve the built front end, and index.html for any other path (SPA).
 const staticDir = process.env.STATIC_DIR
