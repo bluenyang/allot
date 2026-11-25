@@ -24,6 +24,8 @@ const pw = ref({ current: '', next: '', again: '' })
 const minLength = ref(8)
 /** A password made by 만들기, shown until the form is saved or cleared; it is sent only with the form. */
 const made = ref('')
+/** The linked sign-ins and the server's methods have answered: until then the screen cannot tell if a password exists (review rc.2-1 R1-5). */
+const listed = ref(false)
 
 const fail = (e: unknown, fallback: string) => { error.value = e instanceof ApiError ? e.message : fallback }
 
@@ -33,6 +35,7 @@ async function load() {
     me.value = (await api<{ user: Me }>('GET', '/api/me')).user
     linked.value = await api<Linked[]>('GET', '/api/auth/list-accounts')
     methods.value = await loadMethods()
+    listed.value = true
     // The server checks the minimum again; without an answer the screen keeps the last one it knew.
     const policy = await api<{ minLength: number }>('GET', '/api/password-policy').catch(() => null)
     if (policy) minLength.value = policy.minLength
@@ -168,7 +171,7 @@ const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle
         </section>
       </div>
 
-      <form v-if="!hasPassword() && me" class="card pwc" :aria-label="t('account.addPw')" @submit.prevent="addPassword">
+      <form v-if="listed && !hasPassword() && me" class="card pwc" :aria-label="t('account.addPw')" @submit.prevent="addPassword">
         <div class="ch"><h2>{{ t('account.addPw') }}</h2></div>
         <div class="fs">
           <p class="small muted" style="margin:0">{{ passwordOn() ? t('account.addPwNote', { email: me.email }) : t('account.addPwOff') }}</p>
