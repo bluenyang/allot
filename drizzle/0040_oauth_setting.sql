@@ -1,0 +1,2 @@
+ALTER TABLE "app_setting" DROP CONSTRAINT "app_setting_id";--> statement-breakpoint
+ALTER TABLE "app_setting" ADD CONSTRAINT "app_setting_id" CHECK ("app_setting"."id" in ('api_keys', 'password', 'oauth'));

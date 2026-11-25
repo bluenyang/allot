@@ -7,6 +7,8 @@
 //   DELETE /api/admin/users/:id       { confirmEmail } — an account and all its data
 //   GET    /api/admin/password-policy   { policy, stored } (spec 013 S-24; nothing stored = the default)
 //   PUT    /api/admin/password-policy   the whole policy (S-26 ranges); turning the lockout off deletes the counts
+//   GET    /api/admin/oauth           { enabled, source, locked, possible } (spec 015 S-10; env ALLOT_OAUTH_ENABLED locks it)
+//   PUT    /api/admin/oauth           { enabled } — off refuses every OAuth token from that moment
 //   GET    /api/admin/login-locks       emails locked now, with until (A-37)
 //   DELETE /api/admin/login-locks/:email  unlock one
 // Listing, creation, approval, unban, passwords and sessions go through Better Auth's admin
@@ -17,6 +19,7 @@ import type { z } from 'zod'
 import { body } from './body'
 import { langOf, m, msg, MsgError, text, type Lang, type Msg } from './messages'
 import { loadKeyPolicy, saveNoExpiry } from './api-key-policy'
+import { oauthPolicy, oauthPossible, saveOAuthEnabled, type OAuthPolicy } from './oauth'
 import { listLocks, loadPasswordPolicy, savePasswordPolicy, unlock } from './password-policy'
 import { failureKey } from './password-rules'
 import { adminCanSignInWithout, isActiveAdmin, logAdmin } from './admin'
@@ -74,6 +77,19 @@ adminRoutes.put('/api-keys', body(v.keyPolicy), async (c) => {
   logAdmin(uidOf(c), `api-keys noExpiry=${noExpiry} capped=${capped}`, 'api_keys')
   const p = await loadKeyPolicy()
   return c.json({ noExpiry: p.noExpiry, source: p.source, locked: p.source === 'env', capped })
+})
+
+// External app connections (spec 015 S-10): off by default; env locks it. `possible` is false when BETTER_AUTH_URL
+// is neither https nor http on localhost: the switch can be stored, but OAuth stays unavailable.
+const oauthView = (p: OAuthPolicy) => ({ enabled: p.enabled, source: p.source, locked: p.source === 'env', possible: oauthPossible() })
+adminRoutes.get('/oauth', (c) => c.json(oauthView(oauthPolicy())))
+
+adminRoutes.put('/oauth', body(v.oauthSwitch), async (c) => {
+  if (oauthPolicy().source === 'env') return c.json({ error: msg(c, 'envLocked') }, 409)
+  const { enabled } = c.req.valid('json')
+  const p = await saveOAuthEnabled(enabled, uidOf(c))
+  logAdmin(uidOf(c), `oauth enabled=${enabled}`, 'oauth')
+  return c.json(oauthView(p))
 })
 
 // Password policy (spec 013 S-24, S-26, A-37). No env lock: it lives in the database only.

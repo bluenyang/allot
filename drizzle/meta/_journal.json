@@ -281,6 +281,13 @@
       "when": 1795596842662,
       "tag": "0039_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795597279900,
+      "tag": "0040_oauth_setting",
+      "breakpoints": true
     }
   ]
 }

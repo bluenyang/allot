@@ -9,18 +9,23 @@
 // password, and the lockout of an email after failed password sign-ins.
 import { betterAuth } from 'better-auth'
 import { apiKey } from '@better-auth/api-key'
+import { cimd } from '@better-auth/cimd'
+import { fetchClientMetadataResource } from '@better-auth/cimd/node'
+import { mcp } from '@better-auth/mcp'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { admin } from 'better-auth/plugins/admin'
 import { bearer } from 'better-auth/plugins/bearer'
 import { oneTimeToken } from 'better-auth/plugins/one-time-token'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
+import { jwt } from 'better-auth/plugins/jwt'
 import { ADMIN_CLOSED_PATHS, adminCanSignInWithout, afterAdminPath, guardAdminPath } from './admin'
 import { EXTERNAL, loadAuthConfig, usable, type AuthConfig, type ProviderId } from './auth-config'
 import { APP_RETURN_URLS } from './app-login'
 import { afterNewUser, makeValidateUserInfo, newUserFields, refusePending } from './auth-policy'
 import { m, MsgError, text, langOfCtx } from './messages'
 import { afterSignIn, guardPasswordPath } from './password-policy'
+import { isOAuthPath, mcpResource, OAUTH_SCOPES, oauthPathOpen, oauthPossible, publicBase } from './oauth'
 import { fetchDiscovery, oidcProviders, socialProviders, type Discovery } from './providers'
 import { dropTokenUpdates, sealNewAccountTokens } from './token-crypto'
 import { db } from './db/client'
@@ -69,6 +74,44 @@ function methodOf(ctx: { path: string; body?: unknown; params?: Record<string, s
 
 /** Better Auth endpoints that hand out stored provider tokens: nothing uses them in 0.1.2 and the tokens are sealed. */
 const CLOSED_PATHS = ['/get-access-token', '/refresh-token', '/account-info']
+
+/**
+ * The OAuth authorization server for /mcp (spec 015 S-2–S-8, S-12). Installed only when the public URL can carry it
+ * (https, or http on loopback: server/oauth.ts oauthPossible); whether its paths answer is the switch, checked in the hook.
+ */
+function oauthPlugins() {
+  if (!oauthPossible()) return []
+  const base = publicBase()
+  return [
+    // Signs the access tokens (EdDSA keys in `jwks`, private keys encrypted). The issuer is the origin, so the
+    // authorization server metadata sits at the root /.well-known/oauth-authorization-server (server/app.ts).
+    // No set-auth-jwt header on sessions and no /token: the app's own sessions stay cookies.
+    jwt({ disableSettingJwtHeader: true, jwt: { issuer: base } }),
+    mcp({
+      resource: mcpResource(base),
+      // Both are the app's screens (src/Root.vue): sign in, then the consent screen.
+      loginPage: '/oauth/login',
+      consentPage: '/oauth/consent',
+      scopes: OAUTH_SCOPES,
+      // S-8: a refresh token is used once; a second use is refused (no 30 s window).
+      refreshTokenReuseInterval: 0,
+      // S-3: dynamic registration for every client (open while the switch is on), with CIMD next to it.
+      allowDynamicClientRegistration: true,
+      allowUnauthenticatedClientRegistration: true,
+      // Native clients (Claude Code, Codex, Gemini CLI) that leave out application_type and call back on
+      // loopback register as native; web clients keep the exact redirect rules.
+      clientRegistrationDefaultApplicationType: 'infer',
+      // S-12: the plugin's defaults, written out.
+      accessTokenExpiresIn: 3600,
+      refreshTokenExpiresIn: 30 * 24 * 3600,
+      codeExpiresIn: 600,
+      rateLimit: { register: { window: 60, max: 5 }, token: { window: 60, max: 20 }, authorize: { window: 60, max: 30 } },
+    }),
+    // S-3: Client ID Metadata Documents, fetched only through the package's Node transport (resolve once, public
+    // addresses only, pinned connection, no redirects).
+    cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
+  ]
+}
 
 export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
   const password = usable(cfg, 'password')
@@ -127,8 +170,10 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
         minimumNameLength: 1,
         maximumNameLength: 32,
       }),
+      ...oauthPlugins(),
     ],
-    disabledPaths: [...CLOSED_PATHS, ...ADMIN_CLOSED_PATHS],
+    // /token: the JWT plugin's session-to-JWT exchange; the app never hands out session JWTs.
+    disabledPaths: [...CLOSED_PATHS, ...ADMIN_CLOSED_PATHS, '/token'],
     account: {
       // Tokens are sealed when an account is linked and never rewritten in clear (token-crypto.ts).
       updateAccountOnSignIn: false,
@@ -184,6 +229,8 @@ export function buildAuth(cfg: AuthConfig, discovery?: Discovery) {
         if (ctx.request && ctx.path.startsWith('/api-key/')) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         if (ctx.path.startsWith('/one-time-token/') && !APP_RETURN_URLS.length) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         if (CLOSED_PATHS.includes(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
+        // spec 015 S-10, S-12: the OAuth paths answer only while the switch is on, and only the listed ones.
+        if (ctx.request && isOAuthPath(ctx.path) && !oauthPathOpen(ctx.path)) throw APIError.from('NOT_FOUND', { code: 'NOT_FOUND', message: 'Not found' })
         const m = methodOf(ctx)
         // spec 013 S-24: the policy's minimum wherever a password is set (server/password-policy.ts).
         if (!m) {
