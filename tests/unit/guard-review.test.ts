@@ -145,6 +145,9 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     "mkdir -p g && cd g && mkdir -- '--upload-pack=gh pr merge 1;:' && git ls-remote * ../repo",
     "cd g && git ls-remote ''* ../repo; grep 'gh pr merge' a.log", "cd g && git pull -- * ../repo; grep 'gh pr merge' a.log",
     "cd g && git -C ? status; grep 'gh pr merge' a.log", "cd g && sort [-]* notes; grep 'gh pr merge' a.log",
+    // a -- that is the value of -C ends nothing (review 6 H-2)
+    "mkdir -p g/-- && cd g && mkdir -- '--upload-pack=gh pr merge 1;:' && git -C -- ls-remote ?-upload-pack* ../repo",
+    "cd g && git -C -- ls-remote * ../repo; grep 'gh pr merge 1' a.log", "cd g && git --no-pager -C -- pull * ../repo; grep 'gh pr merge 1' a.log",
   ]) assert.equal(isCandidate(asInput(c)), true, c)
   for (const c of [
     "git add -- '*.ts' src/*.ts; grep 'gh pr merge' a.log", "git diff --stat -- *.md; grep 'gh pr merge' a.log",
