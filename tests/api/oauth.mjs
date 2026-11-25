@@ -128,6 +128,10 @@ try {
     ok(r.status === 404, `client and consent management is closed: ${p} → ${r.status}`)
   }
 
+  // review 1 R1-3: the OAuth screens are not framed (served by the production image; the API alone answers 404 there)
+  const page = await anon('GET', '/oauth/consent', undefined, {}, false)
+  ok(page.headers.get('x-frame-options') === 'DENY' && /frame-ancestors 'none'/.test(page.headers.get('content-security-policy') ?? ''), `/oauth/consent cannot be framed (${page.status} ${page.headers.get('x-frame-options')})`)
+
   // ── DCR ──
   const reg = await anon('POST', '/api/auth/oauth2/register', { client_name: 'V4 Test App', redirect_uris: [REDIRECT], token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'] }, {}, false)
   clientId = reg.json?.client_id ?? ''
@@ -188,6 +192,21 @@ try {
   ok(set?.actorKind === 'oauth_app' && set.actorLabel === 'V4 Test App', `the history: by oauth_app "${set?.actorLabel}"`)
   appliedSet = set?.id ?? ''
 
+  // review 1 R1-1: narrowed to "confirm on the screen", the app can no longer apply its earlier chat proposal itself
+  const pc2 = await tool(chat.access_token, 'propose_changes', { note: 'v4 oauth', changes: [{ resource: 'checks', action: 'create', data: { text: 'v4-oauth-narrowed', done: false } }] })
+  ok(!pc2.failed && pc2.data?.confirm === 'chat', `a second chat proposal (${pc2.data?.confirm})`)
+  const narrowed = await connect(A, clientId, 'allot:propose')
+  for (const [label, token] of [['the old chat token', chat.access_token], ['the new screen token', narrowed.access_token]]) {
+    const ap = await tool(token, 'apply_proposal', { proposalId: pc2.data?.proposalId ?? 'x' })
+    ok(ap.failed && /Pending changes|screen/.test(ap.text), `after narrowing, ${label} cannot apply the chat proposal`)
+  }
+  const still = await A('GET', `/api/proposals/${pc2.data?.proposalId}`)
+  ok(still.json?.status === 'pending', `the proposal still waits for the user (${still.json?.status})`)
+  const rej2 = await A('POST', `/api/proposals/${pc2.data?.proposalId}/reject`)
+  ok(rej2.status === 200 || rej2.status === 204, `reject it → ${rej2.status}`)
+  const chat2 = await connect(A, clientId, 'allot:apply')
+  chat.refresh_token = chat2.refresh_token
+
   // ── refresh: rotation, no reuse ──
   const r1 = await anon('POST', '/api/auth/oauth2/token', new URLSearchParams({ grant_type: 'refresh_token', refresh_token: chat.refresh_token, client_id: clientId, resource: RESOURCE }), {}, false)
   ok(r1.status === 200 && r1.json?.refresh_token && r1.json.refresh_token !== chat.refresh_token && r1.json.access_token, `refresh → a new refresh token (${r1.status})`)
@@ -234,6 +253,12 @@ try {
   ok(afterDis.status === 401 && /invalid_token/.test(afterDis.headers.get('www-authenticate') ?? ''), `the same token after disconnecting → ${afterDis.status}`)
   const rAfter = await anon('POST', '/api/auth/oauth2/token', new URLSearchParams({ grant_type: 'refresh_token', refresh_token: r1.json?.refresh_token ?? '', client_id: clientId, resource: RESOURCE }), {}, false)
   ok(rAfter.status >= 400, `its refresh token after disconnecting → ${rAfter.status}`)
+  // review 1 R1-4: connecting again does not bring the old token back
+  await new Promise((r) => setTimeout(r, 1100)) // the new consent is in a later second than the old token
+  const again = await connect(A, clientId, 'allot:read')
+  ok((await mcp(`Bearer ${read.access_token}`)).status === 401, 'after connecting again, a token from before the disconnect stays refused')
+  ok((await mcp(`Bearer ${again.access_token}`)).status === 200, 'the new connection works')
+  await A('DELETE', `/api/oauth-apps/${encodeURIComponent(clientId)}`)
   const bStill = await mcp(`Bearer ${tb.access_token}`)
   ok(bStill.status === 200, "B's connection to the same app is untouched")
 
