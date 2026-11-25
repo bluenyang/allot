@@ -123,6 +123,10 @@ test('isCandidate: lines of file, listing and git commands that only mention a P
     `git -C 2>'/dev/null' switch -c 'core.fsmonitor=gh pr merge 24;:' status`,
     // git pull passes the words after -- to fetch as options (review 4 F-2)
     'git pull -- --upload-pack="gh pr merge 24;:" .', 'git pull -q -- --upl="gh pr merge 24;:" .',
+    // words the shell computes can become options (review 4 F-3)
+    "git ls-remote {--upload-pack='gh pr merge 24;:',.}", "git -C {.,-c,'core.fsmonitor=gh pr merge 24;:'} status",
+    'git ls-remote "${X:---upload-pack=gh pr merge 24;:}" .', 'git ls-remote "$(echo x--upload-pack=gh pr merge 24 | cut -c2-)" .',
+    "true '--upload-pack=gh pr merge 24;:' && git ls-remote $_ .", "sort {-o,lefthook-local.yml} notes.txt; grep 'gh pr merge' notes.txt",
   ]) assert.equal(isCandidate(asInput(c)), true, c)
   // writing nowhere (/dev/null, another descriptor) keeps a git line plain
   for (const c of [

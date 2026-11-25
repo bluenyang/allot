@@ -170,6 +170,9 @@ function isPlainData(seg) {
   // but /dev/null or a descriptor, is not plain for them (review 3 H-1)
   if ((prog === 'git' || prog === 'gh') && seg.words.some((w, i) => w.includes('<<<') ||
     (!seg.quoted[i] && REDIR_ONLY.test(w) && !/^(?:\/dev\/null|\d+-?|-)$/.test(seg.words[i + 1] ?? '')))) return false
+  // a word whose value the shell computes ($x, $(..), $_, brace expansion {a,b} or {a..b}) can turn into an option
+  // of a program that reads options as commands; `stash@{0}` has no comma (review 4 F-3)
+  if (['git', 'gh', 'sort', 'uniq'].includes(prog) && rest.some((w) => w.includes(PH) || /\{[^{}]*(?:,|\.\.)[^{}]*\}/.test(w))) return false
   if (PLAIN_OPTIONS[prog]) {
     return rest.every((x) => !x.startsWith('-') || x === '-' || PLAIN_OPTIONS[prog].test(x))
   }
