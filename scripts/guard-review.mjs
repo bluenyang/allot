@@ -256,7 +256,7 @@ function isPlainData(seg) {
  */
 function isPlainLine(command) {
   const segs = parseShell(command)
-  if (segs.weird || segs.length === 0 || !segs.every(isPlainData)) return false
+  if (segs.weird || segs.ambiguous || segs.length === 0 || !segs.every(isPlainData)) return false
   // git runs what its config, attributes and hooks name: a line that runs git and also writes a file
   // (anything but /dev/null or another descriptor) or names a git file is not plain (review 1 F-2)
   if (!segs.some((s) => stripRedirs(s.words, s.quoted).args[0] === 'git')) return true

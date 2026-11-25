@@ -23,6 +23,9 @@ test('plain docker subcommands: -f is not a compose file (false positives of 0.1
 
 test('every compose variant keeps its old refusal, wherever it is written', () => {
   for (const c of [
+    // a descriptor the two shells read differently does not hide the second compose (review 9 K-1)
+    'docker compose -f docker/compose.dev.yaml up -d 12>/dev/null && docker compose up -d',
+    'docker compose -f docker/compose.dev.yaml up -d {a[0]}>/dev/null; docker compose up -d',
     'docker compose up -d',
     'docker compose -f docker/compose.yaml up -d',
     'docker compose --file docker/compose.yaml up -d',
