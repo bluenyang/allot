@@ -57,6 +57,8 @@ test('with OAuth off, the OAuth-only apps are dimmed and say why; the others are
   await expect(page.getByRole('dialog').getByRole('note')).toContainText('관리자가 외부 앱 연결(OAuth)을 켜야 해요')
   await page.keyboard.press('Escape')
   await tile(page, 'Codex').click()
+  // an app that also takes a key gets no note on top, only beside its OAuth steps (review rc.3-1 R1-1)
+  await expect(page.getByRole('dialog').getByRole('note')).toHaveCount(0)
   await expect(page.getByRole('dialog').getByText('이 단계는 외부 앱 연결(OAuth)이 켜져 있어야 돼요', { exact: false }).first()).toBeVisible()
 })
 

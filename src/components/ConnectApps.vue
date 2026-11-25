@@ -94,7 +94,7 @@ function show(app: ConnectApp) {
             <DialogClose class="btn sm ghost" :aria-label="t('connect.close')">{{ t('connect.close') }}</DialogClose>
           </div>
           <DialogDescription class="hint ca-d">{{ authLabel(open) }} · {{ t('connect.asOf') }}</DialogDescription>
-          <p v-if="off && open.auth !== 'key'" class="ca-warn" role="note">{{ t('connect.oauthOff') }}</p>
+          <p v-if="off && blockedWithoutOauth(open)" class="ca-warn" role="note">{{ t('connect.oauthOff') }}</p>
           <ol class="ca-steps">
             <li v-for="(s, i) in steps" :key="i" :class="{ dim: off && s.mode === 'oauth' }">
               <span>{{ s.text === 'connect.step.keyCommand' ? t(s.text, { key: fill.keyPh }) : t(s.text) }}</span>
