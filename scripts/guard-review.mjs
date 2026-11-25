@@ -30,7 +30,8 @@ import { PH, parseShell } from './shell-words.mjs'
 // Detection is safe by default: every command line is read as text (any reading that spells a PR
 // operation), exactly as before. The one exemption is a whole line of plain data commands
 // (scripts/shell-words.mjs parses it): echo, printf, grep, cat, head, tail, wc, `git commit -m`,
-// read-only `gh`, with no env assignment, wrapper or unlisted option, joined
+// read-only `gh`, the file and listing programs of DATA_PROGS and the git subcommands of GIT_DATA (retro 0.1.8),
+// with no env assignment, wrapper or unlisted option, joined
 // only by ; && || | and newlines. One other command anywhere puts the whole line back under the text
 // rules. Input the parser cannot handle (too large or nested) is refused.
 //
@@ -89,6 +90,15 @@ PLAIN_OPTIONS.egrep = PLAIN_OPTIONS.grep
 PLAIN_OPTIONS.fgrep = PLAIN_OPTIONS.grep
 const GREP_PROGRAMS = new Set(['grep', 'egrep', 'fgrep'])
 // grep options that name a file of patterns or take a value: harmless, but `-f` reads a file only
+// More plain programs (retro 0.1.8, user: "보호는 두고 오탐만 줄임" — about ten harmless lines were refused in 0.1.8):
+// they read, list, compare or move files and never run a command they are given, whatever their options.
+const DATA_PROGS = new Set(['ls', 'cd', 'pwd', 'mkdir', 'sort', 'uniq', 'cut', 'tr', 'diff', 'cmp', 'date', 'basename', 'dirname',
+  'realpath', 'readlink', 'stat', 'du', 'df', 'file', 'nl', 'tac', 'rev', 'column', 'jq', 'true', 'false'])
+// git subcommands that run no command of the user's; with any option that can (an exec, a pack or diff program) they are not plain
+const GIT_DATA = new Set(['status', 'log', 'show', 'diff', 'add', 'restore', 'rm', 'mv', 'fetch', 'pull', 'push', 'branch', 'checkout',
+  'switch', 'merge', 'rev-parse', 'rev-list', 'merge-base', 'ls-remote', 'ls-files', 'worktree', 'tag', 'remote', 'describe',
+  'shortlog', 'blame', 'reflog', 'cat-file', 'check-ignore', 'stash'])
+const GIT_RUNS = /^(?:-x|--exec|--upload-pack|--receive-pack|--ext-diff|--extcmd|--tool|--textconv|-c$|--config)/
 const GIT_COMMIT_BARE = new Set(['-q', '-a', '-s', '-am', '-qm', '--amend', '--no-edit', '--allow-empty'])
 const GIT_COMMIT_VALUED = new Set(['-m', '-F', '--message', '--file'])
 const GH_BANNED = new Set(['--web', '-w', '-F', '--body-file', '--editor', '-e'])
@@ -122,9 +132,14 @@ function isPlainData(seg) {
   if (PLAIN_OPTIONS[prog]) {
     return rest.every((x) => !x.startsWith('-') || x === '-' || PLAIN_OPTIONS[prog].test(x))
   }
+  if (DATA_PROGS.has(prog)) return true
   if (prog === 'git') {
-    if (rest[0] !== 'commit') return false
-    const opts = rest.slice(1)
+    // `git -C <dir>` only changes the folder; any other option before the subcommand (-c, --exec-path, ...) is not plain
+    let k = 0
+    while (rest[k] === '-C' && rest[k + 1] !== undefined && !rest[k + 1].includes(PH)) k += 2
+    const sub = rest[k]
+    if (sub !== 'commit') return GIT_DATA.has(sub) && !rest.slice(k + 1).some((x) => GIT_RUNS.test(x))
+    const opts = rest.slice(k + 1)
     for (let i = 0; i < opts.length; i++) {
       const x = opts[i]
       if (GIT_COMMIT_VALUED.has(x)) { if (opts[++i] === undefined) return false } else if (!GIT_COMMIT_BARE.has(x)) return false
