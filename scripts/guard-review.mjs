@@ -75,14 +75,15 @@ const fdless = (w) => w.replace(/^\{[A-Za-z_]\w*\}(?=[<>&])/, '')
  */
 function stripRedirs(words, quoted = []) {
   const args = []
+  const argq = [] // quoted[] of the kept words
   let hasIn = false
   for (let i = 0; i < words.length; i++) {
     const w = quoted[i] ? words[i] : fdless(words[i])
-    if (quoted[i] || !REDIR.test(w)) { args.push(words[i]); continue }
+    if (quoted[i] || !REDIR.test(w)) { args.push(words[i]); argq.push(!!quoted[i]); continue }
     if (/^\d*<(?!<)/.test(w)) hasIn = true
     if (REDIR_ONLY.test(w) || /^\d*<<<$/.test(w)) i++ // the operator stands alone: its target is the next word
   }
-  return { args, hasIn }
+  return { args, argq, hasIn }
 }
 
 // Plain data commands: they print, search or read files and run nothing. Options are limited to a
@@ -173,7 +174,7 @@ function ghSafe(rest) {
 
 /** A plain data command: no env assignment, no wrapper, no option outside the small lists. */
 function isPlainData(seg) {
-  const { args } = stripRedirs(seg.words, seg.quoted)
+  const { args, argq } = stripRedirs(seg.words, seg.quoted)
   if (args.length === 0 || args[0].includes(PH)) return false
   const prog = args[0]
   const rest = args.slice(1)
@@ -185,11 +186,21 @@ function isPlainData(seg) {
   // of a program that reads options as commands; `stash@{0}` has no comma (review 4 F-3)
   if (['git', 'gh', 'sort', 'uniq'].includes(prog) && rest.some((w) => w.includes(PH) || /\{[^{}]*(?:,|\.\.)[^{}]*\}/.test(w))) return false
   // a glob that starts a word (*, ?, [ unquoted) can expand to a file named like an option (`--upload-pack=...`);
-  // for git, words after `--` are paths (but pull hands them to fetch) — review 5 G-3
+  // for git, words after the subcommand's `--` are paths (but pull hands them to fetch) — review 5 G-3; a `--` that is
+  // the value of -C, before the subcommand, ends nothing (review 6 H-2)
   if (['git', 'gh', 'sort', 'uniq'].includes(prog)) {
-    let end = seg.words.length
-    if (prog === 'git' && !seg.words.includes('pull')) { const d = seg.words.indexOf('--'); if (d >= 0) end = d }
-    if (seg.words.slice(0, end).some((w, i) => !seg.quoted[i] && /^[*?[]/.test(w))) return false
+    let end = args.length
+    if (prog === 'git') {
+      let k = 1
+      for (;;) {
+        if (args[k] === '-C' && args[k + 1] !== undefined) k += 2
+        else if (args[k] === '--no-pager') k++
+        else break
+      }
+      const d = args[k] === 'pull' ? -1 : args.indexOf('--', k + 1)
+      if (d >= 0) end = d
+    }
+    if (args.slice(0, end).some((w, i) => !argq[i] && /^[*?[]/.test(w))) return false
   }
   if (PLAIN_OPTIONS[prog]) {
     return rest.every((x) => !x.startsWith('-') || x === '-' || PLAIN_OPTIONS[prog].test(x))
