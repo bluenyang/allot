@@ -1,0 +1,23 @@
+{
+  "name": "allot",
+  "version": "0.1.9",
+  "description": "Connect your self-hosted Allot server over OAuth and use seven money skills: month start, payday, month end, subscriptions, receipts, spending plan, assets. Every change is a proposal you confirm.",
+  "author": { "name": "BlueNyang" },
+  "homepage": "https://github.com/bluenyang/allot",
+  "repository": "https://github.com/bluenyang/allot",
+  "keywords": ["allot", "budget", "money", "mcp"],
+  "userConfig": {
+    "server_url": {
+      "type": "string",
+      "title": "Allot MCP address",
+      "description": "Your Allot server's MCP address, e.g. https://allot.example.com/mcp (Settings › AI in Allot shows it).",
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "allot": {
+      "type": "http",
+      "url": "${user_config.server_url}"
+    }
+  }
+}
