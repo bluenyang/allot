@@ -13,6 +13,7 @@ import { asUser } from '../db/scope'
 import { issueText } from '../messages'
 import { AI_LISTS, AI_SINGLES, RESOURCES, singleSchema } from '../ops'
 import { instructionsFor } from './instructions'
+import { SERVER_INFO } from './info'
 import { readMarks } from '../notice-marks'
 import { applyProposal, getProposal, MAX_OPS, pendingCount, propose, ProposalError, proposalText, type KeyInfo, type ProposalView } from '../proposals'
 import { readState } from '../state'
@@ -20,7 +21,6 @@ import { SEARCH_KINDS } from '../../src/lib/search'
 import { guarded, isTimestamp } from './safe'
 import { accountList, allocation, budget, incomeView, notificationList, overview, planChangeList, schedule, searchView, spendingList, subscriptionList, type Data } from './views'
 
-const SERVER_VERSION = '0.1'
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'use YYYY-MM')
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const
 /** A time GET /api/changes takes for its period (the same check: Date.parse reads it). */
@@ -147,7 +147,7 @@ function registerWrite(server: McpServer, uid: string, key: KeyInfo) {
 }
 
 export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServer {
-  const server = new McpServer({ name: 'allot', version: SERVER_VERSION }, { instructions: instructionsFor(key) })
+  const server = new McpServer(SERVER_INFO, { instructions: instructionsFor(key) })
   const data = () => asUser(uid, (q) => readState(q, uid)) as Promise<Data>
   /** "Today" in the user's time zone (spec 013 S-22). */
   const dayOf = (d: Data) => todayIn(d.preferences?.timezone)
