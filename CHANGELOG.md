@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — 0.1.9-rc.2
+
+The bell's marks follow the account, and accounts that sign in externally can add a password. Spec 016
+(`.agents/intent/016_rc2-account-and-notices/spec.md`). Migrations 0042 and 0043 add `notice_mark` with forced row-level
+security.
+
+### Added
+- **Notices on every device**: read marks and the maturity cards answered 계속 보내기 are kept on the account
+  (`GET`/`POST /api/notices/marks`), so every browser and phone shows the same; a browser's earlier marks move to the
+  account once at the first sign-in. MCP `list_notifications` gives `read` and leaves out kept maturities, as the app does.
+- **Add a password** (Settings › Sign-in & security): an account that signs in with OIDC, GitHub or Google only can add
+  a password (`POST /api/account/password`; signed in within a day, password sign-in on, the admin's minimum length).
+  Remove it by unlinking the password sign-in while another method is left.
+
 ## 0.1.9-rc.1 — 2026-11-25
 
 AI connections: Allot becomes the OAuth authorization server of its own MCP endpoint, and the repository is a plugin
