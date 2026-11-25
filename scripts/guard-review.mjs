@@ -66,6 +66,8 @@ const decodeEscapes = (t) =>
 const GH_VALUE_FLAGS = new Set(['-R', '--repo', '-H', '--hostname'])
 const REDIR = /^\d*(?:>>?|<|<>|>\||>&|&>)/
 const REDIR_ONLY = /^\d*(?:>>?|<|<>|>\||>&|&>)$/
+// `{fd}>f` is one redirection to bash and zsh (a named descriptor): the tests below see it without its name (review 6 H-1)
+const fdless = (w) => w.replace(/^\{[A-Za-z_]\w*\}(?=[<>&])/, '')
 
 /**
  * Words without redirections (`2>/dev/null`, `> f`, `< f`, `>&2`, `<<< w`); `hasIn` when stdin comes from a file.
@@ -75,8 +77,8 @@ function stripRedirs(words, quoted = []) {
   const args = []
   let hasIn = false
   for (let i = 0; i < words.length; i++) {
-    const w = words[i]
-    if (quoted[i] || !REDIR.test(w)) { args.push(w); continue }
+    const w = quoted[i] ? words[i] : fdless(words[i])
+    if (quoted[i] || !REDIR.test(w)) { args.push(words[i]); continue }
     if (/^\d*<(?!<)/.test(w)) hasIn = true
     if (REDIR_ONLY.test(w) || /^\d*<<<$/.test(w)) i++ // the operator stands alone: its target is the next word
   }
@@ -178,7 +180,7 @@ function isPlainData(seg) {
   // git and gh read their words as a subcommand: a here-string, or a standalone redirection operator before anything
   // but /dev/null or a descriptor, is not plain for them (review 3 H-1)
   if ((prog === 'git' || prog === 'gh') && seg.words.some((w, i) => w.includes('<<<') ||
-    (!seg.quoted[i] && REDIR_ONLY.test(w) && !/^(?:\/dev\/null|\d+-?|-)$/.test(seg.words[i + 1] ?? '')))) return false
+    (!seg.quoted[i] && REDIR_ONLY.test(fdless(w)) && !/^(?:\/dev\/null|\d+-?|-)$/.test(seg.words[i + 1] ?? '')))) return false
   // a word whose value the shell computes ($x, $(..), $_, brace expansion {a,b} or {a..b}) can turn into an option
   // of a program that reads options as commands; `stash@{0}` has no comma (review 4 F-3)
   if (['git', 'gh', 'sort', 'uniq'].includes(prog) && rest.some((w) => w.includes(PH) || /\{[^{}]*(?:,|\.\.)[^{}]*\}/.test(w))) return false
@@ -253,7 +255,7 @@ const GIT_FILE = /(?:^|[/=:])\.git(?:$|\/|attributes|config|modules)|\/git\/(?:c
 /** A word that writes to a file. Any `>` counts, also inside a word: the parser leaves `a>f` as one word. */
 function writesFile(words) {
   for (let i = 0; i < words.length; i++) {
-    const w = words[i]
+    const w = fdless(words[i])
     // `>&2` copies a descriptor; a standalone `>&` before a word that is not a descriptor writes that file (review 2 G-2)
     if (/^\d*>&$/.test(w)) { if (/^(?:\d+-?|-|\/dev\/null)$/.test(words[i + 1] ?? '')) { i++; continue } return true }
     if (!w.includes('>') || /^\d*>&\d+-?$|^\d*>&-$/.test(w) || /^\d*(?:>>?|&>>?|>\|)\/dev\/null$/.test(w)) continue
