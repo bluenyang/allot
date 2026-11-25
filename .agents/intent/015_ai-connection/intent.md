@@ -2,9 +2,15 @@
 id: "015"
 slug: ai-connection
 version: 0.1.9
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-25"
+    words: "응. 승인"
+    rev: 609f480
+    note: "PM 질문 '이대로 intent를 승인하실까요?'에 대한 답. 열린 질문 1~5와 조사하며 정한 것은 그 전에 답함(질의서 기록)."
 waivers: []
 supersedes: null
 ---
