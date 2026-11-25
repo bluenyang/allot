@@ -2,7 +2,7 @@
 
 > Self-hosted personal money management: split your monthly salary across accounts, track subscriptions, one-off and installment payments, and see what is left each month. The documentation below is in Korean.
 
-통장 잔고를 맞춰 보는 앱이 아니라, 매달 들어올 돈과 나갈 돈(생활·구독·저축·투자·지출)을 정하고 남는 돈(여유)을 어디에 둘지 보는 앱이다(통장 잔액 기록과 예상은 그 계획을 돕는 정도로 있다). 월급 분배·구독·일회성 지출·플랜 전환 일정을 관리한다. 직접 띄워 쓰는 웹앱으로, 지인 몇 명이 계정을 나눠 쓸 수 있다(데이터는 사용자마다 따로). AI 클라이언트는 MCP로 데이터를 읽고 변경을 제안할 수 있다.
+통장 잔액을 맞춰 보는 앱이 아니라, 매달 들어올 돈과 나갈 돈(생활·구독·저축·투자·지출)을 정하고 남는 돈(여유)을 어디에 둘지 보는 앱이다. 잔액 기록과 예상도 있지만 그 계획을 돕는 용도다. 월급 분배·구독·일회성 지출·플랜 전환 일정을 관리한다. 직접 띄워 쓰는 웹앱으로, 지인 몇 명이 계정을 나눠 쓸 수 있다(데이터는 사용자마다 따로). AI 클라이언트는 MCP로 데이터를 읽고 변경을 제안할 수 있다.
 Vue 3.5 + Vite 8 + TypeScript 6 / Hono API / PostgreSQL 16 (Drizzle ORM) / Better Auth 로그인(비밀번호·OIDC·GitHub·Google).
 
 계획은 [`docs/ROADMAP.md`](docs/ROADMAP.md), 버전별 변경은 [`CHANGELOG.md`](CHANGELOG.md)에 있다.
