@@ -1,7 +1,8 @@
 ---
 intent: "015"
-status: draft
-approvals: []
+status: accepted
+approvals:
+  - { role: user, kind: summary, by: BlueNyang, at: "2026-11-25", words: "진행", rev: eecb439 }
 summary_for_user: |
   0.1.9는 작업 단위 11개(W-1~W-11)입니다. 순서는 Better Auth 올리기 → 데이터 → OAuth 서버 → 동의 화면 → `/mcp` → 연결된 앱 → 스킬 7개 → 세 AI 설치 묶음 → 서버 안내문 → 문서 → 시험입니다.
   Better Auth는 전체를 1.7.28(오늘 15:16 UTC부터 설치 가능, 그 전이면 1.7.27)로 함께 올리고, 올린 날 알려진 취약점과 로그인 회귀를 다시 확인합니다.
