@@ -66,8 +66,9 @@ const decodeEscapes = (t) =>
 const GH_VALUE_FLAGS = new Set(['-R', '--repo', '-H', '--hostname'])
 const REDIR = /^\d*(?:>>?|<|<>|>\||>&|&>)/
 const REDIR_ONLY = /^\d*(?:>>?|<|<>|>\||>&|&>)$/
-// `{fd}>f` is one redirection to bash and zsh (a named descriptor): the tests below see it without its name (review 6 H-1)
-const fdless = (w) => w.replace(/^\{[A-Za-z_]\w*\}(?=[<>&])/, '')
+// `{fd}>f` is one redirection to bash and zsh (a named descriptor; bash also takes an array element, `{a[0]}>f`):
+// the tests below see it without its name (review 6 H-1, review 7 I-1)
+const fdless = (w) => w.replace(/^\{[A-Za-z_]\w*(?:\[[^\]]*\])?\}(?=[<>&])/, '')
 
 /**
  * Words without redirections (`2>/dev/null`, `> f`, `< f`, `>&2`, `<<< w`); `hasIn` when stdin comes from a file.
