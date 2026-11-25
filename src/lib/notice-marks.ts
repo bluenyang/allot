@@ -131,7 +131,11 @@ export async function saveMarks(change: MarkChange) {
   try {
     const m = await inTurn(async () => {
       let last: Marks | null = null
-      for (const part of splitChange(change)) last = await api<Marks>('POST', '/api/notices/marks', part)
+      for (const part of splitChange(change)) {
+        // review rc.2-2 R2-1: a save that waited in turn is not sent once the session has changed (another account's cookie)
+        if (!scope.alive()) return null
+        last = await api<Marks>('POST', '/api/notices/marks', part)
+      }
       return last
     })
     if (m && scope.alive() && current()) apply(m)
