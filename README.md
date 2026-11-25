@@ -1,7 +1,11 @@
-# Allot (0.1.6)
+# Allot (0.1.8)
 
-월급 분배·구독·일회성 지출·플랜 전환 일정 관리. 직접 띄워 쓰는 웹앱으로, 지인 몇 명이 계정을 나눠 쓸 수 있다(데이터는 사용자마다 따로).
+> Self-hosted personal money management: split your monthly salary across accounts, track subscriptions, one-off and installment payments, and see what is left each month. The documentation below is in Korean.
+
+통장 잔고를 보는 앱이 아니라, 매달 들어올 돈과 나갈 돈(생활·구독·저축·투자·지출)을 정하고 남는 돈(여유)을 어디에 둘지 보는 앱이다. 월급 분배·구독·일회성 지출·플랜 전환 일정을 관리한다. 직접 띄워 쓰는 웹앱으로, 지인 몇 명이 계정을 나눠 쓸 수 있다(데이터는 사용자마다 따로). AI 클라이언트는 MCP로 데이터를 읽고 변경을 제안할 수 있다.
 Vue 3.5 + Vite 8 + TypeScript 6 / Hono API / PostgreSQL 16 (Drizzle ORM) / Better Auth 로그인(비밀번호·OIDC·GitHub·Google).
+
+계획은 [`docs/ROADMAP.md`](docs/ROADMAP.md), 버전별 변경은 [`CHANGELOG.md`](CHANGELOG.md)에 있다.
 
 ## 개발 서버 (Docker, 기본)
 
@@ -110,9 +114,21 @@ GitHub Actions → **Allot Release** → Run workflow(수동 실행).
 3. 클라이언트에 연결한다.
    - **Claude Code**: `claude mcp add --transport http allot https://<your-host>/api/mcp --header "Authorization: Bearer <key>"`
    - **Claude Desktop**: 원격 커넥터는 claude.ai 규칙을 따르고, 대부분의 계정에서는 헤더를 직접 넣을 수 없다. 로컬 stdio 다리(`mcp-remote`의 `--header` 등)로 이어 붙이는 방법은 커뮤니티에서 쓰는 방식이지 공식 방법이 아니다.
-   - **claude.ai와 모바일 앱**: OAuth가 필요하다. 0.1.11에서 계획하고 있다.
+   - **claude.ai와 모바일 앱**: OAuth가 필요하다. 0.1.9에서 Claude Code 플러그인과 함께 계획하고 있다.
 
-읽기 도구: `get_overview`(한 달 요약: 날짜, 구독 이체 계산, 분배, 나머지 분배, 그달의 결제·일회성 지출 회차와 플랜 전환), `list_subscriptions`(구독과 이번 달 적용 플랜, 월 비용, 다음 결제일), `list_spendings`(일회성 지출과 그 회차, 상태, 진행; `status`·`month`로 거름), `list_plan_changes`(예정된 플랜 전환), `get_allocation`(분배 대상·구간·나머지 분배·계좌·부채), `get_schedule`(여러 달의 일정, 일회성 지출 회차, 점검 항목, 공휴일), `list_changes`(변경 내역, 페이지 단위).
+읽기 도구(12개):
+- `get_overview`: 한 달 요약. 날짜, 구독 이체 계산, 분배, 나머지 분배, 그달의 결제·일회성 지출 회차와 플랜 전환, 수입(`income`)과 여유(`leftOverKrw`, 0.1.8).
+- `get_income`: 그달 수입 줄, 받은 금액, 기타 수입, 합계와 여유(0.1.8).
+- `get_budget`: 생활·저축·투자 메뉴의 그달 금액. 화면과 같은 계산이다.
+- `list_subscriptions`: 구독과 이번 달 적용 플랜, 월 비용, 다음 결제일.
+- `list_spendings`: 일회성 지출과 그 회차, 상태, 진행. `status`·`month`로 거른다.
+- `list_plan_changes`: 예정된 플랜 전환.
+- `get_allocation`: 분배 대상·구간·나머지 분배·계좌·부채.
+- `list_accounts`: 통장과 그 필드, 잔액 기록, 앞으로의 예상.
+- `get_schedule`: 여러 달의 일정, 일회성 지출 회차, 점검 항목, 공휴일.
+- `list_changes`: 변경 내역, 페이지 단위.
+- `search`: 이름·메모로 찾기.
+- `list_notifications`: 앱의 종 알림과 같은 목록.
 
 ### 쓰기: 제안과 확인 (0.1.4)
 
@@ -182,11 +198,12 @@ GitHub Actions → **Allot Release** → Run workflow(수동 실행).
 - **환율 자동 갱신**: 통화마다 '자동'을 켜면 하루 한 번(또는 '지금 갱신') 공개 환율로 바꾼다(위 "운영 배포"). 기본은 꺼짐.
 - **비밀번호 정책**(관리 › 로그인 방식 › 비밀번호): 최소 길이(기본 8)와 연속 실패 잠금(기본 꺼짐, 이메일 기준, 관리자가 풂). 정책을 저장하면 관리자의 계정 만들기도 최소 길이를 따른다. 이미 있는 짧은 비밀번호로도 로그인된다. 비밀번호 칸의 '만들기'는 브라우저에서 20자를 만든다.
 - **API 키 관리**(설정 › AI·연동): 이름 바꾸기, 범위 바꾸기(읽기 ↔ 쓰기 제안), 만료 연장, 마지막 사용·요청 수. 만료된 키는 되살리지 않고 새로 만든다.
+
 ## 분배 구조
 
 월급이 어디로 가는지는 코드가 아니라 데이터로 정한다(월급 분배 화면 → 구간 탭).
 
-- **분배 대상**: 이름과 종류와 연결 통장(선택). 종류는 `생활비 합계`(생활 항목의 합), `구독 이체액`(구독 필요 이체액을 올림 단위로 올림), `구간별 고정`(구간마다 정한 금액), `나머지 전부`(실수령에서 나머지를 뺀 금액), `저축 합계`·`투자 합계`(그 메뉴 항목의 합, 0.1.7). 생활비 합계·구독 이체액·나머지·저축 합계·투자 합계는 많아야 하나씩이다. 나머지 대상은 지우거나 다른 종류로 바꿀 수 있고(0.1.4-rc.2), 없으면 실수령에서 대상 합계를 뺀 돈이 "급여 통장에 남음"으로 보인다(모자라면 "모자람").
+- **분배 대상**: 이름과 종류와 연결 통장(선택). 종류는 `생활비 합계`(생활 항목의 합), `구독 이체액`(구독 필요 이체액을 올림 단위로 올림), `구간별 고정`(구간마다 정한 금액), `나머지 전부`(그달 들어올 돈에서 다른 대상을 뺀 금액. 0.1.8부터 들어올 돈은 월급·정기 수입·기타 수입의 합이고, 받은 금액을 적은 달은 그 금액이다), `저축 합계`·`투자 합계`(그 메뉴 항목의 합, 0.1.7). 생활비 합계·구독 이체액·나머지·저축 합계·투자 합계는 많아야 하나씩이다. 나머지 대상은 지우거나 다른 종류로 바꿀 수 있고(0.1.4-rc.2), 없으면 들어올 돈에서 대상 합계를 뺀 돈이 "급여 통장에 남음"으로 보인다(모자라면 "모자람").
 - **구간**: 기간과, 고정 대상마다의 금액(비율로 나누는 저축·투자 합계 대상은 그 총액). 구간 이름은 시작 월 순서로 자동으로 "N단계"가 붙는다(저장된 기호는 그대로 둔다).
 - **올림 단위**: 구독 이체액을 올리는 단위. 1만·5만·10만 또는 "끄기"(1원)를 고른다. 다른 값이 저장돼 있으면 그 값도 선택지로 보인다.
 - **나머지 분배**: 나머지 금액을 비율로 나눈다. 마지막 항목이 남는 금액을 받는다.
@@ -218,8 +235,10 @@ pnpm db:admin      # 관리자 계정만 (ADMIN_EMAIL/ADMIN_PASSWORD)
 pnpm db:seed       # 관리자 계정 + 처음 데이터
 pnpm keys:rotate   # 데이터 키를 지금 마스터 키로 다시 포장
 pnpm keys:forget-lost  # 잃어버린 마스터 키의 데이터 키를 버림 (그 암호문을 비움)
-pnpm test:unit     # 단위 테스트 (암호화, 공휴일·날짜 조정, 테마 대비·표시 형식)
+pnpm test:unit     # 단위 테스트 (계산, 암호화, 공휴일·날짜 조정, 테마 대비·표시 형식, 명령 guard)
 pnpm e2e           # Playwright E2E (스택이 떠 있어야 함, 아래)
+pnpm check:migrations  # 스키마와 drizzle/ 마이그레이션이 맞는지 (db:generate가 바뀐 것이 없다고 해야 함)
+pnpm check:logs <파일>  # scripts/check-run.sh가 만든 증거 로그 검사
 ```
 
 ## 테스트
@@ -232,12 +251,13 @@ BASE=http://<시험 서버> ADMIN_EMAIL=... ADMIN_PASSWORD=... pnpm e2e         
 BASE=http://<시험 서버> ADMIN_EMAIL=... ADMIN_PASSWORD=... node tests/api/crud.mjs create   # API: create → (api 재시작) → verify → cleanup
 ```
 
-처음 써 보는 로컬 스택(데이터 없음)이라면 그 스택이 곧 시험 서버다: `docker compose -f docker/compose.dev.yaml up -d --build -V --wait` 뒤 `docker compose -f docker/compose.dev.yaml exec api pnpm db:seed`로 계정을 만들고 `BASE=http://<IP>:15173`으로 돌린다. 실제 데이터를 넣은 뒤에는 그 스택에 돌리지 않는다.
+처음 써 보는 로컬 스택(데이터 없음)이라면 그 스택이 곧 시험 서버다: 위 "개발 서버"대로 `stage.sh`로 올리고 `docker compose -f docker/compose.dev.yaml exec api pnpm db:seed`로 계정을 만든 뒤 `BASE=http://<IP>:15173`으로 돌린다. 실제 데이터를 넣은 뒤에는 그 스택에 돌리지 않는다.
 
 - 시험 서버(:15174)를 띄우고, 남은 시험 행을 지우고, 가짜 시드 데이터를 채우고, 증거 로그로 실행하는 스크립트는 `scripts/test-server/`에 있다 (`README.md` 참고).
+- DB에 직접 쓰는 검사(`tests/api/mcp.mjs`의 auth·isolation·tools·write, `tests/api/api-keys.mjs`)는 `bash scripts/test-server/disposable.sh <로그 이름> <명령…>`으로 돌린다. 실행마다 일회용 PostgreSQL(127.0.0.1:15183, 슈퍼유저가 아닌 롤)과 이 작업 트리의 API(:15184)를 띄우고, 끝나면 실패해도 지운다. 비밀번호와 키는 실행마다 무작위다. :15173·:15174에는 닿지 않는다.
 - `tests/e2e/auth.spec.ts`는 Dex로 승인 대기 흐름을 확인하므로 `DEX_CLIENT_SECRET`도 env로 준다. 관리 API로 OIDC 설정을 바꾸고 계정을 만들고 지우므로 테스트 DB에서 돌린다.
 - `tests/e2e/redesign.spec.ts`는 표시 설정·테마·공휴일 세트·날짜 조정을 바꿨다가 되돌리고, 테마 확인용 계정을 하나 만들었다 지운다. 외부 요청 0건과 휴대폰 폭(390)도 확인한다.
-- API 검사(`tests/api/`): `preferences.mjs`(표시 설정·공휴일 세트 검증·격리·되돌리기, 두 번째 계정 `B_EMAIL`/`B_PASSWORD` 필요), `admin.mjs`(관리자 권한·동작), `mobile.mjs`(bearer·일회용 토큰, api에 `ALLOT_APP_RETURN_URLS` 필요), `new-account.mjs`(빈 DB에서 `db:admin` 뒤), `isolation.mjs`, `changes.mjs`, `keys.ts`(api 컨테이너 안에서, 키 교체·분실; RLS 검사는 슈퍼유저가 아닌 롤로), `password-guard.mjs`(비밀번호 끄기 안전장치, api 컨테이너 안에서), `rows-of.ts`(계정별 표마다 행 수, 완전 삭제 확인). `admin.mjs`와 `new-account.mjs`는 버려도 되는 DB에서 돌린다.
+- API 검사(`tests/api/`): `preferences.mjs`(표시 설정·공휴일 세트 검증·격리·되돌리기, 두 번째 계정 `B_EMAIL`/`B_PASSWORD` 필요), `admin.mjs`(관리자 권한·동작), `mobile.mjs`(bearer·일회용 토큰, api에 `ALLOT_APP_RETURN_URLS` 필요), `new-account.mjs`(빈 DB에서 `db:admin` 뒤), `isolation.mjs`, `changes.mjs`, `keys.ts`(api 컨테이너 안에서, 키 교체·분실; RLS 검사는 슈퍼유저가 아닌 롤로), `password-guard.mjs`(비밀번호 끄기 안전장치, api 컨테이너 안에서), `rows-of.ts`(계정별 표마다 행 수, 완전 삭제 확인), `mcp.mjs`·`api-keys.mjs`(MCP 도구와 키, 위의 `disposable.sh`로), `income.mjs`·`income-mcp.mjs`(수입과 그 MCP, 0.1.8), `remainder.mjs`(나머지 대상 규칙), `budget-rules.mjs`(생활·저축·투자 쓰기 규칙, 변경 내역 기간). `admin.mjs`와 `new-account.mjs`는 버려도 되는 DB에서 돌린다.
 
 E2E는 시스템 Chrome(`channel: 'chrome'`)을 쓴다. 로그인 시도는 1분에 5번으로 제한된다.
 
@@ -245,5 +265,6 @@ E2E는 시스템 Chrome(`channel: 'chrome'`)을 쓴다. 로그인 시도는 1분
 
 - `src/` 프론트. 상태는 `src/lib/store.ts`가 API에서 읽고, 바꿀 때는 API에 먼저 저장한다.
 - `src/lib/calc.ts` 순수 계산 함수 (서버와 공유). `src/lib/holidays.ts` 공휴일 규칙(순수, 필요할 때만 불러옴), `src/lib/theme.ts` 사용자 색과 대비 보정, `src/lib/format.ts` 표시 형식.
-- `server/` API: `app.ts`(라우팅·세션 확인), `routes.ts`(CRUD), `auth.ts`(Better Auth), `db/`(스키마·마이그레이션·시드).
+- `server/` API: `app.ts`(라우팅·세션 확인), `routes.ts`(CRUD), `auth.ts`(Better Auth), `validation.ts`(zod 검증), `mcp/`(MCP 서버와 도구, 제안), `db/`(스키마·마이그레이션·시드).
 - `drizzle/` 커밋된 SQL 마이그레이션.
+- `scripts/` 개발 도구: `test-server/`(시험 서버·일회용 DB 검사), `check-run.sh`(증거 로그), `guard-*.mjs`(에이전트 명령 guard, `.claude/settings.json`의 PreToolUse 훅).
