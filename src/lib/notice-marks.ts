@@ -27,8 +27,11 @@ const apply = (m: Marks) => {
 // when no later save or read has started since (an older answer never replaces newer marks on screen).
 let queue: Promise<unknown> = Promise.resolve()
 let latest = 0
+/** How long a request waits for the one before it; a stalled request does not hold the later ones (review rc.2-2 R2-2). */
+export const TURN_WAIT_MS = 15_000
 const inTurn = <T>(run: () => Promise<T>): Promise<T> => {
-  const next = queue.then(run, run)
+  const before = Promise.race([queue, new Promise((r) => setTimeout(r, TURN_WAIT_MS))])
+  const next = before.then(run, run)
   queue = next.catch(() => undefined)
   return next
 }
