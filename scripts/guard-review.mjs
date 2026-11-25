@@ -154,7 +154,7 @@ function isPlainData(seg) {
       const x = rest[i]
       if (/^-[fsw]$/.test(x)) { i++; continue }
       if (x === '-' || !x.startsWith('-')) operands++
-      else if (!/^-(?:[cdDiuz]+|[fsw]\d+)$/.test(x)) return false
+      else if (!/^-(?:[cdDiuz]+|[fsw]\d+)$|^--(?:count|repeated|all-repeated|ignore-case|unique|zero-terminated|(?:skip-fields|skip-chars|check-chars)=\d+)$/.test(x)) return false
     }
     return operands <= 1
   }
@@ -199,7 +199,7 @@ function writesFile(words) {
   for (let i = 0; i < words.length; i++) {
     const w = words[i]
     // `>&2` copies a descriptor; a standalone `>&` before a word that is not a descriptor writes that file (review 2 G-2)
-    if (/^\d*>&$/.test(w)) { if (/^(?:\d+-?|-)$/.test(words[i + 1] ?? '')) { i++; continue } return true }
+    if (/^\d*>&$/.test(w)) { if (/^(?:\d+-?|-|\/dev\/null)$/.test(words[i + 1] ?? '')) { i++; continue } return true }
     if (!w.includes('>') || /^\d*>&\d+-?$|^\d*>&-$/.test(w) || /^\d*(?:>>?|&>>?|>\|)\/dev\/null$/.test(w)) continue
     if (/^\d*(?:>>?|&>>?|>\|)$/.test(w) && words[i + 1] === '/dev/null') { i++; continue }
     return true
