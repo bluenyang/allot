@@ -13,6 +13,7 @@ import { asUser } from '../db/scope'
 import { issueText } from '../messages'
 import { AI_LISTS, AI_SINGLES, RESOURCES, singleSchema } from '../ops'
 import { instructionsFor } from './instructions'
+import { readMarks } from '../notice-marks'
 import { applyProposal, getProposal, MAX_OPS, pendingCount, propose, ProposalError, proposalText, type KeyInfo, type ProposalView } from '../proposals'
 import { readState } from '../state'
 import { SEARCH_KINDS } from '../../src/lib/search'
@@ -278,12 +279,13 @@ export function buildMcpServer(uid: string, key: KeyInfo | null = null): McpServ
 
   server.registerTool('list_notifications', {
     title: 'Notifications',
-    description: 'What the bell of the app lists now, worked out from the data (nothing is pushed or mailed): proposals waiting for the user\'s confirmation, goal cards and maturity cards (group pending; maturities: Savings items whose maturity month is this month or past and that still send, with accounts listing each one; the user\'s "keep sending" choice on a maturity card is kept in their browser only, so this list cannot see it and shows such a maturity until it is stopped), subscription charges and one-off spending rounds from today to three days on (group pay, with date and dday), and this month\'s remainder short, a yearly limit used 90% or more, or a buffer short (group budget). Each has an id, its kind, its numbers, the app page and a sentence (message). Whether the user has read one is kept in their browser only and is not here.',
+    description: 'What the bell of the app lists now, worked out from the data (nothing is pushed or mailed): proposals waiting for the user\'s confirmation, goal cards and maturity cards (group pending; maturities: Savings items whose maturity month is this month or past and that still send, with accounts listing each one; a maturity the user answered "keep sending" in the app is left out, as the app does), subscription charges and one-off spending rounds from today to three days on (group pay, with date and dday), and this month\'s remainder short, a yearly limit used 90% or more, or a buffer short (group budget). Each has an id, its kind, its numbers, the app page, a sentence (message) and read: whether the user has read it in the app (the same on every device). You cannot mark one read.',
     inputSchema: z.object({}),
     annotations: READ_ONLY,
   }, guarded('list_notifications', async () => {
-    const [st, proposals] = await asUser(uid, async (q) => [await readState(q, uid), await pendingCount(q, uid)] as const)
-    return json(notificationList(st as Data, dayOf(st as Data), proposals))
+    // the marks are not in the state: reading a notice must not make a waiting proposal stale (spec 016 W-4)
+    const [st, proposals, marks] = await asUser(uid, async (q) => [await readState(q, uid), await pendingCount(q, uid), await readMarks(q, uid)] as const)
+    return json(notificationList(st as Data, dayOf(st as Data), proposals, marks))
   }))
 
   if (key) registerWrite(server, uid, key)

@@ -71,7 +71,7 @@ summary_for_user: |
 - [x] W-1 데이터: `notice_mark`, 마이그레이션, FORCE RLS, OWNED(S-1, S-3).
 - [x] W-2 서버 경로: 읽기·쓰기, 제한, API 문서(S-1, S-8).
 - [x] W-3 화면: 종 알림·만기 카드가 서버 기록을 씀, 처음 한 번 올리기(S-1, S-2).
-- [ ] W-4 MCP `list_notifications`(S-4).
+- [x] W-4 MCP `list_notifications`(S-4).
 - [ ] W-5 비밀번호 추가 경로와 화면, 빼기 확인(S-5, S-6, S-8).
 - [ ] W-6 문서.
 - [ ] W-7 시험.

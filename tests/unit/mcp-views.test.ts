@@ -552,6 +552,22 @@ test('list_notifications: the bell\'s list with a sentence each, goal cards and 
   assert.deepEqual(notificationList(stopped, now, 0).notifications.filter((n) => n.group === 'pending'), [])
 })
 
+// ── spec 016 S-4: the account's marks — read flags as the bell shows them, and a maturity answered "keep sending" left out ──
+test('list_notifications: read comes from the account marks; a kept maturity is not listed', () => {
+  const now = new Date(2026, 11, 22)
+  const nd: Data = { ...bd, subscriptions: [sub({ id: 's1', name: 'E2E Sub', nextDate: '2026-12-24' })] }
+  const due: Data = { ...nd, accounts: [...nd.accounts.map((a) => ({ ...a, goal: null })), acc('dep', { group: 'saving', amount: 100_000, term: '12개월', from: '2025-12' })] }
+  const plain = notificationList(due, now, 0)
+  assert.ok(plain.notifications.every((n) => n.read === false), 'no marks: nothing read')
+  const charge = plain.notifications.find((n) => n.kind === 'charge')!
+  const marked = notificationList(due, now, 0, { read: [charge.id, 'gone:1'], maturityKept: [] })
+  assert.deepEqual(marked.notifications.filter((n) => n.read).map((n) => n.id), [charge.id])
+  assert.ok(marked.notifications.some((n) => n.kind === 'maturities'))
+  const kept = notificationList(due, now, 0, { read: [], maturityKept: ['dep@2026-12'] })
+  assert.deepEqual(kept.notifications.filter((n) => n.kind === 'maturities'), [], 'the kept maturity is left out, as in the app')
+  assert.deepEqual(kept.notifications.filter((n) => n.kind !== 'maturities').map((n) => n.id), plain.notifications.filter((n) => n.kind !== 'maturities').map((n) => n.id))
+})
+
 // ── spec 013 S-23: the currencies in the overview, and items in a listed code ──
 test('overview lists USD from the settings and the currency list; a subscription in a listed code is priced by its rate', () => {
   const eur = { id: 'fc1', code: 'EUR', rate: 1500, buffer: 2, auto: true, autoAt: '2026-11-23T00:00:00.000Z', autoError: null }
