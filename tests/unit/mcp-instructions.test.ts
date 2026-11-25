@@ -24,3 +24,12 @@ test('the first 512 characters hold the essentials, for each permission', () => 
 test('an OAuth app gets the same instructions as a key with the same permission', () => {
   assert.equal(instructionsFor({ id: 'c', name: 'App', confirm: 'chat', source: 'oauth' }), instructionsFor({ id: 'k', name: 'Key', confirm: 'chat' }))
 })
+
+test('spec 017 S-5: the server introduces itself with a title, a description and the repository; name and version unchanged', async () => {
+  const { SERVER_INFO } = await import('../../server/mcp/info')
+  assert.equal(SERVER_INFO.name, 'allot')
+  assert.equal(SERVER_INFO.version, '0.1')
+  assert.equal(SERVER_INFO.title, 'Allot')
+  assert.ok(SERVER_INFO.description.length > 20 && SERVER_INFO.description.length <= 200)
+  assert.equal(SERVER_INFO.websiteUrl, 'https://github.com/bluenyang/allot')
+})
