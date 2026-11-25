@@ -3,6 +3,7 @@ import { computed, onActivated, onDeactivated, onMounted, ref } from 'vue'
 import EditSheet from '../components/EditSheet.vue'
 import Soon from '../components/Soon.vue'
 import ConnectedApps from '../components/ConnectedApps.vue'
+import ConnectApps from '../components/ConnectApps.vue'
 import { ApiError } from '../lib/api'
 import { lang, t } from '../i18n'
 import { countProposalsByKey, createKey, listKeys, revokeKey, updateKey, type KeyChange, type KeyItem } from '../lib/keys'
@@ -13,7 +14,8 @@ import { extendChoices } from '../lib/key-extend'
 // 설정 › AI·연동 (spec 008 S-4, redrawn by spec 010 S-11): API keys for the MCP endpoint and how to connect.
 // A key's text is shown once, in the box after it is made; the server keeps only its hash. Its name, scope and
 // expiry can be changed in the manage sheet (spec 013 S-25, PATCH /api/keys/:id). The apps connected with OAuth are listed
-// under the connection steps (spec 015 S-10, components/ConnectedApps.vue).
+// under the connection steps (spec 015 S-10, components/ConnectedApps.vue). How to connect each AI app is the card above
+// them (spec 017, components/ConnectApps.vue); the key command that was here is its 'API key, directly' dialog (S-6).
 const keys = ref<KeyItem[]>([])
 const noExpiry = ref(false)
 const max = ref(10)
@@ -205,7 +207,6 @@ async function copy(text: string, what: string) {
 // spec 015 S-11: the root /mcp takes keys and OAuth; /api/mcp keeps taking keys.
 const url = `${window.location.origin}/mcp`
 const oldUrl = `${window.location.origin}/api/mcp`
-const command = computed(() => `claude mcp add --transport http allot ${url} --header "Authorization: Bearer ${t('settingsAi.keyPh')}"`)
 
 const used = (at: string | null) => (at ? new Date(at).toLocaleString(loc(), { dateStyle: 'medium', timeStyle: 'short' }) : t('settingsAi.neverUsed'))
 const writes = (k: KeyItem) => (k.permissions.mcp ?? []).includes('write')
@@ -275,14 +276,14 @@ const PROVIDERS = [['Anthropic Claude', 'AC'], ['OpenAI', 'OA'], ['Google Gemini
       <p v-if="loaded && !keys.length" class="hint none">{{ t('settingsAi.none') }}</p>
     </section>
 
+    <ConnectApps />
+
     <section class="card">
       <div class="ch"><h2>{{ t('settingsAi.connect') }}</h2></div>
       <div class="fs">
         <div class="field"><span class="lbl">{{ t('settingsAi.mcpUrl') }}</span>
           <div class="cbrow"><code class="codebox url">{{ url }}</code><button class="btn" type="button" @click="copy(url, t('settingsAi.whatUrl'))">{{ t('settingsAi.copy') }}</button></div></div>
-        <div class="field"><span class="lbl">{{ t('settingsAi.addTitle') }}</span>
-          <div class="cbrow"><code class="codebox cmd">{{ command }}</code><button class="btn" type="button" @click="copy(command, t('settingsAi.whatCommand'))">{{ t('settingsAi.copy') }}</button></div>
-          <i18n-t keypath="settingsAi.addHow" tag="span" class="hint"><template #ph><span class="mono">{{ t('settingsAi.keyPh') }}</span></template></i18n-t></div>
+        <p class="hint" style="margin:0">{{ t('connect.moved') }}</p>
         <p class="hint" style="margin:0">{{ t('settingsAi.keyScope') }}</p>
         <i18n-t keypath="oauth.apps.keyPath" tag="p" class="hint" style="margin:0"><template #old><span class="mono">{{ oldUrl }}</span></template></i18n-t>
         <ConnectedApps />

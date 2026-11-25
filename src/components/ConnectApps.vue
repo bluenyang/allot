@@ -1,0 +1,128 @@
+<script setup lang="ts">
+// 설정 › AI·연동 › 앱 연결 (spec 017 S-1–S-3): one tile per AI app (src/lib/connect-guide.ts); a tile opens a dialog with
+// the steps, this server's MCP address filled in, copy buttons and the official help links. A centred dialog on a wide
+// screen, a bottom sheet at phone width. When OAuth is not possible on this server (GET /api/oauth-apps → enabled:false,
+// the same value the connected-apps list reads), the apps that need it are dimmed with the reason, and still open.
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
+import { computed, onActivated, onMounted, ref } from 'vue'
+import { api } from '../lib/api'
+import { copyText } from '../lib/clipboard'
+import { CONNECT_APPS, blockedWithoutOauth, filled, type ConnectApp } from '../lib/connect-guide'
+import { sessionScope } from '../lib/store'
+import { t } from '../i18n'
+
+const origin = window.location.origin
+const fill = computed(() => ({ url: `${origin}/mcp`, origin, keyPh: t('settingsAi.keyPh') }))
+/** null until the server answered; a failed answer dims nothing (the connected-apps list shows that error). */
+const oauthOn = ref<boolean | null>(null)
+const open = ref<ConnectApp | null>(null)
+const status = ref('')
+const failed = ref('')
+
+async function load() {
+  const scope = sessionScope()
+  try {
+    const r = await api<{ enabled: boolean }>('GET', '/api/oauth-apps')
+    if (scope.alive()) oauthOn.value = r.enabled
+  } catch { /* keep every app as it is */ }
+}
+onMounted(load)
+onActivated(load)
+
+const off = computed(() => oauthOn.value === false)
+const dimmed = (app: ConnectApp) => off.value && blockedWithoutOauth(app)
+const authLabel = (app: ConnectApp) => t(app.auth === 'oauth' ? 'connect.oauthOnly' : app.auth === 'key' ? 'connect.keyOnly' : 'connect.either')
+const steps = computed(() => (open.value ? filled(open.value, fill.value) : []))
+
+async function copy(text: string) {
+  failed.value = ''
+  status.value = ''
+  if (await copyText(text)) status.value = t('connect.copied')
+  else failed.value = t('connect.copyFailed')
+}
+function show(app: ConnectApp) {
+  status.value = ''
+  failed.value = ''
+  open.value = app
+}
+</script>
+
+<template>
+  <section class="card" :aria-labelledby="'ca-title'">
+    <div class="ch"><h2 id="ca-title">{{ t('connect.title') }} <span class="hint plain">{{ t('connect.sub') }}</span></h2></div>
+    <p v-if="off" class="hint ca-off" role="note">{{ t('connect.oauthOff') }}</p>
+    <ul class="ca-apps" :aria-label="t('connect.title')">
+      <li v-for="app in CONNECT_APPS" :key="app.id">
+        <button type="button" class="ca-app" :class="{ dim: dimmed(app) }" :aria-label="t('connect.open', { name: t(app.name) })" :data-app="app.id" @click="show(app)">
+          <b>{{ t(app.name) }}</b>
+          <small class="hint">{{ dimmed(app) ? t('connect.oauthOffShort') : authLabel(app) }}</small>
+        </button>
+      </li>
+    </ul>
+    <p class="hint ca-asof">{{ t('connect.asOf') }}</p>
+  </section>
+
+  <DialogRoot :open="!!open" @update:open="(o: boolean) => { if (!o) open = null }">
+    <DialogPortal>
+      <div v-if="open" class="dlg-layer ca-layer">
+        <DialogOverlay class="dlg-ov" />
+        <DialogContent class="ca-dlg dlg">
+          <div class="ca-head">
+            <DialogTitle class="ca-t">{{ t(open.name) }}</DialogTitle>
+            <DialogClose class="btn sm ghost" :aria-label="t('connect.close')">{{ t('connect.close') }}</DialogClose>
+          </div>
+          <DialogDescription class="hint ca-d">{{ authLabel(open) }} · {{ t('connect.asOf') }}</DialogDescription>
+          <p v-if="off && open.auth !== 'key'" class="ca-warn" role="note">{{ t('connect.oauthOff') }}</p>
+          <ol class="ca-steps">
+            <li v-for="(s, i) in steps" :key="i" :class="{ dim: off && s.mode === 'oauth' }">
+              <span>{{ s.text === 'connect.step.keyCommand' ? t(s.text, { key: fill.keyPh }) : t(s.text) }}</span>
+              <span v-if="off && s.mode === 'oauth'" class="hint ca-why">{{ t('connect.stepOauthOff') }}</span>
+              <div v-if="s.value" class="cbrow"><code class="codebox cmd">{{ s.value }}</code><button class="btn sm" type="button" @click="copy(s.value)">{{ t('connect.copy') }}</button></div>
+            </li>
+          </ol>
+          <ul v-if="open.notes?.length" class="ca-notes">
+            <li v-for="n in open.notes" :key="n" class="hint">{{ t(n) }}</li>
+          </ul>
+          <div class="ca-help">
+            <span class="lbl">{{ t('connect.help') }}</span>
+            <a v-for="h in open.help" :key="h.url" :href="h.url" target="_blank" rel="noopener noreferrer">{{ h.title }}</a>
+          </div>
+          <p v-if="status" class="hint ca-status" role="status">{{ status }}</p>
+          <p v-if="failed" class="save-err" role="alert">{{ failed }}</p>
+        </DialogContent>
+      </div>
+    </DialogPortal>
+  </DialogRoot>
+</template>
+
+<style>
+.ca-apps{list-style:none;margin:0;padding:12px 18px 4px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.ca-app{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:56px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);color:var(--text);text-align:left;cursor:pointer}
+.ca-app:hover,.ca-app:focus-visible{border-color:var(--border-strong);background:var(--surface-2)}
+.ca-app.dim{opacity:.55}
+.ca-app small{font-size:12px}
+.ca-off{margin:12px 18px 0}
+.ca-asof{margin:4px 18px 16px;font-size:12px}
+.ca-layer{display:flex;justify-content:center;align-items:flex-start;padding:72px 16px}
+.ca-dlg{position:relative;z-index:1;width:640px;max-width:100%;max-height:calc(100vh - 120px);overflow:auto;border:1px solid var(--border-strong);border-radius:var(--r-pop);background:var(--surface);color:var(--text);box-shadow:var(--shadow-pop);padding:18px 20px 20px;outline:none}
+.ca-head{display:flex;align-items:center;gap:12px}
+.ca-t{flex:1;margin:0;font-size:17px;font-weight:700}
+.ca-d{margin:4px 0 12px;font-size:12px}
+.ca-warn{margin:0 0 12px;padding:10px 12px;border-radius:var(--r-ctl);background:var(--warn-soft, var(--fill));color:var(--text);font-size:13px}
+.ca-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px}
+.ca-steps li{display:flex;flex-direction:column;gap:6px;line-height:1.5}
+.ca-steps li.dim > span:first-child{opacity:.55}
+.ca-why{font-size:12px}
+.ca-notes{margin:14px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.ca-notes li{font-size:12px}
+.ca-help{margin-top:14px;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.ca-help a{color:var(--primary-text);overflow-wrap:anywhere}
+.ca-status,.ca-dlg .save-err{margin:10px 0 0}
+.ca-dlg .cbrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ca-dlg .codebox{display:block;flex:1;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-ctl);background:var(--surface-2);font:12px var(--f-mono);color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+@media (max-width:760px){
+  .ca-apps{grid-template-columns:1fr}
+  .ca-layer{align-items:flex-end;padding:0}
+  .ca-dlg{width:100%;max-height:88vh;border-radius:var(--r-pop) var(--r-pop) 0 0;padding:16px 16px 24px}
+}
+</style>
