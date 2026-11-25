@@ -117,12 +117,14 @@ function handleOAuth(c: Context, ip: string): Promise<Response> {
     const uid = typeof claims.sub === 'string' ? claims.sub : ''
     const clientId = typeof claims.azp === 'string' ? claims.azp : ''
     const [consent] = uid && clientId
-      ? await db.select({ scopes: a.oauthConsent.scopes, name: a.oauthClient.name }).from(a.oauthConsent)
+      ? await db.select({ scopes: a.oauthConsent.scopes, createdAt: a.oauthConsent.createdAt, name: a.oauthClient.name }).from(a.oauthConsent)
         .innerJoin(a.oauthClient, eq(a.oauthClient.clientId, a.oauthConsent.clientId))
         .where(and(eq(a.oauthConsent.userId, uid), eq(a.oauthConsent.clientId, clientId)))
       : []
     // disconnected (or never connected): the token is refused although it has not expired (S-7)
-    if (!consent || !(await usableUser(uid))) return refuse(401, 'error="invalid_token", ')
+    // a token from before the connection that is there now (disconnected, then connected again) stays refused (review 1 R1-4)
+    const issuedBefore = typeof claims.iat === 'number' && consent && claims.iat < Math.floor(consent.createdAt.getTime() / 1000)
+    if (!consent || issuedBefore || !(await usableUser(uid))) return refuse(401, 'error="invalid_token", ')
     // the permission is the narrower of the token's and the connection's now (server/oauth.ts effectiveScope)
     const scope = effectiveScope(typeof claims.scope === 'string' ? claims.scope.split(' ') : [], consent.scopes)
     if (!scope) return refuse(403, `error="insufficient_scope", scope="${ALLOT_SCOPES.join(' ')}", `)
