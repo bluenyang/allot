@@ -6,6 +6,7 @@ import Icon from '../components/Icon.vue'
 import { copyText } from '../lib/clipboard'
 import { generatePassword } from '../lib/password-gen'
 import { loadMethods, providerName, startSocial, takeErrorFromUrl, type Method } from '../lib/auth-ui'
+import { authClient } from '../lib/auth-client'
 
 // My account (spec 006 S-1, S-11): who I am, the logins linked to me, my password.
 // Shown as the 설정 › 로그인·보안 tab (spec 007 S-12), so it has no page header of its own.
@@ -94,6 +95,36 @@ async function changePassword() {
   }
 }
 
+// ── adding a password to an account that signs in externally only (spec 016 S-5) ──
+const np = ref({ next: '', again: '' })
+/** The server said the session is more than a day old: sign in again first. */
+const reauth = ref(false)
+async function addPassword() {
+  error.value = ''
+  notice.value = ''
+  reauth.value = false
+  if (np.value.next.length < minLength.value) return (error.value = t('security.pwShort', { min: minLength.value }))
+  if (np.value.next !== np.value.again) return (error.value = t('account.pwMismatch'))
+  busy.value = true
+  try {
+    await api('POST', '/api/account/password', { newPassword: np.value.next })
+    np.value = { next: '', again: '' }
+    made.value = ''
+    notice.value = t('account.pwAdded')
+    await load()
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 403) reauth.value = true
+    fail(e, t('account.addPwFailed'))
+  } finally {
+    busy.value = false
+  }
+}
+function generateNew() {
+  made.value = generatePassword()
+  np.value = { next: made.value, again: made.value }
+}
+const signInAgain = () => authClient.signOut()
+
 function generate() {
   made.value = generatePassword()
   pw.value = { ...pw.value, next: made.value, again: made.value }
@@ -136,6 +167,22 @@ const fmt = (at: string) => new Date(at).toLocaleDateString('ko-KR', { dateStyle
           </div>
         </section>
       </div>
+
+      <form v-if="!hasPassword() && me" class="card pwc" :aria-label="t('account.addPw')" @submit.prevent="addPassword">
+        <div class="ch"><h2>{{ t('account.addPw') }}</h2></div>
+        <div class="fs">
+          <p class="small muted" style="margin:0">{{ passwordOn() ? t('account.addPwNote', { email: me.email }) : t('account.addPwOff') }}</p>
+          <div class="field"><label for="a-add">{{ t('account.newPw') }}</label>
+            <div class="genrow"><input id="a-add" v-model="np.next" class="in" type="password" autocomplete="new-password" :minlength="minLength" required :disabled="!passwordOn()"><button class="btn" type="button" :disabled="!passwordOn()" @click="generateNew">{{ t('security.generate') }}</button></div>
+            <span class="hint">{{ t('security.minLine', { min: minLength }) }}</span></div>
+          <div v-if="made && np.next === made" class="field"><span class="lbl">{{ t('security.generated') }}</span>
+            <div class="genrow"><input class="in mono" readonly :value="made" :aria-label="t('security.generated')" @focus="($event.target as HTMLInputElement).select()"><button class="btn" type="button" @click="copyMade">{{ t('security.copy') }}</button></div>
+            <span class="hint">{{ t('security.generatedNote') }}</span></div>
+          <div class="field"><label for="a-add-again">{{ t('account.newPwAgain') }}</label><input id="a-add-again" v-model="np.again" class="in" type="password" autocomplete="new-password" required :disabled="!passwordOn()"></div>
+          <p v-if="reauth"><button class="btn sm" type="button" @click="signInAgain">{{ t('account.signInAgain') }}</button></p>
+        </div>
+        <div class="cf"><span class="sp"></span><button class="btn sm pri" type="submit" :disabled="busy || !passwordOn()">{{ t('account.addPwSubmit') }}</button></div>
+      </form>
 
       <form v-if="hasPassword() && passwordOn()" class="card pwc" :aria-label="t('account.changePw')" @submit.prevent="changePassword">
         <div class="ch"><h2>{{ t('account.changePw') }}</h2></div>

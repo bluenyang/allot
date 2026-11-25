@@ -389,6 +389,9 @@ export const keyCreate = z.object({
 
 /** PUT /api/admin/api-keys */
 export const keyPolicy = z.object({ noExpiry: z.boolean() }).strict()
+/** spec 016 S-5: a new password; its minimum is the admin's policy, checked by the auth hook (server/password-policy.ts). */
+export const newPassword = z.object({ newPassword: z.string().min(1, 'invalidInput').max(1024, 'invalidInput') }).strict()
+
 /** spec 016 S-8: a mark is a notice id or `accountId@YYYY-MM`, 1–200 characters; one request adds and drops at most 500. */
 const markKey = z.string().min(1, 'invalidInput').max(200, 'invalidInput')
 const markList = z.array(markKey).max(500, 'invalidInput')
