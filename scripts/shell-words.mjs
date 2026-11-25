@@ -91,6 +91,9 @@ export function parseShell(src, { nlSpace = false, body = false } = {}) {
     while (i < n) {
       const c = s[i]
       if (closer && c === closer) { i++; endSeg(); return }
+      // bash and zsh read these differently before < or >: bash takes `12` and `{a[0]}` as descriptors, zsh as words
+      // (its descriptors are 0-9 and {name}). No reading suits both shells: the line is weird (review 8 J-1, J-2).
+      if ((c === '<' || c === '>') && word !== null && !wany && /^(?:\d{2,}|\{[A-Za-z_]\w*\[[^\]]*\]\})$/.test(word)) out.weird = true
       if (c === "'") {
         const j = s.indexOf("'", i + 1)
         add('', true)
