@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
+import MonthPeriod from './components/MonthPeriod.vue'
 import MoreSheet from './components/MoreSheet.vue'
 import NoticeBell from './components/NoticeBell.vue'
 import SearchDialog from './components/SearchDialog.vue'
@@ -188,7 +189,7 @@ const onGripKey = (e: KeyboardEvent) => {
       <header class="topbar">
         <div v-if="route.page === 'home' || route.page === 'income'" class="monthnav">
           <button class="btn icon" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" :stroke="2" /></button>
-          <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}</span>
+          <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}<MonthPeriod :ym="view.ym" /></span>
           <button class="btn icon" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" :stroke="2" /></button>
           <span class="phasebadge">{{ phase ? phaseTag(store.phases, phase) : t('shell.outOfPhase') }}</span>
         </div>

@@ -37,11 +37,12 @@ import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
 import { kindDetail, usageLabel } from '../lib/labels'
 import { adjustable, adjustOf, adjustPreview } from '../lib/budget-page'
-import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, ymLabel, ymOf, type AllocRow } from '../lib/calc'
+import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, ymLabel, type AllocRow } from '../lib/calc'
+import { thisYm } from '../lib/month'
+import MonthPeriod from '../components/MonthPeriod.vue'
 import type { Account, AllocationKind, Card, AllocationTarget, BudgetGroup, Settings } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
-import { localToday } from '../lib/now'
 
 const tab = ref('phases')
 const tabs = computed(() => [
@@ -61,7 +62,7 @@ function tabFromQuery() {
 tabFromQuery()
 onActivated(tabFromQuery)
 watch(() => route.query.tab, tabFromQuery)
-const now = ymOf(localToday())
+const now = thisYm()
 // The month's distribution with its one-off spendings (spec 011 S-5); `pay` is a value tried on this screen. Without one
 // the pay is what comes in that month (spec 014 S-5, S-8): the salary and the other incomes, received or expected.
 const dist = (ym: string, pay?: number) => monthMoney(store, ym, pay === undefined ? {} : { pay }).dist
@@ -409,7 +410,7 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
         <div class="card-hd wrap">
           <div role="group" class="mnav" :aria-label="t('payroll.monthPick')">
             <button class="btn sm ghost sq" type="button" :aria-label="t('shell.prevMonth')" @click="ym = addYm(ym, -1)"><Icon name="prev" /></button>
-            <h2 class="num">{{ t('payroll.monthTitle', { ym: ymLabel(ym) }) }}</h2>
+            <h2 class="num">{{ t('payroll.monthTitle', { ym: ymLabel(ym) }) }}<MonthPeriod :ym="ym" /></h2>
             <button class="btn sm ghost sq" type="button" :aria-label="t('shell.nextMonth')" @click="ym = addYm(ym, 1)"><Icon name="next" /></button>
           </div>
           <span class="sum">

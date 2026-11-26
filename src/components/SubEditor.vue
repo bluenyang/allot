@@ -14,6 +14,7 @@ import { useEditor } from '../lib/useEditor'
 import { pricedSettings, store } from '../lib/store'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
 import { chargeKrw, monthlyKrw, num, planAt, ymLabel } from '../lib/calc'
+import { monthBasis, ymOfDay } from '../lib/month'
 import { currencyCodes, fxAmount, rateFor, rateNum } from '../lib/currency'
 import { wonText } from '../lib/format'
 import type { Category, PlanChange, Subscription } from '../data/types'
@@ -95,9 +96,10 @@ function show(k: (typeof PLAN_KEYS)[number], p: Subscription) {
 const overridden = computed(() => {
   const e = edit.value
   if (!e?.id) return null
-  const applied = store.planChanges.filter((c) => c.subId === e.id && c.effective && c.effective.slice(0, 7) <= props.ym)
+  // a change is in effect from the month whose period holds its date (spec 018 S-3)
+  const applied = store.planChanges.filter((c) => c.subId === e.id && c.effective && ymOfDay(c.effective) <= props.ym)
   if (!applied.length) return null
-  const eff = planAt(e, store.planChanges, props.ym)
+  const eff = planAt(e, store.planChanges, props.ym, monthBasis.value)
   const fields = PLAN_KEYS.filter((k) => eff[k] !== e[k]).map((k) => ({ k, label: planLabel()[k], base: show(k, e), now: show(k, eff) }))
   return fields.length ? { fields, changes: applied } : null
 })

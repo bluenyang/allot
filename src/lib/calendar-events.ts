@@ -29,7 +29,11 @@ export function holidayEvents(sets: HolidaySet[], from: string, to: string): Cal
   return holidaysBetween(sets, from, last).map((h) => ({ date: h.date, title: holidayName(h.name), kind: 'holiday' }))
 }
 
-/** Every event between from (inclusive) and to (exclusive), YYYY-MM-DD. */
+/**
+ * Every event between from (inclusive) and to (exclusive), YYYY-MM-DD. The calendar's cells are dates: the monthly dates
+ * are worked out for each calendar month (`monthDates`), not for the months of the user's month basis (spec 018 S-3) —
+ * the same dates come out either way, each one once.
+ */
 export function calendarEvents(from: string, to: string): CalEvent[] {
   const last = ymd(new Date(parseDate(to).getTime() - DAY))
   // A monthly date moves at most SHIFT_LIMIT (31) days, so it can come from up to two months away

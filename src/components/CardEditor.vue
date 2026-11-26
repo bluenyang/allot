@@ -52,6 +52,7 @@ const usageNow = computed(() => {
   const c = edit.value
   if (!c?.usageFrom) return ''
   const today = ymd(localToday())
+  // the card's own usage period and bill, by dates: they do not follow the month basis (the calendar month only sets the holiday range)
   const ym = today.slice(0, 7)
   const off = needsHolidays(store.settings, store.schedules) ? offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 4)}-01`) ?? new Set<string>() : new Set<string>()
   const p = usagePeriod(today, c.usageFrom)

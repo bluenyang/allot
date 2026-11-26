@@ -14,18 +14,21 @@ import { useEditor } from '../lib/useEditor'
 import { pricedSettings, store } from '../lib/store'
 import { cycleLabel, statusLabel } from '../lib/labels'
 import { fmtMoney } from '../lib/display'
-import { addYm, monthlyKrw, monthMoney, num, planAt, ymOf } from '../lib/calc'
+import { addYm, monthlyKrw, monthMoney, num, planAt } from '../lib/calc'
 import type { Plan, PlanChange, Subscription } from '../data/types'
 import Select from './Select.vue'
 import DateInput from './DateInput.vue'
 import { localToday } from '../lib/now'
+import { monthBasis, periodOfYm, thisYm, ymOfDay } from '../lib/month'
 
 const props = defineProps<{ initial: PlanChange | null }>()
 const emit = defineEmits<{ close: [] }>()
 
 const now = localToday()
 const DATE = /^\d{4}-\d{2}-\d{2}$/
-const blank = (): PlanChange => ({ id: '', subId: store.subscriptions[0]?.id ?? '', effective: `${addYm(ymOf(now), 1)}-01`, to: {}, note: '' })
+// the default date: the first day of next month (of its period, spec 018 S-3)
+const nextStart = () => periodOfYm(addYm(thisYm(), 1)).start
+const blank = (): PlanChange => ({ id: '', subId: store.subscriptions[0]?.id ?? '', effective: nextStart(), to: {}, note: '' })
 function validate(c: PlanChange) {
   if (!c.subId) { step.value = 0; return t('subscriptions.needSub') }
   if (!Object.keys(c.to).length) return t('subscriptions.needField')
@@ -58,13 +61,13 @@ const effective = computed({
   set: (v: string) => { edit.value!.effective = v === '' ? null : v },
 })
 function toggleUndated(on: boolean) {
-  edit.value!.effective = on ? null : `${addYm(ymOf(now), 1)}-01`
+  edit.value!.effective = on ? null : nextStart()
 }
 const chargeText = (p: Plan) => chargeLabel(p, num)
 const current = computed(() => {
   const s = sub.value
   if (!s) return ''
-  const p = planAt(s, others.value, ymOf(now))
+  const p = planAt(s, others.value, thisYm(), monthBasis.value)
   return `${(p.plan || '—').split('\n')[0]} · ${chargeText(p)} / ${p.cycle === 'yearly' ? t('subscriptions.perYear') : t('subscriptions.perMonth')}${p.status === 'active' ? '' : ` · ${statusLabel(p.status)}`}`
 })
 
@@ -86,9 +89,10 @@ const vat = field('vat', (v) => Number(v))
 const currency = field('currency', (v) => v as Plan['currency'])
 const cycle = field('cycle', (v) => v as Plan['cycle'])
 const status = field('status', (v) => v as Plan['status'])
-const month = computed(() => (undated.value ? ymOf(now) : edit.value!.effective!.slice(0, 7)))
+// the month the change comes in: the one whose period holds its date (an undated one: this month)
+const month = computed(() => (undated.value ? thisYm() : ymOfDay(edit.value!.effective!)))
 // VAT is always there (it was before the redesign); it only counts for a foreign currency, which the hint says.
-const isForeign = computed(() => { const c = edit.value?.to.currency ?? (sub.value ? planAt(sub.value, others.value, month.value).currency : undefined); return !!c && c !== 'KRW' })
+const isForeign = computed(() => { const c = edit.value?.to.currency ?? (sub.value ? planAt(sub.value, others.value, month.value, monthBasis.value).currency : undefined); return !!c && c !== 'KRW' })
 
 const mo = (p: Subscription) => (p.status === 'active' ? monthlyKrw(p, pricedSettings()) : 0)
 /** Monthly amount of this subscription and the subscription transfer, without and with the change, in the month it applies (an undated one: this month). */
@@ -96,11 +100,12 @@ const pv = computed(() => {
   const e = edit.value
   const s = sub.value
   if (!e || !s) return null
-  const draft: PlanChange = { ...e, effective: `${month.value}-01`, to: { ...e.to } }
+  // the draft dated on the month's first day, so an undated change shows in this month too
+  const draft: PlanChange = { ...e, effective: periodOfYm(month.value).start, to: { ...e.to } }
   const withDraft = [...others.value, draft]
   return {
-    before: mo(planAt(s, others.value, month.value)),
-    after: mo(planAt(s, withDraft, month.value)),
+    before: mo(planAt(s, others.value, month.value, monthBasis.value)),
+    after: mo(planAt(s, withDraft, month.value, monthBasis.value)),
     // Both sides carry the month's one-off spendings, so the difference stays the plan change's own.
     xa: monthMoney({ ...store, planChanges: others.value }, month.value).transfer.transfer,
     xb: monthMoney({ ...store, planChanges: withDraft }, month.value).transfer.transfer,

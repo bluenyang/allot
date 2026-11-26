@@ -18,6 +18,8 @@ import { eventKindLabel } from '../lib/labels'
 import { inMonth } from '../lib/event-when'
 import { localToday } from '../lib/now'
 
+// The calendar grid is always the calendar month, whatever the month basis is (spec 018 S-3: 일정의 달력은 늘 1일~말일):
+// its cells are dates, and so are the month list and the totals under it.
 const now = localToday()
 const nowYm = ymOf(now)
 const ym = ref(nowYm)

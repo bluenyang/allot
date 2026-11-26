@@ -5,7 +5,8 @@ import { store, upsertSpending } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { monthShort } from '../lib/format'
-import { addYm, billingDayOf, cardBillDate, cardBillYm, needsHolidays, spendingIn, spendingKrw, ymLabel, ymOf } from '../lib/calc'
+import { addYm, billingDayOf, cardBillDate, cardBillYm, needsHolidays, spendingIn, spendingKrw, ymLabel } from '../lib/calc'
+import { monthBasis, thisYm, ymOfDay } from '../lib/month'
 import type { Card, PayBy, Spending, SpendingRound } from '../data/types'
 import ConfirmDialog from './ConfirmDialog.vue'
 import PayOffDialog from './PayOffDialog.vue'
@@ -15,7 +16,6 @@ import Select from './Select.vue'
 import SpendEditor from './SpendEditor.vue'
 import { downloadCsv } from '../lib/csv'
 import { spendingCsvRows } from '../lib/spending-csv'
-import { localToday } from '../lib/now'
 
 // 할부 tab (spec 011 S-4, S-6, S-7): the installment and split spendings as a list with the one picked shown
 // beside it (stacked on a phone), three summary cards and the rounds table. Every number is worked out here
@@ -23,13 +23,15 @@ import { localToday } from '../lib/now'
 // round, an early payoff and a cancel are each one `upsertSpending` of the whole spending (its rounds travel in
 // the body); the editors are RoundEditor and PayOffDialog. The whole-spending editor is SpendEditor (W-7).
 // A buffer use (spec 013 S-8) is listed here too: its rounds are the refills, taken off the remainder of their months.
-const ym = ymOf(localToday())
-const mon = (d: string) => monthShort(Number(d.slice(5, 7)))
+const ym = thisYm()
+// the month a date counts in: the one whose period holds it (spec 018 S-3)
+const mon = (d: string) => monthShort(Number(ymOfDay(d).slice(5, 7)))
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
-const ymText = (d: string) => ymLabel(d.slice(0, 7)).replace('.', '. ')
+const ymText = (d: string) => ymLabel(ymOfDay(d)).replace('.', '. ')
 const payName = (p: PayBy) => t(`spending.gen.pay.${p}` as 'spending.gen.pay.card')
 /** The card bill date of a buffer use (its note): the first billing date after the card's usage period, moved for holidays as the editor does. */
 function billOf(s: Spending, card: Card | null) {
+  // the card's own billing month (a calendar month: the card's schedule does not follow the month basis)
   const ym = cardBillYm(s.bought, card, store.settings)
   const off = !needsHolidays(store.settings, store.schedules) ? new Set<string>() : offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 2)}-01`) ?? new Set<string>()
   return cardBillDate(s.bought, card, store.settings, off)
@@ -109,7 +111,7 @@ const k1 = computed(() => {
 })
 const k2 = computed(() => {
   const months = Array.from({ length: 6 }, (_, k) => addYm(ym, k))
-  const per = months.map((m) => { const x = spendingIn(inst.value, m); return { m, v: x.remainder + x.subs, n: x.items.length } })
+  const per = months.map((m) => { const x = spendingIn(inst.value, m, monthBasis.value); return { m, v: x.remainder + x.subs, n: x.items.length } })
   const max = Math.max(0, ...per.map((p) => p.v))
   const top = max ? per.find((p) => p.v === max) : undefined
   const first = months[0]!, last = months[months.length - 1]!

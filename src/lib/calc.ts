@@ -760,7 +760,14 @@ export function ymOfDate(date: string, ctx: MonthCtx): string {
  * A date moved off a weekend or holiday may leave the period by a day or two (spec 018, concern 4): it is not pulled back.
  */
 export function dayIn(ym: string, day: number, which: ShiftDate, ctx: MonthCtx): MonthDate {
-  const shift = shiftOf(ctx.settings, which)
+  return dayOn(ym, day, shiftOf(ctx.settings, which), ctx)
+}
+
+/**
+ * `dayIn` for a day that is not one of the three dates: the occurrence of day `day` inside the period of month `ym`,
+ * moved by the rule `shift` (a user's own monthly date has its own; an income's day has none).
+ */
+export function dayOn(ym: string, day: number, shift: DayShift, ctx: MonthCtx): MonthDate {
   if (ctx.basis === 'calendar') return monthDay(ym, day, shift, ctx.off)
   const m0 = baseYm(ym, ctx)
   if (day >= ctx.day) return monthDay(m0, day, shift, ctx.off)

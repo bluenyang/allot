@@ -26,7 +26,8 @@ import { showToast } from '../lib/toast'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { rateText } from '../lib/labels'
-import { addYm, groupAt, groupValue, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, shiftOf, yearContribution, ymd, ymOf } from '../lib/calc'
+import { addYm, groupAt, groupValue, nextTransferYm, phaseAt, phaseNumbers, projectAccount, yearContribution, ymd } from '../lib/calc'
+import { monthDatesOf, thisYm } from '../lib/month'
 import {
   accountLine, adjustOf, adjustStart, baseAmount, itemColor, limitTone, monthParts, monthPlans, pctOf, shareOf, sumStatus, yearSent,
   type BudgetCell, type BudgetKpi, type BudgetRow, type LimitTone, type Tone,
@@ -39,9 +40,10 @@ const saving = props.group === 'saving'
 const m = (key: string, vars?: Record<string, string | number>) => t(`budget.${props.group}.${key}` as MessageKey, vars)
 const cat = computed(() => m('cat'))
 
-const now = ymOf(localToday())
+const now = thisYm()
 const todayStr = ymd(localToday())
-const year = Number(now.slice(0, 4))
+// the yearly limit counts a calendar year on every month basis (spec 018 S-3)
+const year = Number(todayStr.slice(0, 4))
 const g = computed(() => groupAt(props.group, store.accounts, store.phases, store.targets, store.settings, now, store.monthAdjusts))
 const items = computed(() => g.value.rows.map((r) => r.account))
 const phase = computed(() => phaseAt(store.phases, now))
@@ -57,11 +59,13 @@ const targetValue = computed(() => (ratio.value ? g.value.total : groupValue(g.v
 /** Holidays for the dates and projections: from the oldest balance record of the menu's accounts to a year ahead. */
 const off = computed(() => {
   const ids = new Set(items.value.map((a) => a.id))
+  // a range of dates for the holidays, by calendar months (the months themselves are read with the store's own list)
   const first = store.balances.filter((b) => ids.has(b.accountId)).reduce((lo, b) => (b.date < lo ? b.date : lo), `${addYm(now, -1)}-01`)
   return offDays(store.holidaySets, `${first.slice(0, 7)}-01`, `${addYm(now, 14)}-01`) ?? new Set<string>()
 })
-const nextYm = computed(() => nextTransferYm(todayStr, store.settings, off.value))
-const nextDate = computed(() => monthDay(nextYm.value, store.settings.transferDay, shiftOf(store.settings, 'transfer'), off.value).date)
+const nextYm = computed(() => nextTransferYm(todayStr, store.settings, store.off ?? off.value, store.cards))
+// that month's transfer date: the transfer day inside its period
+const nextDate = computed(() => monthDatesOf(nextYm.value).transfer.date)
 
 // ---------- the strip ----------
 const linked = computed(() => (target.value?.accountId ? store.accounts.find((a) => a.id === target.value!.accountId) ?? null : null))

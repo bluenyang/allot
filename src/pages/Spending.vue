@@ -4,7 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { store } from '../lib/store'
 import { fmtMoney } from '../lib/display'
-import { monthMoney, ymLabel, ymOf } from '../lib/calc'
+import { monthMoney, ymLabel } from '../lib/calc'
+import { thisYm } from '../lib/month'
+import MonthPeriod from '../components/MonthPeriod.vue'
 import Icon from '../components/Icon.vue'
 import PageHeader from '../components/PageHeader.vue'
 import PageLoadError from '../components/PageLoadError.vue'
@@ -13,7 +15,6 @@ import SpendEditor from '../components/SpendEditor.vue'
 import SpendInstallments from '../components/SpendInstallments.vue'
 import SubTabs from '../components/SubTabs.vue'
 import Tip from '../components/Tip.vue'
-import { localToday } from '../lib/now'
 
 // 지출 (spec 011 S-1, S-5, S-7): one-off spending, installments and subscriptions under one menu. The
 // page owns the title, the month's reflection card, the three tabs and each tab's add button. The 구독 tab
@@ -38,7 +39,7 @@ const tabs = computed(() => [
 ])
 
 // ---------- the month's reflection (S-5): all numbers come from monthMoney ----------
-const ym = ymOf(localToday())
+const ym = thisYm()
 const month = computed(() => {
   const now = monthMoney(store, ym)
   const none = monthMoney({ ...store, spendings: [] }, ym) // the same month without any one-off spending
@@ -100,7 +101,7 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
     </PageHeader>
 
     <section class="card mstrip" aria-labelledby="ms-t">
-      <div class="ms-h"><b id="ms-t">{{ t('spending.monthTitle', { ym: ymLabel(ym).replace('.', '. ') }) }}</b><Tip :text="t('spending.monthTip')" /><span class="hint sum">{{ t('spending.monthSum') }}</span></div>
+      <div class="ms-h"><b id="ms-t">{{ t('spending.monthTitle', { ym: ymLabel(ym).replace('.', '. ') }) }}<MonthPeriod :ym="ym" /></b><Tip :text="t('spending.monthTip')" /><span class="hint sum">{{ t('spending.monthSum') }}</span></div>
       <div class="ms-g">
         <div>
           <span class="ms-l">{{ t('spending.fromRemainder') }}</span>

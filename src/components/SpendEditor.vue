@@ -166,6 +166,7 @@ const off = computed<ReadonlySet<string>>(() => {
   // a card with a usage period bills up to two months after the purchase (spec 018 S-2): one month more than before
   return offDays(store.holidaySets, `${addYm(yms[0]!, -1)}-01`, `${addYm(yms[yms.length - 1]!, n + 4)}-01`) ?? new Set()
 })
+// a card's billing dates are a run of dates, one in each calendar month: they do not follow the month basis (spec 018 S-3)
 const cardDay = (ym: string) => monthDay(ym, billingDay.value, shiftOf(store.settings, 'billing'), off.value).date
 /** The card bill of the purchase: the first billing date after the card's usage period ends, the month after without one (spec 018 S-2). */
 const billDate = computed(() => (DATE.test(bought.value) ? cardBillDate(bought.value, card.value, store.settings, off.value) : ''))

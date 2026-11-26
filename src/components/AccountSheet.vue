@@ -13,7 +13,8 @@ import { store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { offDays } from '../lib/holidays-lazy'
 import { bankLine, targetsOf } from '../lib/accounts'
-import { addYm, bufferGauge, goalMonth, needsHolidays, projectAccount, yearContribution, ymLabel, ymOf, ymd } from '../lib/calc'
+import { addYm, bufferGauge, goalMonth, needsHolidays, projectAccount, yearContribution, ymLabel, ymd } from '../lib/calc'
+import { thisYm } from '../lib/month'
 import { fmtMoney } from '../lib/display'
 import type { Balance } from '../data/types'
 import { localToday } from '../lib/now'
@@ -26,10 +27,11 @@ const acc = computed(() => store.accounts.find((a) => a.id === props.accountId) 
 watch(acc, (a) => { if (!a) emit('close') })
 
 const todayStr = ymd(localToday())
-const now = ymOf(localToday())
+const now = thisYm()
 const balances = computed(() => store.balances.filter((b) => b.accountId === props.accountId).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)))
 
-// Holidays for the day shift, from the month before the last record to after the forecast.
+// Holidays for the day shift, from the month before the last record to after the forecast (a range of dates, by
+// calendar months; the months themselves are read with the store's own list).
 const off = computed<ReadonlySet<string>>(() => {
   if (!needsHolidays(store.settings, store.schedules)) return new Set()
   const first = balances.value[0]?.date.slice(0, 7) ?? now
@@ -38,7 +40,8 @@ const off = computed<ReadonlySet<string>>(() => {
 })
 const rows = computed(() => (acc.value ? projectAccount(acc.value, store, off.value, now, 12) : null))
 const goalYm = computed(() => (acc.value && acc.value.goal !== null && acc.value.goal !== undefined ? goalMonth(acc.value, store, off.value) : null))
-const year = Number(now.slice(0, 4))
+// the yearly limit counts a calendar year on every month basis (spec 018 S-3)
+const year = Number(todayStr.slice(0, 4))
 const limit = computed(() => {
   const a = acc.value
   if (!a || a.annualLimit === null || a.annualLimit === undefined) return null

@@ -10,11 +10,13 @@ import { pricedSettings, store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, ymd, ymOf, ymRange } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, ymd, ymRange } from '../lib/calc'
 import { chargeLabel, fxAmount } from '../lib/currency'
 import type { Category, Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
+import MonthPeriod from '../components/MonthPeriod.vue'
+import { monthBasis, thisYm, ymOfDay } from '../lib/month'
 import { downloadCsv, wonCell, type CsvCell } from '../lib/csv'
 import { localToday } from '../lib/now'
 
@@ -28,7 +30,7 @@ const PlanChangeEditor = defineAsyncComponent(() => import('../components/PlanCh
 // the yearly total (a projection: × 12) is the second row.
 const tab = ref('list')
 const now = localToday()
-const ym = ref(ymOf(now))
+const ym = ref(thisYm())
 const PATH_IDS = ['direct', 'google', 'apple', 'telecom'] as const
 /** The category filter: the six and 기타 (`other`, spec 013 S-18). */
 const CATS: Category[] = [...new Set<Category>([...CATEGORY_IDS, 'other'])]
@@ -49,8 +51,9 @@ const monthly = (p: Plan) => (p.status === 'active' ? monthlyKrw(p, pricedSettin
 const upcoming = (base: Subscription) => nextPayment(base, store.planChanges, now)
 const rows = computed(() =>
   store.subscriptions.map((base) => {
-    const p = planAt(base, store.planChanges, ym.value)
-    const pending = store.planChanges.some((c) => c.subId === base.id && (!c.effective || c.effective.slice(0, 7) > ym.value))
+    // the plan of the month shown: the changes whose date lies in its period or before it (spec 018 S-3)
+    const p = planAt(base, store.planChanges, ym.value, monthBasis.value)
+    const pending = store.planChanges.some((c) => c.subId === base.id && (!c.effective || ymOfDay(c.effective) > ym.value))
     return { base, p, monthly: monthly(p), next: p.status === 'active' ? upcoming(base) : null, pending }
   }),
 )
@@ -113,9 +116,9 @@ const emit = defineEmits<{ added: [] }>()
 watch(() => props.adding, (on) => { if (on) { openSub(); emit('added') } }, { immediate: true })
 
 // ---------- preview ----------
-const from = ref(ymOf(now))
-const nextDated = computed(() => store.planChanges.filter((c) => c.effective && c.effective.slice(0, 7) > ymOf(now)).map((c) => c.effective!.slice(0, 7)).sort()[0])
-const to = ref(nextDated.value ?? addYm(ymOf(now), 1))
+const from = ref(thisYm())
+const nextDated = computed(() => store.planChanges.filter((c) => c.effective && ymOfDay(c.effective) > thisYm()).map((c) => ymOfDay(c.effective!)).sort()[0])
+const to = ref(nextDated.value ?? addYm(thisYm(), 1))
 const cmp = computed(() => {
   // The comparison shows the plan and price items; each month carries its own one-offs as in the calc cards.
   const a = monthMoney(store, from.value).transfer
@@ -151,10 +154,10 @@ const changeRows = computed(() =>
       let effect: number | null = null
       let title = base?.name ?? c.subId
       if (base && c.effective) {
-        const m = c.effective.slice(0, 7)
+        const m = ymOfDay(c.effective)
         const others = store.planChanges.filter((x) => x.id !== c.id)
-        const before = planAt(base, others, m)
-        const after = planAt(base, store.planChanges, m)
+        const before = planAt(base, others, m, monthBasis.value)
+        const after = planAt(base, store.planChanges, m, monthBasis.value)
         effect = monthly(after) - monthly(before)
         if (firstLine(before.plan) !== firstLine(after.plan)) title = `${base.name} · ${firstLine(before.plan) || '—'} → ${firstLine(after.plan) || '—'}`
       }
@@ -174,15 +177,15 @@ function describe(c: PlanChange) {
 }
 
 // ---------- calc: 12-month chart and per-subscription share ----------
-const chartFrom = ref(ymOf(now))
+const chartFrom = ref(thisYm())
 const series = computed(() =>
   ymRange(chartFrom.value, 12).map((m) => ({
     ym: m,
     value: monthMoney(store, m).transfer.needed,
-    changed: changesIn(store.planChanges, m).length > 0,
+    changed: changesIn(store.planChanges, m, monthBasis.value).length > 0,
   })),
 )
-const pick = ref(ymOf(now))
+const pick = ref(thisYm())
 const shares = computed(() => {
   const x = monthMoney(store, pick.value).transfer
   const total = x.monthlySum + x.yearlyMonthly
@@ -193,7 +196,7 @@ const shares = computed(() => {
 const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
   const x = i === 0 ? xfer.value : xferNext.value
   return {
-    m, title: `${t('subscriptions.ymTitle', { y: m.slice(0, 4), m: Number(m.slice(5, 7)) })}${changesIn(store.planChanges, m).length ? ` ${t('subscriptions.withChange')}` : ''}`,
+    m, title: `${t('subscriptions.ymTitle', { y: m.slice(0, 4), m: Number(m.slice(5, 7)) })}${changesIn(store.planChanges, m, monthBasis.value).length ? ` ${t('subscriptions.withChange')}` : ''}`,
     lines: [
       { k: t('subscriptions.monthlyTotal'), v: fmtMoney(x.monthlySum + x.yearlyMonthly) },
       { k: otherForeign.value ? t('currency.fxBufferEach') : t('subscriptions.fxBuffer', { pct: store.settings.fxBuffer }), v: `+${fmtMoney(x.buffer)}` },
@@ -246,7 +249,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
             <label class="fsearch"><Icon name="search" /><input v-model="q" type="search" :aria-label="t('subscriptions.searchLabel')" :placeholder="t('subscriptions.searchPh')"></label>
             <Select v-model="cat" class="fsel" :aria-label="t('subscriptions.category')" :options="[{ value: '', label: t('subscriptions.allCategories') }, ...CATS.map((k) => ({ value: k, label: catLabel(k) }))]" />
             <Select v-model="path" class="fsel" :aria-label="t('subscriptions.path')" :options="[{ value: '', label: t('subscriptions.allPaths') }, ...PATH_IDS.map((k) => ({ value: k, label: pathLabel(k) }))]" />
-            <label class="fmonth">{{ t('subscriptions.baseMonth') }}<MonthInput v-model="ym" /></label>
+            <label class="fmonth">{{ t('subscriptions.baseMonth') }}<MonthInput v-model="ym" /></label><MonthPeriod :ym="ym" />
             <span class="hint count">{{ t('subscriptions.count', { n: shown.length }) }}</span>
           </div>
 

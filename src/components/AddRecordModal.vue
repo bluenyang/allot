@@ -10,10 +10,9 @@ import { t } from '../i18n'
 import { saveItem } from '../lib/store'
 import { DEFAULT_EVENT_KIND, EVENT_KINDS, eventKindLabel } from '../lib/labels'
 import { showToast } from '../lib/toast'
-import { ymOf } from '../lib/calc'
 import type { EventKind } from '../data/types'
 import Select from './Select.vue'
-import { localToday } from '../lib/now'
+import { thisYm } from '../lib/month'
 
 type Kind = 'todo' | 'event' | 'sub' | 'oneoff'
 const props = defineProps<{ start: Kind }>()
@@ -22,7 +21,7 @@ const emit = defineEmits<{ close: [] }>()
 const kind = ref<Kind>(props.start)
 const text = ref('')
 const title = ref('')
-const when = ref(ymOf(localToday()))
+const when = ref(thisYm())
 const evKind = ref<EventKind>(DEFAULT_EVENT_KIND)
 const error = ref('')
 const busy = ref(false)
