@@ -161,7 +161,8 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
  */
 const LINKS = new Map<PgTable, [OwnedTable, PgColumn][]>([
   [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId], [t.scheduleItem, t.scheduleItem.accountId], [t.incomeItem, t.incomeItem.accountId]]],
-  [t.card, [[t.spending, t.spending.cardId]]],
+  // the settings' month basis card too (spec 018 S-3): the foreign key would refuse the delete with a less clear message
+  [t.card, [[t.spending, t.spending.cardId], [t.settings, t.settings.monthBasisCardId]]],
 ])
 
 /** Tables that are gone; their logged changes cannot be reverted. */

@@ -137,6 +137,21 @@ async function unlink(q: Db, rec: Recorder, uid: string, table: OwnedTable & { i
 }
 const colName = (table: PgTable, col: PgColumn) => Object.entries(table as unknown as Record<string, unknown>).find(([, c]) => c === col)![0]
 
+/**
+ * The card `cardId` is going: the settings let go of it as the month basis card (spec 018 S-3, S-12), with a log, so the
+ * foreign key never refuses a card's delete. A month counted by that card goes back to the calendar month; another
+ * basis that only kept the card stays as it is. The settings lock is held, as for any write of that row.
+ */
+async function dropBasisCard(q: Db, rec: Recorder, uid: string, cardId: string) {
+  await lockFor(q, 'settings', uid)
+  const old = await readRow(q, t.settings, uid, {})
+  if (!old || old.monthBasisCardId !== cardId) return
+  const [written] = await q.update(t.settings)
+    .set({ monthBasisCardId: null, ...(old.monthBasis === 'card' ? { monthBasis: 'calendar' as const } : {}) })
+    .where(whereKey(t.settings, uid, {})).returning()
+  await rec.record(t.settings, {}, 'update', old, written as Row)
+}
+
 /** Is a buffer use paid through `cardIds` (S-8)? */
 async function bufferUses(q: Db, uid: string, cardIds: string[]) {
   if (!cardIds.length) return false
@@ -359,7 +374,12 @@ export const RESOURCES = {
     // account is not (the buffer use then uses that account's buffer). User, review 1 F-1: "비우기만 거부 (Recommended)".
     check: async (q, uid, x, id) => (id && x.accountId === null && (await bufferUses(q, uid, [id])) ? m('cardBufferInUse') : null),
     beforeDelete: async (q, uid, id) => ((await bufferUses(q, uid, [id])) ? m('cardBufferInUse') : null),
-    onDelete: (q, rec, uid, id) => unlink(q, rec, uid, t.spending, t.spending.cardId, id),
+    // a delete may write the settings row (the month basis card), so a list of operations takes that lock up front
+    alsoLocks: ['settings'],
+    onDelete: async (q, rec, uid, id) => {
+      await unlink(q, rec, uid, t.spending, t.spending.cardId, id)
+      await dropBasisCard(q, rec, uid, id)
+    },
   }),
   'living-items': list(t.livingItem, v.livingItem, {
     optional: ['note'],
