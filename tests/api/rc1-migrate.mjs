@@ -7,6 +7,8 @@
 // schedule items, rule 'after' with one, and one with a schedule item and no settings row — their new columns are left
 // at the default, the migration's SQL is run as the file has it, and each account's rows are read back as that
 // account. Where day_shift is already dropped (after 0046) the column is put back for the length of the transaction.
+// Then the next migration (0046, the drop of day_shift) is run in the same transaction, as the migrator runs the three
+// in one, and the rules are read once more.
 // Exit 0 only if every check passed.
 import { readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -19,6 +21,7 @@ if (url.hostname !== '127.0.0.1' || url.port !== '15183') {
   process.exit(2)
 }
 const MIGRATION = readFileSync(new URL('../../drizzle/0045_copy_day_shift.sql', import.meta.url), 'utf8')
+const DROP = readFileSync(new URL('../../drizzle/0046_drop_day_shift.sql', import.meta.url), 'utf8')
 const sql = postgres(process.env.DATABASE_URL, { max: 1, onnotice: () => {} })
 class Rollback extends Error {}
 const as = (q, uid) => q`select set_config('app.user_id', ${uid}, true)`
@@ -84,6 +87,17 @@ try {
       checked++
     }
     ok(true, `the ${checked} account(s) that were here before agree with their day_shift too`)
+
+    // the drop that follows, in the same transaction as the rows just written (the migrator applies pending migrations in one)
+    await as(q, '')
+    await q.unsafe(DROP)
+    const gone = (await q`select 1 from information_schema.columns where table_name = 'settings' and column_name = 'day_shift'`).length === 0
+    ok(gone, '0046 drops day_shift right after the copy, in the same transaction')
+    for (const u of users.filter((x) => x.rule)) {
+      await as(q, u.id)
+      const [s] = await q`select pay_shift, transfer_shift, billing_shift from settings where user_id = ${u.id}`
+      ok(s.pay_shift === u.rule && s.transfer_shift === u.rule && s.billing_shift === u.rule, `after the drop: rule ${u.rule} is still on the three dates`)
+    }
     throw new Rollback()
   })
 } catch (e) {
