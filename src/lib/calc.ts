@@ -657,7 +657,10 @@ export function cardBillDate(bought: string, card: BillCard | null | undefined, 
   return monthDay(cardBillYm(bought, card, s), billingDayOf(card, s), shiftOf(s, 'billing'), off).date
 }
 
-/** The first pay day on or after `date` (the default refill start of a buffer use, S-8). */
+/**
+ * The first pay day on or after `date` (the default refill start of a buffer use, S-8). The pay dates themselves are
+ * the same on every month basis (one in each calendar month), so this looks through calendar months.
+ */
 export function payDayFrom(date: string, s: Settings, off: ReadonlySet<string>): string {
   const ym = date.slice(0, 7)
   const here = monthDay(ym, s.payDay, shiftOf(s, 'pay'), off).date
@@ -775,16 +778,21 @@ export interface AccountState extends MonthState {
 /** One dated movement of an account (S-6). */
 interface Move { date: string; amount: number }
 
-/** The movements of account `acc` in month `ym`: transfers in on the transfer day, refills in, card bills out (S-6, S-8, S-13). */
-function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<string>): Move[] {
+/**
+ * The movements of account `acc` in month `ym`: transfers in on the transfer day, refills in, card bills out (S-6, S-8, S-13).
+ * The month is the one of the basis `ctx` (spec 018 S-3): its transfers are dated on the transfer day inside its period,
+ * and the dated movements (bills, rounds) are the ones whose date its period holds.
+ */
+function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<string>, ctx: MonthCtx): Move[] {
   const s = st.settings
   const moves: Move[] = []
-  const transfer = monthDay(ym, s.transferDay, shiftOf(s, 'transfer'), off).date
+  const transfer = dayIn(ym, s.transferDay, 'transfer', ctx).date
+  const here = (date: string) => ymOfDate(date, ctx) === ym
   if (acc.group) {
     const sent = itemSent(acc, st, ym)
     if (sent) moves.push({ date: transfer, amount: sent })
   } else {
-    const dist = monthMoney(st, ym).dist
+    const dist = monthMoney(st, ym, { ctx }).dist
     for (const r of dist.rows) {
       const t = st.targets.find((x) => x.id === r.key)
       if (t?.accountId === acc.id && sendsToLinked(t) && r.amount > 0) moves.push({ date: transfer, amount: r.amount })
@@ -801,10 +809,10 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
     if (sp.how === 'buffer') {
       // the bill leaves the account's buffer on the billing date; the refills come back on their dates
       const bill = cardBillDate(sp.bought, card, s, off)
-      if (bill.slice(0, 7) === ym) moves.push({ date: bill, amount: -live.reduce((a, r) => a + r.amount, 0) })
-      for (const r of live) if (r.date.slice(0, 7) === ym) moves.push({ date: r.date, amount: r.amount })
+      if (here(bill)) moves.push({ date: bill, amount: -live.reduce((a, r) => a + r.amount, 0) })
+      for (const r of live) if (here(r.date)) moves.push({ date: r.date, amount: r.amount })
     } else if (!remainder) {
-      for (const r of live) if (r.date.slice(0, 7) === ym) moves.push({ date: r.date, amount: -r.amount })
+      for (const r of live) if (here(r.date)) moves.push({ date: r.date, amount: -r.amount })
     }
   }
   return moves
@@ -822,19 +830,23 @@ export interface ProjectedMonth { ym: string; inflow: number; outflow: number; e
 /**
  * The balance of an account month by month (S-6), no interest: from its last record, every movement dated
  * after the record. Months `from` .. `from` + `months` − 1 are returned; null without a record.
+ * The months are the ones of the state's basis (spec 018 S-3: its settings and cards, with the holidays `off`); the
+ * record belongs to the month whose period holds its date.
  */
 export function projectAccount(acc: Account, st: AccountState, off: ReadonlySet<string>, from: string, months = 12): ProjectedMonth[] | null {
   const rec = lastBalance(st.balances, acc.id)
   if (!rec) return null
+  const ctx = ctxOf(st, off)
+  const recYm = ymOfDate(rec.date, ctx)
   let bal = rec.amount
   const out: ProjectedMonth[] = []
-  const start = rec.date.slice(0, 7) < from ? rec.date.slice(0, 7) : from
+  const start = recYm < from ? recYm : from
   const last = addYm(from, months - 1)
   for (let ym = start; ym <= last; ym = addYm(ym, 1)) {
     let inflow = 0
     let outflow = 0
-    if (ym >= rec.date.slice(0, 7)) {
-      for (const mv of movesIn(acc, st, ym, off)) {
+    if (ym >= recYm) {
+      for (const mv of movesIn(acc, st, ym, off, ctx)) {
         if (mv.date <= rec.date) continue
         if (mv.amount >= 0) inflow += mv.amount
         else outflow -= mv.amount
@@ -850,8 +862,9 @@ export function projectAccount(acc: Account, st: AccountState, off: ReadonlySet<
 export function goalMonth(acc: Account, st: AccountState, off: ReadonlySet<string>): string | null {
   const rec = lastBalance(st.balances, acc.id)
   if (acc.goal === null || acc.goal === undefined || !rec) return null
-  if (rec.amount >= acc.goal) return rec.date.slice(0, 7)
-  const rows = projectAccount(acc, st, off, rec.date.slice(0, 7), 600) ?? []
+  const recYm = ymOfDate(rec.date, ctxOf(st, off))
+  if (rec.amount >= acc.goal) return recYm
+  const rows = projectAccount(acc, st, off, recYm, 600) ?? []
   return rows.find((r) => r.end >= acc.goal!)?.ym ?? null
 }
 
@@ -859,12 +872,23 @@ export function goalMonth(acc: Account, st: AccountState, off: ReadonlySet<strin
  * What goes into an account in calendar year `year` (S-7): the planned transfers and refills of that year, plus the
  * money put in at once that the balance records of that year name (`deposit`; review 1 F-12, user: "잔액 기록에 '넣은 돈'
  * 표시" — a balance alone is not counted as paid in).
+ * The year stays the calendar year on every month basis (spec 018 S-3: the tax year is the calendar year). With the
+ * calendar basis that is the twelve months named in the year, as before. With a card or pay basis a month's name and
+ * its dates differ, so the movements are taken by their date: the twelve months and one on either side are looked
+ * through, and what is dated in the year counts.
  */
 export function yearContribution(acc: Account, st: AccountState, off: ReadonlySet<string>, year: number): number {
   let total = 0
-  for (let m = 1; m <= 12; m++) {
-    const ym = `${year}-${String(m).padStart(2, '0')}`
-    for (const mv of movesIn(acc, st, ym, off)) if (mv.amount > 0) total += mv.amount
+  const ctx = ctxOf(st, off)
+  if (ctx.basis === 'calendar') {
+    for (let m = 1; m <= 12; m++) {
+      const ym = `${year}-${String(m).padStart(2, '0')}`
+      for (const mv of movesIn(acc, st, ym, off, ctx)) if (mv.amount > 0) total += mv.amount
+    }
+  } else {
+    for (let ym = `${year - 1}-12`; ym <= `${year + 1}-01`; ym = addYm(ym, 1)) {
+      for (const mv of movesIn(acc, st, ym, off, ctx)) if (mv.amount > 0 && mv.date.slice(0, 4) === String(year)) total += mv.amount
+    }
   }
   for (const r of st.balances) if (r.accountId === acc.id && r.date.slice(0, 4) === String(year)) total += r.deposit ?? 0
   return total
@@ -888,10 +912,20 @@ export function bufferGauge(acc: Account, st: Pick<AccountState, 'cards' | 'spen
   return { buffer, used, left: buffer - used }
 }
 
-/** The month a stop starts: this month when its transfer day is still to come, else the next one (S-7). */
-export function nextTransferYm(today: string, s: Settings, off: ReadonlySet<string>): string {
-  const ym = today.slice(0, 7)
-  return monthDay(ym, s.transferDay, shiftOf(s, 'transfer'), off).date > today ? ym : addYm(ym, 1)
+/**
+ * The month a stop starts: this month when its transfer day is still to come, else the next one (S-7). "This month" is
+ * the month of the basis that holds `today` (spec 018 S-3; `cards` for a card basis), and the transfer day the one
+ * inside that month's period.
+ */
+export function nextTransferYm(today: string, s: Settings, off: ReadonlySet<string>, cards: readonly Pick<Card, 'id' | 'usageFrom'>[] = []): string {
+  const ctx = monthCtx(s, cards, off)
+  const transfer = (ym: string) => dayIn(ym, s.transferDay, 'transfer', ctx).date
+  const ym = ymOfDate(today, ctx)
+  if (transfer(ym) > today) return ym
+  const next = addYm(ym, 1)
+  // with a card or pay basis a transfer date moved off a weekend can come before its own period (spec 018, concern 4):
+  // when the next month's has passed too, it is the month after
+  return ctx.basis !== 'calendar' && transfer(next) <= today ? addYm(next, 1) : next
 }
 
 export interface GoalAlert { account: Account; month: string; stopFrom: string }
@@ -900,12 +934,12 @@ export interface GoalAlert { account: Account; month: string; stopFrom: string }
  * month, still sending (no stop), and whose goal the user has not chosen to keep sending past.
  */
 export function goalAlerts(st: AccountState, today: string, off: ReadonlySet<string>): GoalAlert[] {
-  const now = today.slice(0, 7)
+  const now = ymOfDate(today, ctxOf(st, off))
   const out: GoalAlert[] = []
   for (const a of st.accounts) {
     if (a.goal === null || a.goal === undefined || a.stopFrom || a.goalAck === a.goal) continue
     const month = goalMonthBy(a, st, off, now)
-    if (month) out.push({ account: a, month, stopFrom: nextTransferYm(today, st.settings, off) })
+    if (month) out.push({ account: a, month, stopFrom: nextTransferYm(today, st.settings, off, st.cards) })
   }
   return out
 }
@@ -914,7 +948,7 @@ export function goalAlerts(st: AccountState, today: string, off: ReadonlySet<str
 function goalMonthBy(acc: Account, st: AccountState, off: ReadonlySet<string>, until: string): string | null {
   const rec = lastBalance(st.balances, acc.id)
   if (acc.goal === null || acc.goal === undefined || !rec) return null
-  const from = rec.date.slice(0, 7)
+  const from = ymOfDate(rec.date, ctxOf(st, off))
   if (rec.amount >= acc.goal) return from <= until ? from : null
   if (from > until) return null
   let n = 1
@@ -966,7 +1000,8 @@ export function planRounds(input: SpendInput, s: Settings, off: ReadonlySet<stri
   let dates: string[]
   if (how === 'buffer') {
     const first = input.refillFrom ?? payDayFrom(input.bought, s, off)
-    // the refills are pay days: the pay day's rule
+    // the refills are pay days: the pay day's rule. Like the billing dates below they are a run of dates, one in each
+    // calendar month, the same on every month basis (spec 018 S-3): which month a round counts in is decided when it is summed
     dates = Array.from({ length: n }, (_, i) => (i === 0 ? first : monthDay(addYm(first.slice(0, 7), i), s.payDay, shiftOf(s, 'pay'), off).date))
   } else if (how === 'split') {
     const first = input.first ?? input.bought
@@ -1317,13 +1352,14 @@ export function maturityAmount(acc: Account, st: AccountState, off: ReadonlySet<
  * 멈추기 writes `stopFrom` = the next transfer month, as a goal card does.
  */
 export function maturityAlerts(st: AccountState, today: string, off: ReadonlySet<string>, handled: (accountId: string, ym: string) => boolean = () => false): GoalAlert[] {
-  const now = today.slice(0, 7)
+  // this month by the basis; the maturity month is a name (the item's start month + its term) and is compared as one
+  const now = ymOfDate(today, ctxOf(st, off))
   const out: GoalAlert[] = []
   for (const a of st.accounts) {
     if (a.group !== 'saving' || a.stopFrom) continue
     const m = maturityOf(a)
     if (!m || m.ym > now || handled(a.id, m.ym)) continue
-    out.push({ account: a, month: m.ym, stopFrom: nextTransferYm(today, st.settings, off) })
+    out.push({ account: a, month: m.ym, stopFrom: nextTransferYm(today, st.settings, off, st.cards) })
   }
   return out
 }

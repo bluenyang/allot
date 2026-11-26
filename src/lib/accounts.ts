@@ -1,6 +1,6 @@
 // The accounts table of 월급 분배 (spec 013 S-5, S-8, S-13): pure helpers, no store, so the unit tests can
 // call them. What goes into an account this month mirrors the inflows of the projection (calc.ts movesIn).
-import { itemSent, monthMoney, sendsToLinked, type AccountState, type Distribution } from './calc'
+import { ctxOf, itemSent, monthMoney, sendsToLinked, ymOfDate, type AccountState, type Distribution } from './calc'
 import type { Account, AllocationTarget } from '../data/types'
 
 /** The targets whose money goes to account `accountId` (shown read-only on the account). */
@@ -21,13 +21,15 @@ export function unlinkedTargets(targets: AllocationTarget[], accounts: Pick<Acco
  * item amount; any other account the month's amounts of the targets linked to it (positive ones, as the
  * projection counts them). Both also get the month's buffer refills through the cards it pays (S-8).
  * `dist` may be passed when the caller has the month's distribution already.
+ * `ym` is a month of the state's basis (spec 018 S-3): a refill counts in the month whose period holds its date.
  */
 export function accountMonthIn(acc: Account, st: AccountState, ym: string, dist?: Distribution): number {
+  const ctx = ctxOf(st)
   let sum = 0
   if (acc.group) {
     sum += itemSent(acc, st, ym)
   } else {
-    const d = dist ?? monthMoney(st, ym).dist
+    const d = dist ?? monthMoney(st, ym, { ctx }).dist
     for (const r of d.rows) {
       const t = st.targets.find((x) => x.id === r.key)
       if (t?.accountId === acc.id && sendsToLinked(t) && r.amount > 0) sum += r.amount
@@ -38,7 +40,7 @@ export function accountMonthIn(acc: Account, st: AccountState, ym: string, dist?
     if (sp.how !== 'buffer' || !sp.cardId || !cards.has(sp.cardId)) continue
     for (const r of sp.rounds) {
       if (r.state === 'merged' || (sp.cancelled && r.state === 'left')) continue
-      if (r.date.slice(0, 7) === ym) sum += r.amount
+      if (ymOfDate(r.date, ctx) === ym) sum += r.amount
     }
   }
   return sum
