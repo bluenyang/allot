@@ -4,8 +4,8 @@
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
   addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate,
-  phaseAt, planAt, priced, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
-  type AccountState, type MonthDate,
+  phaseAt, planAt, priced, projectAccount, shiftOf, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
+  type AccountState, type MonthDate, type ShiftDate,
   maturityAlerts, maturityAmount,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
@@ -65,9 +65,11 @@ function offDays(d: Data, firstYm: string, lastYm: string): Set<string> {
 }
 
 const dateOf = (m: MonthDate) => ({ date: m.date, nominal: m.nominal, shifted: m.shifted, ...(m.unresolved ? { unresolved: true } : {}) })
+/** The three dates of a month, each with its own weekend and holiday rule (`shift`, spec 018 S-1) next to what the rule did (`shifted`). */
 function datesOf(d: Data, ym: string, off: ReadonlySet<string>) {
   const x = monthDates(ym, d.settings, off)
-  return { pay: dateOf(x.pay), transfer: dateOf(x.transfer), billing: dateOf(x.billing) }
+  const one = (which: ShiftDate) => ({ ...dateOf(x[which]), shift: shiftOf(d.settings, which) })
+  return { pay: one('pay'), transfer: one('transfer'), billing: one('billing') }
 }
 
 /** Charges falling in month `ym`. */
@@ -360,9 +362,9 @@ export function schedule(d: Data, from: string, months: number) {
     months: list.map((ym) => ({
       month: ym,
       dates: datesOf(d, ym, off),
-      // the user's own monthly dates (spec 013 S-22, A-36), moved off weekends and holidays like the dates above; no amount
+      // the user's own monthly dates (spec 013 S-22, A-36), each moved off weekends and holidays by its own rule (spec 018 S-1); no amount
       ownDates: scheduleItemsIn(d.schedules ?? [], ym, off).map(({ item, at }) => ({
-        id: item.id, name: item.name, day: item.day, ...dateOf(at), accountId: item.accountId, direction: item.direction, ...(item.note ? { note: item.note } : {}),
+        id: item.id, name: item.name, day: item.day, ...dateOf(at), shift: item.shift ?? 'none', accountId: item.accountId, direction: item.direction, ...(item.note ? { note: item.note } : {}),
       })),
       payments: paymentsIn(d, ym),
       spendingRounds: spendRoundsIn(d, ym),

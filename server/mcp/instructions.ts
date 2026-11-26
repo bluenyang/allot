@@ -19,5 +19,6 @@ export function instructionsFor(key: KeyInfo | null): string {
     'Start with get_overview (a month at a glance), get_income (what came in), get_budget and list_accounts (budgets, accounts, balances); search finds a row by name; list_notifications lists what needs the user now.',
     'The data: monthly salary distribution, the incomes and what was received, the living, savings and investment budgets, bank accounts with their balances and cards, subscriptions, one-off spendings, scheduled plan changes and the change history. Dates are YYYY-MM-DD, months YYYY-MM; every default month and D-n is in the user\'s time zone (a display setting, default Asia/Seoul).',
     'The remainder (what comes in leaves after every allocation target and the month\'s spendings; the fields keep the name remainder) is called 여유 in the Korean app and Left over in the English one: use that word with the user. Answer in the user\'s language.',
+    'Each monthly date has its own weekend and holiday rule (before, none or after): the settings\' payShift, transferShift and billingShift for the pay day, the transfer day and the card billing day, and shift on each of the user\'s own monthly dates. The one rule of earlier versions, settings.dayShift, is in no answer any more.',
   ].join(' ')
 }

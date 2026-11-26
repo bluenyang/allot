@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { scheduleItemsIn } from '../../src/lib/schedule-items'
 import { store } from '../../src/lib/store'
 import { calendarEvents } from '../../src/lib/calendar-events'
-import { schedule, type Data } from '../../server/mcp/views'
+import { overview, schedule, type Data } from '../../server/mcp/views'
 import type { DayShift, ScheduleItem } from '../../src/data/types'
 
 const items: ScheduleItem[] = [
@@ -63,12 +63,34 @@ test('get_schedule lists the items of each month with their date after the shift
   }
   const s = schedule(data, '2026-11', 2)
   assert.deepEqual(s.months[0]!.ownDates, [
-    { id: 'i2', name: 'E2E-Refund', day: 1, date: '2026-11-02', nominal: '2026-11-01', shifted: 'after', accountId: null, direction: 'in' },
-    { id: 'i3', name: 'E2E-Fee', day: 15, date: '2026-11-16', nominal: '2026-11-15', shifted: 'after', accountId: null, direction: 'out' },
-    { id: 'i1', name: 'E2E-Rent', day: 31, date: '2026-11-30', nominal: '2026-11-30', shifted: null, accountId: 'a1', direction: 'out', note: 'n' },
+    { id: 'i2', name: 'E2E-Refund', day: 1, date: '2026-11-02', nominal: '2026-11-01', shifted: 'after', shift: 'after', accountId: null, direction: 'in' },
+    { id: 'i3', name: 'E2E-Fee', day: 15, date: '2026-11-16', nominal: '2026-11-15', shifted: 'after', shift: 'after', accountId: null, direction: 'out' },
+    { id: 'i1', name: 'E2E-Rent', day: 31, date: '2026-11-30', nominal: '2026-11-30', shifted: null, shift: 'after', accountId: 'a1', direction: 'out', note: 'n' },
   ])
   // December 31st is a Thursday: no shift, the whole day
   assert.equal(s.months[1]!.ownDates.find((x) => x.id === 'i1')!.date, '2026-12-31')
   // no items: an empty list
   assert.deepEqual(schedule({ ...data, schedules: undefined }, '2026-11', 1).months[0]!.ownDates, [])
+})
+
+test('spec 018 S-1: get_schedule and get_overview give each date its own rule, and no dayShift', () => {
+  const data: Data = {
+    // November 2026: the 21st and the 14th are Saturdays, the 22nd a Sunday
+    settings: { netPay: 0, fxRate: 1400, fxBuffer: 0, payDay: 21, transferDay: 22, billingDay: 14, subRound: 10_000, payShift: 'before', transferShift: 'after', billingShift: 'none' },
+    living: { food: 0, transit: 0, allowance: 0 },
+    targets: [], subscriptions: [], planChanges: [], phases: [], events: [], checks: [], accounts: [], debts: [], remainderSplit: [], holidaySets: [],
+    schedules: [{ ...items[2]!, day: 14, shift: 'before' }, { ...items[1]!, day: 14, shift: 'none' }],
+  }
+  const want = {
+    pay: { date: '2026-11-20', nominal: '2026-11-21', shifted: 'before', shift: 'before' },
+    transfer: { date: '2026-11-23', nominal: '2026-11-22', shifted: 'after', shift: 'after' },
+    billing: { date: '2026-11-14', nominal: '2026-11-14', shifted: null, shift: 'none' },
+  }
+  const month = schedule(data, '2026-11', 1).months[0]!
+  assert.deepEqual(month.dates, want)
+  assert.deepEqual(month.ownDates.map((x) => [x.id, x.date, x.shifted, x.shift]), [['i3', '2026-11-13', 'before', 'before'], ['i2', '2026-11-14', null, 'none']])
+  const o = overview(data, '2026-11')
+  assert.deepEqual(o.dates, want)
+  assert.deepEqual([o.settings.payShift, o.settings.transferShift, o.settings.billingShift], ['before', 'after', 'none'])
+  assert.equal('dayShift' in o.settings, false)
 })
