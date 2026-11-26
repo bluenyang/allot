@@ -11,19 +11,20 @@ import { api } from '../lib/api'
 import { COMMON_CODES, currencyUses, normalCode, rateNum } from '../lib/currency'
 import { runSteps } from '../lib/session-guard'
 import { useEditor } from '../lib/useEditor'
-import { dateText, money, moneyClass } from '../lib/format'
+import { dateText, money, moneyClass, periodText } from '../lib/format'
 import { holidayList } from '../lib/holidays-lazy'
 import { BUILTIN_SETS } from '../data/holidays-kr'
 import { holidayName, setName } from '../lib/holiday-names'
-import { addYm, monthDates, needsHolidays, upcomingPayments, ymOf } from '../lib/calc'
-import type { DayShift, ForeignCurrency, HolidaySet, Preferences, Settings } from '../data/types'
+import { addYm, monthCtx, monthDatesIn, needsHolidays, periodOf, upcomingPayments, ymd, ymLabel, ymOf, ymOfDate, type MonthCtx } from '../lib/calc'
+import type { DayShift, ForeignCurrency, HolidaySet, MonthBasis, MonthNaming, Preferences, Settings } from '../data/types'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
 import Select from '../components/Select.vue'
 import { localToday } from '../lib/now'
 import ScheduleItemEditor from '../components/ScheduleItemEditor.vue'
 import { DEFAULT_TIMEZONE } from '../lib/calc'
 import { supportedZones, zoneOptions } from '../lib/timezones'
-import { scheduleItemsIn } from '../lib/schedule-items'
+import { scheduleItemsOf } from '../lib/schedule-items'
 import type { ScheduleItem } from '../data/types'
 
 // 설정 › 일반 (spec 010 S-11, canvas "설정"): five titled sections. 화면 and 표시 형식 save the moment
@@ -74,6 +75,7 @@ const pickFormat = (patch: Partial<Preferences>) => saveNow(patch, undefined, g(
 const fmt = computed(() => ({ amountUnit: store.preferences.amountUnit, negative: store.preferences.negative, dateFormat: store.preferences.dateFormat }))
 
 // Preview: this month's upcoming payments in the chosen formats (the user's own data)
+// (the next 31 days from today, under the name of today's calendar month: dates, not a month of the month basis)
 const now = localToday()
 const preview = computed(() => upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), now, 31).slice(0, 4))
 const previewTotal = computed(() => preview.value.reduce((a, p) => a + p.krw, 0))
@@ -243,11 +245,22 @@ const ym = ymOf(now)
 const year = now.getFullYear()
 const yearHolidays = computed(() => holidayList(store.holidaySets, `${year}-01-01`, `${year}-12-31`))
 const aroundMonth = computed(() => holidayList(store.holidaySets, `${addYm(ym, -2)}-01`, `${addYm(ym, 3)}-01`))
-const shifted = computed(() => {
-  if (!needsHolidays(d.value)) return monthDates(ym, { ...store.settings, ...d.value }, new Set())
+const todayStr = ymd(now)
+/** The settings with the draft of the three days and rules. */
+const drafted = computed<Settings>(() => ({ ...store.settings, ...d.value }))
+/** The holidays around this month for a preview: none when nothing needs them, null until the list is here. */
+function previewOff(need: boolean): ReadonlySet<string> | null {
+  if (!need) return new Set()
   // A shift can cross into the month before or after (review 1, R3).
   const list = aroundMonth.value
-  return list ? monthDates(ym, { ...store.settings, ...d.value }, new Set(list.map((h) => h.date))) : null
+  return list ? new Set(list.map((h) => h.date)) : null
+}
+/** This month's three dates with the draft: this month of the month basis, each date inside its period (spec 018 S-3). */
+const shifted = computed(() => {
+  const off = previewOff(needsHolidays(d.value))
+  if (!off) return null
+  const ctx = monthCtx(drafted.value, store.cards, off)
+  return monthDatesIn(ymOfDate(todayStr, ctx), drafted.value, ctx)
 })
 const WD = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 const md = (s: string) => { const x = new Date(`${s}T00:00:00`); return `${x.getMonth() + 1}/${x.getDate()}(${t(`common.weekday.${WD[x.getDay()]!}` as MessageKey)})` }
@@ -271,11 +284,70 @@ const itemEdit = ref<{ item: ScheduleItem | null } | null>(null)
 const openItem = (item: ScheduleItem | null) => { itemEdit.value = { item: item && { ...item, shift: ownShift(item) } } }
 const accountName = (id: string | null) => (id ? store.accounts.find((a) => a.id === id)?.name ?? '—' : t('schedule.noAccount'))
 const ownItems = computed(() => {
-  const drafted = store.schedules.map((item) => ({ ...item, shift: ownShift(item) }))
-  const list = needsHolidays({}, drafted) ? aroundMonth.value : []
-  if (!list) return drafted.map((item) => ({ item, at: null }))
-  return scheduleItemsIn(drafted, ym, new Set(list.map((h) => h.date)))
+  const items = store.schedules.map((item) => ({ ...item, shift: ownShift(item) }))
+  // an item's own rule needs the holidays; so does a card or pay basis whose dates a rule moves (where this month starts)
+  const based = monthCtx(drafted.value, store.cards, new Set()).basis !== 'calendar' && needsHolidays(d.value)
+  const off = previewOff(needsHolidays({}, items) || based)
+  if (!off) return items.map((item) => ({ item, at: null }))
+  const ctx = monthCtx(drafted.value, store.cards, off)
+  return scheduleItemsOf(items, ymOfDate(todayStr, ctx), ctx)
 })
+
+// ── 달의 기준 (spec 018 S-3, S-4): what a month is. A pick is asked first (the month names stay, their dates change),
+// then saved like the other settings. ──
+const BASES = computed(() => (['calendar', 'card', 'pay'] as const).map((id) => ({ id, label: g(`monthBases.${id}`) })))
+const NAMINGS = computed(() => (['auto', 'start', 'end'] as const).map((id) => ({ id, label: g(`monthNamings.${id}`) })))
+const mbBasis = computed<MonthBasis>(() => store.settings.monthBasis ?? 'calendar')
+const mbNaming = computed<MonthNaming>(() => store.settings.monthNaming ?? 'auto')
+const mbCard = computed(() => store.cards.find((x) => x.id === store.settings.monthBasisCardId) ?? null)
+const mbCardOpts = computed(() => [
+  { value: '', label: g('monthCardNone') },
+  ...store.cards.map((x) => ({ value: x.id, label: `${x.name}${x.last4 ? ` ${x.last4}` : ''} · ${x.usageFrom ? t('settings.general.monthCardFrom', { n: x.usageFrom }) : g('monthCardNoUsage')}` })),
+])
+/** Why a card basis counts by the calendar month now, if it does. */
+const mbCardNote = computed(() => (!store.cards.length ? g('monthNoCards') : !mbCard.value ? g('monthPickCard') : mbCard.value.usageFrom == null ? g('monthCardEqual') : ''))
+/** What a month is with the settings `s` (the store's cards and holidays). */
+const basisWith = (s: Settings): MonthCtx => monthCtx(s, store.cards, store.off ?? new Set())
+/** This month with a basis: its name and its dates, "2026.12 · 11-25~12-24". */
+function monthLine(ctx: MonthCtx) {
+  const m = ymOfDate(todayStr, ctx)
+  const p = periodOf(m, ctx)
+  return `${ymLabel(m)} · ${periodText(p.start, p.end, store.preferences)}`
+}
+const mbNow = computed(() => monthLine(basisWith(store.settings)))
+/** What 자동 names a period after now: by the first day (the pay day, or the card's first day). */
+const mbAuto = computed(() => {
+  const ctx = basisWith({ ...store.settings, monthNaming: 'auto' })
+  return ctx.basis === 'calendar' ? '' : t('settings.general.monthNamingAuto', { day: ctx.day, which: g(`monthNamings.${ctx.naming}`) })
+})
+const mbAsk = ref<{ patch: Partial<Settings>; before: string; after: string } | null>(null)
+const mbBusy = ref(false)
+function askMonth(patch: Partial<Settings>) {
+  mbAsk.value = { patch, before: mbNow.value, after: monthLine(basisWith({ ...store.settings, ...patch })) }
+}
+function pickBasis(v: MonthBasis) {
+  const patch: Partial<Settings> = { monthBasis: v }
+  // a card basis starts with a card: the saved one, else the first card with a usage period, else the first card
+  if (v === 'card' && !mbCard.value) patch.monthBasisCardId = (store.cards.find((x) => x.usageFrom != null) ?? store.cards[0])?.id ?? null
+  askMonth(patch)
+}
+const pickBasisCard = (id: string) => askMonth({ monthBasisCardId: id || null })
+const pickNaming = (v: MonthNaming) => askMonth({ monthNaming: v })
+async function confirmMonth() {
+  const a = mbAsk.value
+  if (!a) return
+  const scope = sessionScope()
+  mbBusy.value = true
+  try {
+    await saveSettings(a.patch)
+    if (scope.alive()) showToast(g('monthSaved'))
+  } catch (e) {
+    if (scope.alive()) showToast((e as Error).message || status.error, { error: true })
+  } finally {
+    mbBusy.value = false
+    mbAsk.value = null
+  }
+}
 
 // ── 공휴일 ──
 const krRow = computed(() => store.holidaySets.find((s) => s.builtin === 'kr'))
@@ -424,6 +496,23 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
     </div>
 
     <div class="set">
+      <div class="set-h"><h2 id="g-month">{{ g('monthBasis') }}</h2><p>{{ g('monthBasisDesc') }}</p></div>
+      <section class="card" aria-labelledby="g-month" data-testid="month-basis"><div class="fs">
+        <div class="field"><span id="g-mbasis" class="lbl">{{ g('monthBasis') }}</span>
+          <Seg :options="BASES" :model-value="mbBasis" labelledby="g-mbasis" @update:model-value="pickBasis" />
+          <span class="hint">{{ g(`monthBasisHint.${mbBasis}`) }}</span></div>
+        <div v-if="mbBasis === 'card'" class="field"><label for="g-mcard">{{ g('monthCard') }}</label>
+          <Select id="g-mcard" :model-value="mbCard?.id ?? ''" :options="mbCardOpts" @update:model-value="pickBasisCard" />
+          <span v-if="mbCardNote" class="hint" data-testid="month-card-note">{{ mbCardNote }}</span></div>
+        <div v-if="mbBasis !== 'calendar'" class="field"><span id="g-mname" class="lbl">{{ g('monthNaming') }}</span>
+          <Seg :options="NAMINGS" :model-value="mbNaming" labelledby="g-mname" @update:model-value="pickNaming" />
+          <span class="hint">{{ g('monthNamingHint') }}</span>
+          <span v-if="mbAuto" class="hint" data-testid="month-naming-auto">{{ mbAuto }}</span></div>
+        <p class="mprev num" data-testid="month-preview">{{ t('settings.general.monthPreview', { month: mbNow }) }}</p>
+      </div></section>
+    </div>
+
+    <div class="set">
       <div class="set-h"><h2 id="g-hol">{{ g('holidaySets') }}</h2><p>{{ g('holidayIntro') }}</p><button class="btn sm" type="button" @click="openSet()">{{ g('addSet') }}</button></div>
       <section class="card" aria-labelledby="g-hol">
         <div class="fs hol">
@@ -452,6 +541,16 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
     </div>
 
     <ScheduleItemEditor v-if="itemEdit" :initial="itemEdit.item" @close="itemEdit = null" />
+
+    <!-- 달의 기준: asked before it is saved (spec 018 S-4) -->
+    <ConfirmDialog v-if="mbAsk" :title="g('monthAskTitle')" :confirm-label="g('monthAskOk')" :busy="mbBusy" @confirm="confirmMonth" @cancel="mbAsk = null">
+      <p>{{ g('monthAskBody') }}</p>
+      <dl class="mask">
+        <div><dt>{{ g('monthAskBefore') }}</dt><dd class="num" data-testid="month-before">{{ mbAsk.before }}</dd></div>
+        <div><dt>{{ g('monthAskAfter') }}</dt><dd class="num" data-testid="month-after">{{ mbAsk.after }}</dd></div>
+      </dl>
+      <p class="hint">{{ g('monthAskKept') }}</p>
+    </ConfirmDialog>
 
     <EditSheet v-if="fxEdit" :title="fxEdit.isNew ? c('addTitle') : t('settings.general.fxEditTitle', { code: fxEdit.code })" :desc="g('fxEditDesc')" :error="fxError" :busy="fxBusy" :hint="fxFoot"
       :can-delete="!fxEdit.isNew && !fxIsUsd" :delete-name="fxEdit.code" @save="saveFx" @cancel="fxEdit = null" @delete="removeFx">
@@ -538,6 +637,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 .s1{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px}
 .s1 b{font-size:14px}
 .grow{flex-grow:1;min-width:0}
+.mprev{margin:0;padding:10px 12px;border-radius:var(--r-ctl,8px);background:var(--surface-2);font-size:13px;color:var(--text)}
 .thism{font-size:12px;color:var(--subtle)}
 .thism b{font-size:13px;color:var(--text)}
 .thism b.moved{color:var(--accent-text)}
