@@ -119,10 +119,13 @@ export function monthDates(ym: string, s: Settings, off: ReadonlySet<string>) {
 }
 
 // ---------- plan state at a month ----------
-/** 해당 월까지 발효된 변경을 순서대로 적용한 플랜. */
-export function planAt(sub: Subscription, changes: PlanChange[], ym: string): Subscription {
+/**
+ * 해당 월까지 발효된 변경을 순서대로 적용한 플랜. A change counts from the month its effective date lies in: the month of
+ * the basis `ctx` (spec 018 S-3), the calendar month without one.
+ */
+export function planAt(sub: Subscription, changes: PlanChange[], ym: string, ctx: MonthCtx = CALENDAR): Subscription {
   return changes
-    .filter((c) => c.subId === sub.id && c.effective && c.effective.slice(0, 7) <= ym)
+    .filter((c) => c.subId === sub.id && c.effective && ymOfDate(c.effective, ctx) <= ym)
     .sort((a, b) => (a.effective! < b.effective! ? -1 : 1))
     .reduce<Subscription>((acc, c) => ({ ...acc, ...c.to }), { ...sub })
 }
@@ -162,8 +165,11 @@ export interface TransferCalc {
   items: { sub: Subscription; monthly: number }[]
 }
 
-/** 구독료 통장 계산기와 같은 식. `extra`: one-off spending paid from the subscription account that month (spec 011 S-5), added before the round-ups. */
-export function transferAt(subs: Subscription[], changes: PlanChange[], s: Priced, ym: string, extra = 0): TransferCalc {
+/**
+ * 구독료 통장 계산기와 같은 식. `extra`: one-off spending paid from the subscription account that month (spec 011 S-5), added
+ * before the round-ups. `ctx`: the month basis the plan changes are placed by (`planAt`).
+ */
+export function transferAt(subs: Subscription[], changes: PlanChange[], s: Priced, ym: string, extra = 0, ctx: MonthCtx = CALENDAR): TransferCalc {
   let monthlySum = 0
   let yearlyMonthly = 0
   let usdMonthly = 0
@@ -172,7 +178,7 @@ export function transferAt(subs: Subscription[], changes: PlanChange[], s: Price
   const byCode = new Map<string, number>()
   const items: TransferCalc['items'] = []
   for (const base of subs) {
-    const p = planAt(base, changes, ym)
+    const p = planAt(base, changes, ym, ctx)
     if (p.status !== 'active') continue
     const m = monthlyKrw(p, s)
     if (p.cycle === 'yearly') yearlyMonthly += m
@@ -193,9 +199,9 @@ export function transferAt(subs: Subscription[], changes: PlanChange[], s: Price
   return { monthlySum, yearlyMonthly, usdMonthly, foreignMonthly, buffer, needed, transfer, items }
 }
 
-/** 해당 월에 처음 발효되는 변경 목록. */
-export function changesIn(changes: PlanChange[], ym: string): PlanChange[] {
-  return changes.filter((c) => c.effective && c.effective.slice(0, 7) === ym)
+/** 해당 월에 처음 발효되는 변경 목록: the changes whose effective date lies in month `ym` of the basis `ctx` (the calendar month without one). */
+export function changesIn(changes: PlanChange[], ym: string, ctx: MonthCtx = CALENDAR): PlanChange[] {
+  return changes.filter((c) => c.effective && ymOfDate(c.effective, ctx) === ym)
 }
 
 // ---------- upcoming payments ----------
@@ -222,7 +228,11 @@ export interface Payment {
 }
 
 interface Seg { start: number; end: number; cycle: Cycle; bill: number; active: boolean }
-/** The schedule's frame: the billing day, the one cycle ahead of a future anchor that may still be charged, and the cycle segments between plan-change months. */
+/**
+ * The schedule's frame: the billing day, the one cycle ahead of a future anchor that may still be charged, and the cycle segments between plan-change months.
+ * The charges are dates: their schedule and the plan of each charge go by the calendar month of the charge, whatever the
+ * month basis is (spec 018 S-7 puts them on the charge date itself; only the monthly sums follow the basis, S-3).
+ */
 function frame(base: Subscription, changes: PlanChange[]) {
   const anchor = parseDate(base.nextDate)
   const idx = (ym: string) => Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1
@@ -381,19 +391,21 @@ export interface Leftover {
 /**
  * "이체 후 남는 금액" (spec 010 D-9): the subscription transfer of `ym` minus the payments from that
  * transfer day to the day before the next month's transfer day. This is not an account balance
- * (the app holds none). `off` holds the holidays for the day shift, as in `monthDates`.
+ * (the app holds none). `off` holds the holidays for the day shift, as in `monthDates`. With a month basis (the
+ * state's settings and `cards`), the transfer day is the one inside the month's period.
  */
 export function leftoverAfterTransfer(
-  state: { subscriptions: Subscription[]; planChanges: PlanChange[]; settings: Settings; currencies?: ForeignCurrency[] },
+  state: { subscriptions: Subscription[]; planChanges: PlanChange[]; settings: Settings; currencies?: ForeignCurrency[]; cards?: readonly Card[] },
   ym: string,
   off: ReadonlySet<string> = new Set(),
   spendings: Spending[] = [],
 ): Leftover {
   const { subscriptions, planChanges, settings } = state
   const s = priced(settings, state.currencies)
-  const shift = shiftOf(settings, 'transfer')
-  const from = monthDay(ym, settings.transferDay, shift, off).date
-  const nextStart = monthDay(addYm(ym, 1), settings.transferDay, shift, off).date
+  // the month's transfer date and the next month's, each inside its own period (spec 018 S-3)
+  const ctx = ctxOf(state, off)
+  const from = dayIn(ym, settings.transferDay, 'transfer', ctx).date
+  const nextStart = dayIn(addYm(ym, 1), settings.transferDay, 'transfer', ctx).date
   const startD = parseDate(from)
   const last = ymd(dayPlus(parseDate(nextStart), -1))
   const to = last < from ? from : last
@@ -403,7 +415,7 @@ export function leftoverAfterTransfer(
   // One-off rounds paid from the subscription account count as paid too (spec 011 S-5).
   const spent = liveRounds(spendings).filter((x) => x.spending.payBy === 'subs' && x.round.date >= from && x.round.date <= to)
   const paid = inWindow.reduce((a, p) => a + p.krw, 0) + spent.reduce((a, x) => a + x.round.amount, 0)
-  const transfer = transferAt(subscriptions, planChanges, s, ym, spendingIn(spendings, ym).subs).transfer
+  const transfer = transferAt(subscriptions, planChanges, s, ym, spendingIn(spendings, ym, ctx).subs, ctx).transfer
   return { transfer, from, to, paid, count: inWindow.length + spent.length, left: transfer - paid }
 }
 
@@ -452,7 +464,8 @@ export interface Distribution {
  * The month's pay split over the user's targets, in their order:
  * living = sum of living costs, subscriptions = needed subscription transfer,
  * fixed = the phase's amount for that target, remainder = pay minus everything else.
- * Zero rows are hidden, except the remainder.
+ * Zero rows are hidden, except the remainder. `ym` is a month's name: the phases, the adjustments and the items' from
+ * and stop months are compared as names (spec 018 S-4); `ctx` only places the plan changes of the subscription transfer.
  */
 export function distributionAt(
   ym: string,
@@ -467,12 +480,13 @@ export function distributionAt(
   spendSubs = 0,
   accounts: Account[] = [],
   adjusts: MonthAdjust[] = [],
+  ctx: MonthCtx = CALENDAR,
 ): Distribution {
   const phase = phaseAt(phases, ym)
   // one month's amount of a target, in place of its phase amount (spec 013 S-14)
   const adjustOf = (t: AllocationTarget) => adjusts.find((a) => a.ym === ym && a.targetId === t.id)
   const livingSum = Array.isArray(living) ? livingAt(living, phases, ym).sum : living.food + living.transit + living.allowance
-  const subsTransfer = transferAt(subs, changes, s, ym, spendSubs).transfer
+  const subsTransfer = transferAt(subs, changes, s, ym, spendSubs, ctx).transfer
   const stopped = (t: AllocationTarget) => {
     const acc = t.accountId ? accounts.find((a) => a.id === t.accountId) : undefined
     return !!acc?.stopFrom && ym >= acc.stopFrom
@@ -684,6 +698,18 @@ export function monthCtx(s: MonthSettings, cards: readonly Pick<Card, 'id' | 'us
   const day = basis === 'pay' ? s.payDay : usageFrom!
   const picked = s.monthNaming ?? 'auto'
   return { ...calendar, basis, naming: picked === 'auto' ? (day <= 15 ? 'start' : 'end') : picked, day }
+}
+
+/** The calendar month: what a call that names no basis counts by. It reads no dates, so one value serves every call. */
+const CALENDAR: MonthCtx = { basis: 'calendar', naming: 'start', day: 1, settings: { payDay: 1 }, off: NO_DAYS, firsts: new Map() }
+
+/**
+ * The month basis of a state (spec 018 S-3): its settings, its cards (a card basis reads its card's usage period) and
+ * its holiday dates (a pay basis starts on the actual pay date) — `off` when the caller has its own, else the state's.
+ * A state without cards and holidays, with settings that name no basis, counts by the calendar month.
+ */
+export function ctxOf(st: { settings: MonthSettings; cards?: readonly Pick<Card, 'id' | 'usageFrom'>[]; off?: ReadonlySet<string> }, off?: ReadonlySet<string>): MonthCtx {
+  return monthCtx(st.settings, st.cards ?? [], off ?? st.off ?? NO_DAYS)
 }
 
 /** The calendar month the period of month `ym` starts in: `ym` itself, or the month before when months are named by their end. */
@@ -1005,11 +1031,11 @@ export interface SpendingMonth {
   items: SpendingItem[]
 }
 
-/** What the spendings put on calendar month `ym` (S-5). */
-export function spendingIn(spendings: Spending[], ym: string): SpendingMonth {
+/** What the spendings put on month `ym` (S-5): the rounds dated in it — in its period of the basis `ctx` (spec 018 S-3), the calendar month without one. */
+export function spendingIn(spendings: Spending[], ym: string, ctx: MonthCtx = CALENDAR): SpendingMonth {
   const out: SpendingMonth = { subs: 0, remainder: 0, general: 0, installment: 0, items: [] }
   for (const { spending, round } of liveRounds(spendings)) {
-    if (round.date.slice(0, 7) !== ym) continue
+    if (ymOfDate(round.date, ctx) !== ym) continue
     out.items.push({ spending, round, amount: round.amount })
     if (spending.payBy === 'subs') out.subs += round.amount
     else {
@@ -1112,6 +1138,12 @@ export interface MonthState {
   incomes?: IncomeItem[]
   incomeReceipts?: IncomeReceipt[]
   incomeExtras?: IncomeExtra[]
+  /**
+   * What a month is read from, next to the settings (spec 018 S-3, `ctxOf`): the cards (a card basis is its card's usage
+   * period) and the holiday dates (a pay basis starts on the actual pay date). Missing = no cards, no holidays.
+   */
+  cards?: Card[]
+  off?: ReadonlySet<string>
 }
 
 /** One income line of a month (spec 014 S-5): `received` is the sum of its receipts, null when none; `used` is what counts. */
@@ -1133,8 +1165,10 @@ export interface IncomeLater { id: string; name: string; amount: number; ym: str
  * month (monthly ones always, yearly ones in their month), each with what was received for it that month or else its
  * expected amount, plus the money that came in once in that month. With no incomes, receipts or extras, `total` is
  * netPay: the month is what it was before 0.1.8.
+ * `ym` is the month's name (spec 018 S-4): the salary line, the receipts (their saved month) and a yearly income (its
+ * month number) go by the name; only money that came in once has a date, and counts in the month whose period holds it.
  */
-export function incomeAt(state: Pick<MonthState, 'settings' | 'incomes' | 'incomeReceipts' | 'incomeExtras'>, ym: string) {
+export function incomeAt(state: Pick<MonthState, 'settings' | 'incomes' | 'incomeReceipts' | 'incomeExtras' | 'cards' | 'off'>, ym: string, ctx: MonthCtx = ctxOf(state)) {
   const receipts = (state.incomeReceipts ?? []).filter((r) => r.ym === ym)
   const got = (itemId: string | null) => {
     const mine = receipts.filter((r) => r.itemId === itemId)
@@ -1154,7 +1188,7 @@ export function incomeAt(state: Pick<MonthState, 'settings' | 'incomes' | 'incom
     ...items.filter((i) => i.cycle === 'monthly' || i.month === month || got(i.id) !== null)
       .map((i) => line(i.id, i.id, i.name, i.day, i.cycle === 'monthly' || i.month === month ? i.amount : 0)),
   ]
-  const extras = (state.incomeExtras ?? []).filter((x) => x.date.slice(0, 7) === ym)
+  const extras = (state.incomeExtras ?? []).filter((x) => ymOfDate(x.date, ctx) === ym)
   const extraSum = extras.reduce((a, x) => a + x.amount, 0)
   const expected = rows.reduce((a, r) => a + r.expected, 0)
   const total = rows.reduce((a, r) => a + r.used, 0) + extraSum
@@ -1172,15 +1206,19 @@ export function incomeAt(state: Pick<MonthState, 'settings' | 'incomes' | 'incom
  * off the remainder, and the spendings themselves. Every screen and tool that shows the user's month
  * goes through here so no half is forgotten. `pay` and `phases` are for what-if screens; a what-if
  * passes the same spendings to both of its sides.
+ * `ym` is the name of a month of the state's basis (spec 018 S-3, `ctxOf`: its settings, cards and holidays): what has
+ * a date counts in the month whose period holds it, what is saved by month name stays with that name (S-4). `ctx` is
+ * for a caller that has worked the basis out already.
  */
-export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; phases?: Phase[] } = {}) {
-  const spend = spendingIn(state.spendings ?? [], ym)
+export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; phases?: Phase[]; ctx?: MonthCtx } = {}) {
+  const ctx = opt.ctx ?? ctxOf(state)
+  const spend = spendingIn(state.spendings ?? [], ym, ctx)
   const s = priced(state.settings, state.currencies)
-  const transfer = transferAt(state.subscriptions, state.planChanges, s, ym, spend.subs)
-  const income = incomeAt(state, ym)
+  const transfer = transferAt(state.subscriptions, state.planChanges, s, ym, spend.subs, ctx)
+  const income = incomeAt(state, ym, ctx)
   const dist = distributionAt(
     ym, opt.pay ?? income.total, opt.phases ?? state.phases, state.targets, state.livingItems ?? state.living,
-    state.subscriptions, state.planChanges, s, spend.remainder, spend.subs, state.accounts ?? [], state.monthAdjusts ?? [],
+    state.subscriptions, state.planChanges, s, spend.remainder, spend.subs, state.accounts ?? [], state.monthAdjusts ?? [], ctx,
   )
   return { transfer, dist, spend, income }
 }
