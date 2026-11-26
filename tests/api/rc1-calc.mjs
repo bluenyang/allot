@@ -1,5 +1,5 @@
 // API check for spec 018 (0.1.10-rc.1, V-5). W-1: the weekend and holiday rule of each date. W-2: a card's usage period.
-// W-3: what a month is (the settings' monthBasis, monthBasisCardId, monthNaming).
+// W-3: what a month is (the settings' monthBasis, monthBasisCardId, monthNaming). W-4: the basis applied to the MCP answers.
 //   bash scripts/test-server/disposable.sh rc1-api node tests/api/rc1-calc.mjs   (it writes to the database directly)
 // A is ADMIN_EMAIL. U is made here and deleted at the end; every row below is U's.
 //   shifts    a settings body with the old dayShift alone sets the three rules; a rule the body names wins, each on its
@@ -20,6 +20,12 @@
 //             puts the basis back to calendar in the same change set, and reverting the delete brings both back; a card
 //             kept under another basis is only let go; a card's insert is not reverted while it is the basis card;
 //             a proposal deletes the basis card the same way; an account whose basis is a card can be deleted
+//   month     the basis applied (spec 018 S-3, S-10, W-4), with the pay basis: the MCP tools' default month is the name of
+//             the period that holds today, each monthly answer carries period { from, to }, the pay date of the month is
+//             the period's first day, a one-off income dated on the period's first day counts in that month and one dated
+//             the day before in the month before; a proposal's preview starts with that month; the server instructions
+//             say what a month is inside their first 512 characters; back on the calendar basis the answers are the
+//             calendar month's
 // Exit 0 only if every check passed.
 import postgres from 'postgres'
 import { arm, cleanupStep, disarm, failures, ok, threw } from './lib/check.mjs'
@@ -357,6 +363,99 @@ try {
   ok(!pSetM.failed && await monthNow() === `card/${b1}/auto`, `propose_changes sets the three keys, applied: ${(await monthNow()).replace(b1, 'b1')}`)
   const pDelM = await apply([{ resource: 'cards', action: 'delete', id: b1 }])
   ok(!pDelM.failed && await monthNow() === 'calendar//auto' && !(await state()).cards.some((c) => c.id === b1), `propose_changes deletes the basis card, applied: the settings are ${await monthNow()}`)
+  // ── month: the basis applied (W-4) ──
+  {
+    const p2 = (n) => String(n).padStart(2, '0')
+    const iso = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+    const ymOf = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}`
+    // today in the user's zone (the default, Asia/Seoul), as a local date
+    const now = new Date(new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).replace(' ', 'T'))
+    const [y, m, day] = [now.getFullYear(), now.getMonth(), now.getDate()]
+    // a pay day with today inside its period: the period runs from the pay day on or before today to the day before the next
+    const pay = day === 1 ? 2 : Math.min(day, 28)
+    const start = day >= pay ? new Date(y, m, pay) : new Date(y, m - 1, pay)
+    const end = new Date(start.getFullYear(), start.getMonth() + 1, pay - 1)
+    // named after the month it starts in when the pay day is the 15th or earlier, else after the month it ends in
+    const name = ymOf(pay <= 15 ? start : new Date(start.getFullYear(), start.getMonth() + 1, 1))
+    const prevName = ymOf(new Date(Number(name.slice(0, 4)), Number(name.slice(5, 7)) - 2, 1))
+    const nextName = ymOf(new Date(Number(name.slice(0, 4)), Number(name.slice(5, 7)), 1))
+    const from = iso(start)
+    const to = iso(end)
+    const dayBefore = iso(new Date(start.getFullYear(), start.getMonth(), pay - 1))
+    const span = (x) => `${x?.from}~${x?.to}`
+
+    // the rules the earlier sections left are put aside for this one: no date moves, so the period is known here
+    const was = (await state()).settings
+    const NONE = { payShift: 'none', transferShift: 'none', billingShift: 'none' }
+    const setPay = await put({ ...BODY, ...NONE, payDay: pay, monthBasis: 'pay', monthBasisCardId: null, monthNaming: 'auto' })
+    ok(setPay.status === 200 && setPay.json.monthBasis === 'pay', `month: the pay basis, pay day ${pay} → ${setPay.status}`)
+    const x1 = await U('POST', '/api/income-extras', { date: from, name: 'RC1 first day', amount: 7_000, note: '' })
+    const x2 = await U('POST', '/api/income-extras', { date: dayBefore, name: 'RC1 day before', amount: 900, note: '' })
+    ok(x1.status === 201 && x2.status === 201, `month: money that came in once on ${from} and on ${dayBefore} → ${x1.status}, ${x2.status}`)
+
+    const ovM = await tool(kRead, 'get_overview', {})
+    ok(!ovM.failed && ovM.data?.month === name, `get_overview: the default month is the name of the period that holds today (${ovM.data?.month}, want ${name})`)
+    ok(span(ovM.data?.period) === `${from}~${to}`, `get_overview: period is ${span(ovM.data?.period)} (want ${from}~${to})`)
+    ok(ovM.data?.dates?.pay?.date === from && ovM.data?.dates?.pay?.nominal === from, `get_overview: the pay date of the month is the period's first day (${ovM.data?.dates?.pay?.date})`)
+    const inP = (d) => d >= from && d <= to
+    ok(inP(ovM.data?.dates?.transfer?.date) && inP(ovM.data?.dates?.billing?.date), `get_overview: the transfer and billing dates lie in the period (${ovM.data?.dates?.transfer?.date}, ${ovM.data?.dates?.billing?.date})`)
+    ok(ovM.data?.income?.totalKrw === BODY.netPay + 7_000, `get_overview: the one-off income of the period's first day counts in the month (${ovM.data?.income?.totalKrw})`)
+    ok(ovM.data?.settings?.monthBasis === 'pay' && ovM.data?.settings?.monthNaming === 'auto', 'get_overview: the settings carry the month keys')
+
+    const inc = await tool(kRead, 'get_income', {})
+    const names = (d) => (d?.extras ?? []).map((e) => e.name).join(',')
+    ok(!inc.failed && inc.data?.month === name && span(inc.data?.period) === `${from}~${to}` && names(inc.data) === 'RC1 first day' && inc.data?.totalKrw === BODY.netPay + 7_000,
+      `get_income: month ${inc.data?.month}, period ${span(inc.data?.period)}, extras [${names(inc.data)}], total ${inc.data?.totalKrw}`)
+    const incPrev = await tool(kRead, 'get_income', { month: prevName })
+    ok(!incPrev.failed && incPrev.data?.period?.to === dayBefore && names(incPrev.data) === 'RC1 day before' && incPrev.data?.totalKrw === BODY.netPay + 900,
+      `get_income ${prevName}: its period ends on ${incPrev.data?.period?.to}, the income of the day before counts there (extras [${names(incPrev.data)}], total ${incPrev.data?.totalKrw})`)
+
+    const schM = await tool(kRead, 'get_schedule', { months: 2 })
+    const [m0, m1] = schM.data?.months ?? []
+    ok(!schM.failed && schM.data?.from === name && m0?.month === name && span(m0?.period) === `${from}~${to}` && m0?.dates?.pay?.date === from,
+      `get_schedule: starts with ${schM.data?.from}, period ${span(m0?.period)}, pay date ${m0?.dates?.pay?.date}`)
+    const dayAfter = iso(new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1))
+    ok(m1?.month === nextName && m1?.period?.from === dayAfter && m1?.dates?.pay?.date === dayAfter, `get_schedule: the next month ${m1?.month} starts the day after (${m1?.period?.from}), on its pay date`)
+
+    const bud = await tool(kRead, 'get_budget', {})
+    const subsM = await tool(kRead, 'list_subscriptions', {})
+    const accM = await tool(kRead, 'list_accounts', { months: 2 })
+    const spM = await tool(kRead, 'list_spendings', { month: name })
+    ok(bud.data?.month === name && span(bud.data?.period) === `${from}~${to}`, `get_budget: month ${bud.data?.month}, period ${span(bud.data?.period)}`)
+    ok(subsM.data?.month === name && span(subsM.data?.period) === `${from}~${to}`, `list_subscriptions: month ${subsM.data?.month}, period ${span(subsM.data?.period)}`)
+    const pm = accM.data?.projectionMonths ?? []
+    ok(accM.data?.month === name && span(accM.data?.period) === `${from}~${to}` && pm.length === 2 && pm[0].month === name && span(pm[0]) === `${from}~${to}` && pm[1].month === nextName && pm[1].from === dayAfter,
+      `list_accounts: month ${accM.data?.month}, period ${span(accM.data?.period)}, projectionMonths ${pm.map((x) => `${x.month} ${span(x)}`).join(' | ')}`)
+    ok(spM.data?.month === name && span(spM.data?.period) === `${from}~${to}`, `list_spendings month ${name}: period ${span(spM.data?.period)}`)
+
+    // a proposal's preview starts with this month of the basis, and names the month a one-off income counts in
+    const prop = await tool(kChat, 'propose_changes', { note: 'rc1 month', changes: [{ resource: 'income-extras', action: 'create', data: { date: from, name: 'RC1 proposed', amount: 100, note: '' } }] })
+    const line = prop.data?.preview?.rows?.[0]?.line ?? ''
+    ok(!prop.failed && prop.data?.preview?.months?.[0]?.month === name && prop.data?.preview?.months?.[1]?.month === nextName && line.includes(`left over of ${name}:`),
+      `propose_changes: the preview's months are ${(prop.data?.preview?.months ?? []).map((x) => x.month).join(', ')} and the income line says "${line.slice(line.indexOf('left over'))}"`)
+
+    // the server instructions: what a month is, inside the first 512 characters
+    const init = await fetch(BASE + '/api/mcp', {
+      method: 'POST', headers: { 'content-type': 'application/json', accept: ACCEPT, authorization: `Bearer ${kRead}` },
+      body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'rc1', version: '1' } } }),
+    })
+    const instr = (await init.json().catch(() => null))?.result?.instructions ?? ''
+    ok(instr.slice(0, 512).includes('A month is the period of the user\'s chosen basis'), `initialize: the instructions say what a month is in their first 512 characters (${instr.length} in all)`)
+
+    // the calendar basis again: the calendar month, and the same income by its date's calendar month
+    ok((await put({ ...BODY, ...NONE, payDay: pay, monthBasis: 'calendar' })).status === 200, 'month: back to the calendar basis')
+    const cal = ymOf(now)
+    const last = new Date(y, m + 1, 0).getDate()
+    const ovC = await tool(kRead, 'get_overview', {})
+    ok(ovC.data?.month === cal && span(ovC.data?.period) === `${cal}-01~${cal}-${p2(last)}`, `get_overview, calendar basis: month ${ovC.data?.month}, period ${span(ovC.data?.period)}`)
+    const incC = await tool(kRead, 'get_income', { month: from.slice(0, 7) })
+    ok(names(incC.data).split(',').includes('RC1 first day'), `get_income ${from.slice(0, 7)}, calendar basis: the income of ${from} counts in its calendar month (extras [${names(incC.data)}])`)
+    ok(ovC.data?.dates?.pay?.date === `${cal}-${p2(pay)}`, `get_overview, calendar basis: the pay date is day ${pay} of the calendar month (${ovC.data?.dates?.pay?.date})`)
+    for (const x of [x1, x2]) await U('DELETE', `/api/income-extras/${x.json.id}`)
+    const back = await put({ ...BODY, payShift: was.payShift, transferShift: was.transferShift, billingShift: was.billingShift })
+    ok(back.status === 200 && three(back.json) === three(was) && back.json.payDay === BODY.payDay && (await state()).incomeExtras.length === 0, `month: the settings (rules ${three(back.json)}) and the income rows are put back`)
+  }
+
   // an account whose basis is a card can be deleted (the settings row goes before the card)
   ok((await V('PUT', '/api/settings', { ...BODY, monthBasis: 'card', monthBasisCardId: vCard.json.id })).status === 200, 'V counts its month by its card')
   const delV = await A('DELETE', `/api/admin/users/${vid}`, { confirmEmail: emailV })
