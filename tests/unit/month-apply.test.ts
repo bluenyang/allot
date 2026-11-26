@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { AllocationTarget, Card, IncomeExtra, IncomeItem, IncomeReceipt, LivingItem, Phase, PlanChange, Settings, Spending, Subscription } from '../../src/data/types'
 import { changesIn, ctxOf, incomeAt, leftoverAfterTransfer, monthCtx, monthMoney, periodOf, planAt, spendingIn, transferAt, priced, type MonthState } from '../../src/lib/calc'
+import { dayText, periodText } from '../../src/lib/format'
 
 // Pay day 25 (a month is named by its end: "2026-12" = 11-25 … 12-24), transfer day 26, no weekend rule.
 const S: Settings = { ...DEFAULT_SETTINGS, netPay: 3_000_000, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000 }
@@ -238,4 +239,26 @@ test('leftoverAfterTransfer: from the month\'s transfer date to the day before t
   const early = state({ ...CARD, transferDay: 5 })
   // "2026-12": 2027-01-05 … 02-04, with the charge of 01-05 (the one of 02-05 is the next window's)
   assert.deepEqual(leftoverAfterTransfer(early, '2026-12', none, spendings), { transfer: 20_000, from: '2027-01-05', to: '2027-02-04', paid: 15_000, count: 1, left: 5_000 })
+})
+
+test('ctxOf: a state\'s own holidays are the ones its months are read by; a caller\'s are used when the state has none', () => {
+  const before: Settings = { ...PAY, payShift: 'before' }
+  const closed: ReadonlySet<string> = new Set(['2026-12-25'])
+  const { off: _o, ...bare } = state(before)
+  // the state has none: the caller's
+  assert.equal(periodOf('2026-12', ctxOf(bare, closed)).end, '2026-12-23')
+  assert.equal(periodOf('2026-12', ctxOf(bare)).end, '2026-12-24')
+  // the state has its own: one list for every question about that state
+  assert.equal(periodOf('2026-12', ctxOf({ ...bare, off: closed }, none)).end, '2026-12-23')
+  assert.equal(periodOf('2026-12', ctxOf({ ...bare, off: none }, closed)).end, '2026-12-24')
+  // the sums read the same list: the subscription-account round of 12-24 is next month's
+  assert.equal(monthMoney({ ...bare, off: closed }, '2026-12').spend.subs, 0)
+})
+
+test('the period text next to a month\'s name follows the user\'s date format', () => {
+  assert.equal(periodText('2026-11-25', '2026-12-24', { dateFormat: 'iso' }), '11-25~12-24')
+  assert.equal(periodText('2026-11-25', '2026-12-24', { dateFormat: 'dot' }), '11. 25.~12. 24.')
+  assert.equal(periodText('2026-11-25', '2026-12-24', { dateFormat: 'us' }), '11/25~12/24')
+  assert.equal(dayText('2027-01-05', { dateFormat: 'us' }), '01/05')
+  assert.equal(dayText('not a date', { dateFormat: 'iso' }), 'not a date')
 })

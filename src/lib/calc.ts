@@ -395,7 +395,7 @@ export interface Leftover {
  * state's settings and `cards`), the transfer day is the one inside the month's period.
  */
 export function leftoverAfterTransfer(
-  state: { subscriptions: Subscription[]; planChanges: PlanChange[]; settings: Settings; currencies?: ForeignCurrency[]; cards?: readonly Card[] },
+  state: { subscriptions: Subscription[]; planChanges: PlanChange[]; settings: Settings; currencies?: ForeignCurrency[]; cards?: readonly Card[]; off?: ReadonlySet<string> },
   ym: string,
   off: ReadonlySet<string> = new Set(),
   spendings: Spending[] = [],
@@ -708,11 +708,12 @@ const CALENDAR: MonthCtx = { basis: 'calendar', naming: 'start', day: 1, setting
 
 /**
  * The month basis of a state (spec 018 S-3): its settings, its cards (a card basis reads its card's usage period) and
- * its holiday dates (a pay basis starts on the actual pay date) — `off` when the caller has its own, else the state's.
- * A state without cards and holidays, with settings that name no basis, counts by the calendar month.
+ * its holiday dates (a pay basis starts on the actual pay date). The holidays are the state's own (`off`: the screens'
+ * store holds one list for every question, so a month has the same dates on every screen), else the ones the caller
+ * passes. A state without cards and holidays, with settings that name no basis, counts by the calendar month.
  */
 export function ctxOf(st: { settings: MonthSettings; cards?: readonly Pick<Card, 'id' | 'usageFrom'>[]; off?: ReadonlySet<string> }, off?: ReadonlySet<string>): MonthCtx {
-  return monthCtx(st.settings, st.cards ?? [], off ?? st.off ?? NO_DAYS)
+  return monthCtx(st.settings, st.cards ?? [], st.off ?? off ?? NO_DAYS)
 }
 
 /** The calendar month the period of month `ym` starts in: `ym` itself, or the month before when months are named by their end. */
@@ -1183,7 +1184,8 @@ export interface MonthState {
   incomeExtras?: IncomeExtra[]
   /**
    * What a month is read from, next to the settings (spec 018 S-3, `ctxOf`): the cards (a card basis is its card's usage
-   * period) and the holiday dates (a pay basis starts on the actual pay date). Missing = no cards, no holidays.
+   * period) and the holiday dates (a pay basis starts on the actual pay date). Missing = no cards; no holidays but the
+   * ones a function is handed (`off`).
    */
   cards?: Card[]
   off?: ReadonlySet<string>

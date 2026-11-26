@@ -1,9 +1,10 @@
-import { reactive } from 'vue'
+import { computed, markRaw, reactive } from 'vue'
 import type {
   Account, AllocationTarget, Balance, Card, CheckItem, Debt, ForeignCurrency, HolidaySet, IncomeExtra, IncomeItem, IncomeReceipt, Living, LivingItem, Phase, PlanChange, PlanEvent, Preferences, Priced,
   RemainderSplit, ScheduleItem, Settings, MonthAdjust, Spending, Subscription,
 } from '../data/types'
-import { priced } from './calc'
+import { needsHolidays, priced } from './calc'
+import { offDays } from './holidays-lazy'
 import { ApiError, api } from './api'
 import { t } from '../i18n'
 import { createSessionGuard, type Scope } from './session-guard'
@@ -40,6 +41,12 @@ export interface State {
   incomeExtras: IncomeExtra[]
   /** Proposals from an AI key that wait for the user (the sidebar badge; spec 009). */
   pendingProposals: number
+  /**
+   * Not from the API: the holiday dates the month basis reads (spec 018 S-3; calc `ctxOf` takes a state's `off`). The
+   * store works them out from the settings and the holiday sets, so every screen that hands the store to a sum counts a
+   * month by the same dates.
+   */
+  readonly off?: ReadonlySet<string>
 }
 
 const empty = (): State => ({
@@ -50,7 +57,17 @@ const empty = (): State => ({
   livingItems: [], balances: [], cards: [], monthAdjusts: [], currencies: [], schedules: [], incomes: [], incomeReceipts: [], incomeExtras: [], pendingProposals: 0,
 })
 
-export const store = reactive<State>(empty())
+// Every holiday of the sets that are on, for as long as the holiday code computes them (src/lib/holidays.ts: 1990 to
+// October 2060). Empty while no rule moves one of the three dates — the holiday code is not loaded then (spec 007 V-1) —
+// and until that code is here; the value is not made reactive (it is only read).
+const NO_OFF: ReadonlySet<string> = markRaw(new Set<string>())
+const monthOff = computed<ReadonlySet<string>>(() => {
+  if (!needsHolidays(store.settings)) return NO_OFF
+  const days = offDays(store.holidaySets, '1990-01-01', '2060-10-30')
+  return days ? markRaw(days) : NO_OFF
+})
+
+export const store: State = reactive<State>({ ...empty(), get off() { return monthOff.value } })
 export const status = reactive({ loaded: false, loading: false, error: '' })
 
 // The state belongs to the signed-in session. `newSession` (called when the session changes) kills every

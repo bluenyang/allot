@@ -78,3 +78,13 @@ export function dateText(d: string | Date, p: Fmt): string {
   if (p.dateFormat === 'us') return `${mo}/${da}/${y}`
   return s
 }
+
+/** A date without its year, in the user's date format: 11-14, 11. 14. or 11/14. */
+export function dayText(d: string, p: Pick<Fmt, 'dateFormat'>): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(d)
+  if (!m) return d
+  return p.dateFormat === 'dot' ? `${m[1]}. ${m[2]}.` : p.dateFormat === 'us' ? `${m[1]}/${m[2]}` : `${m[1]}-${m[2]}`
+}
+
+/** The dates of a month's period next to its name (spec 018 S-3): 11-25~12-24, 11. 25.~12. 24. or 11/25~12/24. */
+export const periodText = (start: string, end: string, p: Pick<Fmt, 'dateFormat'>): string => `${dayText(start, p)}~${dayText(end, p)}`
