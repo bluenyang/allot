@@ -1,5 +1,6 @@
 // API check for spec 018 (0.1.10-rc.1, V-5). W-1: the weekend and holiday rule of each date. W-2: a card's usage period.
 // W-3: what a month is (the settings' monthBasis, monthBasisCardId, monthNaming). W-4: the basis applied to the MCP answers.
+// W-5: the month a spending round counts in and the transfers to the paying accounts.
 //   bash scripts/test-server/disposable.sh rc1-api node tests/api/rc1-calc.mjs   (it writes to the database directly)
 // A is ADMIN_EMAIL. U is made here and deleted at the end; every row below is U's.
 //   shifts    a settings body with the old dayShift alone sets the three rules; a rule the body names wins, each on its
@@ -26,6 +27,15 @@
 //             the day before in the month before; a proposal's preview starts with that month; the server instructions
 //             say what a month is inside their first 512 characters; back on the calendar basis the answers are the
 //             calendar month's
+//   outgo     the month a round counts in and the paying accounts (spec 018 S-5, S-6, S-10, W-5): with pay day 25 a card
+//             bill of 14 March and one of 25 March (a pay date) count in February, one of 26 March in March; a buffer
+//             refill and a subscription-account round count by their own dates (list_spendings countsIn, its month filter
+//             and totals); get_overview's distribution.payouts names per paying account the subscription transfer, the
+//             card rounds and the refills, and their card and refill parts add up to the month's one-off spendings;
+//             get_overview lists the rounds a month counts, get_schedule the rounds dated in it; get_allocation carries
+//             this month's payouts; list_accounts' projection brings the card money into the paying account with the
+//             month's transfer and takes the bills out on their dates, and takes a subscription-account round out of
+//             the subscriptions target's account; with the pay basis a card bill counts in the period that holds it
 // Exit 0 only if every check passed.
 import postgres from 'postgres'
 import { arm, cleanupStep, disarm, failures, ok, threw } from './lib/check.mjs'
@@ -454,6 +464,129 @@ try {
     for (const x of [x1, x2]) await U('DELETE', `/api/income-extras/${x.json.id}`)
     const back = await put({ ...BODY, payShift: was.payShift, transferShift: was.transferShift, billingShift: was.billingShift })
     ok(back.status === 200 && three(back.json) === three(was) && back.json.payDay === BODY.payDay && (await state()).incomeExtras.length === 0, `month: the settings (rules ${three(back.json)}) and the income rows are put back`)
+  }
+
+  // ── outgo: the month a round counts in, and what goes to the paying accounts (W-5) ──
+  {
+    const was = (await state()).settings
+    const NONE = { payShift: 'none', transferShift: 'none', billingShift: 'none' }
+    // pay day 25, transfer day 26, billing day 14, calendar months, no date moves
+    ok((await put({ ...BODY, ...NONE, monthBasis: 'calendar', monthBasisCardId: null, monthNaming: 'auto' })).status === 200, 'outgo: pay day 25, calendar months, no rule')
+    const p2 = (n) => String(n).padStart(2, '0')
+    const now = new Date(new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).replace(' ', 'T'))
+    const today = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`
+    // two years on, so nothing here depends on today: February and March of that year
+    const Y = now.getFullYear() + 2
+    const [FEB, MAR, APR] = [`${Y}-02`, `${Y}-03`, `${Y}-04`]
+    const acct = async (name) => {
+      const r = await U('POST', '/api/accounts', { name, role: '', inflow: '', outflow: '', buffer: 500_000 })
+      if (r.status !== 201) throw new Error(`account ${name} → ${r.status} ${r.text}`)
+      return r.json.id
+    }
+    const aPay = await acct('RC1 pay account')
+    const aSubs = await acct('RC1 subs account')
+    // the subscriptions target sends to the subs account (a new account may or may not have the target yet)
+    const tSubs = (await state()).targets.find((t) => t.kind === 'subscriptions')
+    const tr = tSubs
+      ? await U('PUT', `/api/targets/${tSubs.id}`, { name: tSubs.name, kind: 'subscriptions', accountId: aSubs })
+      : await U('POST', '/api/targets', { name: 'RC1 subs', kind: 'subscriptions', accountId: aSubs })
+    ok(tr.status === 200 || tr.status === 201, `outgo: the subscriptions target sends to the subs account → ${tr.status}`)
+    const card = await U('POST', '/api/cards', { name: 'RC1 pay card', last4: '', accountId: aPay, billingDay: null })
+    ok(card.status === 201, `outgo: a card paid from the pay account → ${card.status}`)
+    const sp = async (name, over, rounds) => {
+      const r = await U('POST', '/api/spendings', {
+        name, category: 'rc1', bought: `${FEB}-10`, amount: rounds.reduce((a, x) => a + x[1], 0), currency: 'KRW', fxRate: null, fxBuffer: null,
+        how: 'lump', payBy: 'card', count: 1, fee: 0, interval: null, cancelled: false, cardId: card.json.id, refillFrom: null, ...over,
+        rounds: rounds.map(([date, amount], i) => ({ no: i + 1, date, amount, state: 'left', edited: false })),
+      })
+      if (r.status !== 201) throw new Error(`spending ${name} → ${r.status} ${r.text}`)
+      return r.json.id
+    }
+    const ids = {
+      bill: await sp('RC1 bill', {}, [[`${MAR}-14`, 100_000]]),
+      onPay: await sp('RC1 on pay day', {}, [[`${MAR}-25`, 1_000]]),
+      afterPay: await sp('RC1 after pay day', {}, [[`${MAR}-26`, 2_000]]),
+      refill: await sp('RC1 refill', { how: 'buffer', refillFrom: `${FEB}-25` }, [[`${FEB}-25`, 20_000]]),
+      bySubs: await sp('RC1 by subs', { payBy: 'subs', cardId: null }, [[`${FEB}-20`, 9_000]]),
+      // dated today: this month's subscription transfer is not empty, so this month's payouts name the subs account
+      todaySubs: await sp('RC1 by subs today', { payBy: 'subs', cardId: null, bought: today }, [[today, 3_000]]),
+    }
+    const nameOf = Object.fromEntries(Object.entries(ids).map(([k, v]) => [v, k]))
+
+    // list_spendings: the month each round counts in
+    const ls = await tool(kRead, 'list_spendings', {})
+    const counts = Object.fromEntries((ls.data?.spendings ?? []).filter((x) => nameOf[x.id]).map((x) => [nameOf[x.id], x.rounds.map((r) => r.countsIn).join(',')]))
+    ok(!ls.failed && counts.bill === FEB, `list_spendings: a card bill of 14 March counts in February, with the pay of 25 February (${counts.bill})`)
+    ok(counts.onPay === FEB, `list_spendings: a card bill dated on the pay day, 25 March, counts with the pay day before it (${counts.onPay})`)
+    ok(counts.afterPay === MAR, `list_spendings: a card bill of 26 March counts in March (${counts.afterPay})`)
+    ok(counts.refill === FEB && counts.bySubs === FEB, `list_spendings: a buffer refill of 25 February and a subscription-account round of 20 February count by their own dates (${counts.refill}, ${counts.bySubs})`)
+    const lsFeb = await tool(kRead, 'list_spendings', { month: FEB })
+    const febIds = (lsFeb.data?.spendings ?? []).map((x) => nameOf[x.id]).filter(Boolean).sort().join(',')
+    ok(febIds === 'bill,bySubs,onPay,refill' && lsFeb.data?.monthTotals?.remainderKrw === 121_000 && lsFeb.data?.monthTotals?.subscriptionAccountKrw === 9_000,
+      `list_spendings month ${FEB}: [${febIds}], off the remainder ${lsFeb.data?.monthTotals?.remainderKrw}, to the transfer ${lsFeb.data?.monthTotals?.subscriptionAccountKrw}`)
+
+    // get_overview: the paying accounts of February and March
+    const ovF = await tool(kRead, 'get_overview', { month: FEB })
+    const pay = (d, id) => (d?.distribution?.payouts ?? []).find((x) => x.accountId === id)
+    const pF = pay(ovF.data, aPay)
+    ok(!ovF.failed && pF?.account === 'RC1 pay account' && pF.cardKrw === 101_000 && pF.refillKrw === 20_000 && pF.subscriptionsKrw === 0 && pF.totalKrw === 121_000,
+      `get_overview ${FEB}: the pay account gets card ${pF?.cardKrw} + refill ${pF?.refillKrw} = ${pF?.totalKrw} (${pF?.account})`)
+    const sF = pay(ovF.data, aSubs)
+    const xferF = ovF.data?.subscriptionTransfer?.transferKrw
+    ok(sF?.subscriptionsKrw === xferF && xferF >= 9_000 && sF.cardKrw === 0 && sF.refillKrw === 0 && sF.totalKrw === xferF,
+      `get_overview ${FEB}: the subs account gets the subscription transfer ${sF?.subscriptionsKrw} (the transfer is ${xferF})`)
+    const parts = (ovF.data?.distribution?.payouts ?? []).reduce((a, x) => a + x.cardKrw + x.refillKrw, 0)
+    ok(parts === 121_000 && ovF.data?.distribution?.spendingKrw === 121_000, `get_overview ${FEB}: the card and refill parts (${parts}) are the one-off spendings off the remainder (${ovF.data?.distribution?.spendingKrw})`)
+    const rounds = (list) => (list ?? []).filter((r) => nameOf[r.spendingId]).map((r) => `${nameOf[r.spendingId]}@${r.date}>${r.countsIn}`).join(' ')
+    ok(rounds(ovF.data?.spendingRounds) === `bySubs@${FEB}-20>${FEB} refill@${FEB}-25>${FEB} bill@${MAR}-14>${FEB} onPay@${MAR}-25>${FEB}`,
+      `get_overview ${FEB}: the rounds the month counts (${rounds(ovF.data?.spendingRounds)})`)
+    const ovM = await tool(kRead, 'get_overview', { month: MAR })
+    ok(pay(ovM.data, aPay)?.cardKrw === 2_000 && pay(ovM.data, aPay)?.totalKrw === 2_000 && rounds(ovM.data?.spendingRounds) === `afterPay@${MAR}-26>${MAR}`,
+      `get_overview ${MAR}: only the bill of 26 March counts (card ${pay(ovM.data, aPay)?.cardKrw}; ${rounds(ovM.data?.spendingRounds)})`)
+    // get_schedule lists by date and names the month that counts each round
+    const sc = await tool(kRead, 'get_schedule', { from: MAR, months: 1 })
+    ok(!sc.failed && rounds(sc.data?.months?.[0]?.spendingRounds) === `bill@${MAR}-14>${FEB} onPay@${MAR}-25>${FEB} afterPay@${MAR}-26>${MAR}`,
+      `get_schedule ${MAR}: the rounds dated in it, each with the month that counts it (${rounds(sc.data?.months?.[0]?.spendingRounds)})`)
+
+    // get_allocation: this month's payouts, the same as get_overview's for the default month
+    const al = await tool(kRead, 'get_allocation', {})
+    const ov0 = await tool(kRead, 'get_overview', {})
+    const here = al.data?.payouts
+    ok(!al.failed && here?.month === ov0.data?.month && here?.period?.from === ov0.data?.period?.from && here?.period?.to === ov0.data?.period?.to,
+      `get_allocation: payouts are this month's (${here?.month}, ${here?.period?.from}~${here?.period?.to})`)
+    ok(JSON.stringify(here?.accounts) === JSON.stringify(ov0.data?.distribution?.payouts) && here?.accounts?.some((x) => x.accountId === aSubs && x.subscriptionsKrw >= 3_000 && x.account === 'RC1 subs account'),
+      `get_allocation: the same list as get_overview's, with the subs account's transfer (${JSON.stringify(here?.accounts)})`)
+    ok(Array.isArray(al.data?.targets) && Array.isArray(al.data?.phases) && Array.isArray(al.data?.accounts), 'get_allocation: the definition is still there')
+
+    // the projection of the paying account and of the subs account (balance records of today)
+    for (const [accountId, amount] of [[aPay, 500_000], [aSubs, 100_000]]) {
+      const b = await U('POST', '/api/balances', { accountId, date: today, amount, note: '' })
+      if (b.status !== 201) throw new Error(`balance → ${b.status} ${b.text}`)
+    }
+    const la = await tool(kRead, 'list_accounts', { months: 40 })
+    const proj = (id, m) => la.data?.accounts?.find((a) => a.id === id)?.projection?.find((r) => r.month === m)
+    const [f, m] = [proj(aPay, FEB), proj(aPay, MAR)]
+    ok(!la.failed && f?.inflowKrw === 121_000 && f.outflowKrw === 0,
+      `list_accounts ${FEB}, the pay account: in ${f?.inflowKrw} (the card rounds 101,000 with the transfer + the refill 20,000), out ${f?.outflowKrw}`)
+    // March: the bill of 26 March comes in with March's transfer; out go the three bills and the buffer use's own bill of 14 March
+    ok(m?.inflowKrw === 2_000 && m.outflowKrw === 123_000, `list_accounts ${MAR}, the pay account: in ${m?.inflowKrw}, out ${m?.outflowKrw} (100,000 + 1,000 + 2,000 + the buffer use's bill 20,000)`)
+    ok(m?.endKrw === 500_000, `list_accounts ${MAR}, the pay account: what came in for the cards has left for them (${m?.endKrw})`)
+    const sf = proj(aSubs, FEB)
+    ok(sf?.inflowKrw === xferF && sf.outflowKrw === 9_000, `list_accounts ${FEB}, the subs account: in ${sf?.inflowKrw} (the transfer), out ${sf?.outflowKrw} (the round paid from it on 20 February)`)
+
+    // the pay basis: "March" is 25 February to 24 March, the period that holds the bill of 14 March; a bill on a pay date goes with the pay before
+    ok((await put({ ...BODY, ...NONE, monthBasis: 'pay', monthNaming: 'auto' })).status === 200, 'outgo: the pay basis')
+    const lsP = await tool(kRead, 'list_spendings', {})
+    const cP = Object.fromEntries((lsP.data?.spendings ?? []).filter((x) => nameOf[x.id]).map((x) => [nameOf[x.id], x.rounds[0].countsIn]))
+    ok(cP.bill === MAR && cP.onPay === MAR && cP.afterPay === APR && cP.refill === MAR,
+      `list_spendings, pay basis: 14 March → ${cP.bill}, 25 March → ${cP.onPay}, 26 March → ${cP.afterPay}, the refill of 25 February → ${cP.refill}`)
+    const ovP = await tool(kRead, 'get_overview', { month: MAR })
+    ok(ovP.data?.period?.from === `${FEB}-25` && pay(ovP.data, aPay)?.cardKrw === 101_000 && pay(ovP.data, aPay)?.refillKrw === 20_000,
+      `get_overview ${MAR}, pay basis: from ${ovP.data?.period?.from}, the pay account gets card ${pay(ovP.data, aPay)?.cardKrw} + refill ${pay(ovP.data, aPay)?.refillKrw}`)
+
+    for (const id of Object.values(ids)) await U('DELETE', `/api/spendings/${id}`)
+    const back = await put({ ...BODY, payShift: was.payShift, transferShift: was.transferShift, billingShift: was.billingShift, monthBasis: was.monthBasis, monthBasisCardId: was.monthBasisCardId, monthNaming: was.monthNaming })
+    ok(back.status === 200 && !(await state()).spendings.some((x) => nameOf[x.id]), `outgo: the spendings are gone and the settings are put back → ${back.status}`)
   }
 
   // an account whose basis is a card can be deleted (the settings row goes before the card)
