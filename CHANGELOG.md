@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.9 — 2026-11-26
+
+AI connection, notices on every device, passwords for external sign-ins and the in-app connection guide: the same code
+as 0.1.9-rc.3 below, with rc.1 and rc.2 before it. Released on the user's instruction ("배포해"); the screen checks of
+rc.1 to rc.3 and the real-app checks (V-9) were not reported before it. Migrations 0039–0043 run at start.
+
 ## 0.1.9-rc.3 — 2026-11-26
 
 How to connect each AI app, inside the app. Released as a prerelease after the merge (PR #70, merged by the user:

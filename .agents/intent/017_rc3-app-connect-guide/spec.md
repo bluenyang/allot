@@ -3,6 +3,13 @@ intent: "017"
 status: accepted
 approvals:
   - { role: user, kind: summary, by: BlueNyang, at: "2026-11-26", words: "진행", rev: 78a3fa8 }
+  - role: user
+    kind: stable
+    by: BlueNyang
+    at: "2026-11-26"
+    words: "배포해"
+    rev: 0b2acd4
+    note: "0.1.9-rc.3을 :15173에 올리고 PM이 화면 확인(rc.3 V-7, rc.2 V-8 — spec 016, 0.1.9 V-9·V-10 — spec 015)을 부탁한 뒤의 답. 그 확인 결과는 받지 않았음(통과로 기록하지 않음). 앞서 rc.2 뒤 '정식 배포하자' → '정지'(`.loctx/history/0.1.9.md`). PM은 '배포해'를 0.1.9 정식 릴리스 지시(앞의 '정지'를 푸는 말)로 해석함 — rc.3은 이미 배포돼 있었음."
 summary_for_user: |
   0.1.9-rc.3은 작업 단위 6개(W-1~W-6)입니다. 순서는 안내 내용 → 화면(카드·모달) → 스킬 ZIP → MCP 서버 자기소개 → 문서 → 시험입니다.
   설정 › AI·연동에 '앱 연결' 카드를 두고 앱 아홉 가지를 보여 줍니다: Claude Code(플러그인·OAuth), Claude Code(플러그인·API 키), claude.ai·데스크톱·휴대폰, ChatGPT, Codex, Gemini CLI, Antigravity CLI, API 키로 직접, 그 밖의 에이전트(수동).
