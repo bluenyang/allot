@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { Account, AllocationTarget, Balance, Card, Phase, Settings, Spending } from '../../src/data/types'
 import { goalAlerts, goalMonth, maturityAlerts, maturityOf, nextTransferYm, projectAccount, yearContribution, type AccountState } from '../../src/lib/calc'
 import { accountMonthIn } from '../../src/lib/accounts'
+import { buildNotices } from '../../src/lib/notices'
 
 // Pay day 25 (a month is named by its end: "2026-12" = 11-25 … 12-24), transfer day 26, no weekend rule.
 const S: Settings = { ...DEFAULT_SETTINGS, netPay: 3_000_000, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000 }
@@ -224,4 +225,21 @@ test('the calendar basis gives what the same call gave without the month keys', 
       assert.equal(nextTransferYm(today, withKeys, off, CARDS), nextTransferYm(today, old as Settings, off), today)
     }
   }
+})
+
+test('buildNotices: this month\'s left over is the one of the month of the basis that holds today; the yearly limit stays the calendar year\'s', () => {
+  // the fixed target takes 3,500,000 from the month NAMED 2027-01: that month is 500,000 short (pay 3,000,000)
+  const short: Phase[] = [phases[0]!, { ...phases[1]!, amounts: { tf: 3_500_000 } }]
+  const limit = { ...emergency, annualLimit: 2_500_000 }
+  const st = (s: Settings) => state(s, { phases: short, accounts: [limit], balances: [] })
+  const pending = { proposals: 0, goalAccounts: [] }
+  const kinds = (s: Settings, today: string) => buildNotices(st(s), today, none, pending).map((n) => (n.kind === 'remainderShort' ? `${n.kind} ${n.month} ${n.remainder}` : n.kind === 'yearLimit' ? `${n.kind} ${n.year} ${n.contribution}` : n.kind))
+  // calendar: 12-25 is in 2026-12 (left over 2,800,000); the year 2026 holds 2,400,000 (96% of the limit)
+  assert.deepEqual(kinds(S, '2026-12-25'), ['yearLimit 2026 2400000'])
+  // 2027-01 is short, and the year 2027 holds twelve times 3,500,000
+  assert.deepEqual(kinds(S, '2027-01-01'), ['remainderShort 2027-01 -500000', 'yearLimit 2027 42000000'])
+  // pay basis: 12-24 is the last day of "2026-12"; 12-25 opens "2027-01", which is short. The year is still 2026, and
+  // by date it holds 2,200,000 + the transfer of 12-26 (the month named 2027-01: 3,500,000) = 5,700,000
+  assert.deepEqual(kinds(PAY, '2026-12-24'), ['yearLimit 2026 5700000'])
+  assert.deepEqual(kinds(PAY, '2026-12-25'), ['remainderShort 2027-01 -500000', 'yearLimit 2026 5700000'])
 })
