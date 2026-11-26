@@ -768,6 +768,14 @@ export function dayIn(ym: string, day: number, which: ShiftDate, ctx: MonthCtx):
   return monthDay(m1, nominalDay(m1, day) < next ? day : Number(next.slice(8)) - 1, shift, ctx.off)
 }
 
+/**
+ * Pay day, transfer day and card billing day of the month named `ym`, each the one inside the month's period and moved
+ * by its own rule (spec 018 S-3). The calendar basis gives `monthDates`.
+ */
+export function monthDatesIn(ym: string, s: Pick<Settings, 'payDay' | 'transferDay' | 'billingDay'>, ctx: MonthCtx) {
+  return { pay: dayIn(ym, s.payDay, 'pay', ctx), transfer: dayIn(ym, s.transferDay, 'transfer', ctx), billing: dayIn(ym, s.billingDay, 'billing', ctx) }
+}
+
 /** What `projectAccount` and the goal and limit checks read. */
 export interface AccountState extends MonthState {
   accounts: Account[]
