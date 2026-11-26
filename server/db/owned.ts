@@ -8,8 +8,9 @@ import { lockFor, setUser } from './scope'
 
 export type OwnedTable = PgTable & { userId: PgColumn }
 
+// `settings` comes after `card`: its month basis card points at one (spec 018 S-3).
 export const OWNED: OwnedTable[] = [
-  t.settings, t.subscription, t.phase, t.bankAccount, t.card, t.allocationTarget, t.planEvent,
+  t.subscription, t.phase, t.bankAccount, t.card, t.settings, t.allocationTarget, t.planEvent,
   t.checkItem, t.debt, t.remainderSplit, t.planChange, t.phaseAmount,
   t.preference, t.holidaySet, t.mcpProposal, t.spending, t.spendingRound,
   t.livingItem, t.livingPhaseAmount, t.accountPhaseAmount, t.accountBalance, t.monthAdjust,

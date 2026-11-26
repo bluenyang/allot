@@ -73,6 +73,15 @@ export const settings = pgTable('settings', {
   /** When the server last refreshed it, and why the last try failed (null after a success). Written by the server only. */
   fxAutoAt: timestamp('fx_auto_at', { withTimezone: true, mode: 'string' }),
   fxAutoError: text('fx_auto_error'),
+  /**
+   * What a "month" is (spec 018 S-3): 'calendar' = the 1st to the last day, 'card' = the usage period of the card
+   * `month_basis_card_id` (calendar when there is no card or the card has no first day), 'pay' = from the actual pay
+   * date to the day before the next one. The card id may stay while another basis is picked.
+   */
+  monthBasis: text('month_basis').$type<'calendar' | 'card' | 'pay'>().notNull().default('calendar'),
+  monthBasisCardId: text('month_basis_card_id'),
+  /** Which calendar month a period is named after: where it starts, where it ends, or 'auto' (start when its first day is the 15th or earlier). */
+  monthNaming: text('month_naming').$type<'auto' | 'start' | 'end'>().notNull().default('auto'),
 }, (t) => [
   userScoped(t.userId),
   check('settings_saving_split', sql`${t.savingSplit} in ('amount', 'ratio')`),
@@ -80,6 +89,11 @@ export const settings = pgTable('settings', {
   check('settings_pay_shift', sql`${t.payShift} in ('none', 'before', 'after')`),
   check('settings_transfer_shift', sql`${t.transferShift} in ('none', 'before', 'after')`),
   check('settings_billing_shift', sql`${t.billingShift} in ('none', 'before', 'after')`),
+  check('settings_month_basis', sql`${t.monthBasis} in ('calendar', 'card', 'pay')`),
+  check('settings_month_naming', sql`${t.monthNaming} in ('auto', 'start', 'end')`),
+  // The basis card is one of the user's own cards (the pattern of spending_card_fk). Deleting that card puts the basis
+  // back first (server/ops.ts), so this never refuses a card delete.
+  foreignKey({ name: 'settings_month_basis_card_fk', columns: [t.userId, t.monthBasisCardId], foreignColumns: [card.userId, card.id] }),
 ])
 
 /**
