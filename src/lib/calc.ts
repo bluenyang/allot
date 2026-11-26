@@ -955,7 +955,8 @@ export function goalAlerts(st: AccountState, today: string, off: ReadonlySet<str
   for (const a of st.accounts) {
     if (a.goal === null || a.goal === undefined || a.stopFrom || a.goalAck === a.goal) continue
     const month = goalMonthBy(a, st, off, now)
-    if (month) out.push({ account: a, month, stopFrom: nextTransferYm(today, st.settings, off, st.cards) })
+    // the next transfer month reads the same holidays as this month does (the state's own, else the caller's)
+    if (month) out.push({ account: a, month, stopFrom: nextTransferYm(today, st.settings, st.off ?? off, st.cards) })
   }
   return out
 }
@@ -1376,7 +1377,7 @@ export function maturityAlerts(st: AccountState, today: string, off: ReadonlySet
     if (a.group !== 'saving' || a.stopFrom) continue
     const m = maturityOf(a)
     if (!m || m.ym > now || handled(a.id, m.ym)) continue
-    out.push({ account: a, month: m.ym, stopFrom: nextTransferYm(today, st.settings, off, st.cards) })
+    out.push({ account: a, month: m.ym, stopFrom: nextTransferYm(today, st.settings, st.off ?? off, st.cards) })
   }
   return out
 }

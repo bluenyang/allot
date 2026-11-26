@@ -243,3 +243,23 @@ test('buildNotices: this month\'s left over is the one of the month of the basis
   assert.deepEqual(kinds(PAY, '2026-12-24'), ['yearLimit 2026 5700000'])
   assert.deepEqual(kinds(PAY, '2026-12-25'), ['remainderShort 2027-01 -500000', 'yearLimit 2026 5700000'])
 })
+
+test('goalAlerts and maturityAlerts: the next transfer month is read with the state\'s own holidays, like this month', () => {
+  // pay day 25 moved to the business day before: 2026-12-25 closed makes 12-24 the first day of "2027-01"; its transfer
+  // date (the 26th, a Saturday, with the rule "before") is then Thursday 12-24 too, not Friday 12-25
+  const before: Settings = { ...PAY, payShift: 'before', transferShift: 'before' }
+  const closed: ReadonlySet<string> = new Set(['2026-12-25'])
+  const item = acc('sv', { group: 'saving', amount: 100_000, from: '2026-01', term: '12 months' })
+  const st = state(before, { accounts: [item], balances: [] })
+  // the state has the holidays, the caller hands none: on 12-24 the month named 2027-01 has begun and its transfer is today
+  assert.deepEqual(maturityAlerts({ ...st, off: closed }, '2026-12-24', none).map((a) => [a.month, a.stopFrom]), [['2027-01', '2027-02']])
+  // the caller's holidays, when the state has none: the same answer
+  assert.deepEqual(maturityAlerts(st, '2026-12-24', closed).map((a) => [a.month, a.stopFrom]), [['2027-01', '2027-02']])
+  // without the holiday the pay date is 12-25: 12-24 is still "2026-12", the item is not due yet
+  assert.deepEqual(maturityAlerts(st, '2026-12-24', none), [])
+  const goal = { ...emergency, goal: 1_400_000 }
+  const gs = state(before, { accounts: [goal] })
+  // the record of 11-25 is in "2026-12"; "2027-01" (from 12-24) reaches the goal with its transfer of 12-24
+  assert.deepEqual(goalAlerts({ ...gs, off: closed }, '2026-12-24', none).map((a) => [a.month, a.stopFrom]), [['2027-01', '2027-02']])
+  assert.deepEqual(goalAlerts(gs, '2026-12-24', closed).map((a) => [a.month, a.stopFrom]), [['2027-01', '2027-02']])
+})
