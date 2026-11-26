@@ -2,9 +2,15 @@
 id: "018"
 slug: real-use-fixes
 version: 0.1.10
-status: draft
+status: approved
 origin: user
-approvals: []
+approvals:
+  - role: user
+    by: BlueNyang
+    at: "2026-11-26"
+    words: "승인"
+    rev: a8722d7
+    note: "PM 질문 '이대로 intent 018을 승인하실까요?'에 대한 답. 그 사이 사용자가 상업성 조사를 따로 시켰고(이 intent 범위 밖, 로컬 기록), 조사 보고 뒤에 답함."
 waivers: []
 supersedes: null
 ---
