@@ -4,6 +4,13 @@ status: accepted
 approvals:
   - { role: user, kind: summary, by: BlueNyang, at: "2026-11-26", words: "진행", rev: 78a3fa8 }
   - role: user
+    kind: screen-check
+    by: BlueNyang
+    at: "2026-11-26"
+    words: "우석 확인은 했다. 잘되어서 정식 배포해도 된다고 한거였어."
+    rev: 0b2acd4
+    note: "회고에서 받은 말(정식 릴리스 뒤). 0.1.9-rc.3을 :15173에 올린 뒤 화면을 한 번 확인함 — rc.1~rc.3 기능을 함께 본 확인 하나로 기록(rc마다 따로가 아님: rc.3 V-7, rc.2 V-8, rc.1 V-10). V-9 질문에: \"화면만 확인함. OAuth는 어차피 https 환경이 아니라 사용해볼 수 없었음. 다만, 0.1.8에서 AI 앱으로 mcp를 연결하여 사용은 해보았음.\" — OAuth로 실제 AI 앱(V-9)은 확인 안 됨."
+  - role: user
     kind: stable
     by: BlueNyang
     at: "2026-11-26"
