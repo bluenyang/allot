@@ -337,7 +337,10 @@ export const incomeExtra = pgTable('income_extra', {
   check('income_extra_amount_nonneg', sql`${t.amount} >= 0`),
 ])
 
-/** A card (spec 013 S-13): the account its bill is paid from, and its billing day (null = the settings' one). */
+/**
+ * A card (spec 013 S-13): the account its bill is paid from, and its billing day (null = the settings' one).
+ * `usage_from` (spec 018 S-2): the first day of its usage period (null = a purchase is billed the month after).
+ */
 export const card = pgTable('card', {
   userId: owner(),
   id: text('id').primaryKey(),
@@ -346,6 +349,7 @@ export const card = pgTable('card', {
   last4: text('last4').notNull().default(''),
   accountId: text('account_id'),
   billingDay: smallint('billing_day'),
+  usageFrom: smallint('usage_from'),
   note: text('note'),
 }, (t) => [
   userScoped(t.userId),
@@ -353,6 +357,7 @@ export const card = pgTable('card', {
   foreignKey({ name: 'card_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
   check('card_last4', sql`${t.last4} = '' or ${t.last4} ~ '^[0-9]{4}$'`),
   check('card_billing_day', sql`${t.billingDay} is null or ${t.billingDay} between 1 and 31`),
+  check('card_usage_from', sql`${t.usageFrom} is null or ${t.usageFrom} between 1 and 31`),
 ])
 
 /**

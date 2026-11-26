@@ -330,6 +330,13 @@
       "when": 1795707298657,
       "tag": "0046_drop_day_shift",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795708838595,
+      "tag": "0047_card_usage_from",
+      "breakpoints": true
     }
   ]
 }
