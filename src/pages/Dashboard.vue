@@ -279,7 +279,7 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
     </div>
     <PageHeader :title="monthTitle" class="dash-ph">
       <template #desc>
-        <span v-if="period" class="num ph-hide" data-testid="month-period">{{ period }} · </span>
+        <span v-if="period" class="num ph-hide" data-testid="home-period">{{ period }} · </span>
         {{ t('calendar.kind.pay') }} <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="note(dates.pay)">{{ note(dates.pay) }}</small></span>
         · {{ t('calendar.kind.transfer') }} <span :title="moved(dates.transfer.shifted)">{{ md(dates.transfer.date) }}<small v-if="note(dates.transfer)">{{ note(dates.transfer) }}</small></span>
       </template>

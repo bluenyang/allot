@@ -1,6 +1,7 @@
 // spec 018 (0.1.10-rc.1, V-6): the calculation changes on the screens. W-1: the weekend and holiday rule of each date
 // (Settings › General › 기준 일정) and of each of the user's own monthly dates. W-2: a card's usage period (the card
 // editor of 월급 분배, the card list, and the bill date of a new card spending).
+// W-4: the month basis (Settings › General › 달의 기준): the confirmation, the period next to a month's name, the numbers.
 // Every row made here carries the run mark and is removed by id in `finally`; the settings the tests change are put back.
 // It changes the settings, so it runs only on a throwaway server: the test server (:15174) or the API of
 // scripts/test-server/disposable.sh (:15184, started with STATIC_DIR=dist so it serves the built screens).
@@ -446,6 +447,282 @@ test.describe.serial('W-2 the card\'s usage period', () => {
     } finally {
       await api(request, 'PUT', '/api/preferences', prefs)
       await api(request, 'DELETE', `/api/cards/${id}`)
+    }
+  })
+})
+
+// ── W-4: what a month is (spec 018 S-3, S-4) ──
+type Extra = { id: string; date: string; name: string; amount: number }
+const p2 = (n: number) => String(n).padStart(2, '0')
+const iso = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+/** Today in Asia/Seoul (the test account's zone), as a local date. */
+const seoulToday = () => new Date(new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).replace(' ', 'T'))
+/**
+ * A pay day that puts today inside a period which does not hold every day of today's calendar month, and a day of today's
+ * calendar month outside that period: the day before the pay day, or on the 1st the pay day 2 itself (tomorrow).
+ */
+function payCase() {
+  const now = seoulToday()
+  const [y, m, day] = [now.getFullYear(), now.getMonth(), now.getDate()]
+  const pay = day === 1 ? 2 : Math.min(day, 28)
+  const outside = day === 1 ? new Date(y, m, 2) : new Date(y, m, pay - 1)
+  // the pay period that holds today: from the pay day on or before today to the day before the next one
+  const start = day >= pay ? new Date(y, m, pay) : new Date(y, m - 1, pay)
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, pay - 1)
+  const next = new Date(start.getFullYear(), start.getMonth() + 1, 1)
+  const ym = (d: Date) => `${d.getFullYear()}.${p2(d.getMonth() + 1)}`
+  const span = `${p2(start.getMonth() + 1)}-${p2(start.getDate())}~${p2(end.getMonth() + 1)}-${p2(end.getDate())}`
+  const lastDay = new Date(y, m + 1, 0).getDate()
+  return {
+    pay, outside: iso(outside), span,
+    // named after the month it starts in (first day the 15th or earlier), else after the month it ends in
+    auto: pay <= 15 ? 'start' as const : 'end' as const,
+    startName: ym(start), endName: ym(next),
+    calendar: `${ym(now)} · ${p2(m + 1)}-01~${p2(m + 1)}-${p2(lastDay)}`,
+    calendarName: ym(now),
+  }
+}
+const basisCard = (page: Page) => page.getByTestId('month-basis')
+const basisSeg = (page: Page) => page.getByRole('group', { name: '달의 기준', exact: true })
+const namingSeg = (page: Page) => page.getByRole('group', { name: '달 이름', exact: true })
+const pressed = (g: Locator, name: string) => expect(g.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'true')
+/** Pick an option of a 달의 기준 segment, read the question and answer it. */
+async function askMonth(page: Page, g: Locator, option: string, want: { before: string; after: string }, answer: '바꾸기' | '취소') {
+  await g.getByRole('button', { name: option, exact: true }).click()
+  const dlg = page.getByRole('alertdialog')
+  await expect(dlg.getByRole('heading', { name: '달의 기준을 바꿀까요?' })).toBeVisible()
+  await expect(dlg.getByText('달 이름은 그대로이고, 그 달이 가리키는 날짜가 바뀌어요.')).toBeVisible()
+  await expect(dlg.getByTestId('month-before')).toHaveText(want.before)
+  await expect(dlg.getByTestId('month-after')).toHaveText(want.after)
+  if (answer === '취소') {
+    await dlg.getByRole('button', { name: '취소', exact: true }).click()
+  } else {
+    const saved = page.waitForResponse((r) => r.request().method() === 'PUT' && new URL(r.url()).pathname === '/api/settings')
+    await dlg.getByRole('button', { name: '바꾸기', exact: true }).click()
+    expect((await saved).ok()).toBe(true)
+  }
+  await expect(dlg).toBeHidden()
+}
+const amountOf = async (l: Locator) => Number(((await l.textContent()) ?? '').replace(/[^\d]/g, ''))
+/** What comes in this month, as the home's 3초 card shows it. */
+const homeIn = (page: Page) => page.locator('section.hero .eqc').first().locator('.num.big')
+const headerMonth = (page: Page) => page.locator('header.topbar .monthnav .ml')
+
+test.describe.serial('W-4 the month basis', () => {
+  test('(S-3, S-4, V-6) the basis is changed after a confirmation that shows this month before and after; the month shows its period and the numbers follow; the calendar puts the screens back', async ({ page, request }) => {
+    const c = payCase()
+    const st0 = (await api(request, 'GET', '/api/state')).json as State & { preferences: Record<string, unknown> }
+    const s0 = st0.settings
+    const prefs = st0.preferences
+    const name = `${MARK}-mb`
+    let extra = ''
+    try {
+      // the calendar basis, the pay day of the case, ISO dates, and money that came in once on a day of this calendar
+      // month that the pay period of today does not hold
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payDay: c.pay, payShift: 'none', monthBasis: 'calendar', monthBasisCardId: null, monthNaming: 'auto' })).status).toBe(200)
+      const made = await api(request, 'POST', '/api/income-extras', { date: c.outside, name, amount: 5_000, note: '' })
+      expect(made.status).toBe(201)
+      extra = (made.json as Extra).id
+
+      // ── the calendar basis: the month's name alone, as before ──
+      await page.goto('/')
+      await expect(headerMonth(page)).toHaveText(c.calendarName.replace('.', '. '))
+      await expect(page.getByTestId('month-period')).toHaveCount(0)
+      await expect(page.getByTestId('home-period')).toHaveCount(0)
+      const calIn = await amountOf(homeIn(page))
+      expect(calIn).toBeGreaterThanOrEqual(5_000)
+
+      // ── Settings › General › 달의 기준 ──
+      await menu(page, '설정')
+      await expect(basisCard(page)).toBeVisible()
+      await pressed(basisSeg(page), '1일~말일')
+      await expect(namingSeg(page)).toHaveCount(0)
+      await expect(page.getByTestId('month-preview')).toHaveText(`이번 달: ${c.calendar}`)
+      const payName = c.auto === 'start' ? c.startName : c.endName
+      const payLine = `${payName} · ${c.span}`
+      // cancelled: nothing is saved
+      await askMonth(page, basisSeg(page), '월급', { before: c.calendar, after: payLine }, '취소')
+      await pressed(basisSeg(page), '1일~말일')
+      expect((await state(request)).settings.monthBasis).toBe('calendar')
+      // confirmed: saved, and the block shows the new month
+      await askMonth(page, basisSeg(page), '월급', { before: c.calendar, after: payLine }, '바꾸기')
+      expect((await state(request)).settings).toMatchObject({ monthBasis: 'pay', monthNaming: 'auto', payDay: c.pay })
+      await pressed(basisSeg(page), '월급')
+      await pressed(namingSeg(page), '자동')
+      await expect(basisCard(page)).toContainText(`자동: 시작일이 ${c.pay}일이라 지금은 ${c.auto === 'start' ? '시작하는 달' : '끝나는 달'}이에요.`)
+      await expect(page.getByTestId('month-preview')).toHaveText(`이번 달: ${payLine}`)
+
+      // ── the screens: the month with its period, and the money of that period ──
+      await menu(page, '현황')
+      await expect(headerMonth(page)).toHaveText(`${payName.replace('.', '. ')} · ${c.span}`)
+      await expect(page.getByTestId('home-period')).toHaveText(`${c.span} ·`)
+      // the money that came in on a day outside the period is not this month's any more
+      expect(await amountOf(homeIn(page))).toBe(calIn - 5_000)
+      await menu(page, '수입')
+      await expect(headerMonth(page)).toHaveText(`${payName.replace('.', '. ')} · ${c.span}`)
+      await expect(page.getByTestId('sum-total')).toHaveText(/\d/)
+      expect(await amountOf(page.getByTestId('sum-total'))).toBe(calIn - 5_000)
+      await expect(page.getByText(name)).toHaveCount(0)
+      // 월급 분배 › 월별 시뮬레이션: this month of the basis, with its period
+      await menu(page, '월급 분배')
+      await page.getByRole('tab', { name: '월별 시뮬레이션' }).click()
+      await expect(page.getByRole('heading', { name: new RegExp(`^${payName.replace('.', '\\.')} `) })).toContainText(c.span)
+      // 지출: the month's reflection names the same month and period
+      await menu(page, '지출')
+      await expect(page.locator('#ms-t')).toContainText(`${payName.replace('.', '. ')}`)
+      await expect(page.locator('#ms-t')).toContainText(c.span)
+
+      // ── the month's name: the other one of the two; the dates stay, the name changes ──
+      await menu(page, '설정')
+      const other = c.auto === 'start' ? { word: '끝나는 달', name: c.endName, value: 'end' } : { word: '시작하는 달', name: c.startName, value: 'start' }
+      await askMonth(page, namingSeg(page), other.word, { before: payLine, after: `${other.name} · ${c.span}` }, '바꾸기')
+      expect((await state(request)).settings).toMatchObject({ monthBasis: 'pay', monthNaming: other.value })
+      await pressed(namingSeg(page), other.word)
+      await expect(page.getByTestId('month-preview')).toHaveText(`이번 달: ${other.name} · ${c.span}`)
+      await menu(page, '현황')
+      await expect(headerMonth(page)).toHaveText(`${other.name.replace('.', '. ')} · ${c.span}`)
+      // the saved value is read back after a reload
+      await page.goto('/settings/general')
+      await pressed(basisSeg(page), '월급')
+      await pressed(namingSeg(page), other.word)
+
+      // ── back to the calendar: the screens are what they were ──
+      await askMonth(page, basisSeg(page), '1일~말일', { before: `${other.name} · ${c.span}`, after: c.calendar }, '바꾸기')
+      expect((await state(request)).settings.monthBasis).toBe('calendar')
+      await pressed(basisSeg(page), '1일~말일')
+      await expect(namingSeg(page)).toHaveCount(0)
+      await expect(page.getByTestId('month-preview')).toHaveText(`이번 달: ${c.calendar}`)
+      await menu(page, '현황')
+      await expect(headerMonth(page)).toHaveText(c.calendarName.replace('.', '. '))
+      await expect(page.getByTestId('month-period')).toHaveCount(0)
+      await expect(page.getByTestId('home-period')).toHaveCount(0)
+      expect(await amountOf(homeIn(page))).toBe(calIn)
+      await menu(page, '수입')
+      await expect(page.getByText(name).first()).toBeVisible()
+      expect(await amountOf(page.getByTestId('sum-total'))).toBe(calIn)
+    } finally {
+      if (extra) await api(request, 'DELETE', `/api/income-extras/${extra}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
+  test('(S-3, V-6) the card basis: a card is picked; without a first day of its usage period it is the calendar month; with one the month is that period; deleting the card puts the calendar back', async ({ page, request }) => {
+    const s0 = (await state(request)).settings
+    const prefs = ((await api(request, 'GET', '/api/state')).json as { preferences: Record<string, unknown> }).preferences
+    const name = `${MARK}-mbc`
+    const c = payCase()
+    const made = await api(request, 'POST', '/api/cards', { name, last4: '', accountId: null, billingDay: 25, usageFrom: null, note: '' })
+    expect(made.status).toBe(201)
+    const card = made.json as CardRow
+    let gone = false
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, monthBasis: 'calendar', monthBasisCardId: null, monthNaming: 'auto' })).status).toBe(200)
+      await page.goto('/settings/general')
+      // the card has no usage period: the question shows the same month on both sides
+      await askMonth(page, basisSeg(page), '카드 집계', { before: c.calendar, after: c.calendar }, '바꾸기')
+      const saved = (await state(request)).settings
+      expect(saved.monthBasis).toBe('card')
+      // the card picked for it: the first card with a usage period, else the first card — a card of this account either way
+      const picked = (await state(request)).cards.find((x) => x.id === saved.monthBasisCardId)
+      expect(picked, 'a card of the account is the basis card').toBeTruthy()
+      // make this run's card the basis card through the select
+      if (picked!.id !== card.id) {
+        await choose(page.locator('#g-mcard'), card.id)
+        const dlg = page.getByRole('alertdialog')
+        await expect(dlg.getByTestId('month-after')).toHaveText(c.calendar)
+        const put = page.waitForResponse((r) => r.request().method() === 'PUT' && new URL(r.url()).pathname === '/api/settings')
+        await dlg.getByRole('button', { name: '바꾸기', exact: true }).click()
+        expect((await put).ok()).toBe(true)
+        await expect(dlg).toBeHidden()
+      }
+      expect((await state(request)).settings).toMatchObject({ monthBasis: 'card', monthBasisCardId: card.id })
+      await expect(page.locator('#g-mcard')).toContainText(name)
+      await expect(page.getByTestId('month-card-note')).toHaveText('이 카드는 이용 기간 시작일이 비어 있어서 1일~말일과 같아요. 카드에 시작일을 넣으면 그 기간을 써요.')
+      await expect(page.getByTestId('month-preview')).toHaveText(`이번 달: ${c.calendar}`)
+      await menu(page, '현황')
+      await expect(page.getByTestId('month-period')).toHaveCount(0)
+
+      // the card gets a first day: the month is its usage period (the period that holds today, from that day)
+      const now = seoulToday()
+      const from = now.getDate() === 1 ? 2 : Math.min(now.getDate(), 28)
+      expect((await api(request, 'PUT', `/api/cards/${card.id}`, { name, last4: '', accountId: null, billingDay: 25, usageFrom: from, note: '' })).status).toBe(200)
+      await page.goto('/settings/general')
+      await expect(page.getByTestId('month-card-note')).toHaveCount(0)
+      const cardName = c.auto === 'start' ? c.startName : c.endName
+      await expect(page.getByTestId('month-preview')).toHaveText(`이번 달: ${cardName} · ${c.span}`)
+      await expect(page.locator('#g-mcard')).toContainText(`이용 기간 ${from}일부터`)
+      await menu(page, '현황')
+      await expect(headerMonth(page)).toHaveText(`${cardName.replace('.', '. ')} · ${c.span}`)
+
+      // the basis card is deleted: the basis is the calendar month again (spec 018 S-12)
+      expect((await api(request, 'DELETE', `/api/cards/${card.id}`)).status).toBe(204)
+      gone = true
+      expect((await state(request)).settings).toMatchObject({ monthBasis: 'calendar', monthBasisCardId: null })
+      await page.goto('/settings/general')
+      await pressed(basisSeg(page), '1일~말일')
+      await expect(page.locator('#g-mcard')).toHaveCount(0)
+      await expect(page.getByTestId('month-preview')).toHaveText(`이번 달: ${c.calendar}`)
+    } finally {
+      if (!gone) await api(request, 'DELETE', `/api/cards/${card.id}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
+  test('(V-6) on a phone the month bar shows the period without sideways scrolling, and the English screen words the block and the question', async ({ page, request }) => {
+    const c = payCase()
+    const s0 = (await state(request)).settings
+    const prefs = ((await api(request, 'GET', '/api/state')).json as { preferences: Record<string, unknown> }).preferences
+    const fits = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'us', language: 'ko' })).status).toBe(200)
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payDay: c.pay, payShift: 'none', monthBasis: 'pay', monthBasisCardId: null, monthNaming: 'auto' })).status).toBe(200)
+      await page.setViewportSize({ width: 390, height: 844 })
+      // the period in the user's date format (MM/DD)
+      const us = c.span.replace(/-/g, '/')
+      await page.goto('/')
+      await expect(page.getByTestId('month-period-phone')).toHaveText(`${us} ·`)
+      expect(await fits()).toBe(true)
+      await page.goto('/income')
+      await expect(page.getByTestId('month-period-phone')).toHaveText(`${us} ·`)
+      expect(await fits()).toBe(true)
+      await page.goto('/settings/general')
+      await expect(basisCard(page)).toBeVisible()
+      await expect(page.getByTestId('month-preview')).toContainText(us)
+      expect(await fits()).toBe(true)
+      await namingSeg(page).getByRole('button', { name: c.auto === 'start' ? '끝나는 달' : '시작하는 달', exact: true }).click()
+      const dlg = page.getByRole('alertdialog')
+      await expect(dlg.getByTestId('month-after')).toContainText(us)
+      const box = (await dlg.boundingBox())!
+      expect(box.x >= 0 && box.x + box.width <= 390, 'the question is inside the screen').toBe(true)
+      expect(await fits()).toBe(true)
+      await dlg.getByRole('button', { name: '취소', exact: true }).click()
+      await expect(dlg).toBeHidden()
+
+      // English
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'us', language: 'en' })).status).toBe(200)
+      await page.reload()
+      const en = page.getByTestId('month-basis')
+      await expect(page.getByRole('heading', { name: 'What a month is', exact: true })).toBeVisible()
+      const enBasis = page.getByRole('group', { name: 'What a month is', exact: true })
+      await expect(enBasis.getByRole('button', { name: 'Pay date', exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await expect(en).toContainText(`Auto: the first day is ${c.pay}, so now it is: ${c.auto === 'start' ? 'Start month' : 'End month'}.`)
+      await expect(page.getByTestId('month-preview')).toHaveText(new RegExp(`^This month: \\d{4}\\.\\d{2} · ${us}$`))
+      await enBasis.getByRole('button', { name: '1st to last day', exact: true }).click()
+      const ask = page.getByRole('alertdialog')
+      await expect(ask.getByRole('heading', { name: 'Change what a month is?' })).toBeVisible()
+      await expect(ask.getByText('Month names stay as they are; the dates each one stands for change.')).toBeVisible()
+      await expect(ask.getByText('This month now')).toBeVisible()
+      await expect(ask.getByText('This month after')).toBeVisible()
+      expect(await fits()).toBe(true)
+      await ask.getByRole('button', { name: 'Cancel', exact: true }).click()
+      expect((await state(request)).settings.monthBasis).toBe('pay')
+    } finally {
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
     }
   })
 })
