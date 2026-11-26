@@ -390,9 +390,14 @@ test('list_accounts: fields, balance records, projection, goal month, yearly con
   assert.deepEqual(liv.projection, projectAccount(livAcc, bst, none, '2026-11', 4)!.map((r) => ({ month: r.ym, inflowKrw: r.inflow, outflowKrw: r.outflow, endKrw: r.end })))
   assert.deepEqual(l.accounts[4]!.targets, [{ id: 't-fix', name: 'Emergency', kind: 'fixed' }])
   assert.deepEqual(l.cards, [
-    { id: 'c1', name: 'E2E-Card', last4: '9876', accountId: 'living-acc', account: 'E2E-living-acc', billingDay: 12, effectiveBillingDay: 12 },
-    { id: 'c2', name: 'E2E-Other', last4: '', accountId: null, account: null, billingDay: null, effectiveBillingDay: 14 },
+    { id: 'c1', name: 'E2E-Card', last4: '9876', accountId: 'living-acc', account: 'E2E-living-acc', billingDay: 12, effectiveBillingDay: 12, usageFrom: null },
+    { id: 'c2', name: 'E2E-Other', last4: '', accountId: null, account: null, billingDay: null, effectiveBillingDay: 14, usageFrom: null },
   ])
+  // a card's usage period (spec 018 S-2): the first day as saved, 1 too; the bill of its buffer use follows it
+  // (bought on November 18th, billing day 12, first day 15: the period ends on December 14th, so the bill is January 12th)
+  const used = accountList({ ...bd, cards: bd.cards!.map((c) => (c.id === 'c1' ? { ...c, usageFrom: 15 } : { ...c, usageFrom: 1 })) }, now, 4)
+  assert.deepEqual(used.cards.map((c) => [c.id, c.usageFrom]), [['c1', 15], ['c2', 1]])
+  assert.deepEqual(used.accounts[3]!.projection!.slice(0, 3).map((r) => [r.month, r.outflowKrw]), [['2026-11', 0], ['2026-12', 0], ['2027-01', 400_000]])
   // the default is twelve months from this month
   assert.equal(accountList(bd, now).accounts[0]!.projection!.length, 12)
   // no balance records or cards in the data: every account without a projection, no cards

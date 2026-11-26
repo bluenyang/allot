@@ -487,7 +487,7 @@ const accountState = (d: Data): AccountState => ({ ...d, balances: d.balances ??
 /**
  * list_accounts (S-10, S-13): every account with its balance records and, as the account sheet shows them, the
  * projection from this month, the goal month, this year's contribution against the yearly limit and the buffer gauge;
- * plus every card with its paying account and billing day.
+ * plus every card with its paying account, its billing day and the first day of its usage period (spec 018 S-2).
  */
 export function accountList(d: Data, now: Date, months = 12) {
   const st = accountState(d)
@@ -499,7 +499,7 @@ export function accountList(d: Data, now: Date, months = 12) {
   const name = (id: string | null | undefined) => (id ? d.accounts.find((a) => a.id === id)?.name ?? null : null)
   const cardOut = (c: Card) => ({
     id: c.id, name: c.name, last4: c.last4, accountId: c.accountId, account: name(c.accountId),
-    billingDay: c.billingDay, effectiveBillingDay: billingDayOf(c, d.settings), ...(c.note ? { note: c.note } : {}),
+    billingDay: c.billingDay, effectiveBillingDay: billingDayOf(c, d.settings), usageFrom: c.usageFrom ?? null, ...(c.note ? { note: c.note } : {}),
   })
   return {
     month: ym,
