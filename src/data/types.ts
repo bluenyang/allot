@@ -52,6 +52,14 @@ export interface Settings {
   payShift: DayShift
   transferShift: DayShift
   billingShift: DayShift
+  /**
+   * What a "month" is (spec 018 S-3); a state saved before 0.1.10 has none of the three: 'calendar', no card, 'auto'.
+   * 'card' counts by the usage period of the card `monthBasisCardId`, 'pay' from one actual pay date to the next.
+   */
+  monthBasis?: MonthBasis
+  monthBasisCardId?: string | null
+  /** Which calendar month a period is named after: the one it starts in, the one it ends in, or by its first day. */
+  monthNaming?: MonthNaming
   /** How the Savings and Investment menus split their total (spec 013 S-3). */
   savingSplit?: SplitMode // default 'amount'
   investSplit?: SplitMode // default 'ratio'
@@ -91,6 +99,11 @@ export interface ScheduleItem {
 export type SplitMode = 'amount' | 'ratio'
 
 export type DayShift = 'none' | 'before' | 'after'
+
+/** What a month is counted by (spec 018 S-3): the calendar month, a card's usage period, or pay date to pay date. */
+export type MonthBasis = 'calendar' | 'card' | 'pay'
+/** 'auto': a period whose first day is the 15th or earlier is named after the month it starts in, a later one after the month it ends in. */
+export type MonthNaming = 'auto' | 'start' | 'end'
 
 /** 표시 설정과 테마 (spec 007 S-7, S-8). 색이 null이면 기본 색. */
 export interface Preferences {

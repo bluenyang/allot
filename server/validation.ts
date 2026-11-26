@@ -29,6 +29,10 @@ export const category = z.enum(['ai', 'telecom', 'content', 'tool', 'insurance',
 /** What a monthly date does on a weekend or holiday (spec 007 S-10; one for each date since spec 018 S-1). */
 export const dayShift = z.enum(['none', 'before', 'after'])
 
+/** What a month is counted by, and which calendar month names a period (spec 018 S-3, S-12). */
+export const monthBasis = z.enum(['calendar', 'card', 'pay'])
+export const monthNaming = z.enum(['auto', 'start', 'end'])
+
 export const settings = z.object({
   netPay: won,
   fxRate: z.number().positive().max(999_999.99),
@@ -44,6 +48,11 @@ export const settings = z.object({
   // The one rule for all three dates, as sent up to 0.1.9: still taken, as the value of each rule the body leaves out
   // (`settingsRow`). It is no column and no answer has it.
   dayShift: dayShift.optional(),
+  // What a month is (spec 018 S-3, S-12): the basis, its card (one of the user's cards, checked by the foreign key, or
+  // null) and how a period is named. Each is optional: left out, the saved value stays.
+  monthBasis: monthBasis.optional(),
+  monthBasisCardId: text.min(1).nullable().optional(),
+  monthNaming: monthNaming.optional(),
   // The same for the split of the Savings and Investment menus (spec 013 S-3).
   savingSplit: z.enum(['amount', 'ratio']).optional(),
   investSplit: z.enum(['amount', 'ratio']).optional(),
