@@ -44,6 +44,21 @@ test('a card bill counts in the month of the last pay date before it: before, on
   assert.equal(roundYm({ how: 'installment', payBy: 'card' }, at('2026-12-14'), ctx), '2026-11')
 })
 
+test('a pay moved into the neighbouring calendar month still names its own month (calendar basis, A-14)', () => {
+  // pay day 1, moved back off a weekend: 2026-11-01 is a Sunday, so November's pay is dated 10-30 (Friday);
+  // October's pay is 10-01 (Thursday), December's 12-01 (Tuesday)
+  const ctx = ctxOfS({ ...S, payDay: 1, payShift: 'before' })
+  // 11-14: the pay before it is November's (10-30) → November, not October
+  assert.equal(roundYm(bill, at('2026-11-14'), ctx), '2026-11')
+  // 10-31: the pay before it is still November's (10-30) → November
+  assert.equal(roundYm(bill, at('2026-10-31'), ctx), '2026-11')
+  // 10-30 is that pay date itself: the pay before it, October's (10-01) → October
+  assert.equal(roundYm(bill, at('2026-10-30'), ctx), '2026-10')
+  // 12-01 is December's pay date: the pay before it is November's → November; 12-02 → December
+  assert.equal(roundYm(bill, at('2026-12-01'), ctx), '2026-11')
+  assert.equal(roundYm(bill, at('2026-12-02'), ctx), '2026-12')
+})
+
 test('the pay basis: a card bill counts in the month whose period holds its date, except a bill dated on a pay date', () => {
   // pay day 25 names a month by its end: "2026-12" = 11-25 … 12-24, "2027-01" = 12-25 … 01-24
   const ctx = ctxOfS({ ...S, monthBasis: 'pay' })

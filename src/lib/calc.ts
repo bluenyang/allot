@@ -1134,28 +1134,28 @@ export interface SpendingItem {
 
 // ---------- the month's outgoing rounds (spec 018 S-5, S-6) ----------
 /**
- * The last actual pay date — the pay day of a calendar month, moved by the pay rule — strictly before `date`. A date
- * that is itself a pay date gets the pay date before it.
+ * The last actual pay date — the pay day of a calendar month, moved by the pay rule — strictly before `date`, and the
+ * calendar month whose pay it is (a pay moved off a weekend may be dated in the month before or after: pay day 1 moved
+ * back is November's pay dated 10-30). A date that is itself a pay date gets the pay date before it.
  */
-function payDateBefore(date: string, ctx: MonthCtx): string {
+function payBefore(date: string, ctx: MonthCtx): { date: string; ym: string } {
   const pay = (ym: string) => monthDay(ym, ctx.settings.payDay, shiftOf(ctx.settings, 'pay'), ctx.off).date
-  // a pay date moved off a weekend may lie in the calendar month before or after its own: from the month after the
-  // date's, back until one comes before the date. The count only keeps a malformed date from looping.
+  // from the month after the date's, back until a pay date comes before the date. The count only keeps a malformed date from looping.
   let ym = addYm(date.slice(0, 7), 1)
   let p = pay(ym)
   for (let i = 0; i < 4 && !(p < date); i++) {
     ym = addYm(ym, -1)
     p = pay(ym)
   }
-  return p
+  return { date: p, ym }
 }
 
 /** A card bill: a round of a lump sum or an installment paid by card. A buffer use's rounds are refills, a split's the dates the user pays on. */
 const isCardBill = (sp: Pick<Spending, 'how' | 'payBy'>) => sp.payBy === 'card' && (sp.how === 'lump' || sp.how === 'installment')
 
 /**
- * The month a round counts in (spec 018 S-5). A card bill is paid with the pay that came in last before it: it counts
- * in the month that holds the last actual pay date strictly before the bill's date (a bill dated on a pay date: the pay
+ * The month a round counts in (spec 018 S-5, A-14). A card bill is paid with the pay that came in last before it: it
+ * counts in the month of the last actual pay date strictly before the bill's date (a bill dated on a pay date: the pay
  * date before). Pay day 25, calendar months: a bill of 12-14 or 12-25 counts in November, one of 12-26 in December.
  * Every other round — a buffer refill, a split, a round paid from the salary or the subscription account — counts in
  * the month whose period holds its date.
@@ -1164,7 +1164,10 @@ export function roundYm(spending: Pick<Spending, 'how' | 'payBy'>, round: Pick<S
   if (!isCardBill(spending)) return ymOfDate(round.date, ctx)
   const known = ctx.bills.get(round.date)
   if (known) return known
-  const ym = ymOfDate(payDateBefore(round.date, ctx), ctx)
+  // the month of that pay: on the calendar basis the month the pay is named for (the salary line of that month, also
+  // when the pay rule dates it in the neighbouring month); on the card and pay bases the month whose period holds it
+  const pay = payBefore(round.date, ctx)
+  const ym = ctx.basis === 'calendar' ? pay.ym : ymOfDate(pay.date, ctx)
   ctx.bills.set(round.date, ym)
   return ym
 }
