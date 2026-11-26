@@ -599,12 +599,48 @@ export const takesRemainder = (acc: Account, targets: AllocationTarget[]) => tar
 /** Targets whose money a linked account receives as a transfer: not the Savings / Investment totals, whose money goes to their items (review 1 F-9). */
 export const sendsToLinked = (t: AllocationTarget) => t.kind !== 'saving' && t.kind !== 'invest'
 
-/** The billing day of a card spending: the card's own, else the settings' (S-13). */
-export const billingDayOf = (card: Pick<Card, 'billingDay'> | null | undefined, s: Pick<Settings, 'billingDay'>) => card?.billingDay ?? s.billingDay
+/** What a bill date reads from a card: its billing day and the first day of its usage period (both may be empty). */
+export type BillCard = { billingDay?: number | null; usageFrom?: number | null }
 
-/** The date a card bill for something bought on `bought` is paid: the billing day of the next month (spec 011 S-4, S-13). */
-export function cardBillDate(bought: string, billingDay: number, s: Settings, off: ReadonlySet<string>): string {
-  return monthDay(addYm(bought.slice(0, 7), 1), billingDay, shiftOf(s, 'billing'), off).date
+/** The billing day of a card spending: the card's own, else the settings' (S-13). */
+export const billingDayOf = (card: Pick<BillCard, 'billingDay'> | null | undefined, s: Pick<Settings, 'billingDay'>) => card?.billingDay ?? s.billingDay
+
+/** Day `day` of month `ym` as set, or the month's last day when it is shorter: before any weekend and holiday rule. */
+const NO_DAYS: ReadonlySet<string> = new Set()
+const nominalDay = (ym: string, day: number) => monthDay(ym, day, 'none', NO_DAYS).nominal
+
+/**
+ * The usage period of a card that holds `date` (spec 018 S-2), both ends included: from day `usageFrom` of a month to
+ * the day before day `usageFrom` of the next month. A month shorter than `usageFrom` starts on its last day, as a
+ * billing day does. Without a first day the period is the calendar month, which is also what a first day of 1 gives.
+ */
+export function usagePeriod(date: string, usageFrom: number | null | undefined): { start: string; end: string } {
+  const from = usageFrom ?? 1
+  const ym = date.slice(0, 7)
+  const here = nominalDay(ym, from)
+  const startYm = date >= here ? ym : addYm(ym, -1)
+  const next = nominalDay(addYm(startYm, 1), from)
+  return { start: date >= here ? here : nominalDay(startYm, from), end: ymd(dayPlus(parseDate(next), -1)) }
+}
+
+/**
+ * The month whose billing date pays for something bought on `bought` (spec 018 S-2): the first billing date after the
+ * usage period that holds the purchase has ended. The month is found by the billing day as set (not moved for weekends
+ * and holidays). A card without a usage period, or no card: the month after the purchase (spec 011 S-4).
+ */
+export function cardBillYm(bought: string, card: BillCard | null | undefined, s: Pick<Settings, 'billingDay'>): string {
+  if (card?.usageFrom == null) return addYm(bought.slice(0, 7), 1)
+  const end = usagePeriod(bought, card.usageFrom).end
+  const ym = end.slice(0, 7)
+  return nominalDay(ym, billingDayOf(card, s)) > end ? ym : addYm(ym, 1)
+}
+
+/**
+ * The date a card bill for something bought on `bought` is paid (spec 011 S-4, S-13; spec 018 S-2): the billing day
+ * (the card's own, else the settings') of `cardBillYm`, moved by the billing rule.
+ */
+export function cardBillDate(bought: string, card: BillCard | null | undefined, s: Settings, off: ReadonlySet<string>): string {
+  return monthDay(cardBillYm(bought, card, s), billingDayOf(card, s), shiftOf(s, 'billing'), off).date
 }
 
 /** The first pay day on or after `date` (the default refill start of a buffer use, S-8). */
@@ -649,7 +685,7 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
     const live = sp.rounds.filter((r) => r.state !== 'merged' && !(sp.cancelled && r.state === 'left'))
     if (sp.how === 'buffer') {
       // the bill leaves the account's buffer on the billing date; the refills come back on their dates
-      const bill = cardBillDate(sp.bought, billingDayOf(card, s), s, off)
+      const bill = cardBillDate(sp.bought, card, s, off)
       if (bill.slice(0, 7) === ym) moves.push({ date: bill, amount: -live.reduce((a, r) => a + r.amount, 0) })
       for (const r of live) if (r.date.slice(0, 7) === ym) moves.push({ date: r.date, amount: r.amount })
     } else if (!remainder) {
@@ -788,6 +824,8 @@ export interface SpendInput {
   dates?: string[]
   /** card: the card's billing day (S-13); default the settings' one */
   billingDay?: number | null
+  /** card: the first day of the card's usage period (spec 018 S-2); empty = billed the month after the purchase */
+  usageFrom?: number | null
   /** buffer use: the first refill date (S-8); the next ones are the pay days after it */
   refillFrom?: string
 }
@@ -800,6 +838,7 @@ export function spendingKrw(amount: number, currency: Currency, s: Pick<Settings
 /**
  * Rounds of a spending (S-4): total = principal + fee, each ⌊total ÷ n ÷ 10⌋ × 10, the last takes the rest.
  * A buffer use (spec 013 S-8) has no fee; its rounds are the refills: the first on `refillFrom`, then the pay day of each month after.
+ * A card's rounds are its billing dates: the first is the bill of the purchase (`cardBillYm`, spec 018 S-2).
  */
 export function planRounds(input: SpendInput, s: Settings, off: ReadonlySet<string>): SpendingRound[] {
   const { how, payBy } = input
@@ -825,8 +864,9 @@ export function planRounds(input: SpendInput, s: Settings, off: ReadonlySet<stri
       dates = Array.from({ length: n }, (_, i) => ymd(addMonths(parseDate(first), i)))
     }
   } else if (payBy === 'card') {
-    const from = addYm(input.bought.slice(0, 7), 1)
-    const day = input.billingDay ?? s.billingDay
+    // the first round is the bill that follows the purchase's usage period (spec 018 S-2), then one billing date a month
+    const from = cardBillYm(input.bought, input, s)
+    const day = billingDayOf(input, s)
     // card rounds are billing dates: the billing rule, also for a card's own billing day
     dates = Array.from({ length: n }, (_, i) => monthDay(addYm(from, i), day, shiftOf(s, 'billing'), off).date)
   } else {
@@ -1058,13 +1098,13 @@ export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; p
 
 export type SpendStateName = 'cancelled' | 'paid' | 'billing' | 'planned'
 
-/** The state shown in the general tab (S-6). `today` is YYYY-MM-DD. */
-export function spendState(sp: Spending, today: string, s: Settings, off: ReadonlySet<string>): SpendStateName {
+/** The state shown in the general tab (S-6). `today` is YYYY-MM-DD; `card` is the spending's card, for one that has no round. */
+export function spendState(sp: Spending, today: string, s: Settings, off: ReadonlySet<string>, card?: BillCard | null): SpendStateName {
   if (sp.cancelled) return 'cancelled'
   const live = sp.rounds.filter((r) => r.state !== 'merged')
   if (live.length && live.every((r) => r.state === 'paid')) return 'paid'
   if (sp.payBy === 'card') {
-    const bill = live[0]?.date ?? monthDay(addYm(sp.bought.slice(0, 7), 1), s.billingDay, shiftOf(s, 'billing'), off).date
+    const bill = live[0]?.date ?? cardBillDate(sp.bought, card, s, off)
     if (today >= sp.bought && today < bill) return 'billing'
   }
   return 'planned'

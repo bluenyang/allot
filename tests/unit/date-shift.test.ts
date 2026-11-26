@@ -65,8 +65,8 @@ test('payDayFrom and cardBillDate take the pay rule and the billing rule', () =>
   const s = (pay: DayShift, billing: DayShift): Settings => ({ ...rules(pay, 'none', billing), payDay: 26 })
   assert.equal(payDayFrom('2026-12-01', s('after', 'before'), none), '2026-12-28')
   assert.equal(payDayFrom('2026-12-01', s('none', 'after'), none), '2026-12-26')
-  assert.equal(cardBillDate('2026-10-10', 14, s('after', 'before'), none), '2026-11-13')
-  assert.equal(cardBillDate('2026-10-10', 14, s('before', 'none'), none), '2026-11-14')
+  assert.equal(cardBillDate('2026-10-10', { billingDay: 14 }, s('after', 'before'), none), '2026-11-13')
+  assert.equal(cardBillDate('2026-10-10', { billingDay: 14 }, s('before', 'none'), none), '2026-11-14')
 })
 
 test('the transfer day\'s own rule: the month a stop starts and the window after the transfer', () => {

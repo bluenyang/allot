@@ -5,8 +5,8 @@ import { store, upsertSpending } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { monthShort } from '../lib/format'
-import { addYm, billingDayOf, cardBillDate, needsHolidays, spendingIn, spendingKrw, ymLabel, ymOf } from '../lib/calc'
-import type { PayBy, Spending, SpendingRound } from '../data/types'
+import { addYm, billingDayOf, cardBillDate, cardBillYm, needsHolidays, spendingIn, spendingKrw, ymLabel, ymOf } from '../lib/calc'
+import type { Card, PayBy, Spending, SpendingRound } from '../data/types'
 import ConfirmDialog from './ConfirmDialog.vue'
 import PayOffDialog from './PayOffDialog.vue'
 import RoundEditor from './RoundEditor.vue'
@@ -28,11 +28,11 @@ const mon = (d: string) => monthShort(Number(d.slice(5, 7)))
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
 const ymText = (d: string) => ymLabel(d.slice(0, 7)).replace('.', '. ')
 const payName = (p: PayBy) => t(`spending.gen.pay.${p}` as 'spending.gen.pay.card')
-/** The card bill date of a buffer use (its note): the billing day of the month after the purchase, moved for holidays as the editor does. */
-function billOf(s: Spending, day: number) {
-  const ym = addYm(s.bought.slice(0, 7), 1)
+/** The card bill date of a buffer use (its note): the first billing date after the card's usage period, moved for holidays as the editor does. */
+function billOf(s: Spending, card: Card | null) {
+  const ym = cardBillYm(s.bought, card, store.settings)
   const off = !needsHolidays(store.settings, store.schedules) ? new Set<string>() : offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 2)}-01`) ?? new Set<string>()
-  return cardBillDate(s.bought, day, store.settings, off)
+  return cardBillDate(s.bought, card, store.settings, off)
 }
 
 const inst = computed(() => store.spendings.filter((s) => s.how !== 'lump'))
@@ -174,7 +174,7 @@ const d = computed(() => {
   const notes = [
     s.cancelled ? t('spending.inst.noteCancelled') : i.done ? t('spending.inst.noteDone') : s.how === 'split' ? t('spending.inst.noteSplit')
     : s.how === 'buffer' ? t('spending.inst.noteBuffer', {
-      total: fmtMoney(total), date: md(billOf(s, billingDayOf(card, store.settings))), account: acc?.name ?? '—',
+      total: fmtMoney(total), date: md(billOf(s, card)), account: acc?.name ?? '—',
       month: orig[0] ? mon(orig[0].date) : '—', each: fmtMoney(eachR?.amount ?? 0),
     })
     : t('spending.inst.noteCard'),

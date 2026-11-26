@@ -278,13 +278,18 @@ export interface IncomeExtra {
   note?: string
 }
 
-/** A card (spec 013 S-13): its bill is paid from `accountId` on `billingDay` (null = the settings' billing day). */
+/**
+ * A card (spec 013 S-13): its bill is paid from `accountId` on `billingDay` (null = the settings' billing day).
+ * `usageFrom` (spec 018 S-2) is the first day of its usage period, 1..31: something bought in a period is billed on the
+ * first billing date after the period ends. Empty = billed on the billing day of the month after the purchase.
+ */
 export interface Card {
   id: string
   name: string
   last4: string
   accountId: string | null
   billingDay: number | null
+  usageFrom?: number | null
   note?: string
 }
 

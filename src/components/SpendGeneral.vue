@@ -39,7 +39,7 @@ const cardLump = (s: Spending) => {
 const rows = computed(() =>
   general.value.map((s) => {
     const r = round(s)
-    const st = spendState(s, nowYmd, store.settings, OFF)
+    const st = spendState(s, nowYmd, store.settings, OFF, s.cardId ? store.cards.find((c) => c.id === s.cardId) : null)
     // a cancelled spending keeps only its paid rounds in the month sums (S-5): a left round of it counts nowhere
     const counted = !!r && !(s.cancelled && r.state === 'left')
     const where = !counted ? t('spending.gen.where.none')

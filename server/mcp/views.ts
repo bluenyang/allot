@@ -253,7 +253,7 @@ export function spendingList(d: Data, now: Date, filter: SpendFilter = {}) {
   const yms = all.map((x) => x.bought.slice(0, 7)).sort()
   const off = yms.length ? offDays(d, yms[0]!, addYm(yms[yms.length - 1]!, 1)) : new Set<string>()
   const rows = all.map((sp) => {
-    const state = spendState(sp, today, d.settings, off)
+    const state = spendState(sp, today, d.settings, off, sp.cardId ? (d.cards ?? []).find((c) => c.id === sp.cardId) : null)
     const live = sp.rounds.filter((r) => r.state !== 'merged')
     const next = sp.cancelled ? undefined : [...live].filter((r) => r.state === 'left').sort((a, b) => a.no - b.no)[0]
     return {
