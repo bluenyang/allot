@@ -30,3 +30,16 @@ export function stillAsLogged(current: Row | null | undefined, logged: Row | nul
   const keys = new Set(Object.keys(logged))
   return same(Object.fromEntries(Object.entries(current).filter(([k]) => keys.has(k))), logged)
 }
+
+/**
+ * A logged row in the shape its table has now. A settings row logged up to 0.1.9 has the one weekend and holiday rule
+ * `dayShift`, which became the rule of each date (spec 018 S-1, migration 0045): read it as that rule on all three, the
+ * way the migration moved the saved row, so a change set logged before the upgrade still compares and reverts
+ * (A-2). A rule the logged row names itself wins. Every other row is returned as it is.
+ */
+export function asNow(table: string, logged: Row | null | undefined): Row | null {
+  if (!logged) return null
+  if (table !== 'settings' || !('dayShift' in logged)) return logged
+  const { dayShift: all, ...row } = logged
+  return { ...row, payShift: row.payShift ?? all, transferShift: row.transferShift ?? all, billingShift: row.billingShift ?? all }
+}

@@ -11,7 +11,7 @@ import * as t from './db/schema'
 import { lockFor } from './db/scope'
 import { m, MsgError, type Msg } from './messages'
 import { roundsProblem } from '../src/lib/spending-rules'
-import { plain, same, stillAsLogged, userColumns } from './row-compare'
+import { asNow, plain, same, stillAsLogged, userColumns } from './row-compare'
 
 export type RowKey = Record<string, string>
 export { same, stillAsLogged }
@@ -127,7 +127,9 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
     if (!table && GONE.has(log.tableName)) throw new Conflict(m('changeGone'), log.tableName, log.rowKey)
     if (!table) throw new Error(`unknown table in change log: ${log.tableName}`)
     const current = await readRow(q, table, uid, log.rowKey)
-    const expected = log.op === 'delete' ? null : log.after
+    // a row logged before a column was replaced reads in today's shape (the settings' dayShift, spec 018 S-1)
+    const before = asNow(log.tableName, log.before)
+    const expected = log.op === 'delete' ? null : asNow(log.tableName, log.after)
     if (!stillAsLogged(current, expected)) {
       throw new Conflict(m('changeLater'), log.tableName, log.rowKey)
     }
@@ -139,12 +141,12 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
       await q.delete(table).where(whereKey(table, uid, log.rowKey))
       await rec.record(table, log.rowKey, 'delete', current, null)
     } else if (log.op === 'delete') {
-      const row = { ...userColumns(log.before!), userId: uid }
+      const row = { ...userColumns(before!), userId: uid }
       const ins = hasIdentity(table) ? q.insert(table).overridingSystemValue() : q.insert(table)
       const [written] = await ins.values(row as never).returning()
       await rec.record(table, log.rowKey, 'insert', null, written as Row)
     } else {
-      const { userId: _u, seq: _s, ...set } = userColumns(log.before!) // seq is an identity: never updated
+      const { userId: _u, seq: _s, ...set } = userColumns(before!) // seq is an identity: never updated
       const [written] = await q.update(table).set(set as never).where(whereKey(table, uid, log.rowKey)).returning()
       await rec.record(table, log.rowKey, 'update', current, written as Row)
     }
