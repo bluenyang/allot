@@ -56,11 +56,11 @@ export const settings = pgTable('settings', {
   transferDay: smallint('transfer_day').notNull(),
   billingDay: smallint('billing_day').notNull(),
   subRound: integer('sub_round').notNull().default(10_000),
-  /** Monthly dates on a weekend or holiday: 'none' keeps them, 'before'/'after' move to a business day (spec 007 S-10). */
-  dayShift: text('day_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
   /**
-   * The same rule, one for each date (spec 018 S-1): the pay day, the transfer day and the card billing day (a card's own
-   * billing day uses the billing rule). `day_shift` above is copied into them and then dropped.
+   * Monthly dates on a weekend or holiday: 'none' keeps them, 'before'/'after' move to a business day (spec 007 S-10).
+   * One rule for each date (spec 018 S-1): the pay day, the transfer day and the card billing day (a card's own billing
+   * day uses the billing rule). Up to 0.1.9 one column `day_shift` held the rule of all three; migration 0045 copied it
+   * into these and 0046 dropped it.
    */
   payShift: text('pay_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
   transferShift: text('transfer_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
