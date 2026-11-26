@@ -3,18 +3,23 @@
 // the billing day (empty = the settings' billing day), note. EditSheet + useEditor; the API decides what
 // is valid (last 4 digits, day 1–31) and its message is shown. Delete is refused while a buffer use goes
 // through the card; otherwise the spendings that named it lose the card (their rounds stay as saved).
+// The first day of the usage period (spec 018 S-2) is optional: with it, a purchase is billed on the first billing
+// day after the period that holds it ends; the line under the field shows the period of today and its bill.
 import { computed, watch } from 'vue'
 import { t } from '../i18n'
 import EditSheet from './EditSheet.vue'
 import Select from './Select.vue'
 import { useEditor } from '../lib/useEditor'
 import { store } from '../lib/store'
+import { addYm, cardBillDate, needsHolidays, usagePeriod, ymd } from '../lib/calc'
+import { offDays } from '../lib/holidays-lazy'
+import { localToday } from '../lib/now'
 import type { Card } from '../data/types'
 
 const props = defineProps<{ initial: Card | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const blank = (): Card => ({ id: '', name: '', last4: '', accountId: null, billingDay: null, note: '' })
+const blank = (): Card => ({ id: '', name: '', last4: '', accountId: null, billingDay: null, usageFrom: null, note: '' })
 const { item: edit, error, busy, open, close, save, remove } = useEditor('cards', blank, (c) => (!c.name.trim() ? t('accounts.cardEditor.needName') : null))
 open(props.initial ?? undefined)
 watch(edit, (v) => { if (!v) emit('close') })
@@ -34,6 +39,25 @@ const dayOpts = computed(() => [
   { value: '', label: t('accounts.cardEditor.dayDefault', { n: store.settings.billingDay }) },
   ...Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: t('accounts.cards.dayOf', { n: i + 1 }) })),
 ])
+const usage = computed({
+  get: () => edit.value?.usageFrom ?? '',
+  set: (v: number | '') => { edit.value!.usageFrom = v === '' ? null : v },
+})
+const usageOpts = computed(() => [
+  { value: '', label: t('accounts.cardEditor.usageNone') },
+  ...Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: t('accounts.cards.dayOf', { n: i + 1 }) })),
+])
+/** The usage period that holds today and the bill it goes to, with the days picked here (not saved yet). */
+const usageNow = computed(() => {
+  const c = edit.value
+  if (!c?.usageFrom) return ''
+  const today = ymd(localToday())
+  const ym = today.slice(0, 7)
+  const off = needsHolidays(store.settings, store.schedules) ? offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 4)}-01`) ?? new Set<string>() : new Set<string>()
+  const p = usagePeriod(today, c.usageFrom)
+  const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
+  return t('accounts.cardEditor.usageNow', { start: md(p.start), end: md(p.end), bill: md(cardBillDate(today, c, store.settings, off)) })
+})
 </script>
 
 <template>
@@ -60,6 +84,13 @@ const dayOpts = computed(() => [
       <span class="hint">{{ t('accounts.cardEditor.dayHint') }}</span>
     </div>
     <div class="field">
+      <label for="cd-usage">{{ t('accounts.cardEditor.usage') }} <span class="opt">{{ t('common.optional') }}</span></label>
+      <Select id="cd-usage" v-model="usage" :options="usageOpts" />
+      <span class="hint">{{ t('accounts.cardEditor.usageHint') }}</span>
+      <span v-if="usageNow" class="hint now" data-testid="cd-usage-now">{{ usageNow }}</span>
+      <span class="hint">{{ t('accounts.cardEditor.usageNote') }}</span>
+    </div>
+    <div class="field">
       <label for="cd-note">{{ t('accounts.cardEditor.note') }} <span class="opt">{{ t('common.optional') }}</span></label>
       <input id="cd-note" v-model="edit.note" class="in" autocomplete="off">
     </div>
@@ -69,4 +100,5 @@ const dayOpts = computed(() => [
 <style scoped>
 .opt{font-weight:400;color:var(--subtle)}
 .hint{font-size:12px;color:var(--subtle);margin:0}
+.hint.now{color:var(--text-2)}
 </style>

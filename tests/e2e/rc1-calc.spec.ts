@@ -1,10 +1,11 @@
 // spec 018 (0.1.10-rc.1, V-6): the calculation changes on the screens. W-1: the weekend and holiday rule of each date
-// (Settings › General › 기준 일정) and of each of the user's own monthly dates.
+// (Settings › General › 기준 일정) and of each of the user's own monthly dates. W-2: a card's usage period (the card
+// editor of 월급 분배, the card list, and the bill date of a new card spending).
 // Every row made here carries the run mark and is removed by id in `finally`; the settings the tests change are put back.
 // It changes the settings, so it runs only on a throwaway server: the test server (:15174) or the API of
 // scripts/test-server/disposable.sh (:15184, started with STATIC_DIR=dist so it serves the built screens).
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { MARK as RUN, saveSheet, sheet } from './helpers'
+import { MARK as RUN, choose, menu, readDate, saveSheet, sheet } from './helpers'
 
 const THROWAWAY = ['http://127.0.0.1:15174', 'http://127.0.0.1:15184']
 if (!THROWAWAY.includes(process.env.BASE ?? '')) throw new Error(`rc1-calc.spec runs only against ${THROWAWAY.join(' or ')} (BASE=${process.env.BASE ?? 'unset'})`)
@@ -19,7 +20,9 @@ async function api(request: APIRequestContext, method: 'GET' | 'POST' | 'PUT' | 
 type Shift = 'before' | 'none' | 'after'
 type Settings = Record<string, unknown> & { payDay: number; transferDay: number; billingDay: number; payShift: Shift; transferShift: Shift; billingShift: Shift }
 type Sched = { id: string; name: string; day: number; accountId: string | null; direction: 'in' | 'out'; note?: string | null; shift: Shift }
-type State = { settings: Settings; schedules: Sched[] }
+type CardRow = { id: string; name: string; last4: string; accountId: string | null; billingDay: number | null; usageFrom: number | null; note?: string }
+type SpendRow = { id: string; name: string; how: string; payBy: string; cardId: string | null; count: number; rounds: { no: number; date: string; amount: number; state: string; edited: boolean }[] }
+type State = { settings: Settings; schedules: Sched[]; cards: CardRow[]; spendings: SpendRow[] }
 const state = async (request: APIRequestContext) => (await api(request, 'GET', '/api/state')).json as State
 const rules = (s: Settings) => [s.payShift, s.transferShift, s.billingShift]
 
@@ -224,6 +227,225 @@ test.describe.serial('W-1 the weekend and holiday rule of each date', () => {
     } finally {
       await api(request, 'PUT', '/api/preferences', prefs)
       await api(request, 'DELETE', `/api/schedules/${id}`)
+    }
+  })
+})
+
+// ---------- W-2 the card's usage period ----------
+const kst = () => new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' })
+const ymAdd = (ym: string, n: number) => new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1)).toISOString().slice(0, 7)
+const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`
+async function cardsTable(page: Page) {
+  await page.goto('/pay')
+  await page.getByRole('tab', { name: '통장·생활비·설정' }).click()
+  await expect(page.getByRole('heading', { name: '돈의 흐름' })).toBeVisible()
+  return page.getByTestId('cards-table')
+}
+const cardOf = async (request: APIRequestContext, id: string) => (await state(request)).cards.find((c) => c.id === id)
+
+test.describe.serial('W-2 the card\'s usage period', () => {
+  test('(S-2, V-6) the first day of the usage period: a card saved before has none and stays so; it is set in the editor, shown on the list, read back, changed and cleared', async ({ page, request }) => {
+    const s0 = (await state(request)).settings
+    const name = `${MARK}-use`
+    const ids: string[] = []
+    try {
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, billingShift: 'none' })).status).toBe(200)
+      // a card in the 0.1.9 shape: no usageFrom in the body
+      const made = await api(request, 'POST', '/api/cards', { name, last4: '4321', accountId: null, billingDay: 25, note: 'memo' })
+      expect(made.status).toBe(201)
+      const id = (made.json as CardRow).id
+      ids.push(id)
+      expect((made.json as CardRow).usageFrom).toBeNull()
+
+      const table = await cardsTable(page)
+      const row = () => table.locator('tbody tr').filter({ hasText: name })
+      await expect(row()).toContainText('25일')
+      await expect(row().getByTestId('card-usage')).toHaveCount(0)
+      // the editor shows 정하지 않음; saving it untouched keeps every field
+      await row().click()
+      let e = sheet(page, '카드 수정')
+      await expect(e.locator('#cd-usage')).toContainText('정하지 않음')
+      await expect(e.getByTestId('cd-usage-now')).toHaveCount(0)
+      await expect(e.getByText('예: 결제일이 25일이면 보통 12일', { exact: false })).toBeVisible()
+      await saveSheet(page, '카드 수정')
+      expect(await cardOf(request, id)).toMatchObject({ name, last4: '4321', accountId: null, billingDay: 25, usageFrom: null, note: 'memo' })
+
+      // set to the 12th: the line under the field names the period of today and its bill before anything is saved
+      await row().click()
+      e = sheet(page, '카드 수정')
+      await choose(e.locator('#cd-usage'), '12')
+      const today = kst().slice(0, 10)
+      const ym = today.slice(0, 7)
+      const start = +today.slice(8) >= 12 ? `${ym}-12` : `${ymAdd(ym, -1)}-12`
+      const end = `${ymAdd(start.slice(0, 7), 1)}-11`
+      await expect(e.getByTestId('cd-usage-now')).toHaveText(`지금은 ${md(start)}~${md(end)}에 쓴 것이 ${md(`${end.slice(0, 7)}-25`)}에 청구돼요.`)
+      expect((await cardOf(request, id))!.usageFrom, 'nothing is saved before 저장').toBeNull()
+      await saveSheet(page, '카드 수정')
+      expect(await cardOf(request, id)).toMatchObject({ name, last4: '4321', billingDay: 25, usageFrom: 12, note: 'memo' })
+      await expect(row().getByTestId('card-usage')).toHaveText('이용 12일~11일')
+      // read back after a reload, on the list and in the editor
+      const again = await cardsTable(page)
+      await expect(again.locator('tbody tr').filter({ hasText: name }).getByTestId('card-usage')).toHaveText('이용 12일~11일')
+      await row().click()
+      e = sheet(page, '카드 수정')
+      await expect(e.locator('#cd-usage')).toContainText('12일')
+      await e.getByRole('button', { name: '취소', exact: true }).click()
+      await expect(e).toBeHidden()
+
+      // an update in the 0.1.9 shape (no usageFrom) keeps the saved first day
+      expect((await api(request, 'PUT', `/api/cards/${id}`, { name, last4: '4321', accountId: null, billingDay: 25, note: 'memo' })).status).toBe(200)
+      expect((await cardOf(request, id))!.usageFrom).toBe(12)
+
+      // the 1st is saved as 1 (the calendar month), not as empty
+      await row().click()
+      await choose(sheet(page, '카드 수정').locator('#cd-usage'), '1')
+      await saveSheet(page, '카드 수정')
+      expect((await cardOf(request, id))!.usageFrom).toBe(1)
+      await expect(row().getByTestId('card-usage')).toHaveText('이용 1일~말일')
+      // the 31st, the last option
+      await row().click()
+      await choose(sheet(page, '카드 수정').locator('#cd-usage'), '31')
+      await saveSheet(page, '카드 수정')
+      expect((await cardOf(request, id))!.usageFrom).toBe(31)
+      await expect(row().getByTestId('card-usage')).toHaveText('이용 31일~30일')
+      // cleared again
+      await row().click()
+      await choose(sheet(page, '카드 수정').locator('#cd-usage'), '')
+      await saveSheet(page, '카드 수정')
+      expect(await cardOf(request, id)).toMatchObject({ billingDay: 25, usageFrom: null })
+      await expect(row().getByTestId('card-usage')).toHaveCount(0)
+
+      // a new card made in the sheet with a first day
+      await table.getByRole('button', { name: '+ 카드 추가' }).click()
+      const a = sheet(page, '카드 추가')
+      await expect(a.locator('#cd-usage')).toContainText('정하지 않음')
+      await a.locator('#cd-name').fill(`${name}-new`)
+      await choose(a.locator('#cd-day'), '1')
+      await choose(a.locator('#cd-usage'), '18')
+      await saveSheet(page, '카드 추가')
+      const fresh = (await state(request)).cards.find((c) => c.name === `${name}-new`)!
+      ids.push(fresh.id)
+      expect(fresh).toMatchObject({ billingDay: 1, usageFrom: 18 })
+      await expect(table.locator('tbody tr').filter({ hasText: `${name}-new` }).getByTestId('card-usage')).toHaveText('이용 18일~17일')
+    } finally {
+      for (const id of ids) await api(request, 'DELETE', `/api/cards/${id}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      expect((await state(request)).cards.filter((c) => c.name.startsWith(name))).toHaveLength(0)
+    }
+  })
+
+  test('(S-2, V-6) a new card spending is billed after the card\'s usage period ends; a card without one bills the month after, as before; a spending saved before keeps its dates', async ({ page, request }) => {
+    const s0 = (await state(request)).settings
+    const name = `${MARK}-bill`
+    const today = kst().slice(0, 10)
+    const ym = today.slice(0, 7)
+    // From the 2nd on: first day 2, billing day 1. Today is in the period that ends on the 1st of next month, so its bill
+    // is the 1st of the month after that. On the 1st: first day 2, billing day 2. The period ends today, the bill is tomorrow.
+    const first = +today.slice(8) === 1
+    const day = first ? 2 : 1
+    const want = first ? `${ym}-02` : `${ymAdd(ym, 2)}-01`
+    const asBefore = `${ymAdd(ym, 1)}-${String(day).padStart(2, '0')}`
+    const cards: string[] = []
+    const spends = async () => (await state(request)).spendings.filter((x) => x.name.startsWith(name))
+    const grp = (s: ReturnType<typeof sheet>, n: string) => s.getByRole('group', { name: n, exact: true })
+    const next = (s: ReturnType<typeof sheet>) => s.getByRole('button', { name: '다음', exact: true }).click()
+    try {
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, billingShift: 'none' })).status).toBe(200)
+      const plain = await api(request, 'POST', '/api/cards', { name: `${name}-plain`, last4: '', accountId: null, billingDay: day, note: '' })
+      const used = await api(request, 'POST', '/api/cards', { name: `${name}-used`, last4: '', accountId: null, billingDay: day, usageFrom: 2, note: '' })
+      expect([plain.status, used.status]).toEqual([201, 201])
+      cards.push((plain.json as CardRow).id, (used.json as CardRow).id)
+      const usedId = (used.json as CardRow).id
+      // a spending saved before the card had a usage period: its round is on the date the old rule gave
+      const old = await api(request, 'POST', '/api/spendings', {
+        name: `${name}-old`, note: '', category: 'etc', bought: today, amount: 7_000, currency: 'KRW', fxRate: null, fxBuffer: null,
+        how: 'lump', payBy: 'card', count: 1, fee: 0, interval: null, cancelled: false, cardId: usedId,
+        rounds: [{ no: 1, date: asBefore, amount: 7_000, state: 'left', edited: false }],
+      })
+      expect(old.status).toBe(201)
+
+      await page.goto('/')
+      await menu(page, '지출')
+      await page.getByRole('button', { name: '지출 추가', exact: true }).click()
+      let s = sheet(page, '지출 추가')
+      await s.getByLabel('내용', { exact: true }).fill(`${name}-lump`)
+      await s.getByLabel('금액', { exact: true }).fill('1000')
+      await next(s)
+      // a card without a usage period: the billing day of the month after, as before
+      await choose(s.locator('#sp-card'), cards[0]!)
+      expect(await readDate(grp(s, '청구일'))).toBe(asBefore)
+      // the card with one: the first billing date after its period ends
+      await choose(s.locator('#sp-card'), usedId)
+      expect(await readDate(grp(s, '청구일'))).toBe(want)
+      await next(s)
+      await saveSheet(page, '지출 추가')
+      const lump = (await spends()).find((x) => x.name === `${name}-lump`)!
+      expect(lump).toMatchObject({ how: 'lump', payBy: 'card', cardId: usedId })
+      expect(lump.rounds.map((r) => r.date)).toEqual([want])
+
+      // an installment: the first round on that bill, then one billing date a month
+      await page.getByRole('tablist', { name: '지출 종류' }).getByRole('tab', { name: /^할부/ }).click()
+      await page.getByRole('button', { name: '할부 추가', exact: true }).click()
+      s = sheet(page, '할부 추가')
+      await s.getByLabel('내용', { exact: true }).fill(`${name}-inst`)
+      await s.getByLabel('금액', { exact: true }).fill('300000')
+      await next(s)
+      await grp(s, '할부 개월').getByRole('button', { name: '3개월', exact: true }).click()
+      await choose(s.locator('#sp-card'), usedId)
+      expect(await readDate(grp(s, '첫 청구일'))).toBe(want)
+      await next(s)
+      await saveSheet(page, '할부 추가')
+      const inst = (await spends()).find((x) => x.name === `${name}-inst`)!
+      expect(inst).toMatchObject({ how: 'installment', payBy: 'card', cardId: usedId, count: 3 })
+      expect(inst.rounds.map((r) => r.date)).toEqual([0, 1, 2].map((i) => `${ymAdd(want.slice(0, 7), i)}${want.slice(7)}`))
+
+      // the spending saved before keeps the date it was saved with
+      expect((await spends()).find((x) => x.name === `${name}-old`)!.rounds.map((r) => r.date)).toEqual([asBefore])
+    } finally {
+      for (const x of await spends()) await api(request, 'DELETE', `/api/spendings/${x.id}`)
+      for (const id of cards) await api(request, 'DELETE', `/api/cards/${id}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      const left = await state(request)
+      expect(left.spendings.filter((x) => x.name.startsWith(name))).toHaveLength(0)
+      expect(left.cards.filter((c) => c.name.startsWith(name))).toHaveLength(0)
+    }
+  })
+
+  test('(V-6) the card editor and the card list fit a phone without sideways scrolling, and the English screen names the usage period', async ({ page, request }) => {
+    const name = `${MARK}-usep`
+    const made = await api(request, 'POST', '/api/cards', { name, last4: '', accountId: null, billingDay: 25, usageFrom: 12, note: '' })
+    expect(made.status).toBe(201)
+    const id = (made.json as CardRow).id
+    const prefs = (await api(request, 'GET', '/api/state')).json.preferences as Record<string, unknown>
+    const fits = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
+    try {
+      await page.setViewportSize({ width: 390, height: 844 })
+      const table = await cardsTable(page)
+      const row = table.locator('tbody tr').filter({ hasText: name })
+      await expect(row.getByTestId('card-usage')).toHaveText('이용 12일~11일')
+      expect(await fits()).toBe(true)
+      await row.click()
+      const e = sheet(page, '카드 수정')
+      await expect(e.locator('#cd-usage')).toBeVisible()
+      await expect(e.getByTestId('cd-usage-now')).toBeVisible()
+      const box = (await e.locator('#cd-usage').boundingBox())!
+      expect(box.x >= 0 && box.x + box.width <= 390, 'the field is inside the screen').toBe(true)
+      expect(await fits()).toBe(true)
+      await e.getByRole('button', { name: '취소', exact: true }).click()
+      // English
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, language: 'en' })).status).toBe(200)
+      await page.reload()
+      await page.getByRole('tab', { name: 'Accounts, living costs, settings' }).click()
+      const enRow = page.getByTestId('cards-table').locator('tbody tr').filter({ hasText: name })
+      await expect(enRow.getByTestId('card-usage')).toHaveText('Used day 12 to 11')
+      await enRow.click()
+      const en = sheet(page, 'Edit card')
+      await expect(en.getByText('First day of the usage period')).toBeVisible()
+      await expect(en.getByTestId('cd-usage-now')).toHaveText(/^Right now, what you buy from \d+\/\d+ to \d+\/\d+ is billed on \d+\/\d+\.$/)
+      expect(await fits()).toBe(true)
+    } finally {
+      await api(request, 'PUT', '/api/preferences', prefs)
+      await api(request, 'DELETE', `/api/cards/${id}`)
     }
   })
 })

@@ -35,7 +35,7 @@ import { saveItem, saveSettings, sessionScope, store } from '../lib/store'
 import { accountMonthIn, bankLine, unlinkedTargets } from '../lib/accounts'
 import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
-import { kindDetail } from '../lib/labels'
+import { kindDetail, usageLabel } from '../lib/labels'
 import { adjustable, adjustOf, adjustPreview } from '../lib/budget-page'
 import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, ymLabel, ymOf, type AllocRow } from '../lib/calc'
 import type { Account, AllocationKind, Card, AllocationTarget, BudgetGroup, Settings } from '../data/types'
@@ -542,7 +542,7 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
                   <td :data-label="t('accounts.cards.colName')"><b>{{ c.name }}</b></td>
                   <td :data-label="t('accounts.cards.colLast4')" class="num">{{ c.last4 }}</td>
                   <td :data-label="t('accounts.cards.colAccount')" :class="accountName(c.accountId) ? '' : 'hint'">{{ accountName(c.accountId) ?? t('accounts.cards.noAccount') }}</td>
-                  <td :data-label="t('accounts.cards.colDay')" :class="c.billingDay ? '' : 'hint'">{{ cardDay(c) }}</td>
+                  <td :data-label="t('accounts.cards.colDay')" :class="c.billingDay ? '' : 'hint'">{{ cardDay(c) }}<small v-if="c.usageFrom" class="cuse" data-testid="card-usage">{{ usageLabel(c.usageFrom) }}</small></td>
                 </tr>
               </tbody>
             </table>
@@ -726,6 +726,7 @@ s.orig{margin-right:6px;color:var(--subtle);font-weight:400}
 .shbar div{height:100%;background:var(--primary)}
 .note{margin:0}
 .bank{display:block;font-size:12px;color:var(--subtle)}
+.cuse{display:block;font-size:12px;color:var(--subtle)}
 .stp-p{margin-left:8px}
 .lnk{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:14px 18px 18px;padding:12px 14px;border:1px dashed var(--border-strong);border-radius:var(--r-card);font-size:13px;color:var(--text-2)}
 .lnk span{flex:1 1 260px}
@@ -744,6 +745,7 @@ s.orig{margin-right:6px;color:var(--subtle);font-weight:400}
   .stack td[data-label]::before{content:attr(data-label);display:inline-block;min-width:84px;margin-right:8px;font-size:12px;color:var(--subtle);font-weight:500}
   .stack td:first-child::before{display:none}
   .stack td.act{width:auto}
+  .stack .cuse{display:inline;margin-left:8px}
   .stack td:empty{display:none}
   .stack tr.total td:first-child{font-weight:600}
 }

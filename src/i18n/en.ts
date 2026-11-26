@@ -1257,6 +1257,7 @@ export const en = {
       transferShift: 'Transfer day holiday rule',
       billingShift: 'Billing day holiday rule',
       shift: 'Holiday rule',
+      usageFrom: 'First day of the usage period',
       food: 'Food',
       transit: 'Transit',
       allowance: 'Allowance',

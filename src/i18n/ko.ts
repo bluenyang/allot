@@ -1257,6 +1257,7 @@ export const ko = {
       transferShift: '분배일 휴일 규칙',
       billingShift: '카드 결제일 휴일 규칙',
       shift: '휴일 규칙',
+      usageFrom: '이용 기간 시작일',
       food: '식비',
       transit: '교통비',
       allowance: '용돈',
