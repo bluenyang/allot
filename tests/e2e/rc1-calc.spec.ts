@@ -2,6 +2,8 @@
 // (Settings › General › 기준 일정) and of each of the user's own monthly dates. W-2: a card's usage period (the card
 // editor of 월급 분배, the card list, and the bill date of a new card spending).
 // W-4: the month basis (Settings › General › 달의 기준): the confirmation, the period next to a month's name, the numbers.
+// W-5: the month a card bill counts in and the transfers to the paying accounts (월급 분배 › 월별 시뮬레이션 › 대금 계좌 이체): the
+// block, 지출's reflection strip and the account sheet's forecast show the same money.
 // Every row made here carries the run mark and is removed by id in `finally`; the settings the tests change are put back.
 // It changes the settings, so it runs only on a throwaway server: the test server (:15174) or the API of
 // scripts/test-server/disposable.sh (:15184, started with STATIC_DIR=dist so it serves the built screens).
@@ -721,6 +723,230 @@ test.describe.serial('W-4 the month basis', () => {
       await ask.getByRole('button', { name: 'Cancel', exact: true }).click()
       expect((await state(request)).settings.monthBasis).toBe('pay')
     } finally {
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+})
+
+// ---------- W-5: the month a card bill counts in, and the transfers to the paying accounts ----------
+type Money = { id: string }
+/**
+ * The dates of the case, from today (Asia/Seoul). With the pay day and the transfer day on the 1st and no weekend rule,
+ * a card bill dated on the 1st of next month is paid with this month's pay (a bill on a pay date goes with the pay
+ * before), and one dated on the 2nd with next month's — on any day the test runs.
+ */
+function billCase() {
+  const now = seoulToday()
+  const [y, m] = [now.getFullYear(), now.getMonth()]
+  const ym = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}`
+  const month = (d: Date, lang: 'ko' | 'en') => d.toLocaleString(lang === 'en' ? 'en-US' : 'ko-KR', { month: 'short' })
+  const [here, next] = [new Date(y, m, 1), new Date(y, m + 1, 1)]
+  return {
+    ym: ym(here), nextYm: ym(next), first: iso(here), prevLast: iso(new Date(y, m, 0)),
+    next1: iso(next), next2: iso(new Date(y, m + 1, 2)), after1: iso(new Date(y, m + 2, 1)),
+    ko: month(here, 'ko'), nextKo: month(next, 'ko'), en: month(here, 'en'),
+  }
+}
+const stripOut = (page: Page) => page.getByTestId('strip-out')
+const payout = (page: Page, account: string) => page.getByTestId('payouts').locator(`li[data-account="${account}"]`)
+const part = (page: Page, account: string, key: 'subscriptions' | 'card' | 'refill' | 'total') => payout(page, account).locator(`[data-part="${key}"] dd`)
+async function simTab(page: Page) {
+  await page.goto('/pay?tab=sim')
+  await expect(page.getByRole('tab', { name: '월별 시뮬레이션' })).toHaveAttribute('aria-selected', 'true')
+}
+/** The account sheet's forecast rows: month, in, out, end. */
+async function forecastOf(page: Page, title: string) {
+  const rows = sheet(page, title).getByTestId('account-forecast').locator('tbody tr')
+  await expect(rows).toHaveCount(12)
+  return Promise.all((await rows.all()).map(async (r) => {
+    const td = r.locator('td')
+    const cell = async (i: number) => { const x = (await td.nth(i).innerText()).trim(); return x === '—' ? 0 : Number(x.replace(/[^\d]/g, '')) }
+    return { ym: (await td.nth(0).innerText()).trim().slice(0, 7).replace('.', '-'), inflow: await cell(1), outflow: await cell(2), end: await cell(3) }
+  }))
+}
+
+test.describe.serial('W-5 the month a card bill counts in and the paying accounts', () => {
+  test('(S-5, S-6, V-6) the paying-account block, the spending strip and the account forecast show the same money; a bill paid with an earlier pay says which month\'s allocation pays it', async ({ page, request }) => {
+    const c = billCase()
+    const st0 = (await api(request, 'GET', '/api/state')).json as State & { preferences: Record<string, unknown> }
+    const s0 = st0.settings
+    const prefs = st0.preferences
+    const name = `${MARK}-w5`
+    const accName = `${name}-acc`
+    const made: [string, string][] = []
+    const post = async (path: string, body: unknown) => {
+      const r = await api(request, 'POST', path, body)
+      expect(r.status, `${path} ${JSON.stringify(r.json)}`).toBe(201)
+      made.unshift([path, (r.json as Money).id])
+      return (r.json as Money).id
+    }
+    const spend = (suffix: string, over: Record<string, unknown>, rounds: [string, number][]) => post('/api/spendings', {
+      name: `${name}-${suffix}`, note: '', category: 'etc', bought: c.first, amount: rounds.reduce((a, r) => a + r[1], 0), currency: 'KRW', fxRate: null, fxBuffer: null,
+      how: 'lump', payBy: 'card', count: 1, fee: 0, interval: null, cancelled: false, refillFrom: null, ...over,
+      rounds: rounds.map(([date, amount], i) => ({ no: i + 1, date, amount, state: 'left', edited: false })),
+    })
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      expect((await api(request, 'PUT', '/api/settings', {
+        ...s0, payDay: 1, transferDay: 1, payShift: 'none', transferShift: 'none', billingShift: 'none', monthBasis: 'calendar', monthBasisCardId: null, monthNaming: 'auto',
+      })).status).toBe(200)
+      // what the strip shows before this test's spendings (other rows of the account may count this month)
+      await page.goto('/spend/general')
+      await expect(stripOut(page)).toHaveText(/\d/)
+      const base = await amountOf(stripOut(page))
+
+      // an account no target sends to, a card paid from it, and a balance record of the last day of last month
+      const accountId = await post('/api/accounts', { name: accName, role: '', inflow: '', outflow: '', buffer: 500_000 })
+      const cardId = await post('/api/cards', { name: `${name}-card`, last4: '', accountId, billingDay: null, note: '' })
+      await post('/api/balances', { accountId, date: c.prevLast, amount: 1_000_000, note: '' })
+      // a lump sum billed on the 1st of next month (this month's pay pays it): 123,000
+      const lumpId = await spend('lump', { cardId }, [[c.next1, 123_000]])
+      // an installment billed on the 1st of the next two months: 30,000 each — this month's and next month's
+      await spend('inst', { how: 'installment', count: 2, cardId }, [[c.next1, 30_000], [c.after1, 30_000]])
+      // a buffer use refilled on the 1st of this month: 20,000 (its own bill leaves the buffer next month)
+      await spend('buf', { how: 'buffer', cardId, refillFrom: c.first }, [[c.first, 20_000]])
+      const CARD = 153_000
+      const REFILL = 20_000
+      const TOTAL = CARD + REFILL
+
+      // ── 지출: the strip, and the row that says which month's allocation pays the bill ──
+      await page.goto('/spend/general')
+      await expect(stripOut(page)).toHaveText(new RegExp(`${(base + TOTAL).toLocaleString('ko-KR')}`))
+      const row = page.locator('table.gen-t tbody tr', { hasText: `${name}-lump` })
+      const cell = row.locator('td[data-paid-in]')
+      await expect(cell).toHaveAttribute('data-paid-in', c.ym)
+      await expect(cell.locator('.blk')).toHaveText(c.ko)
+      await expect(cell).toContainText(`${md(c.next1)} 청구 · ${c.ko} 분배에서 냄`)
+      // 할부: each round under its date; the refill of this month's 1st counts by its own date and says nothing
+      await page.goto('/spend/inst')
+      const item = (n: string) => page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(n) })
+      await item(`${name}-inst`).click()
+      const dates = page.locator('table.rt tbody td.dt')
+      await expect(dates).toHaveCount(2)
+      await expect(dates.nth(0)).toContainText(c.next1)
+      await expect(dates.nth(0)).toContainText(`${c.ko} 분배에서 냄`)
+      await expect(dates.nth(0)).toHaveAttribute('data-paid-in', c.ym)
+      // the bill of the 1st of the month after next is paid with next month's pay
+      await expect(dates.nth(1)).toContainText(`${c.nextKo} 분배에서 냄`)
+      await expect(dates.nth(1)).toHaveAttribute('data-paid-in', c.nextYm)
+      await item(`${name}-buf`).click()
+      await expect(dates).toHaveCount(1)
+      await expect(dates.first()).toContainText(c.first)
+      await expect(page.locator('table.rt tbody td.dt[data-paid-in]')).toHaveCount(0)
+
+      // ── 월급 분배 › 월별 시뮬레이션 › 대금 계좌 이체 ──
+      await simTab(page)
+      await expect(page.getByTestId('payouts').getByRole('heading', { name: '대금 계좌 이체', exact: true })).toBeVisible()
+      await expect(payout(page, accName)).toHaveCount(1)
+      expect(await amountOf(part(page, accName, 'card'))).toBe(CARD)
+      expect(await amountOf(part(page, accName, 'refill'))).toBe(REFILL)
+      expect(await amountOf(part(page, accName, 'total'))).toBe(TOTAL)
+      await expect(payout(page, accName).locator('dt')).toHaveText(['카드 지출', '버퍼 채우기', '합계'])
+      // no subscription goes to this account: that row is left out
+      await expect(part(page, accName, 'subscriptions')).toHaveCount(0)
+      // next month counts the installment's second bill only
+      const monthNav = page.getByRole('group', { name: '달 선택', exact: true })
+      await monthNav.getByRole('button', { name: '다음 달', exact: true }).click()
+      await expect(part(page, accName, 'total')).toHaveText(/30,000/)
+      expect(await amountOf(part(page, accName, 'card'))).toBe(30_000)
+      await expect(part(page, accName, 'refill')).toHaveCount(0)
+      await monthNav.getByRole('button', { name: '이전 달', exact: true }).click()
+      await expect(part(page, accName, 'refill')).toHaveCount(1)
+      expect(await amountOf(part(page, accName, 'total'))).toBe(TOTAL)
+
+      // ── the accounts table and the account sheet: the same money comes into the paying account this month ──
+      await page.getByRole('tab', { name: '통장·생활비·설정' }).click()
+      const accRow = page.getByTestId('accounts-table').locator('tbody tr', { hasText: accName })
+      expect(await amountOf(accRow.locator('td.amt'))).toBe(TOTAL)
+      await accRow.click()
+      const rows = await forecastOf(page, accName)
+      // this month: the card rounds come in with the transfer of the 1st and the refill on the 1st; nothing leaves yet
+      expect(rows[0]).toEqual({ ym: c.ym, inflow: TOTAL, outflow: 0, end: 1_000_000 + TOTAL })
+      // next month: 30,000 in for the second bill; out go the two bills of the 1st (153,000) and the buffer use's own bill (20,000)
+      expect(rows[1]).toEqual({ ym: c.nextYm, inflow: 30_000, outflow: 173_000, end: 1_030_000 })
+      // the month after: the second bill leaves, and the balance is back where it started
+      expect(rows[2]).toMatchObject({ inflow: 0, outflow: 30_000, end: 1_000_000 })
+      // one number: the block's sum, what the strip gained and the forecast's money in
+      expect(rows[0]!.inflow).toBe(TOTAL)
+      await sheet(page, accName).getByRole('button', { name: '닫기', exact: true }).last().click()
+      await expect(sheet(page, accName)).toHaveCount(0)
+
+      // ── a bill of the day after the pay day is next month's: it leaves this month's block and strip, and its row says nothing ──
+      const lump = (await state(request)).spendings.find((x) => x.id === lumpId)!
+      const moved = await api(request, 'PUT', `/api/spendings/${lumpId}`, { ...lump, id: undefined, rounds: [{ ...lump.rounds[0]!, date: c.next2 }] })
+      expect(moved.status, JSON.stringify(moved.json)).toBe(200)
+      await simTab(page)
+      expect(await amountOf(part(page, accName, 'card'))).toBe(30_000)
+      expect(await amountOf(part(page, accName, 'total'))).toBe(30_000 + REFILL)
+      await page.goto('/spend/general')
+      await expect(stripOut(page)).toHaveText(new RegExp(`${(base + 30_000 + REFILL).toLocaleString('ko-KR')}`))
+      const after = page.locator('table.gen-t tbody tr', { hasText: `${name}-lump` })
+      await expect(after.locator('td[data-paid-in]')).toHaveCount(0)
+      await expect(after).toContainText(`${md(c.next2)} 청구 · 여유에서`)
+      await expect(after.locator('.blk')).toHaveText(c.nextKo)
+    } finally {
+      for (const [path, id] of made) await api(request, 'DELETE', `${path}/${id}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
+  test('(V-6) on a phone the paying-account block and the spending cards fit without sideways scrolling, and the English screen words them', async ({ page, request }) => {
+    const c = billCase()
+    const st0 = (await api(request, 'GET', '/api/state')).json as State & { preferences: Record<string, unknown> }
+    const s0 = st0.settings
+    const prefs = st0.preferences
+    const name = `${MARK}-w5p`
+    const accName = `${name}-acc`
+    const made: [string, string][] = []
+    const post = async (path: string, body: unknown) => {
+      const r = await api(request, 'POST', path, body)
+      expect(r.status, `${path} ${JSON.stringify(r.json)}`).toBe(201)
+      made.unshift([path, (r.json as Money).id])
+      return (r.json as Money).id
+    }
+    const fits = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      expect((await api(request, 'PUT', '/api/settings', {
+        ...s0, payDay: 1, transferDay: 1, payShift: 'none', transferShift: 'none', billingShift: 'none', monthBasis: 'calendar', monthBasisCardId: null, monthNaming: 'auto',
+      })).status).toBe(200)
+      const accountId = await post('/api/accounts', { name: accName, role: '', inflow: '', outflow: '', buffer: 500_000 })
+      const cardId = await post('/api/cards', { name: `${name}-card`, last4: '', accountId, billingDay: null, note: '' })
+      const body = (suffix: string, over: Record<string, unknown>, date: string, amount: number) => ({
+        name: `${name}-${suffix}`, note: '', category: 'etc', bought: c.first, amount, currency: 'KRW', fxRate: null, fxBuffer: null,
+        how: 'lump', payBy: 'card', count: 1, fee: 0, interval: null, cancelled: false, cardId, refillFrom: null, ...over,
+        rounds: [{ no: 1, date, amount, state: 'left', edited: false }],
+      })
+      await post('/api/spendings', body('lump', {}, c.next1, 1_234_000))
+      await post('/api/spendings', body('buf', { how: 'buffer', refillFrom: c.first }, c.first, 20_000))
+
+      await page.setViewportSize({ width: 390, height: 844 })
+      await simTab(page)
+      await expect(payout(page, accName)).toBeVisible()
+      expect(await amountOf(part(page, accName, 'total'))).toBe(1_254_000)
+      const box = (await page.getByTestId('payouts').boundingBox())!
+      expect(box.x >= 0 && box.x + box.width <= 390, 'the block is inside the screen').toBe(true)
+      expect(await fits()).toBe(true)
+      // the phone's card of the lump sum names the month whose allocation pays it
+      await page.goto('/spend/general')
+      const card = page.locator('ul.mlist li', { hasText: `${name}-lump` })
+      await expect(card).toContainText(`${c.ko} 분배에서 냄`)
+      expect(await fits()).toBe(true)
+
+      // English
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'en' })).status).toBe(200)
+      await page.goto('/spend/general')
+      await expect(page.locator('ul.mlist li', { hasText: `${name}-lump` })).toContainText(`Paid from ${c.en}'s allocation`)
+      expect(await fits()).toBe(true)
+      await page.goto('/pay?tab=sim')
+      await expect(page.getByTestId('payouts').getByRole('heading', { name: 'Transfers to paying accounts', exact: true })).toBeVisible()
+      await expect(payout(page, accName).locator('dt')).toHaveText(['Card spending', 'Buffer refill', 'Total'])
+      await expect(page.getByTestId('payouts')).toContainText('already off the left over above')
+      expect(await fits()).toBe(true)
+    } finally {
+      for (const [path, id] of made) await api(request, 'DELETE', `${path}/${id}`)
       expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
       await api(request, 'PUT', '/api/preferences', prefs)
     }

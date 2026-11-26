@@ -105,7 +105,7 @@ const addLabel = computed(() => ({ general: t('spending.addGeneral'), inst: t('s
       <div class="ms-g">
         <div>
           <span class="ms-l">{{ t('spending.fromRemainder') }}</span>
-          <b class="num">{{ fmtMoney(month.out) }}</b>
+          <b class="num" data-testid="strip-out">{{ fmtMoney(month.out) }}</b>
           <div v-if="month.out" class="kstack" role="img" :aria-label="t('spending.stackLabel', { general: fmtMoney(month.general), inst: fmtMoney(month.inst) })">
             <span v-if="month.general" :style="{ width: `${month.gShare}%`, background: 'var(--primary)' }"></span><span v-if="month.inst" :style="{ width: `${100 - month.gShare}%`, background: 'var(--accent)' }"></span>
           </div>
