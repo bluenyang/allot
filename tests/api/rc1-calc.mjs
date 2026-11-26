@@ -1,5 +1,5 @@
-// API check for spec 018 (0.1.10-rc.1, V-5). W-1: the weekend and holiday rule of each date.
-//   bash scripts/test-server/disposable.sh rc1-w1-api node tests/api/rc1-calc.mjs   (it writes to the database directly)
+// API check for spec 018 (0.1.10-rc.1, V-5). W-1: the weekend and holiday rule of each date. W-2: a card's usage period.
+//   bash scripts/test-server/disposable.sh rc1-api node tests/api/rc1-calc.mjs   (it writes to the database directly)
 // A is ADMIN_EMAIL. U is made here and deleted at the end; every row below is U's.
 //   shifts    a settings body with the old dayShift alone sets the three rules; a rule the body names wins, each on its
 //             own; a body without any keeps the saved ones; no answer has dayShift and the column is gone; an unknown
@@ -9,6 +9,10 @@
 //             keys and a schedule item's shift, and refuses an unknown value
 //   revert    a settings change logged in the 0.1.9 shape (dayShift in the logged rows) is still reverted, and still
 //             refused when a rule changed after it (A-2)
+//   usage     a card's usageFrom (spec 018 S-2): a card in the 0.1.9 shape has none; it is saved and read back (1 and 31
+//             as they are), kept by a body that leaves it out, cleared by null; 0, 32, 1.5, a string → 400 and the row
+//             stays; list_accounts carries it; propose_changes sets it, keeps it when left out and refuses 32; a change
+//             of it is reverted, and a card change logged before the column existed still reverts and leaves it
 // Exit 0 only if every check passed.
 import postgres from 'postgres'
 import { arm, cleanupStep, disarm, failures, ok, threw } from './lib/check.mjs'
@@ -180,6 +184,73 @@ try {
   ok((await put({ ...BODY, transferShift: 'none' })).status === 200, 'revert: then the transfer rule alone changes')
   const rv2 = await U('POST', `/api/changes/${set2.id}/revert`)
   ok(rv2.status === 409 && three((await state()).settings) === 'after/none/after', `revert: a rule changed later → ${rv2.status}, nothing changes (${three((await state()).settings)})`)
+
+  // ── usage: the first day of a card's usage period (W-2) ──
+  const [ucol] = await sql`select data_type, is_nullable from information_schema.columns where table_name = 'card' and column_name = 'usage_from'`
+  const [uchk] = await sql`select count(*)::int as n from pg_constraint where conname = 'card_usage_from'`
+  ok(ucol?.data_type === 'smallint' && ucol.is_nullable === 'YES' && uchk.n === 1, `card.usage_from is ${ucol?.data_type}, nullable ${ucol?.is_nullable}, with its check (${uchk.n})`)
+  const CARD = { name: 'RC1 card', last4: '', accountId: null, billingDay: 25, note: 'memo' }
+  const cardNow = async (id) => (await state()).cards.find((c) => c.id === id)
+  const c1 = await U('POST', '/api/cards', CARD)
+  ok(c1.status === 201 && c1.json.usageFrom === null, `a new card in the 0.1.9 shape (no usageFrom) → ${c1.status}, usageFrom ${c1.json?.usageFrom}`)
+  const cid = c1.json.id
+  ok((await cardNow(cid))?.usageFrom === null, '/api/state gives the card usageFrom null')
+  const c2 = await U('PUT', `/api/cards/${cid}`, { ...CARD, usageFrom: 12 })
+  ok(c2.status === 200 && c2.json.usageFrom === 12 && (await cardNow(cid))?.usageFrom === 12, `usageFrom 12 is saved and read back (${c2.status}, ${c2.json?.usageFrom})`)
+  const c3 = await U('PUT', `/api/cards/${cid}`, { ...CARD, name: 'RC1 card b', billingDay: 14 })
+  const kept3 = await cardNow(cid)
+  ok(c3.status === 200 && c3.json.usageFrom === 12 && kept3.usageFrom === 12 && kept3.name === 'RC1 card b' && kept3.billingDay === 14 && kept3.note === 'memo',
+    `an update without usageFrom keeps the saved one (${c3.json?.usageFrom}) and writes the rest (${kept3?.name}, ${kept3?.billingDay})`)
+  for (const v of [1, 31]) {
+    const r = await U('PUT', `/api/cards/${cid}`, { ...CARD, usageFrom: v })
+    ok(r.status === 200 && r.json.usageFrom === v && (await cardNow(cid))?.usageFrom === v, `usageFrom ${v} is stored as ${r.json?.usageFrom}`)
+  }
+  for (const v of [0, 32, 1.5, -1, '12']) {
+    const up = await U('PUT', `/api/cards/${cid}`, { ...CARD, usageFrom: v })
+    const mk2 = await U('POST', '/api/cards', { ...CARD, name: 'RC1 bad card', usageFrom: v })
+    ok(up.status === 400 && typeof up.json?.error === 'string' && mk2.status === 400, `usageFrom ${JSON.stringify(v)}: update → ${up.status} with a message, create → ${mk2.status}`)
+  }
+  const afterBad = await state()
+  ok((afterBad.cards.find((c) => c.id === cid))?.usageFrom === 31 && afterBad.cards.length === 1, 'the refused bodies left the card as it was and made no card')
+  const c4 = await U('PUT', `/api/cards/${cid}`, { ...CARD, usageFrom: null })
+  ok(c4.status === 200 && c4.json.usageFrom === null && (await cardNow(cid))?.usageFrom === null, `usageFrom null clears it (${c4.status}, ${c4.json?.usageFrom})`)
+  const c5 = await U('POST', '/api/cards', { ...CARD, name: 'RC1 card 2', billingDay: 1, usageFrom: 18 })
+  ok(c5.status === 201 && c5.json.usageFrom === 18, `a new card with usageFrom 18 → ${c5.status}, ${c5.json?.usageFrom}`)
+  // mcp
+  ok((await U('PUT', `/api/cards/${cid}`, { ...CARD, usageFrom: 12 })).status === 200, 'usage: the first card back to 12 for the tools')
+  const la = await tool(kRead, 'list_accounts', { months: 1 })
+  const laCards = la.data?.cards ?? []
+  ok(!la.failed && laCards.find((c) => c.id === cid)?.usageFrom === 12 && laCards.find((c) => c.id === c5.json.id)?.usageFrom === 18 && laCards.find((c) => c.id === cid)?.billingDay === 25,
+    `list_accounts: every card carries usageFrom (${laCards.map((c) => c.usageFrom)})`)
+  const pSet = await apply([{ resource: 'cards', action: 'update', id: cid, data: { ...CARD, usageFrom: 20 } }])
+  ok(!pSet.failed && (await cardNow(cid))?.usageFrom === 20, `propose_changes with usageFrom 20, applied: ${(await cardNow(cid))?.usageFrom}`)
+  const pKeep = await apply([{ resource: 'cards', action: 'update', id: cid, data: { ...CARD, name: 'RC1 card c' } }])
+  const kept4 = await cardNow(cid)
+  ok(!pKeep.failed && kept4?.usageFrom === 20 && kept4.name === 'RC1 card c', `propose_changes without usageFrom keeps it (${kept4?.usageFrom}) and writes the rest (${kept4?.name})`)
+  const pBadU = await tool(kChat, 'propose_changes', { changes: [{ resource: 'cards', action: 'update', id: cid, data: { ...CARD, usageFrom: 32 } }] })
+  const pBadU2 = await tool(kChat, 'propose_changes', { changes: [{ resource: 'cards', action: 'create', data: { ...CARD, name: 'RC1 bad card', usageFrom: 0 } }] })
+  ok(pBadU.failed && pBadU2.failed && (await cardNow(cid))?.usageFrom === 20 && (await state()).cards.length === 2, 'propose_changes refuses usageFrom 32 and 0')
+  const pNull = await apply([{ resource: 'cards', action: 'update', id: cid, data: { ...CARD, usageFrom: null } }])
+  ok(!pNull.failed && (await cardNow(cid))?.usageFrom === null, `propose_changes with usageFrom null clears it (${(await cardNow(cid))?.usageFrom})`)
+  // revert: a change of usageFrom goes back
+  ok((await U('PUT', `/api/cards/${cid}`, { ...CARD, usageFrom: 12 })).status === 200 && (await U('PUT', `/api/cards/${cid}`, { ...CARD, usageFrom: 25 })).status === 200, 'usage revert: 12, then a change to 25')
+  const uSet = await lastSet()
+  const urv = await U('POST', `/api/changes/${uSet.id}/revert`)
+  ok(urv.status === 200 && (await cardNow(cid))?.usageFrom === 12, `usage revert: the change is reverted → ${urv.status}, usageFrom back to ${(await cardNow(cid))?.usageFrom}`)
+  // a card change logged before the column existed (no usageFrom in the logged rows) still reverts, and leaves usageFrom
+  ok((await U('PUT', `/api/cards/${cid}`, { ...CARD, name: 'RC1 card old log' })).status === 200, 'usage revert: a name change')
+  const oSet = await lastSet()
+  const stripped = await sql.begin(async (q) => {
+    await q`select set_config('app.user_id', ${uid}, true)`
+    const r = await q`update change_log set before = before - 'usageFrom', after = after - 'usageFrom'
+      where user_id = ${uid} and set_id = ${oSet.id} and table_name = 'card' and op = 'update'`
+    return r.count
+  })
+  ok(stripped === 1, `usage revert: the logged rows of set ${oSet.id.slice(0, 8)} hold no usageFrom, as 0.1.9 logged a card`)
+  ok((await U('PUT', `/api/cards/${cid}`, { ...CARD, name: 'RC1 card old log', usageFrom: 15 })).status === 200, 'usage revert: then usageFrom alone changes to 15')
+  const orv = await U('POST', `/api/changes/${oSet.id}/revert`)
+  const back = await cardNow(cid)
+  ok(orv.status === 200 && back?.name === 'RC1 card' && back.usageFrom === 15, `usage revert: the old set is reverted → ${orv.status}, the name is back (${back?.name}) and usageFrom stays ${back?.usageFrom}`)
 } catch (e) {
   mainErr = e
   threw(e)
