@@ -58,6 +58,13 @@ export const settings = pgTable('settings', {
   subRound: integer('sub_round').notNull().default(10_000),
   /** Monthly dates on a weekend or holiday: 'none' keeps them, 'before'/'after' move to a business day (spec 007 S-10). */
   dayShift: text('day_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
+  /**
+   * The same rule, one for each date (spec 018 S-1): the pay day, the transfer day and the card billing day (a card's own
+   * billing day uses the billing rule). `day_shift` above is copied into them and then dropped.
+   */
+  payShift: text('pay_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
+  transferShift: text('transfer_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
+  billingShift: text('billing_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
   /** How the Savings and Investment menus split their total (spec 013 S-3). */
   savingSplit: text('saving_split').$type<'amount' | 'ratio'>().notNull().default('amount'),
   investSplit: text('invest_split').$type<'amount' | 'ratio'>().notNull().default('ratio'),
@@ -70,6 +77,9 @@ export const settings = pgTable('settings', {
   userScoped(t.userId),
   check('settings_saving_split', sql`${t.savingSplit} in ('amount', 'ratio')`),
   check('settings_invest_split', sql`${t.investSplit} in ('amount', 'ratio')`),
+  check('settings_pay_shift', sql`${t.payShift} in ('none', 'before', 'after')`),
+  check('settings_transfer_shift', sql`${t.transferShift} in ('none', 'before', 'after')`),
+  check('settings_billing_shift', sql`${t.billingShift} in ('none', 'before', 'after')`),
 ])
 
 /**
@@ -359,12 +369,15 @@ export const scheduleItem = pgTable('schedule_item', {
   /** in: money comes into the account · out: money goes out of it */
   direction: text('direction').$type<'in' | 'out'>().notNull(),
   note: text('note'),
+  /** On a weekend or holiday: this date's own rule (spec 018 S-1), as the three dates of `settings` have theirs. */
+  shift: text('shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
 }, (t) => [
   userScoped(t.userId),
   unique('schedule_item_user_id_id').on(t.userId, t.id),
   foreignKey({ name: 'schedule_item_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
   check('schedule_item_day', sql`${t.day} between 1 and 31`),
   check('schedule_item_direction', sql`${t.direction} in ('in', 'out')`),
+  check('schedule_item_shift', sql`${t.shift} in ('none', 'before', 'after')`),
 ])
 
 /**
