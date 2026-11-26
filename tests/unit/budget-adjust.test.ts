@@ -6,7 +6,7 @@ import { adjustable, adjustOf, adjustPreview, adjustStart, phaseScope, withAdjus
 import { monthMoney, type AccountState } from '../../src/lib/calc'
 import type { Account, AllocationTarget, MonthAdjust, Phase, Settings } from '../../src/data/types'
 
-const S: Settings = { netPay: 3_000_000, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 16, subRound: 10_000, dayShift: 'none', savingSplit: 'amount', investSplit: 'ratio' }
+const S: Settings = { netPay: 3_000_000, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 16, subRound: 10_000, payShift: 'none', transferShift: 'none', billingShift: 'none', savingSplit: 'amount', investSplit: 'ratio' }
 const P1: Phase = { id: 'p1', label: 'keep', name: 'one', from: '2026-01', to: '2026-12', amounts: { tf: 200_000, ti: 1_000_000 } }
 const P2: Phase = { id: 'p2', label: '', name: 'two', from: '2027-01', to: null, amounts: { tf: 300_000, ti: 1_200_000 } }
 const T: AllocationTarget[] = [

@@ -45,7 +45,13 @@ export interface Settings {
   transferDay: number
   billingDay: number
   subRound: number // 구독 이체 올림 단위
-  dayShift: DayShift // 주말·공휴일이면 (spec 007 S-10)
+  /**
+   * On a weekend or holiday, each date by its own rule (spec 018 S-1; one rule `dayShift` for all up to 0.1.9): the pay
+   * day, the transfer day and the card billing day (a card's own billing day uses the billing rule).
+   */
+  payShift: DayShift
+  transferShift: DayShift
+  billingShift: DayShift
   /** How the Savings and Investment menus split their total (spec 013 S-3). */
   savingSplit?: SplitMode // default 'amount'
   investSplit?: SplitMode // default 'ratio'
@@ -78,6 +84,8 @@ export interface ScheduleItem {
   accountId: string | null
   direction: 'in' | 'out'
   note?: string
+  /** On a weekend or holiday: this date's own rule (spec 018 S-1). */
+  shift: DayShift
 }
 
 export type SplitMode = 'amount' | 'ratio'

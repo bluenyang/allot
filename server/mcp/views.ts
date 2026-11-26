@@ -361,7 +361,7 @@ export function schedule(d: Data, from: string, months: number) {
       month: ym,
       dates: datesOf(d, ym, off),
       // the user's own monthly dates (spec 013 S-22, A-36), moved off weekends and holidays like the dates above; no amount
-      ownDates: scheduleItemsIn(d.schedules ?? [], ym, d.settings.dayShift, off).map(({ item, at }) => ({
+      ownDates: scheduleItemsIn(d.schedules ?? [], ym, off).map(({ item, at }) => ({
         id: item.id, name: item.name, day: item.day, ...dateOf(at), accountId: item.accountId, direction: item.direction, ...(item.note ? { note: item.note } : {}),
       })),
       payments: paymentsIn(d, ym),

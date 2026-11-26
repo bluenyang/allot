@@ -9,7 +9,7 @@ import {
 import type { Account, AllocationTarget, Card, LivingItem, Phase, Priced, Settings, Spending } from '../../src/data/types'
 import { accountMonthIn } from '../../src/lib/accounts'
 
-const S: Priced = { netPay: 3_000_000, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 16, subRound: 10_000, dayShift: 'none', currencies: [] }
+const S: Priced = { netPay: 3_000_000, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 16, subRound: 10_000, payShift: 'none', transferShift: 'none', billingShift: 'none', currencies: [] }
 const none: ReadonlySet<string> = new Set()
 const P1: Phase = { id: 'p1', label: '', name: 'one', from: '2026-01', to: '2026-12', amounts: { tf: 200_000, ts: 1_000_000, ti: 1_000_000 } }
 const P2: Phase = { id: 'p2', label: '', name: 'two', from: '2027-01', to: null, amounts: { tf: 300_000, ts: 600_000, ti: 1_200_000 } }

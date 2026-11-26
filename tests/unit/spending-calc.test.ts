@@ -8,7 +8,7 @@ import {
 import type { Distribution, TransferCalc } from '../../src/lib/calc'
 import type { AllocationTarget, Living, Phase, PlanChange, Priced, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
 
-const S: Priced = { netPay: 3_000_000, fxRate: 1380, fxBuffer: 3, payDay: 25, transferDay: 1, billingDay: 16, subRound: 10_000, dayShift: 'none', currencies: [] }
+const S: Priced = { netPay: 3_000_000, fxRate: 1380, fxBuffer: 3, payDay: 25, transferDay: 1, billingDay: 16, subRound: 10_000, payShift: 'none', transferShift: 'none', billingShift: 'none', currencies: [] }
 const none: ReadonlySet<string> = new Set()
 const dates = (r: SpendingRound[]) => r.map((x) => x.date)
 const amounts = (r: SpendingRound[]) => r.map((x) => x.amount)
@@ -53,11 +53,11 @@ test('card: bought 2026-11-18 bills 2026-12-16; bought 2026-12-02 bills 2027-01-
 
 test('card: a billing day on Saturday moves to Friday with dayShift before', () => {
   assert.equal(new Date('2026-05-16T00:00:00').getDay(), 6)
-  const r = planRounds({ bought: '2026-04-10', how: 'lump', payBy: 'card', count: 1, principal: 10_000 }, { ...S, dayShift: 'before' }, none)
+  const r = planRounds({ bought: '2026-04-10', how: 'lump', payBy: 'card', count: 1, principal: 10_000 }, { ...S, payShift: 'before', transferShift: 'before', billingShift: 'before' }, none)
   assert.deepEqual(dates(r), ['2026-05-15'])
   const plain = planRounds({ bought: '2026-04-10', how: 'lump', payBy: 'card', count: 1, principal: 10_000 }, S, none)
   assert.deepEqual(dates(plain), ['2026-05-16'])
-  const holiday = planRounds({ bought: '2026-04-10', how: 'lump', payBy: 'card', count: 1, principal: 10_000 }, { ...S, dayShift: 'after' }, new Set(['2026-05-18']))
+  const holiday = planRounds({ bought: '2026-04-10', how: 'lump', payBy: 'card', count: 1, principal: 10_000 }, { ...S, payShift: 'after', transferShift: 'after', billingShift: 'after' }, new Set(['2026-05-18']))
   assert.deepEqual(dates(holiday), ['2026-05-19'])
 })
 
@@ -213,7 +213,7 @@ test('V-3 (a): without spendings, transferAt and distributionAt equal the pre-ch
   const rnd = rng(20261121)
   const int = (lo: number, hi: number) => lo + Math.floor(rnd() * (hi - lo + 1))
   for (let k = 0; k < 200; k++) {
-    const s: Priced = { netPay: int(1_500_000, 6_000_000), fxRate: int(1000, 1600), fxBuffer: int(0, 8), payDay: 25, transferDay: int(1, 28), billingDay: 16, subRound: [1000, 5000, 10_000, 50_000][int(0, 3)]!, dayShift: 'none', currencies: [] }
+    const s: Priced = { netPay: int(1_500_000, 6_000_000), fxRate: int(1000, 1600), fxBuffer: int(0, 8), payDay: 25, transferDay: int(1, 28), billingDay: 16, subRound: [1000, 5000, 10_000, 50_000][int(0, 3)]!, payShift: 'none', transferShift: 'none', billingShift: 'none', currencies: [] }
     const subs: Subscription[] = Array.from({ length: int(0, 8) }, (_, i) => {
       const usdPlan = rnd() < 0.5
       return {

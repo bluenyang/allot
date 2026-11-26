@@ -14,7 +14,7 @@ import BudgetHistory from '../components/BudgetHistory.vue'
 import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
-import { addYm, bufferGauge, livingAt, monthDay, nextTransferYm, phaseAt, phaseNumbers, ymd, ymOf } from '../lib/calc'
+import { addYm, bufferGauge, livingAt, monthDay, nextTransferYm, phaseAt, phaseNumbers, shiftOf, ymd, ymOf } from '../lib/calc'
 import { accountLine, baseAmount, itemColor, monthParts, monthPlans, shareOf, type BudgetCell, type BudgetKpi, type BudgetRow } from '../lib/budget-page'
 import type { LivingItem } from '../data/types'
 import { localToday } from '../lib/now'
@@ -29,7 +29,7 @@ const target = computed(() => store.targets.find((x) => x.kind === 'living') ?? 
 const linked = computed(() => (target.value?.accountId ? store.accounts.find((a) => a.id === target.value!.accountId) ?? null : null))
 const nextDate = computed(() => {
   const s = store.settings
-  return monthDay(nextTransferYm(todayStr, s, off.value), s.transferDay, s.dayShift ?? 'none', off.value).date
+  return monthDay(nextTransferYm(todayStr, s, off.value), s.transferDay, shiftOf(s, 'transfer'), off.value).date
 })
 
 const cells = computed<BudgetCell[]>(() => {

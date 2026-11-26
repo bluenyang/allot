@@ -33,7 +33,7 @@ const before = (await A('GET', '/api/state')).json
 const prefs0 = before.preferences
 const settings0 = before.settings
 const bBefore = (await B('GET', '/api/state')).json
-ok(!!prefs0 && Array.isArray(before.holidaySets) && 'dayShift' in settings0, '/api/state has preferences, holidaySets, settings.dayShift')
+ok(!!prefs0 && Array.isArray(before.holidaySets) && 'payShift' in settings0 && 'transferShift' in settings0 && 'billingShift' in settings0, '/api/state has preferences, holidaySets and the settings\' rule of each date')
 const made = []
 try {
   // (a) PUT → state, and the rules refuse bad input without touching the row
@@ -56,13 +56,15 @@ try {
   const still = (await A('GET', '/api/state')).json.preferences
   ok(still.primary === '#1F5F8B' && still.themeMode === 'dark', 'refused writes left the row as it was')
 
-  // settings.dayShift: set, kept when a client leaves it out, refused when unknown
-  const { dayShift: _d, ...plain } = settings0
+  // settings.dayShift, the one rule of the bodies up to 0.1.9 (spec 018 S-1): it sets the rule of each date, the rules are
+  // kept when a client leaves them out, and an unknown value is refused
+  const { dayShift: _d, payShift: _p, transferShift: _t, billingShift: _b, ...plain } = settings0
+  const three = (s) => [s?.payShift, s?.transferShift, s?.billingShift].join('/')
   const s1 = await A('PUT', '/api/settings', { ...plain, dayShift: 'before' })
   const s2 = await A('PUT', '/api/settings', plain)
   const s3 = await A('PUT', '/api/settings', { ...plain, dayShift: 'sideways' })
-  ok(s1.json?.dayShift === 'before' && s2.json?.dayShift === 'before' && s3.status === 400,
-    `dayShift: set ${s1.json?.dayShift}, kept when omitted ${s2.json?.dayShift}, unknown → ${s3.status}`)
+  ok(three(s1.json) === 'before/before/before' && three(s2.json) === 'before/before/before' && s3.status === 400,
+    `dayShift: sets the three rules ${three(s1.json)}, kept when omitted ${three(s2.json)}, unknown → ${s3.status}`)
 
   // V-3 (c): rules the API refuses
   const set = (rules, extra = {}) => ({ name: 'V5-set', enabled: true, builtin: null, rules, ...extra })
@@ -136,7 +138,7 @@ try {
   await A('PUT', '/api/preferences', prefs0)
   await A('PUT', '/api/settings', settings0)
   const end = (await A('GET', '/api/state')).json
-  ok(JSON.stringify(end.preferences) === JSON.stringify(prefs0) && end.settings.dayShift === settings0.dayShift
+  ok(JSON.stringify(end.preferences) === JSON.stringify(prefs0) && ['payShift', 'transferShift', 'billingShift'].every((k) => end.settings[k] === settings0[k])
     && end.holidaySets.length === before.holidaySets.length, 'A is back to what it had')
   await B('PUT', '/api/preferences', bBefore.preferences)
   const bEnd = (await B('GET', '/api/state')).json

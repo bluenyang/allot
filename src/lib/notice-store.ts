@@ -2,7 +2,7 @@
 // read marks are the account's (spec 016 S-1, src/lib/notice-marks.ts), so every browser and device shows the same.
 // Shared by every bell (the phone bar's and the header's).
 import { computed } from 'vue'
-import { ymd } from './calc'
+import { needsHolidays, ymd } from './calc'
 import { goalCards, maturityCards, maturityKey } from './goals'
 import { offDays } from './holidays-lazy'
 import { buildNotices, keptMarks, unreadCount } from './notices'
@@ -14,7 +14,7 @@ import { marks, saveMarks } from './notice-marks'
 export const notices = computed(() => {
   const now = ymd(localToday())
   const year = Number(now.slice(0, 4))
-  const off: ReadonlySet<string> = (store.settings.dayShift ?? 'none') === 'none'
+  const off: ReadonlySet<string> = !needsHolidays(store.settings, store.schedules)
     ? new Set()
     : offDays(store.holidaySets, `${year - 1}-11-01`, `${year + 1}-03-01`) ?? new Set()
   return buildNotices(store, now, off, {

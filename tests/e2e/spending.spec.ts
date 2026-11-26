@@ -758,7 +758,7 @@ type FullSpend = {
   id: string; name: string; note: string; category: string; bought: string; amount: number; currency: string; fxRate: number | null
   how: string; payBy: string; count: number; fee: number; interval: string | null; cancelled: boolean; rounds: R[]
 }
-type Cfg = { billingDay: number; dayShift: string; fxRate: number; fxBuffer: number }
+type Cfg = { billingDay: number; billingShift: string; fxRate: number; fxBuffer: number }
 const cfg = async (request: APIRequestContext) => ((await state(request)) as unknown as { settings: Cfg }).settings
 const mineEd = async (request: APIRequestContext) => ((await state(request)) as unknown as { spendings: FullSpend[] }).spendings.filter((s) => s.name.startsWith(EDM))
 const byName = async (request: APIRequestContext, n: string) => (await mineEd(request)).find((s) => s.name === `${EDM}-${n}`)!
@@ -806,7 +806,7 @@ test('(S-2, S-4, W-7) 지출 추가: a card lump sum is billed on the billing da
     await expect(s.getByLabel('결제 수단', { exact: true })).toContainText(`카드 · 매달 ${c.billingDay}일 청구`)
     const first = await readDate(grp(s, '청구일'))
     expect(first.slice(0, 7), 'the card is billed the month after the purchase').toBe('2031-04')
-    if (c.dayShift === 'none') expect(first.slice(8)).toBe(String(c.billingDay).padStart(2, '0'))
+    if (c.billingShift === 'none') expect(first.slice(8)).toBe(String(c.billingDay).padStart(2, '0'))
     await next(s)
     await expect(s.getByTestId('sp-plan')).toContainText('한 번 · ₩159,000')
     await expect(s.locator('.rl li')).toHaveCount(1)
@@ -851,7 +851,7 @@ test('(S-4, W-7) 할부 추가: a card installment with a fee shows 6 rounds wit
     expect(got.rounds.map((r) => r.amount)).toEqual([220_830, 220_830, 220_830, 220_830, 220_830, 220_850])
     expect(got.rounds.every((r) => r.state === 'left' && !r.edited)).toBe(true)
     expect(got.rounds[0]!.date.slice(0, 7)).toBe('2031-04')
-    if (c.dayShift === 'none') expect(got.rounds.map((r) => r.date.slice(8))).toEqual(Array(6).fill(String(c.billingDay).padStart(2, '0')))
+    if (c.billingShift === 'none') expect(got.rounds.map((r) => r.date.slice(8))).toEqual(Array(6).fill(String(c.billingDay).padStart(2, '0')))
     await expect(page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(`${EDM}-fee`) })).toBeVisible()
   } finally {
     await cleanEd(request)
@@ -1294,7 +1294,7 @@ test('(S-4, A-25, review 8, W-7) a first date set a year on: the later billing d
   let setId = ''
   try {
     // billing day 16, a billing date on a closed day moves to the next business day, and 2027-12-16 (a Thursday) is a holiday
-    expect((await api(request, 'PUT', '/api/settings', { ...before, billingDay: 16, dayShift: 'after' })).status).toBe(200)
+    expect((await api(request, 'PUT', '/api/settings', { ...before, billingDay: 16, billingShift: 'after' })).status).toBe(200)
     const made = await api(request, 'POST', '/api/holiday-sets', { name: `${EDM}-hol`, enabled: true, builtin: null, rules: [{ name: `${EDM}-day`, rdate: ['2027-12-16'] }] })
     expect(made.status).toBe(201)
     setId = (made.json as { id: string }).id

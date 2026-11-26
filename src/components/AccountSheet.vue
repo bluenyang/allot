@@ -13,7 +13,7 @@ import { store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { offDays } from '../lib/holidays-lazy'
 import { bankLine, targetsOf } from '../lib/accounts'
-import { addYm, bufferGauge, goalMonth, projectAccount, yearContribution, ymLabel, ymOf, ymd } from '../lib/calc'
+import { addYm, bufferGauge, goalMonth, needsHolidays, projectAccount, yearContribution, ymLabel, ymOf, ymd } from '../lib/calc'
 import { fmtMoney } from '../lib/display'
 import type { Balance } from '../data/types'
 import { localToday } from '../lib/now'
@@ -31,7 +31,7 @@ const balances = computed(() => store.balances.filter((b) => b.accountId === pro
 
 // Holidays for the day shift, from the month before the last record to after the forecast.
 const off = computed<ReadonlySet<string>>(() => {
-  if ((store.settings.dayShift ?? 'none') === 'none') return new Set()
+  if (!needsHolidays(store.settings, store.schedules)) return new Set()
   const first = balances.value[0]?.date.slice(0, 7) ?? now
   const from = first < now ? first : now
   return offDays(store.holidaySets, `${addYm(from, -2)}-01`, `${addYm(now, 14)}-01`) ?? new Set()

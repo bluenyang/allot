@@ -48,8 +48,8 @@ export function calendarEvents(from: string, to: string): CalEvent[] {
     for (const [kind, x] of [['pay', d.pay], ['transfer', d.transfer], ['billing', d.billing]] as const) {
       if (x.date >= from && x.date <= last) out.push({ date: x.date, title: kindLabel(kind) + moved(x), kind })
     }
-    // The user's own dates, moved by the same rule (spec 013 S-22): the title is the name, the kind says in or out.
-    for (const { item, at } of scheduleItemsIn(store.schedules, ym, store.settings.dayShift, off)) {
+    // The user's own dates, each moved by its own rule (spec 013 S-22, spec 018 S-1): the title is the name, the kind says in or out.
+    for (const { item, at } of scheduleItemsIn(store.schedules, ym, off)) {
       if (at.date >= from && at.date <= last) out.push({ date: at.date, title: item.name + moved(at), kind: item.direction, name: item.name })
     }
   }

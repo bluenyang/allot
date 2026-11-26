@@ -4,7 +4,7 @@
 // the exchange rate must be above 0.
 import type { Living, Preferences, Settings } from './types'
 
-export const DEFAULT_SETTINGS: Settings = { netPay: 0, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, dayShift: 'none', savingSplit: 'amount', investSplit: 'ratio', fxAuto: false, fxAutoAt: null, fxAutoError: null }
+export const DEFAULT_SETTINGS: Settings = { netPay: 0, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, payShift: 'none', transferShift: 'none', billingShift: 'none', savingSplit: 'amount', investSplit: 'ratio', fxAuto: false, fxAutoAt: null, fxAutoError: null }
 export const DEFAULT_LIVING: Living = { food: 0, transit: 0, allowance: 0 }
 /** Display settings before the first save (spec 007): the canvas defaults, light (S-16). */
 export const DEFAULT_PREFERENCES: Preferences = {

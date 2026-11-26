@@ -16,7 +16,7 @@ const spend = (id: string, over: Partial<Spending>): Spending => ({
 })
 
 const base: AccountState = {
-  settings: { netPay: 3_000_000, fxRate: 1400, fxBuffer: 5, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, dayShift: 'none' },
+  settings: { netPay: 3_000_000, fxRate: 1400, fxBuffer: 5, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, payShift: 'none', transferShift: 'none', billingShift: 'none' },
   living: { food: 0, transit: 0, allowance: 0 },
   livingItems: [],
   targets: [{ id: 't-fix', name: 'Fixed', kind: 'fixed' }, { id: 't-rest', name: 'Rest', kind: 'remainder' }],

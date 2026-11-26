@@ -21,7 +21,7 @@ import { phaseTag } from '../lib/labels'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
 import { monthLong, moneyShort, weekdayShort } from '../lib/format'
 import { offDays } from '../lib/holidays-lazy'
-import { addYm, incomeAt, monthDates, monthDay, monthMoney, parseDate, ymd, ymOf, ymRange, type IncomeLine } from '../lib/calc'
+import { addYm, incomeAt, monthDates, monthDay, monthMoney, needsHolidays, parseDate, ymd, ymOf, ymRange, type IncomeLine } from '../lib/calc'
 import { localToday } from '../lib/now'
 import type { IncomeExtra, IncomeItem, IncomeReceipt } from '../data/types'
 
@@ -39,7 +39,7 @@ const phase = computed(() => money.value.dist.phase)
 
 // The salary's date after the weekend/holiday shift, as the overview shows it.
 const off = computed<ReadonlySet<string>>(() => {
-  if (store.settings.dayShift === 'none') return new Set()
+  if (!needsHolidays(store.settings, store.schedules)) return new Set()
   return offDays(store.holidaySets, `${addYm(ym.value, -2)}-01`, `${addYm(ym.value, 3)}-01`) ?? new Set()
 })
 const mdd = (s: string) => { const d = parseDate(s); return `${d.getMonth() + 1}/${d.getDate()}(${weekdayShort(d)})` }

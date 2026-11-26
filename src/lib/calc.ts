@@ -91,13 +91,30 @@ export function monthDay(ym: string, day: number, shift: DayShift, off: Readonly
   return { nominal: ymd(nominal), date: ymd(d), shifted: moved && shift !== 'none' ? shift : null }
 }
 
-/** Pay day, transfer day and card billing day of `ym` (spec 007 S-10). */
+/** The three monthly dates of the settings; each has its own weekend and holiday rule (spec 018 S-1). */
+export type ShiftDate = 'pay' | 'transfer' | 'billing'
+type Shifts = Pick<Settings, 'payShift' | 'transferShift' | 'billingShift'>
+
+/** The rule of one of the three dates ('none' when it is not set). A card's own billing day uses the billing rule. */
+export function shiftOf(s: Partial<Shifts>, which: ShiftDate): DayShift {
+  return (which === 'pay' ? s.payShift : which === 'transfer' ? s.transferShift : s.billingShift) ?? 'none'
+}
+
+/**
+ * Does any rule move a date off weekends and holidays — one of the three dates', or a schedule item's own? When none
+ * does, no holiday list is needed: every caller that skips loading one asks this (spec 018 S-1).
+ */
+export function needsHolidays(s: Partial<Shifts>, schedules: readonly { shift?: DayShift }[] = []): boolean {
+  return shiftOf(s, 'pay') !== 'none' || shiftOf(s, 'transfer') !== 'none' || shiftOf(s, 'billing') !== 'none'
+    || schedules.some((x) => (x.shift ?? 'none') !== 'none')
+}
+
+/** Pay day, transfer day and card billing day of `ym`, each moved by its own rule (spec 007 S-10, spec 018 S-1). */
 export function monthDates(ym: string, s: Settings, off: ReadonlySet<string>) {
-  const shift = s.dayShift ?? 'none'
   return {
-    pay: monthDay(ym, s.payDay, shift, off),
-    transfer: monthDay(ym, s.transferDay, shift, off),
-    billing: monthDay(ym, s.billingDay, shift, off),
+    pay: monthDay(ym, s.payDay, shiftOf(s, 'pay'), off),
+    transfer: monthDay(ym, s.transferDay, shiftOf(s, 'transfer'), off),
+    billing: monthDay(ym, s.billingDay, shiftOf(s, 'billing'), off),
   }
 }
 
@@ -374,7 +391,7 @@ export function leftoverAfterTransfer(
 ): Leftover {
   const { subscriptions, planChanges, settings } = state
   const s = priced(settings, state.currencies)
-  const shift = settings.dayShift ?? 'none'
+  const shift = shiftOf(settings, 'transfer')
   const from = monthDay(ym, settings.transferDay, shift, off).date
   const nextStart = monthDay(addYm(ym, 1), settings.transferDay, shift, off).date
   const startD = parseDate(from)
@@ -587,14 +604,14 @@ export const billingDayOf = (card: Pick<Card, 'billingDay'> | null | undefined, 
 
 /** The date a card bill for something bought on `bought` is paid: the billing day of the next month (spec 011 S-4, S-13). */
 export function cardBillDate(bought: string, billingDay: number, s: Settings, off: ReadonlySet<string>): string {
-  return monthDay(addYm(bought.slice(0, 7), 1), billingDay, s.dayShift ?? 'none', off).date
+  return monthDay(addYm(bought.slice(0, 7), 1), billingDay, shiftOf(s, 'billing'), off).date
 }
 
 /** The first pay day on or after `date` (the default refill start of a buffer use, S-8). */
 export function payDayFrom(date: string, s: Settings, off: ReadonlySet<string>): string {
   const ym = date.slice(0, 7)
-  const here = monthDay(ym, s.payDay, s.dayShift ?? 'none', off).date
-  return here >= date ? here : monthDay(addYm(ym, 1), s.payDay, s.dayShift ?? 'none', off).date
+  const here = monthDay(ym, s.payDay, shiftOf(s, 'pay'), off).date
+  return here >= date ? here : monthDay(addYm(ym, 1), s.payDay, shiftOf(s, 'pay'), off).date
 }
 
 /** What `projectAccount` and the goal and limit checks read. */
@@ -611,7 +628,7 @@ interface Move { date: string; amount: number }
 function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<string>): Move[] {
   const s = st.settings
   const moves: Move[] = []
-  const transfer = monthDay(ym, s.transferDay, s.dayShift ?? 'none', off).date
+  const transfer = monthDay(ym, s.transferDay, shiftOf(s, 'transfer'), off).date
   if (acc.group) {
     const sent = itemSent(acc, st, ym)
     if (sent) moves.push({ date: transfer, amount: sent })
@@ -723,7 +740,7 @@ export function bufferGauge(acc: Account, st: Pick<AccountState, 'cards' | 'spen
 /** The month a stop starts: this month when its transfer day is still to come, else the next one (S-7). */
 export function nextTransferYm(today: string, s: Settings, off: ReadonlySet<string>): string {
   const ym = today.slice(0, 7)
-  return monthDay(ym, s.transferDay, s.dayShift ?? 'none', off).date > today ? ym : addYm(ym, 1)
+  return monthDay(ym, s.transferDay, shiftOf(s, 'transfer'), off).date > today ? ym : addYm(ym, 1)
 }
 
 export interface GoalAlert { account: Account; month: string; stopFrom: string }
@@ -789,14 +806,14 @@ export function planRounds(input: SpendInput, s: Settings, off: ReadonlySet<stri
   const n = how === 'lump' ? 1 : input.count
   if (!Number.isInteger(n) || n < 1 || n > 60) throw new RangeError(`rounds must be 1..60, got ${n}`)
   const fee = how === 'installment' && payBy === 'card' ? (input.fee ?? 0) : 0
-  const shift = s.dayShift ?? 'none'
   const total = input.principal + fee
   const each = Math.floor(total / n / 10) * 10
   const amounts = Array.from({ length: n }, (_, i) => (i === n - 1 ? total - each * (n - 1) : each))
   let dates: string[]
   if (how === 'buffer') {
     const first = input.refillFrom ?? payDayFrom(input.bought, s, off)
-    dates = Array.from({ length: n }, (_, i) => (i === 0 ? first : monthDay(addYm(first.slice(0, 7), i), s.payDay, shift, off).date))
+    // the refills are pay days: the pay day's rule
+    dates = Array.from({ length: n }, (_, i) => (i === 0 ? first : monthDay(addYm(first.slice(0, 7), i), s.payDay, shiftOf(s, 'pay'), off).date))
   } else if (how === 'split') {
     const first = input.first ?? input.bought
     if (input.interval === 'custom') {
@@ -810,7 +827,8 @@ export function planRounds(input: SpendInput, s: Settings, off: ReadonlySet<stri
   } else if (payBy === 'card') {
     const from = addYm(input.bought.slice(0, 7), 1)
     const day = input.billingDay ?? s.billingDay
-    dates = Array.from({ length: n }, (_, i) => monthDay(addYm(from, i), day, shift, off).date)
+    // card rounds are billing dates: the billing rule, also for a card's own billing day
+    dates = Array.from({ length: n }, (_, i) => monthDay(addYm(from, i), day, shiftOf(s, 'billing'), off).date)
   } else {
     dates = Array.from({ length: n }, () => input.bought)
   }
@@ -1046,7 +1064,7 @@ export function spendState(sp: Spending, today: string, s: Settings, off: Readon
   const live = sp.rounds.filter((r) => r.state !== 'merged')
   if (live.length && live.every((r) => r.state === 'paid')) return 'paid'
   if (sp.payBy === 'card') {
-    const bill = live[0]?.date ?? monthDay(addYm(sp.bought.slice(0, 7), 1), s.billingDay, s.dayShift ?? 'none', off).date
+    const bill = live[0]?.date ?? monthDay(addYm(sp.bought.slice(0, 7), 1), s.billingDay, shiftOf(s, 'billing'), off).date
     if (today >= sp.bought && today < bill) return 'billing'
   }
   return 'planned'

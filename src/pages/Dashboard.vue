@@ -16,7 +16,7 @@ import { offDays } from '../lib/holidays-lazy'
 import { whenShort } from '../lib/event-when'
 import { downloadCsv, wonCell, type CsvCell } from '../lib/csv'
 import {
-  addYm, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymd, ymOf, ymRange,
+  addYm, leftoverAfterTransfer, monthDates, monthMoney, needsHolidays, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymd, ymOf, ymRange,
 } from '../lib/calc'
 import {
   canUndo, changed, decide, fieldName, listFor, loadProposals, money, proposals, proposalTitle, rowFields, rowLabel, rowTitle, shown, summary, tableName, undo, when, worded,
@@ -141,7 +141,7 @@ const why = computed(() => {
 
 // Holidays for the day shift: the month before and after are needed too (a shift moves at most 31 days).
 const off = computed<ReadonlySet<string>>(() => {
-  if (store.settings.dayShift === 'none') return new Set()
+  if (!needsHolidays(store.settings, store.schedules)) return new Set()
   return offDays(store.holidaySets, `${addYm(ym.value, -2)}-01`, `${addYm(ym.value, 3)}-01`) ?? new Set()
 })
 const dates = computed(() => monthDates(ym.value, store.settings, off.value))

@@ -438,7 +438,8 @@ const single = <S extends z.ZodType>(table: OwnedTable, schema: S, lockName: str
   ({ kind: 'single', table, schema, lockName, full }) as SingleResource
 
 export const SINGLES = {
-  settings: single(t.settings, v.settings, 'settings', (input, before) => ({ ...input, dayShift: input.dayShift ?? (before?.dayShift as typeof input.dayShift) ?? 'none' })),
+  // A key the body leaves out is not in the row, so its saved value stays; the old `dayShift` fills the three rules (spec 018 S-1).
+  settings: single(t.settings, v.settings, 'settings', (input) => v.settingsRow(input)),
   // A client that does not send the language keeps the saved one (spec 008 S-9).
   preferences: single(t.preference, v.preferences, 'preference', (input, before) => ({
     ...input,

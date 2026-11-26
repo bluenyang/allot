@@ -116,7 +116,7 @@ test('(V-4 d) the pay day moves to the business day the rules give: month end, y
   ] as const
   try {
     for (const c of cases) {
-      expect((await api(request, 'PUT', '/api/settings', { ...s0.settings, payDay: c.payDay, dayShift: c.shift })).status).toBe(200)
+      expect((await api(request, 'PUT', '/api/settings', { ...s0.settings, payDay: c.payDay, payShift: c.shift })).status).toBe(200)
       await page.clock.setFixedTime(new Date(c.now))
       await page.goto('/')
       await page.reload()

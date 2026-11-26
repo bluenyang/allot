@@ -5,7 +5,7 @@ import { store, upsertSpending } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { monthShort } from '../lib/format'
-import { addYm, billingDayOf, cardBillDate, spendingIn, spendingKrw, ymLabel, ymOf } from '../lib/calc'
+import { addYm, billingDayOf, cardBillDate, needsHolidays, spendingIn, spendingKrw, ymLabel, ymOf } from '../lib/calc'
 import type { PayBy, Spending, SpendingRound } from '../data/types'
 import ConfirmDialog from './ConfirmDialog.vue'
 import PayOffDialog from './PayOffDialog.vue'
@@ -31,7 +31,7 @@ const payName = (p: PayBy) => t(`spending.gen.pay.${p}` as 'spending.gen.pay.car
 /** The card bill date of a buffer use (its note): the billing day of the month after the purchase, moved for holidays as the editor does. */
 function billOf(s: Spending, day: number) {
   const ym = addYm(s.bought.slice(0, 7), 1)
-  const off = (store.settings.dayShift ?? 'none') === 'none' ? new Set<string>() : offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 2)}-01`) ?? new Set<string>()
+  const off = !needsHolidays(store.settings, store.schedules) ? new Set<string>() : offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 2)}-01`) ?? new Set<string>()
   return cardBillDate(s.bought, day, store.settings, off)
 }
 

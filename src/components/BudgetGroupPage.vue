@@ -26,7 +26,7 @@ import { showToast } from '../lib/toast'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { rateText } from '../lib/labels'
-import { addYm, groupAt, groupValue, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, yearContribution, ymd, ymOf } from '../lib/calc'
+import { addYm, groupAt, groupValue, monthDay, nextTransferYm, phaseAt, phaseNumbers, projectAccount, shiftOf, yearContribution, ymd, ymOf } from '../lib/calc'
 import {
   accountLine, adjustOf, adjustStart, baseAmount, itemColor, limitTone, monthParts, monthPlans, pctOf, shareOf, sumStatus, yearSent,
   type BudgetCell, type BudgetKpi, type BudgetRow, type LimitTone, type Tone,
@@ -61,7 +61,7 @@ const off = computed(() => {
   return offDays(store.holidaySets, `${first.slice(0, 7)}-01`, `${addYm(now, 14)}-01`) ?? new Set<string>()
 })
 const nextYm = computed(() => nextTransferYm(todayStr, store.settings, off.value))
-const nextDate = computed(() => monthDay(nextYm.value, store.settings.transferDay, store.settings.dayShift ?? 'none', off.value).date)
+const nextDate = computed(() => monthDay(nextYm.value, store.settings.transferDay, shiftOf(store.settings, 'transfer'), off.value).date)
 
 // ---------- the strip ----------
 const linked = computed(() => (target.value?.accountId ? store.accounts.find((a) => a.id === target.value!.accountId) ?? null : null))

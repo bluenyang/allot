@@ -20,7 +20,7 @@ import Seg from './Seg.vue'
 import CurrencyPick from './CurrencyPick.vue'
 import { currencyCodes, rateFor, rateNum } from '../lib/currency'
 import Tip from './Tip.vue'
-import { addYm, billingDayOf, bufferGauge, cardBillDate, monthDay, num, payDayFrom, planRounds, replan as doReplan, spendingKrw, ymd } from '../lib/calc'
+import { addYm, billingDayOf, bufferGauge, cardBillDate, monthDay, needsHolidays, num, payDayFrom, planRounds, replan as doReplan, shiftOf, spendingKrw, ymd } from '../lib/calc'
 import { fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { store } from '../lib/store'
@@ -157,7 +157,7 @@ const principal = computed(() => (Number.isFinite(amountN.value) ? spendingKrw(a
 // Holidays for every month a billing date is worked out in: from the purchase month or the first date the user set, whichever is
 // earlier, to the later of them plus the rounds, with the month before and the months after that a moved date can reach (review 8).
 const off = computed<ReadonlySet<string>>(() => {
-  if ((store.settings.dayShift ?? 'none') === 'none' || !DATE.test(bought.value)) return new Set()
+  if (!needsHolidays(store.settings, store.schedules) || !DATE.test(bought.value)) return new Set()
   const n = countOk.value ? countN.value : 1
   const yms = [
     bought.value.slice(0, 7), ...(firstManual.value && DATE.test(firstVal.value) ? [firstVal.value.slice(0, 7)] : []),
@@ -165,7 +165,7 @@ const off = computed<ReadonlySet<string>>(() => {
   ].sort()
   return offDays(store.holidaySets, `${addYm(yms[0]!, -1)}-01`, `${addYm(yms[yms.length - 1]!, n + 3)}-01`) ?? new Set()
 })
-const cardDay = (ym: string) => monthDay(ym, billingDay.value, store.settings.dayShift ?? 'none', off.value).date
+const cardDay = (ym: string) => monthDay(ym, billingDay.value, shiftOf(store.settings, 'billing'), off.value).date
 /** The date the first round gets when the user does not set one: a card is billed the month after, the others pay on the day. */
 const defaultFirst = computed(() => (!DATE.test(bought.value) ? '' : how.value !== 'split' && payBy.value === 'card' ? cardDay(addYm(bought.value.slice(0, 7), 1)) : bought.value))
 const firstVal = ref(storedFirst)

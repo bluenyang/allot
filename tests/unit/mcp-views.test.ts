@@ -18,7 +18,7 @@ const sub = (over: Partial<Subscription> & { id: string; name: string }): Subscr
 })
 
 const data: Data = {
-  settings: { netPay: 3_000_000, fxRate: 1400, fxBuffer: 5, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, dayShift: 'after' },
+  settings: { netPay: 3_000_000, fxRate: 1400, fxBuffer: 5, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, payShift: 'after', transferShift: 'after', billingShift: 'after' },
   living: { food: 400_000, transit: 100_000, allowance: 200_000 },
   targets: [
     { id: 't-live', name: 'Living account', kind: 'living' },
@@ -258,7 +258,7 @@ const pc: Spending = {
 const bd: Data = {
   ...data,
   // no weekend or holiday shift, no holidays: the calc functions below run with no off days
-  settings: { ...data.settings, dayShift: 'none' },
+  settings: { ...data.settings, payShift: 'none', transferShift: 'none', billingShift: 'none' },
   holidaySets: [{ id: 'kr', name: 'KR', enabled: false, builtin: 'kr', rules: [] }],
   subscriptions: [], planChanges: [],
   living: { food: 300_000, transit: 0, allowance: 0 },

@@ -14,7 +14,7 @@ import type { ScheduleItem } from '../data/types'
 const props = defineProps<{ initial: ScheduleItem | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const blank = (): ScheduleItem => ({ id: '', name: '', day: 1, accountId: null, direction: 'out', note: '' })
+const blank = (): ScheduleItem => ({ id: '', name: '', day: 1, accountId: null, direction: 'out', note: '', shift: 'none' })
 const { item: edit, error, busy, open, close, save, remove } = useEditor('schedules', blank, (x) => (!x.name.trim() ? t('schedule.needName') : null))
 open(props.initial ?? undefined)
 watch(edit, (v) => { if (!v) emit('close') })

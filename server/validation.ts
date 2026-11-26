@@ -26,6 +26,9 @@ export const subStatus = z.enum(['active', 'cancelled', 'company'])
 export const payPath = z.enum(['direct', 'google', 'apple', 'telecom'])
 export const category = z.enum(['ai', 'telecom', 'content', 'tool', 'insurance', 'life', 'other'])
 
+/** What a monthly date does on a weekend or holiday (spec 007 S-10; one for each date since spec 018 S-1). */
+export const dayShift = z.enum(['none', 'before', 'after'])
+
 export const settings = z.object({
   netPay: won,
   fxRate: z.number().positive().max(999_999.99),
@@ -34,8 +37,13 @@ export const settings = z.object({
   transferDay: day,
   billingDay: day,
   subRound: z.number().int().positive().max(INT_MAX),
-  // Optional so a client that does not know it keeps the saved value (spec 007 S-10).
-  dayShift: z.enum(['none', 'before', 'after']).optional(),
+  // The rule of each date (spec 018 S-1, S-12). Optional so a client that does not know one keeps the saved value.
+  payShift: dayShift.optional(),
+  transferShift: dayShift.optional(),
+  billingShift: dayShift.optional(),
+  // The one rule for all three dates, as sent up to 0.1.9: still taken, as the value of each rule the body leaves out
+  // (`settingsRow`). It is no column and no answer has it.
+  dayShift: dayShift.optional(),
   // The same for the split of the Savings and Investment menus (spec 013 S-3).
   savingSplit: z.enum(['amount', 'ratio']).optional(),
   investSplit: z.enum(['amount', 'ratio']).optional(),
@@ -59,7 +67,21 @@ export const scheduleItem = z.object({
   accountId: text.min(1).nullable(),
   direction: z.enum(['in', 'out']),
   note: optText,
+  // This date's own rule (spec 018 S-1, S-12): left out keeps the saved value ('none' for a new one).
+  shift: dayShift.optional(),
 })
+
+/**
+ * The settings row a body writes (spec 018 S-1): `dayShift`, the one rule of the bodies up to 0.1.9, becomes the rule of
+ * each of the three dates that the body does not name itself; a rule named in the body wins, each on its own. Without
+ * `dayShift` a rule left out is not in the row, so the saved value stays. `dayShift` itself is never written.
+ */
+export function settingsRow<T extends { dayShift?: Shift; payShift?: Shift; transferShift?: Shift; billingShift?: Shift }>(input: T): Omit<T, 'dayShift'> {
+  const { dayShift: all, ...row } = input
+  if (all === undefined) return row
+  return { ...row, payShift: row.payShift ?? all, transferShift: row.transferShift ?? all, billingShift: row.billingShift ?? all }
+}
+type Shift = z.infer<typeof dayShift>
 
 // ── Display settings and holiday sets (spec 007 S-7, S-8, S-9) ──
 const hex = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'hexColor').transform((x) => x.toUpperCase())

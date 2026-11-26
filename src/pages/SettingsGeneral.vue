@@ -15,8 +15,8 @@ import { dateText, money, moneyClass } from '../lib/format'
 import { holidayList } from '../lib/holidays-lazy'
 import { BUILTIN_SETS } from '../data/holidays-kr'
 import { holidayName, setName } from '../lib/holiday-names'
-import { addYm, monthDates, upcomingPayments, ymOf } from '../lib/calc'
-import type { ForeignCurrency, HolidaySet, Preferences, Settings } from '../data/types'
+import { addYm, monthDates, needsHolidays, upcomingPayments, ymOf } from '../lib/calc'
+import type { DayShift, ForeignCurrency, HolidaySet, Preferences, Settings } from '../data/types'
 import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
 import Select from '../components/Select.vue'
 import { localToday } from '../lib/now'
@@ -170,10 +170,10 @@ async function refreshFx() {
 }
 
 // ── 기준 일정: edited as a copy ──
-type Sched = Pick<Settings, 'payDay' | 'transferDay' | 'billingDay' | 'dayShift'>
+type Sched = Pick<Settings, 'payDay' | 'transferDay' | 'billingDay' | 'payShift' | 'transferShift' | 'billingShift'>
 const fromStore = (): Sched => {
-  const { payDay, transferDay, billingDay, dayShift } = store.settings
-  return { payDay, transferDay, billingDay, dayShift }
+  const { payDay, transferDay, billingDay, payShift, transferShift, billingShift } = store.settings
+  return { payDay, transferDay, billingDay, payShift, transferShift, billingShift }
 }
 const d = ref<Sched>(fromStore())
 /** The saved values the draft started from: an edit is a difference from these, not from the store (review 1 R6). */
@@ -215,8 +215,11 @@ const ym = ymOf(now)
 const year = now.getFullYear()
 const yearHolidays = computed(() => holidayList(store.holidaySets, `${year}-01-01`, `${year}-12-31`))
 const aroundMonth = computed(() => holidayList(store.holidaySets, `${addYm(ym, -2)}-01`, `${addYm(ym, 3)}-01`))
+/** The one segment still sets the rule of all three dates (each date gets its own segment next); '' when they differ. */
+const allShift = computed(() => (d.value.payShift === d.value.transferShift && d.value.transferShift === d.value.billingShift ? d.value.payShift : ''))
+const setAllShift = (v: DayShift) => { Object.assign(d.value, { payShift: v, transferShift: v, billingShift: v }) }
 const shifted = computed(() => {
-  if (d.value.dayShift === 'none') return monthDates(ym, { ...store.settings, ...d.value }, new Set())
+  if (!needsHolidays(d.value)) return monthDates(ym, { ...store.settings, ...d.value }, new Set())
   // A shift can cross into the month before or after (review 1, R3).
   const list = aroundMonth.value
   return list ? monthDates(ym, { ...store.settings, ...d.value }, new Set(list.map((h) => h.date))) : null
@@ -231,7 +234,7 @@ const SCHEDS = [
 
 // ── 시간대 and the user's own monthly dates (spec 013 S-22, A-36) ──
 // The zone saves at once like the other display choices; the own dates are rows of their own (EditSheet + useEditor),
-// listed under the three fixed days with this month's date after the same shift (the draft's shift rule).
+// listed under the three fixed days with this month's date after each item's own saved rule (spec 018 S-1).
 const tzChoice = computed(() => store.preferences.timezone ?? DEFAULT_TIMEZONE)
 const tzOptions = computed(() => zoneOptions(store.preferences.timezone, supportedZones()))
 const pickZone = (tz: string) => saveNow({ timezone: tz }, undefined, t('schedule.tzSaved'))
@@ -239,9 +242,9 @@ const itemEdit = ref<{ item: ScheduleItem | null } | null>(null)
 const openItem = (item: ScheduleItem | null) => { itemEdit.value = { item } }
 const accountName = (id: string | null) => (id ? store.accounts.find((a) => a.id === id)?.name ?? '—' : t('schedule.noAccount'))
 const ownItems = computed(() => {
-  const list = d.value.dayShift === 'none' ? [] : aroundMonth.value
+  const list = needsHolidays({}, store.schedules) ? aroundMonth.value : []
   if (!list) return store.schedules.map((item) => ({ item, at: null }))
-  return scheduleItemsIn(store.schedules, ym, d.value.dayShift, new Set(list.map((h) => h.date)))
+  return scheduleItemsIn(store.schedules, ym, new Set(list.map((h) => h.date)))
 })
 
 // ── 공휴일 ──
@@ -381,7 +384,7 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
           </li>
           <li>
             <div class="s2"><span id="g-shift-l">{{ g('shiftLabel') }}</span>
-              <Seg :options="SHIFTS" :model-value="d.dayShift" labelledby="g-shift-l" @update:model-value="d.dayShift = $event" /></div>
+              <Seg :options="SHIFTS" :model-value="allShift" labelledby="g-shift-l" @update:model-value="setAllShift" /></div>
             <small class="hint">{{ g('shiftAll') }}</small>
           </li>
         </ul>
