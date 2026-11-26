@@ -1,4 +1,5 @@
 // API check for spec 018 (0.1.10-rc.1, V-5). W-1: the weekend and holiday rule of each date. W-2: a card's usage period.
+// W-3: what a month is (the settings' monthBasis, monthBasisCardId, monthNaming).
 //   bash scripts/test-server/disposable.sh rc1-api node tests/api/rc1-calc.mjs   (it writes to the database directly)
 // A is ADMIN_EMAIL. U is made here and deleted at the end; every row below is U's.
 //   shifts    a settings body with the old dayShift alone sets the three rules; a rule the body names wins, each on its
@@ -13,6 +14,12 @@
 //             as they are), kept by a body that leaves it out, cleared by null; 0, 32, 1.5, a string → 400 and the row
 //             stays; list_accounts carries it; propose_changes sets it, keeps it when left out and refuses 32; a change
 //             of it is reverted, and a card change logged before the column existed still reverts and leaves it
+//   basis     the settings' three month keys (spec 018 S-3, S-12): calendar / no card / auto before anything is saved;
+//             saved and read back; kept by a body that leaves them out, each on its own; an unknown value, a card id that
+//             does not exist and another user's card id are refused (400) and leave the row; deleting the basis card
+//             puts the basis back to calendar in the same change set, and reverting the delete brings both back; a card
+//             kept under another basis is only let go; a card's insert is not reverted while it is the basis card;
+//             a proposal deletes the basis card the same way; an account whose basis is a card can be deleted
 // Exit 0 only if every check passed.
 import postgres from 'postgres'
 import { arm, cleanupStep, disarm, failures, ok, threw } from './lib/check.mjs'
@@ -251,6 +258,110 @@ try {
   const orv = await U('POST', `/api/changes/${oSet.id}/revert`)
   const back = await cardNow(cid)
   ok(orv.status === 200 && back?.name === 'RC1 card' && back.usageFrom === 15, `usage revert: the old set is reverted → ${orv.status}, the name is back (${back?.name}) and usageFrom stays ${back?.usageFrom}`)
+
+  // ── basis: what a month is (W-3) ──
+  const month = (x) => [x?.monthBasis, x?.monthBasisCardId, x?.monthNaming].join('/')
+  const monthNow = async () => month((await state()).settings)
+  const mcols = await sql`select column_name, data_type, is_nullable, column_default from information_schema.columns
+    where table_name = 'settings' and column_name in ('month_basis', 'month_basis_card_id', 'month_naming') order by 1`
+  const mcons = await sql`select conname from pg_constraint where conname in ('settings_month_basis', 'settings_month_naming', 'settings_month_basis_card_fk') order by 1`
+  ok(mcols.map((c) => `${c.column_name} ${c.data_type} ${c.is_nullable} ${c.column_default}`).join('; ')
+    === "month_basis text NO 'calendar'::text; month_basis_card_id text YES null; month_naming text NO 'auto'::text" && mcons.length === 3,
+    `settings has the three month columns with their defaults, the two checks and the card foreign key (${mcons.map((c) => c.conname)})`)
+  ok(await monthNow() === 'calendar//auto', `a settings row saved before the keys existed reads calendar, no card, auto (${await monthNow()})`)
+  // an account that never saved its settings gets the same from the defaults
+  const emailV = `rc1-v-${Date.now()}@example.com`
+  const cv = await A('POST', '/api/auth/admin/create-user', { email: emailV, password: PASS, name: 'RC1 V', role: 'user' })
+  ok(cv.status === 200, `create V → ${cv.status}`)
+  const vid = cv.json.user.id
+  made.push({ id: vid, email: emailV })
+  const V = client()
+  ok((await V.signIn(emailV, PASS)).status === 200, 'V signs in')
+  ok(month((await V('GET', '/api/state')).json.settings) === 'calendar//auto', 'an account without a settings row reads calendar, no card, auto')
+
+  const MCARD = { name: 'RC1 basis card', last4: '', accountId: null, billingDay: 25, usageFrom: 12 }
+  const b1 = (await U('POST', '/api/cards', MCARD)).json.id
+  const b2 = (await U('POST', '/api/cards', { ...MCARD, name: 'RC1 basis card 2', usageFrom: null })).json.id
+  ok(!!b1 && !!b2, 'basis: two cards of U')
+  const m1 = await put({ ...BODY, monthBasis: 'card', monthBasisCardId: b1, monthNaming: 'end' })
+  ok(m1.status === 200 && month(m1.json) === `card/${b1}/end` && await monthNow() === `card/${b1}/end`, `the three keys are saved and read back (${m1.status}, ${month(m1.json).replace(b1, 'b1')})`)
+  const m2 = await put(BODY)
+  ok(m2.status === 200 && month(m2.json) === `card/${b1}/end` && m2.json.netPay === BODY.netPay, 'a body in the 0.1.9 shape keeps the three and writes the rest')
+  const m3 = await put({ ...BODY, monthNaming: 'start' })
+  ok(m3.status === 200 && month(m3.json) === `card/${b1}/start`, 'monthNaming alone changes that key only')
+  const m4 = await put({ ...BODY, monthBasis: 'pay' })
+  ok(m4.status === 200 && month(m4.json) === `pay/${b1}/start`, 'monthBasis alone changes that key only: the card stays under another basis')
+  const m5 = await put({ ...BODY, monthBasisCardId: b2 })
+  ok(m5.status === 200 && month(m5.json) === `pay/${b2}/start`, 'monthBasisCardId alone changes that key only (a card without a first day is taken)')
+  const m6 = await put({ ...(await state()).settings })
+  ok(m6.status === 200 && month(m6.json) === `pay/${b2}/start`, 'the whole row sent back, as the screen does, keeps them')
+  for (const monthBasis of ['calendar', 'card', 'pay']) {
+    for (const monthNaming of ['auto', 'start', 'end']) {
+      const r = await put({ ...BODY, monthBasis, monthNaming })
+      ok(r.status === 200 && month(r.json) === `${monthBasis}/${b2}/${monthNaming}`, `${monthBasis} + ${monthNaming} → ${r.status}`)
+    }
+  }
+  const m7 = await put({ ...BODY, monthBasis: 'card', monthBasisCardId: null, monthNaming: 'auto' })
+  ok(m7.status === 200 && month(m7.json) === 'card//auto', `null clears the card, also under the card basis (${m7.status}, ${month(m7.json)})`)
+  ok((await put({ ...BODY, monthBasis: 'card', monthBasisCardId: b1, monthNaming: 'end' })).status === 200, 'basis: back to card / b1 / end')
+  // refused values
+  for (const [k, bads] of [['monthBasis', ['salary', '', null, 1]], ['monthNaming', ['middle', '', null, 15]], ['monthBasisCardId', ['', 12, true]]]) {
+    const got = []
+    for (const bad of bads) {
+      const r = await put({ ...BODY, [k]: bad })
+      got.push(r.status === 400 && typeof r.json?.error === 'string' ? 400 : `${r.status}!`)
+    }
+    ok(got.every((x) => x === 400), `${k}: ${bads.map((b) => JSON.stringify(b)).join(', ')} → ${got.join(', ')} with a message`)
+  }
+  const EN = { 'accept-language': 'en' }
+  const LINK = 'A linked item could not be found.'
+  const gone = await U('PUT', '/api/settings', { ...BODY, monthBasisCardId: 'no-such-card' }, EN)
+  ok(gone.status === 400 && gone.json?.error === LINK, `a card id that does not exist → ${gone.status} "${gone.json?.error}"`)
+  const vCard = await V('POST', '/api/cards', { ...MCARD, name: 'RC1 V card' })
+  ok(vCard.status === 201, `V makes a card → ${vCard.status}`)
+  const others = await U('PUT', '/api/settings', { ...BODY, monthBasisCardId: vCard.json.id }, EN)
+  ok(others.status === 400 && others.json?.error === LINK, `another user's card id → ${others.status} "${others.json?.error}"`)
+  const pBadM = await tool(kChat, 'propose_changes', { changes: [{ resource: 'settings', action: 'update', data: { ...BODY, monthBasis: 'salary' } }] })
+  const pBadM2 = await apply([{ resource: 'settings', action: 'update', data: { ...BODY, monthBasisCardId: vCard.json.id } }])
+  ok(pBadM.failed && pBadM2.failed, 'propose_changes refuses an unknown basis, and another user\'s card is not applied')
+  ok(await monthNow() === `card/${b1}/end`, 'the refused bodies left the row as it was')
+
+  // a card that is not the basis card goes without touching the settings
+  const del2 = await U('DELETE', `/api/cards/${b2}`)
+  const set2d = await lastSet()
+  const logs2 = (await U('GET', `/api/changes/${set2d.id}`)).json.changes
+  ok(del2.status === 204 && await monthNow() === `card/${b1}/end` && logs2.length === 1 && logs2[0].tableName === 'card', `deleting another card → ${del2.status}, the settings stay and the set holds the card alone`)
+  // a card's insert is not reverted while it is the basis card
+  const b3 = (await U('POST', '/api/cards', { ...MCARD, name: 'RC1 basis card 3', usageFrom: 18 })).json.id
+  const insSet = await lastSet()
+  ok((await put({ ...BODY, monthBasisCardId: b3 })).status === 200, 'basis: the new card b3 is the basis card')
+  const rvIns = await U('POST', `/api/changes/${insSet.id}/revert`)
+  ok(rvIns.status === 409 && (await state()).cards.some((c) => c.id === b3) && await monthNow() === `card/${b3}/end`, `reverting the insert of the basis card → ${rvIns.status}, the card and the basis stay`)
+  // deleting the basis card: not refused, the basis goes back to calendar in the same change set
+  const delB = await U('DELETE', `/api/cards/${b3}`)
+  ok(delB.status === 204 && await monthNow() === 'calendar//end' && !(await state()).cards.some((c) => c.id === b3), `deleting the basis card → ${delB.status}, the settings are ${await monthNow()}`)
+  const delSet = await lastSet()
+  const delLogs = (await U('GET', `/api/changes/${delSet.id}`)).json.changes
+  const sLog = delLogs.find((c) => c.tableName === 'settings')
+  ok(delLogs.length === 2 && delLogs.some((c) => c.tableName === 'card' && c.op === 'delete') && sLog?.op === 'update'
+    && sLog.before.monthBasis === 'card' && sLog.before.monthBasisCardId === b3 && sLog.after.monthBasis === 'calendar' && sLog.after.monthBasisCardId === null,
+    'the change set of the delete holds the card and the settings row, before and after')
+  const rvDel = await U('POST', `/api/changes/${delSet.id}/revert`)
+  ok(rvDel.status === 200 && (await state()).cards.some((c) => c.id === b3) && await monthNow() === `card/${b3}/end`, `reverting the delete → ${rvDel.status}: the card is back and the basis is card / b3 again`)
+  // a card kept under another basis is only let go: the basis stays
+  ok((await put({ ...BODY, monthBasis: 'pay' })).status === 200 && await monthNow() === `pay/${b3}/end`, 'basis: pay, the card b3 kept')
+  const delP = await U('DELETE', `/api/cards/${b3}`)
+  ok(delP.status === 204 && await monthNow() === 'pay//end', `deleting a card kept under the pay basis → ${delP.status}, the settings are ${await monthNow()}`)
+  // a proposal that deletes the basis card does the same (and one that sets the keys)
+  const pSetM = await apply([{ resource: 'settings', action: 'update', data: { ...BODY, monthBasis: 'card', monthBasisCardId: b1, monthNaming: 'auto' } }])
+  ok(!pSetM.failed && await monthNow() === `card/${b1}/auto`, `propose_changes sets the three keys, applied: ${(await monthNow()).replace(b1, 'b1')}`)
+  const pDelM = await apply([{ resource: 'cards', action: 'delete', id: b1 }])
+  ok(!pDelM.failed && await monthNow() === 'calendar//auto' && !(await state()).cards.some((c) => c.id === b1), `propose_changes deletes the basis card, applied: the settings are ${await monthNow()}`)
+  // an account whose basis is a card can be deleted (the settings row goes before the card)
+  ok((await V('PUT', '/api/settings', { ...BODY, monthBasis: 'card', monthBasisCardId: vCard.json.id })).status === 200, 'V counts its month by its card')
+  const delV = await A('DELETE', `/api/admin/users/${vid}`, { confirmEmail: emailV })
+  ok(delV.status === 204, `the admin deletes V, whose basis is a card → ${delV.status}`)
+  made.splice(made.findIndex((u) => u.id === vid), 1)
 } catch (e) {
   mainErr = e
   threw(e)
