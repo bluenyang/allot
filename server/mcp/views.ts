@@ -5,7 +5,7 @@
 import {
   addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, ctxOf, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDatesIn, monthlyKrw, monthMoney, monthOutgo, nextPayment, outgoOf, parseDate,
   periodOf, phaseAt, planAt, priced, projectAccount, roundYm, shiftOf, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf, ymOfDate,
-  type AccountState, type MonthCtx, type MonthDate, type Outgo, type ShiftDate,
+  type AccountState, type Distribution, type MonthCtx, type MonthDate, type Outgo, type ShiftDate,
   maturityAlerts, maturityAmount,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
@@ -109,11 +109,22 @@ function paymentsIn(d: Data, ym: string, ctx: MonthCtx) {
 function roundsView(items: readonly Outgo[]) {
   return [...items]
     .sort((a, b) => (a.round.date < b.round.date ? -1 : a.round.date > b.round.date ? 1 : a.spending.name.localeCompare(b.spending.name) || a.round.no - b.round.no))
-    .map(({ spending: sp, round }) => ({
+    .map(({ spending: sp, round, ym }) => ({
       date: round.date, spendingId: sp.id, name: sp.name, how: sp.how, payBy: sp.payBy,
       round: round.no, of: sp.count, ...(round.no > sp.count ? { payoff: true } : {}), amountKrw: krw(round.amount), state: round.state,
+      /** the month whose remainder or transfer takes the round (spec 018 S-5) */
+      countsIn: ym,
     }))
 }
+/**
+ * What goes to each paying account in a month (spec 018 S-6, the allocation table's 대금 계좌 이체): per account that a
+ * card or the subscriptions are paid from, the subscription transfer, the card rounds the month counts and the buffer
+ * refills, and their sum.
+ */
+const payoutsView = (d: Data, dist: Distribution) => dist.payouts.map((p) => ({
+  accountId: p.accountId, account: d.accounts.find((a) => a.id === p.accountId)?.name ?? null,
+  subscriptionsKrw: krw(p.subscriptions), cardKrw: krw(p.card), refillKrw: krw(p.refill), totalKrw: krw(p.total),
+}))
 /**
  * The rounds month `ym` counts: the ones its transfer and remainder take (calc `monthOutgo`). A card bill counts in the
  * month of the last pay date before it (spec 018 S-5), so its date may lie after the month's period.
@@ -210,6 +221,8 @@ export function overview(d: Data, ym: string) {
       unallocatedKrw: krw(unallocated(dist)),
       livingKrw: dist.living,
       subscriptionsKrw: dist.subscriptions,
+      /** what goes to each paying account that month, in parts (spec 018 S-6); cardKrw and refillKrw are part of spendingKrw, subscriptionsKrw repeats the subscriptions row */
+      payouts: payoutsView(d, dist),
     },
     /** what comes in that month (spec 014 S-10): expected, what counts (received, else expected; plus money that came in once) and the difference; get_income has the lines */
     income: { expectedKrw: krw(income.expected), totalKrw: krw(income.total), diffKrw: krw(income.diff) },
@@ -286,6 +299,9 @@ export function spendingList(d: Data, now: Date, filter: SpendFilter = {}) {
   const today = ymd(now)
   const yms = all.map((x) => x.bought.slice(0, 7)).sort()
   const off = yms.length ? offDays(d, yms[0]!, addYm(yms[yms.length - 1]!, 1)) : new Set<string>()
+  // the month each round counts in (spec 018 S-5), with the holidays around every round's date: the pay date before a card bill may be a moved one
+  const dated = all.flatMap((x) => x.rounds.map((r) => r.date.slice(0, 7))).filter((m) => /^\d{4}-\d{2}$/.test(m)).sort()
+  const every = dated.length ? basisOf(d, dated[0]!, dated[dated.length - 1]!) : basisOf(d, ymOf(now))
   const rows = all.map((sp) => {
     const state = spendState(sp, today, d.settings, off, sp.cardId ? (d.cards ?? []).find((c) => c.id === sp.cardId) : null)
     const live = sp.rounds.filter((r) => r.state !== 'merged')
@@ -313,7 +329,11 @@ export function spendingList(d: Data, now: Date, filter: SpendFilter = {}) {
         merged: sp.rounds.filter((r) => r.state === 'merged').length,
         next: next ? { round: next.no, date: next.date, amountKrw: krw(next.amount) } : null,
       },
-      rounds: [...sp.rounds].sort((a, b) => a.no - b.no).map((r) => ({ round: r.no, date: r.date, amountKrw: krw(r.amount), state: r.state, edited: r.edited })),
+      // countsIn: the month whose remainder or transfer takes the round; null for a round that counts nowhere (merged, or left on a cancelled spending)
+      rounds: [...sp.rounds].sort((a, b) => a.no - b.no).map((r) => ({
+        round: r.no, date: r.date, amountKrw: krw(r.amount), state: r.state, edited: r.edited,
+        countsIn: r.state === 'merged' || (sp.cancelled && r.state === 'left') ? null : roundYm(sp, r, every),
+      })),
     }
   })
   const status = filter.status ?? 'all'
@@ -369,8 +389,16 @@ export function planChangeList(d: Data) {
   }
 }
 
-export function allocation(d: Data) {
+/**
+ * get_allocation: how the salary is split. With `now`, also this month's transfers to the paying accounts (`payouts`,
+ * spec 018 S-6): the tool takes no month, so they are the ones of the month that holds today; get_overview has them for
+ * any month.
+ */
+export function allocation(d: Data, now?: Date) {
+  const month = now ? thisMonth(d, now) : null
+  const ctx = month ? basisOf(d, month) : null
   return {
+    ...(month && ctx ? { payouts: { month, period: periodView(month, ctx), accounts: payoutsView(d, monthMoney(d, month, { ctx }).dist) } } : {}),
     living: d.living,
     targets: d.targets.map((t) => ({ id: t.id, name: t.name, kind: t.kind, ...(t.note ? { note: t.note } : {}), accountId: t.accountId ?? null })),
     phases: d.phases.map((p) => ({
