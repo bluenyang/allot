@@ -180,11 +180,31 @@ const d = ref<Sched>(fromStore())
 const base = ref<Sched>(fromStore())
 const smsg = ref('')
 const busy = ref(false)
-const dirty = computed(() => JSON.stringify(d.value) !== JSON.stringify(base.value))
+/**
+ * The weekend and holiday rule picked on a row of the user's own dates and not saved yet (spec 018 S-1), by item id: part
+ * of this form's draft, saved with 저장 like the three days. Only rows that differ from what is saved are in it.
+ */
+const own = ref<Record<string, DayShift>>({})
+const ownShift = (item: ScheduleItem): DayShift => own.value[item.id] ?? item.shift ?? 'none'
+function setOwn(id: string, v: DayShift) {
+  const saved = store.schedules.find((x) => x.id === id)?.shift ?? 'none'
+  if (v === saved) delete own.value[id]
+  else own.value[id] = v
+}
+const ownChanged = computed(() => store.schedules.filter((x) => own.value[x.id] !== undefined && own.value[x.id] !== (x.shift ?? 'none')))
+const daysDirty = computed(() => JSON.stringify(d.value) !== JSON.stringify(base.value))
+const dirty = computed(() => daysDirty.value || ownChanged.value.length > 0)
 // The saved values changed elsewhere (a revert in 변경 내역, another tab): follow them unless the user has edited the draft.
 watch(() => JSON.stringify(fromStore()), () => {
-  if (!dirty.value) d.value = fromStore()
+  if (!daysDirty.value) d.value = fromStore()
   base.value = fromStore()
+})
+// A row's rule that is saved now (in the sheet, by a revert) or whose row is gone is no edit any more.
+watch(() => store.schedules.map((x) => `${x.id}:${x.shift ?? 'none'}`).join(), () => {
+  for (const id of Object.keys(own.value)) {
+    const item = store.schedules.find((x) => x.id === id)
+    if (!item || (item.shift ?? 'none') === own.value[id]) delete own.value[id]
+  }
 })
 const problem = computed(() => {
   const days = [d.value.payDay, d.value.transferDay, d.value.billingDay]
@@ -195,9 +215,16 @@ async function save() {
   busy.value = true
   smsg.value = ''
   try {
-    await saveSettings({ ...d.value })
-    d.value = fromStore()
-    base.value = fromStore()
+    if (daysDirty.value) {
+      await saveSettings({ ...d.value })
+      d.value = fromStore()
+      base.value = fromStore()
+    }
+    // the rows of the user's own dates whose rule changed, one after the other: a row that is saved leaves the draft
+    for (const item of ownChanged.value) {
+      await saveItem('schedules', { ...item, shift: own.value[item.id]! })
+      delete own.value[item.id]
+    }
     smsg.value = g('saved')
   } catch (e) {
     smsg.value = (e as Error).message || status.error
@@ -208,6 +235,7 @@ async function save() {
 function cancel() {
   d.value = fromStore()
   base.value = fromStore()
+  own.value = {}
   smsg.value = ''
 }
 const SHIFTS = computed(() => (['before', 'none', 'after'] as const).map((id) => ({ id, label: g(`shiftShort.${id}`) })))
@@ -215,9 +243,6 @@ const ym = ymOf(now)
 const year = now.getFullYear()
 const yearHolidays = computed(() => holidayList(store.holidaySets, `${year}-01-01`, `${year}-12-31`))
 const aroundMonth = computed(() => holidayList(store.holidaySets, `${addYm(ym, -2)}-01`, `${addYm(ym, 3)}-01`))
-/** The one segment still sets the rule of all three dates (each date gets its own segment next); '' when they differ. */
-const allShift = computed(() => (d.value.payShift === d.value.transferShift && d.value.transferShift === d.value.billingShift ? d.value.payShift : ''))
-const setAllShift = (v: DayShift) => { Object.assign(d.value, { payShift: v, transferShift: v, billingShift: v }) }
 const shifted = computed(() => {
   if (!needsHolidays(d.value)) return monthDates(ym, { ...store.settings, ...d.value }, new Set())
   // A shift can cross into the month before or after (review 1, R3).
@@ -226,25 +251,30 @@ const shifted = computed(() => {
 })
 const WD = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 const md = (s: string) => { const x = new Date(`${s}T00:00:00`); return `${x.getMonth() + 1}/${x.getDate()}(${t(`common.weekday.${WD[x.getDay()]!}` as MessageKey)})` }
+// Each date has its day and its own weekend and holiday rule (spec 018 S-1); the preview of this month follows both.
 const SCHEDS = [
-  { id: 'payDay', slot: 'pay', name: 'payDay', use: 'payUse', ids: 'g-pay' },
-  { id: 'transferDay', slot: 'transfer', name: 'transferDay', use: 'transferUse', ids: 'g-xfer' },
-  { id: 'billingDay', slot: 'billing', name: 'billingDay', use: 'billingUse', ids: 'g-bill' },
+  { id: 'payDay', shift: 'payShift', slot: 'pay', name: 'payDay', use: 'payUse', ids: 'g-pay' },
+  { id: 'transferDay', shift: 'transferShift', slot: 'transfer', name: 'transferDay', use: 'transferUse', ids: 'g-xfer' },
+  { id: 'billingDay', shift: 'billingShift', slot: 'billing', name: 'billingDay', use: 'billingUse', ids: 'g-bill' },
 ] as const
+const shiftFor = (name: string) => t('settings.general.shiftFor', { name })
 
 // ── 시간대 and the user's own monthly dates (spec 013 S-22, A-36) ──
 // The zone saves at once like the other display choices; the own dates are rows of their own (EditSheet + useEditor),
-// listed under the three fixed days with this month's date after each item's own saved rule (spec 018 S-1).
+// listed under the three fixed days with this month's date after each item's own rule (spec 018 S-1): the one picked
+// on its row when that is not saved yet, else the saved one.
 const tzChoice = computed(() => store.preferences.timezone ?? DEFAULT_TIMEZONE)
 const tzOptions = computed(() => zoneOptions(store.preferences.timezone, supportedZones()))
 const pickZone = (tz: string) => saveNow({ timezone: tz }, undefined, t('schedule.tzSaved'))
 const itemEdit = ref<{ item: ScheduleItem | null } | null>(null)
-const openItem = (item: ScheduleItem | null) => { itemEdit.value = { item } }
+/** The sheet starts from the row as it shows: with the rule picked on the row, saved or not. */
+const openItem = (item: ScheduleItem | null) => { itemEdit.value = { item: item && { ...item, shift: ownShift(item) } } }
 const accountName = (id: string | null) => (id ? store.accounts.find((a) => a.id === id)?.name ?? '—' : t('schedule.noAccount'))
 const ownItems = computed(() => {
-  const list = needsHolidays({}, store.schedules) ? aroundMonth.value : []
-  if (!list) return store.schedules.map((item) => ({ item, at: null }))
-  return scheduleItemsIn(store.schedules, ym, new Set(list.map((h) => h.date)))
+  const drafted = store.schedules.map((item) => ({ ...item, shift: ownShift(item) }))
+  const list = needsHolidays({}, drafted) ? aroundMonth.value : []
+  if (!list) return drafted.map((item) => ({ item, at: null }))
+  return scheduleItemsIn(drafted, ym, new Set(list.map((h) => h.date)))
 })
 
 // ── 공휴일 ──
@@ -370,6 +400,8 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
             <div class="s2">
               <span>{{ g('monthly') }}</span>
               <span class="dayin"><input :id="s.ids" v-model.number="d[s.id]" type="number" min="1" max="31" :aria-label="g(s.name)"><span>{{ g('dayUnit') }}</span></span>
+              <span class="shift"><span>{{ g('shiftLabel') }}</span>
+                <Seg :options="SHIFTS" :model-value="d[s.shift]" :label="shiftFor(g(s.name))" @update:model-value="d[s.shift] = $event" /></span>
             </div>
           </li>
           <li v-for="x in ownItems" :key="x.item.id" class="own" :data-dir="x.item.direction">
@@ -379,13 +411,10 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
               <span v-else class="thism">{{ g('loadingHolidays') }}</span>
             </div>
             <div class="s2">
+              <span class="shift"><span>{{ g('shiftLabel') }}</span>
+                <Seg :options="SHIFTS" :model-value="x.item.shift" :label="shiftFor(x.item.name)" @update:model-value="setOwn(x.item.id, $event)" /></span>
               <button class="btn sm ghost" type="button" :aria-label="t('schedule.editLabel', { name: x.item.name })" @click="openItem(x.item)">{{ g('edit') }}</button>
             </div>
-          </li>
-          <li>
-            <div class="s2"><span id="g-shift-l">{{ g('shiftLabel') }}</span>
-              <Seg :options="SHIFTS" :model-value="allShift" labelledby="g-shift-l" @update:model-value="setAllShift" /></div>
-            <small class="hint">{{ g('shiftAll') }}</small>
           </li>
         </ul>
         <div class="cf"><span class="hint grow">{{ g('logged') }}</span><span v-if="smsg" class="small" :class="smsg === g('saved') ? 'subtle' : 'err'" role="status">{{ smsg }}</span>
@@ -517,8 +546,10 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 .dayin input{flex:1;min-width:0;height:100%;border:0;outline:0;padding:0 6px 0 10px;text-align:right;color:var(--text);background:transparent;font-variant-numeric:tabular-nums}
 .dayin span{font-size:13px;color:var(--subtle)}
 .dayin:focus-within{border-color:var(--primary-text);box-shadow:0 0 0 3px var(--primary-soft)}
-.sched li.own{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
-.sched li.own .s1{flex:1;min-width:0}
+.shift{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-left:auto}
+.sched li.own{flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.sched li.own .s1{flex:1 1 240px;min-width:0}
+.sched li.own .s2{flex:0 1 auto;margin-left:auto;justify-content:flex-end}
 .pill.dir.in{color:var(--primary-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--primary-line)}
 .pill.dir.out{color:var(--neg-text);background:var(--surface);box-shadow:inset 0 0 0 1px var(--neg-line)}
 .cf{flex-wrap:wrap}
