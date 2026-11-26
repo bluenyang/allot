@@ -431,7 +431,7 @@ const pickItem = (id: string) => { picked.value = id; error.value = '' }
 .rt th.c,.rt td.c{text-align:center}
 .rt td.lbl{color:var(--text-2)}
 .rt td.dt{font-size:12px}
-.rt td.dt .pin{display:block;font-family:var(--font);font-size:11px;white-space:nowrap}
+.rt td.dt .pin{display:block;font-family:var(--f-ui);font-size:11px;white-space:nowrap}
 .rt td.amt{font-weight:600}
 .rt td.amt .ed{font-weight:500}
 .rt tr.nx{background:color-mix(in srgb,var(--accent-soft) 45%,transparent)}
