@@ -142,6 +142,15 @@ const simRows = computed<SimRow[]>(() => {
   return rows
 })
 const simTotal = computed(() => simRows.value.reduce((a, r) => a + r.amount, 0))
+/**
+ * 대금 계좌 이체 (spec 018 S-6): what goes that month to each account a card or the subscriptions are paid from, in parts
+ * (the distribution's `payouts`: the same list the left over and the balance projection read). Zero parts are left out.
+ */
+const PAYOUT_PARTS = ['subscriptions', 'card', 'refill'] as const
+const payouts = computed(() => sim.value.payouts.map((p) => ({
+  id: p.accountId, name: accountName(p.accountId) ?? '—', total: p.total,
+  parts: PAYOUT_PARTS.filter((k) => p[k] !== 0).map((k) => ({ key: k, label: t(`payroll.payouts.${k}`), amount: p[k] })),
+})))
 const simShort = computed(() => sim.value.remainder < 0)
 
 // The pay dialog and the "how it is worked out" dialog.
@@ -444,6 +453,19 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
         </div>
         <p v-if="simSpend > 0" class="foot spend-line">{{ t('payroll.spendLine', { amount: fmtMoney(simSpend) }) }}</p>
         <div v-if="simShort" class="callout warn short"><span class="lbl">{{ t('payroll.shortLabel') }}</span><p>{{ t('payroll.shortText', { amount: fmtMoney(-sim.remainder) }) }}</p></div>
+        <!-- 대금 계좌 이체 (spec 018 S-6): per paying account the subscription transfer, the month's card spending and buffer refills, and their sum -->
+        <div v-if="payouts.length" class="pout" data-testid="payouts">
+          <div class="po-h"><h3>{{ t('payroll.payouts.title') }}</h3><span class="hint">{{ t('payroll.payouts.hint') }}</span></div>
+          <ul class="po">
+            <li v-for="p in payouts" :key="p.id" data-testid="payout" :data-account="p.name">
+              <b class="po-n">{{ p.name }}</b>
+              <dl>
+                <div v-for="x in p.parts" :key="x.key" :data-part="x.key"><dt>{{ x.label }}</dt><dd class="num">{{ fmtMoney(x.amount) }}</dd></div>
+                <div class="po-t" data-part="total"><dt>{{ t('payroll.payouts.total') }}</dt><dd class="num">{{ fmtMoney(p.total) }}</dd></div>
+              </dl>
+            </li>
+          </ul>
+        </div>
         <p class="foot">{{ t('payroll.simFoot') }}</p>
       </section>
 
@@ -694,6 +716,19 @@ tr.click{cursor:pointer}
 s.orig{margin-right:6px;color:var(--subtle);font-weight:400}
 .short{margin:12px 18px}
 .foot{margin:0;padding:12px 18px;font-size:12px;color:var(--muted);background:var(--surface-2);border-top:1px solid var(--divider);border-radius:0 0 var(--r-card) var(--r-card)}
+.pout{padding:14px 18px 16px;border-top:1px solid var(--divider)}
+.po-h{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap}
+.po-h h3{margin:0;font-size:14px}
+.po-h .hint{flex:1 1 280px;font-size:12px}
+.po{list-style:none;margin:10px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.po li{min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-ctl);display:flex;flex-direction:column;gap:6px}
+.po-n{font-size:13px;overflow-wrap:anywhere}
+.po dl{margin:0;display:flex;flex-direction:column;gap:4px}
+.po dl > div{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:13px}
+.po dt{color:var(--text-2)}
+.po dd{margin:0;white-space:nowrap}
+.po .po-t{margin-top:2px;padding-top:6px;border-top:1px solid var(--divider);font-weight:600}
+.po .po-t dt{color:var(--text)}
 .foot2{display:flex;flex-direction:column;gap:6px;padding:12px 18px;border-top:1px solid var(--divider)}
 .warnt{font-size:12px;color:var(--accent-text)}
 .empty{margin:0;padding:24px 18px;text-align:center}
