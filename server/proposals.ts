@@ -13,11 +13,11 @@ import * as t from './db/schema'
 import { asUser, lockFor } from './db/scope'
 import { allotScopeOf, appName, oauthOn, scopesCanWrite } from './oauth'
 import { m, text, type Msg } from './messages'
-import type { Data } from './mcp/views'
+import { thisMonth, type Data } from './mcp/views'
 import { AI_LISTS, AI_SINGLES, applyOps, constraintMessage, OpInvalid, OpRejected, parseOp, Rejected, RESOURCES, SINGLES, type Op } from './ops'
 import { hashState, incomeLine, monthPreview } from './preview'
 import { readState } from './state'
-import { addYm, todayIn, ymOf } from '../src/lib/calc'
+import { addYm, todayIn } from '../src/lib/calc'
 
 /** Operations in one proposal, and proposals waiting per user. */
 export const MAX_OPS = 20
@@ -248,8 +248,9 @@ export async function propose(uid: string, key: KeyInfo, input: ProposeInput): P
   }
   if (!rows.length || !before || !after) throw new ProposalError('invalid', m('proposalNoEffect'))
 
-  // this month in the user's time zone (spec 013 S-22)
-  const ym = ymOf(todayIn(before.preferences?.timezone))
+  // this month in the user's time zone (spec 013 S-22), by the month basis the user has now (spec 018 S-3): each side
+  // of the preview then reads that month name by its own basis
+  const ym = thisMonth(before, todayIn(before.preferences?.timezone))
   const preview = {
     // an income row also has a line in words with the left over of its month (spec 014 S-10)
     rows: rows.map((r) => {

@@ -3,8 +3,7 @@
 // returns (no database), computed with the same overview() the read tools use, so the preview
 // and the screens agree. The income rows (spec 014 S-10) also get a line in words, with the left over of their month.
 import { createHash } from 'node:crypto'
-import { monthMoney } from '../src/lib/calc'
-import { overview } from './mcp/views'
+import { moneyOf, monthOfDate, overview } from './mcp/views'
 import type { Data } from './mcp/views'
 
 /** JSON with object keys in sorted order, so the same data always gives the same text. */
@@ -83,8 +82,8 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 
 /** The month's left over (여유: the remainder after the distribution), before and after, as words. */
 function leftOver(before: Data, after: Data, ym: string) {
-  const b = Math.round(monthMoney(before, ym).dist.remainder)
-  const a = Math.round(monthMoney(after, ym).dist.remainder)
+  const b = Math.round(moneyOf(before, ym).dist.remainder)
+  const a = Math.round(moneyOf(after, ym).dist.remainder)
   return `left over of ${ym}: ${b === a ? won(a) : `${won(b)} → ${won(a)}`}`
 }
 
@@ -115,7 +114,8 @@ export function incomeLine(row: PreviewRow, before: Data, after: Data): string |
       + `${months.map((m) => leftOver(before, after, m)).join('; ')}.`
   }
   if (table === 'income_extra') {
-    const months = monthsOf(b, a, (r) => String(r.date).slice(0, 7))
+    // the month each side counts it in: the one whose period holds its date, by that side's month basis (spec 018 S-3)
+    const months = [...new Set([b ? monthOfDate(before, String(b.date)) : null, a ? monthOfDate(after, String(a.date)) : null].filter((m): m is string => !!m))].sort()
     return `${verb(op)} money that came in once "${both(b, a, (r) => String(r.name))}" on ${both(b, a, (r) => String(r.date))}: ${both(b, a, (r) => won(r.amount))}; `
       + `${months.map((m) => leftOver(before, after, m)).join('; ')}.`
   }

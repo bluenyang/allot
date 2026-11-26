@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { Settings, Spending, Subscription } from '../../src/data/types'
 import { accountList, budget, incomeView, moneyOf, monthOfDate, notificationList, overview, planChangeList, schedule, spendingList, subscriptionList, thisMonth, type Data } from '../../server/mcp/views'
 import { instructionsFor } from '../../server/mcp/instructions'
+import { incomeLine } from '../../server/preview'
 
 // Pay day 25 (a month is named by its end: "2026-12" = 11-25 … 12-24), transfer day 26, billing day 14.
 const S: Settings = { ...DEFAULT_SETTINGS, netPay: 3_000_000, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000 }
@@ -155,6 +156,17 @@ test('list_notifications: this month\'s left over is the one of the month of the
   assert.deepEqual(kinds(S, '2026-12-25'), [])
   assert.deepEqual(kinds(PAY, '2026-12-24'), [])
   assert.deepEqual(kinds(PAY, '2026-12-25'), ['2027-01'])
+})
+
+test('a proposal\'s income line names the month each side counts the money in', () => {
+  const row = { id: 'x1', date: '2026-11-25', name: 'First day', amount: 200_000 }
+  // the same row before and after a proposal that changes the basis from the calendar to pay: 2026-11, then "2026-12"
+  const line = incomeLine({ table: 'income_extra', op: 'update', before: row, after: row }, data(S), data(PAY))!
+  assert.match(line, /left over of 2026-11: /)
+  assert.match(line, /left over of 2026-12: /)
+  const same = incomeLine({ table: 'income_extra', op: 'insert', before: null, after: row }, data(PAY), data(PAY))!
+  assert.match(same, /left over of 2026-12: 2,460,000 KRW\.$/)
+  assert.doesNotMatch(same, /2026-11:/)
 })
 
 test('the server instructions say what a month is inside the first 512 characters, for each permission', () => {
