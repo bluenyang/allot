@@ -230,13 +230,18 @@ test('list_spendings: a payoff round and a merged round are told apart', () => {
   const x = spendingList({ ...data, spendings: [paid] }, NOW).spendings[0]!
   assert.deepEqual([x.progress.paid, x.progress.left, x.progress.merged], [1, 1, 2])
   assert.equal(x.progress.next?.round, 4)
-  const r = overview({ ...data, spendings: [paid] }, '2026-11').spendingRounds
+  // card bills of 11-14 and 11-20: the pay date before both is 10-26 (the 25th is a Sunday, moved after), so October counts them (spec 018 S-5)
+  const r = overview({ ...data, spendings: [paid] }, '2026-10').spendingRounds
   assert.deepEqual(r.map((y) => [y.round, y.of, y.payoff ?? false, y.state]), [[1, 3, false, 'paid'], [4, 3, true, 'left']])
+  assert.deepEqual(overview({ ...data, spendings: [paid] }, '2026-11').spendingRounds, [])
 })
 
 test('overview and schedule: spending rounds are items of their own, not in the subscription charges', () => {
   const o = overview(withSp, '2026-12')
-  assert.deepEqual(o.spendingRounds.map((r) => [r.date, r.name, r.round, r.of, r.amountKrw, r.payBy]), [['2026-12-12', 'Chair', 1, 1, 50_000, 'subs'], ['2026-12-14', 'Laptop', 2, 3, 100_000, 'card']])
+  // December counts the subscription-account round dated in it and the card bill of 2027-01-14, paid with the pay of 12-25;
+  // the card bill of 12-14 is November's (spec 018 S-5)
+  assert.deepEqual(o.spendingRounds.map((r) => [r.date, r.name, r.round, r.of, r.amountKrw, r.payBy]), [['2026-12-12', 'Chair', 1, 1, 50_000, 'subs'], ['2027-01-14', 'Laptop', 3, 3, 100_000, 'card']])
+  assert.deepEqual(overview(withSp, '2026-11').spendingRounds.map((r) => [r.date, r.name, r.round]), [['2026-12-14', 'Laptop', 2]])
   assert.deepEqual(o.payments, overview(data, '2026-12').payments)
   const s = schedule(withSp, '2026-11', 3)
   assert.deepEqual(s.months.map((m) => m.spendingRounds.length), [1, 2, 1])

@@ -180,9 +180,12 @@ test('review 1 F-9: a savings total linked to an account is not counted there; a
     rounds: [{ no: 1, date: '2026-12-16', amount: 100_000, state: 'left', edited: false }],
   }
   const st = state({ targets, accounts: [pay, item], cards: [card], spendings: [sp], balances: [{ id: 'b', accountId: 'pay', date: '2026-11-30', amount: 0 }] })
-  // December: remainder = 3,000,000 − 400,000 (savings) − 100,000 (card bill) = 2,500,000, and nothing else
+  // the card bill of 12-16 is paid with the pay of 11-25, so it comes off November's remainder (spec 018 S-5):
+  // 3,000,000 − 400,000 (savings) − 100,000 (card bill) = 2,500,000
+  assert.equal(monthMoney(st, '2026-11').dist.remainder, 2_500_000)
+  // December: remainder = 3,000,000 − 400,000 (savings) = 2,600,000, and nothing else: the bill of 12-16 does not leave the account a second time
   const dec = projectAccount(pay, st, none, '2026-12', 1)![0]!
-  assert.deepEqual([dec.inflow, dec.outflow, dec.end], [2_500_000, 0, 2_500_000])
+  assert.deepEqual([dec.inflow, dec.outflow, dec.end], [2_600_000, 0, 2_600_000])
 })
 
 test('review 2 F-2: a remainder account still counts its buffer use: the bill out and the refills back in', () => {

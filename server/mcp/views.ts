@@ -3,9 +3,9 @@
 // so the AI and the screen see the same numbers. No database here: the unit tests run without one.
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
-  addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, ctxOf, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDatesIn, monthlyKrw, monthMoney, nextPayment, parseDate,
-  periodOf, phaseAt, planAt, priced, projectAccount, shiftOf, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf, ymOfDate,
-  type AccountState, type MonthCtx, type MonthDate, type ShiftDate,
+  addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, ctxOf, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDatesIn, monthlyKrw, monthMoney, monthOutgo, nextPayment, outgoOf, parseDate,
+  periodOf, phaseAt, planAt, priced, projectAccount, roundYm, shiftOf, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf, ymOfDate,
+  type AccountState, type MonthCtx, type MonthDate, type Outgo, type ShiftDate,
   maturityAlerts, maturityAmount,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
@@ -102,18 +102,25 @@ function paymentsIn(d: Data, ym: string, ctx: MonthCtx) {
 }
 
 /**
- * One-off spending rounds of a month (spec 011 S-8), as items of their own kind and never part of the subscription charges:
- * the rounds the month's transfer and remainder take (paid ones too, cancelled and merged ones not). `of` is the round count
- * of the plan; a round after it (an early payoff's) has `payoff: true`.
+ * One-off spending rounds (spec 011 S-8), as items of their own kind and never part of the subscription charges: paid
+ * ones too, cancelled and merged ones not. `of` is the round count of the plan; a round after it (an early payoff's)
+ * has `payoff: true`.
  */
-function spendRoundsIn(d: Data, ym: string, ctx: MonthCtx) {
-  return spendingIn(d.spendings ?? [], ym, ctx).items
+function roundsView(items: readonly Outgo[]) {
+  return [...items]
     .sort((a, b) => (a.round.date < b.round.date ? -1 : a.round.date > b.round.date ? 1 : a.spending.name.localeCompare(b.spending.name) || a.round.no - b.round.no))
     .map(({ spending: sp, round }) => ({
       date: round.date, spendingId: sp.id, name: sp.name, how: sp.how, payBy: sp.payBy,
       round: round.no, of: sp.count, ...(round.no > sp.count ? { payoff: true } : {}), amountKrw: krw(round.amount), state: round.state,
     }))
 }
+/**
+ * The rounds month `ym` counts: the ones its transfer and remainder take (calc `monthOutgo`). A card bill counts in the
+ * month of the last pay date before it (spec 018 S-5), so its date may lie after the month's period.
+ */
+const spendRoundsIn = (d: Data, ym: string, ctx: MonthCtx) => roundsView(monthOutgo(d, ym, ctx))
+/** The rounds dated in the period of month `ym`, whichever month counts them: what a schedule lists next to the charges of those dates. */
+const spendRoundsDated = (d: Data, ym: string, ctx: MonthCtx) => roundsView(outgoOf(d, ctx).filter((o) => ymOfDate(o.round.date, ctx) === ym))
 
 const changeView = (c: PlanChange, d: Data) => ({
   id: c.id,
@@ -313,10 +320,11 @@ export function spendingList(d: Data, now: Date, filter: SpendFilter = {}) {
   const byStatus = rows.filter((r) => status === 'all'
     || (status === 'cancelled' ? r.cancelled : status === 'done' ? r.state === 'paid' : !r.cancelled && r.state !== 'paid'))
   const month = filter.month
-  // a round is in the month whose period holds its date (spec 018 S-3)
+  // a round is in the month that counts it (calc `roundYm`, spec 018 S-5): a card bill in the month of the last pay
+  // date before it, any other round in the month whose period holds its date
   const ctx = month ? basisOf(d, month) : null
   const list = month
-    ? byStatus.filter((r) => all.find((x) => x.id === r.id)!.rounds.some((x) => x.state !== 'merged' && ymOfDate(x.date, ctx!) === month))
+    ? byStatus.filter((r) => { const sp = all.find((x) => x.id === r.id)!; return sp.rounds.some((x) => x.state !== 'merged' && roundYm(sp, x, ctx!) === month) })
     : byStatus
   const m = month ? spendingIn(all, month, ctx!) : null
   return {
@@ -400,7 +408,8 @@ export function schedule(d: Data, from: string, months: number) {
         id: item.id, name: item.name, day: item.day, ...dateOf(at), shift: item.shift ?? 'none', accountId: item.accountId, direction: item.direction, ...(item.note ? { note: item.note } : {}),
       })),
       payments: paymentsIn(d, ym, ctx),
-      spendingRounds: spendRoundsIn(d, ym, ctx),
+      // a schedule is dates: the rounds dated in the period, like the charges (the month that counts a card bill is the overview's)
+      spendingRounds: spendRoundsDated(d, ym, ctx),
       planChanges: changesIn(d.planChanges, ym, ctx).map((c) => changeView(c, d)),
       // plan events are saved by month name and stay with that name (spec 018 S-4)
       planEvents: d.events

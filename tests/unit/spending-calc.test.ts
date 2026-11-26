@@ -309,11 +309,15 @@ test('monthMoney: without spendings it equals the plain calls; with spendings bo
   const m = monthMoney({ ...st, spendings: [sal, card, bySubs] }, '2026-12')
   assert.equal(m.transfer.transfer, 230_000)
   assert.equal(m.spend.general, 130_000)
-  assert.equal(m.spend.installment, 70_000)
-  // the subscription row follows the transfer; the remainder loses the transfer's rise and the salary/card rounds
+  // the card bill of 12-16 is paid with the pay of 11-25: November counts it, not December (spec 018 S-5)
+  assert.equal(m.spend.installment, 0)
+  const nov = monthMoney({ ...st, spendings: [sal, card, bySubs] }, '2026-11')
+  assert.equal(nov.spend.installment, 70_000)
+  assert.equal(nov.dist.remainder, plainD.remainder - 70_000)
+  // the subscription row follows the transfer; the remainder loses the transfer's rise and the salary round
   assert.equal(m.dist.subscriptions, 230_000)
-  assert.equal(m.dist.remainder, plainD.remainder - (230_000 - 160_000) - 200_000)
-  assert.equal(m.dist.rows.reduce((a, r) => a + r.amount, 0) + 200_000, S.netPay)
+  assert.equal(m.dist.remainder, plainD.remainder - (230_000 - 160_000) - 130_000)
+  assert.equal(m.dist.rows.reduce((a, r) => a + r.amount, 0) + 130_000, S.netPay)
   // another month is untouched, and `pay` and `phases` pass through
   assert.deepEqual(monthMoney({ ...st, spendings: [sal, card, bySubs] }, '2027-01').dist, distributionAt('2027-01', S.netPay, [], targets, living, subs, [], S))
   assert.equal(monthMoney({ ...st, spendings: [sal] }, '2026-12', { pay: 4_000_000 }).dist.remainder, plainD.remainder + 1_000_000 - 130_000)

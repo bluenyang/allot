@@ -682,6 +682,8 @@ export interface MonthCtx {
   off: ReadonlySet<string>
   /** First days already worked out, by month name: a pay basis asks the same months many times. Only a memo. */
   firsts: Map<string, string>
+  /** The month a card bill counts in, by the bill's date (`roundYm`): the same dates are asked for every month. Only a memo. */
+  bills: Map<string, string>
 }
 
 type MonthSettings = Pick<Settings, 'payDay' | 'monthBasis' | 'monthBasisCardId' | 'monthNaming'> & Partial<Shifts>
@@ -694,7 +696,7 @@ type MonthSettings = Pick<Settings, 'payDay' | 'monthBasis' | 'monthBasisCardId'
  */
 export function monthCtx(s: MonthSettings, cards: readonly Pick<Card, 'id' | 'usageFrom'>[], off: ReadonlySet<string>): MonthCtx {
   const settings = { payDay: s.payDay, payShift: s.payShift, transferShift: s.transferShift, billingShift: s.billingShift }
-  const calendar: MonthCtx = { basis: 'calendar', naming: 'start', day: 1, settings, off, firsts: new Map() }
+  const calendar: MonthCtx = { basis: 'calendar', naming: 'start', day: 1, settings, off, firsts: new Map(), bills: new Map() }
   const basis = s.monthBasis ?? 'calendar'
   const usageFrom = basis === 'card' ? cards.find((c) => c.id === s.monthBasisCardId)?.usageFrom ?? null : null
   if (basis === 'calendar' || (basis === 'card' && usageFrom === null)) return calendar
@@ -703,8 +705,12 @@ export function monthCtx(s: MonthSettings, cards: readonly Pick<Card, 'id' | 'us
   return { ...calendar, basis, naming: picked === 'auto' ? (day <= 15 ? 'start' : 'end') : picked, day }
 }
 
-/** The calendar month: what a call that names no basis counts by. It reads no dates, so one value serves every call. */
-const CALENDAR: MonthCtx = { basis: 'calendar', naming: 'start', day: 1, settings: { payDay: 1 }, off: NO_DAYS, firsts: new Map() }
+/**
+ * The calendar month: what a call that names no basis counts by. It has no holidays and its pay day is the 1st, never
+ * moved, so one value serves every call: a card bill (`roundYm`) counts in the calendar month of its date, one dated on
+ * the 1st in the month before. Every sum of the app passes the user's own basis, which carries their pay day.
+ */
+const CALENDAR: MonthCtx = { basis: 'calendar', naming: 'start', day: 1, settings: { payDay: 1 }, off: NO_DAYS, firsts: new Map(), bills: new Map() }
 
 /**
  * The month basis of a state (spec 018 S-3): its settings, its cards (a card basis reads its card's usage period) and
@@ -1056,7 +1062,7 @@ export function payOffEarly(rounds: SpendingRound[], date: string, amount?: numb
 }
 
 /** Rounds that count in the month sums: not merged; a cancelled spending keeps only its paid rounds (S-5). */
-function liveRounds(spendings: Spending[]): { spending: Spending; round: SpendingRound }[] {
+function liveRounds(spendings: readonly Spending[]): { spending: Spending; round: SpendingRound }[] {
   const out: { spending: Spending; round: SpendingRound }[] = []
   for (const spending of spendings)
     for (const round of spending.rounds) {
@@ -1072,6 +1078,93 @@ export interface SpendingItem {
   round: SpendingRound
   amount: number
 }
+
+// ---------- the month's outgoing rounds (spec 018 S-5, S-6) ----------
+/**
+ * The last actual pay date — the pay day of a calendar month, moved by the pay rule — strictly before `date`. A date
+ * that is itself a pay date gets the pay date before it.
+ */
+function payDateBefore(date: string, ctx: MonthCtx): string {
+  const pay = (ym: string) => monthDay(ym, ctx.settings.payDay, shiftOf(ctx.settings, 'pay'), ctx.off).date
+  // a pay date moved off a weekend may lie in the calendar month before or after its own: from the month after the
+  // date's, back until one comes before the date. The count only keeps a malformed date from looping.
+  let ym = addYm(date.slice(0, 7), 1)
+  let p = pay(ym)
+  for (let i = 0; i < 4 && !(p < date); i++) {
+    ym = addYm(ym, -1)
+    p = pay(ym)
+  }
+  return p
+}
+
+/** A card bill: a round of a lump sum or an installment paid by card. A buffer use's rounds are refills, a split's the dates the user pays on. */
+const isCardBill = (sp: Pick<Spending, 'how' | 'payBy'>) => sp.payBy === 'card' && (sp.how === 'lump' || sp.how === 'installment')
+
+/**
+ * The month a round counts in (spec 018 S-5). A card bill is paid with the pay that came in last before it: it counts
+ * in the month that holds the last actual pay date strictly before the bill's date (a bill dated on a pay date: the pay
+ * date before). Pay day 25, calendar months: a bill of 12-14 or 12-25 counts in November, one of 12-26 in December.
+ * Every other round — a buffer refill, a split, a round paid from the salary or the subscription account — counts in
+ * the month whose period holds its date.
+ */
+export function roundYm(spending: Pick<Spending, 'how' | 'payBy'>, round: Pick<SpendingRound, 'date'>, ctx: MonthCtx): string {
+  if (!isCardBill(spending)) return ymOfDate(round.date, ctx)
+  const known = ctx.bills.get(round.date)
+  if (known) return known
+  const ym = ymOfDate(payDateBefore(round.date, ctx), ctx)
+  ctx.bills.set(round.date, ym)
+  return ym
+}
+
+/** One outgoing round of a month: what `monthOutgo` lists, and what the left over, the allocation table and the balance projection all read (spec 018 S-6). */
+export interface Outgo extends SpendingItem {
+  /** the month it counts in (`roundYm`) */
+  ym: string
+  /** 'remainder': taken off the month's left over; 'subs': added to the month's subscription transfer */
+  from: 'remainder' | 'subs'
+  /** 'card': paid through a card (a bill, or a split paid by card); 'refill': a buffer use's refill; 'direct': paid from the salary or the subscription account */
+  kind: 'card' | 'refill' | 'direct'
+  /**
+   * The account the money goes through, when there is one: the paying account of the spending's card (a card round,
+   * a refill), or the account linked to the subscriptions target (a round paid from the subscription account).
+   */
+  accountId: string | null
+}
+
+/** What `monthOutgo` reads of a state: the spendings, the cards (their paying accounts) and the targets (the subscriptions target's account). */
+export interface OutgoState {
+  spendings?: readonly Spending[]
+  cards?: readonly Pick<Card, 'id' | 'accountId'>[]
+  targets?: readonly Pick<AllocationTarget, 'kind' | 'accountId'>[]
+}
+
+/** Every round that counts (`liveRounds`: not merged, and of a cancelled spending only the paid ones) with the month it counts in and how it is paid. */
+export function outgoOf(state: OutgoState, ctx: MonthCtx): Outgo[] {
+  const cards = state.cards ?? []
+  const subsAccount = (state.targets ?? []).find((t) => t.kind === 'subscriptions' && t.accountId)?.accountId ?? null
+  return liveRounds(state.spendings ?? []).map(({ spending, round }) => {
+    const byCard = spending.payBy === 'card'
+    return {
+      spending, round, amount: round.amount, ym: roundYm(spending, round, ctx),
+      from: spending.payBy === 'subs' ? 'subs' as const : 'remainder' as const,
+      kind: spending.how === 'buffer' ? 'refill' as const : byCard ? 'card' as const : 'direct' as const,
+      accountId: byCard ? (spending.cardId ? cards.find((c) => c.id === spending.cardId)?.accountId ?? null : null) : spending.payBy === 'subs' ? subsAccount : null,
+    }
+  })
+}
+
+/**
+ * The outgoing rounds of month `ym` (spec 018 S-6): every round that counts in it (`roundYm`), each with where it is
+ * taken from, its kind and the account it goes through. The one list behind the month's left over (`spendingIn`), the
+ * allocation table's paying-account block (`Distribution.payouts`) and the balance projection (`movesIn`).
+ */
+export function monthOutgo(state: OutgoState, ym: string, ctx: MonthCtx): Outgo[] {
+  return outgoOf(state, ctx).filter((o) => o.ym === ym)
+}
+
+/** What an account gets in a month for the rounds paid through its cards: the card rounds and the buffer refills. */
+export interface PaidThrough { accountId: string; card: number; refill: number }
+
 export interface SpendingMonth {
   /** paid from the subscription account: added to the month's subscription transfer */
   subs: number
@@ -1080,21 +1173,29 @@ export interface SpendingMonth {
   /** of `remainder`, the lump-sum part and the installment/split part */
   general: number
   installment: number
-  items: SpendingItem[]
+  items: Outgo[]
+  /** of `remainder`, what goes through each paying account: its cards' rounds and its buffer refills (spec 018 S-6). Accounts with nothing are left out. */
+  byAccount: PaidThrough[]
 }
 
-/** What the spendings put on month `ym` (S-5): the rounds dated in it — in its period of the basis `ctx` (spec 018 S-3), the calendar month without one. */
-export function spendingIn(spendings: Spending[], ym: string, ctx: MonthCtx = CALENDAR): SpendingMonth {
-  const out: SpendingMonth = { subs: 0, remainder: 0, general: 0, installment: 0, items: [] }
-  for (const { spending, round } of liveRounds(spendings)) {
-    if (ymOfDate(round.date, ctx) !== ym) continue
-    out.items.push({ spending, round, amount: round.amount })
-    if (spending.payBy === 'subs') out.subs += round.amount
-    else {
-      out.remainder += round.amount
-      if (spending.how === 'lump') out.general += round.amount
-      else out.installment += round.amount
-    }
+/**
+ * What the spendings put on month `ym` (S-5): the sum of the month's outgoing rounds (`monthOutgo`, spec 018 S-6) —
+ * the rounds that count in it by the basis `ctx` (`roundYm`: a card bill by the pay date before it, the others by
+ * their date). `links` are the state's cards and targets, for the account each round goes through (`byAccount`).
+ */
+export function spendingIn(spendings: readonly Spending[], ym: string, ctx: MonthCtx = CALENDAR, links: Pick<OutgoState, 'cards' | 'targets'> = {}): SpendingMonth {
+  const out: SpendingMonth = { subs: 0, remainder: 0, general: 0, installment: 0, items: [], byAccount: [] }
+  for (const o of monthOutgo({ spendings, cards: links.cards, targets: links.targets }, ym, ctx)) {
+    out.items.push(o)
+    if (o.from === 'subs') { out.subs += o.amount; continue }
+    out.remainder += o.amount
+    if (o.spending.how === 'lump') out.general += o.amount
+    else out.installment += o.amount
+    if (!o.accountId) continue
+    let a = out.byAccount.find((x) => x.accountId === o.accountId)
+    if (!a) out.byAccount.push(a = { accountId: o.accountId, card: 0, refill: 0 })
+    if (o.kind === 'refill') a.refill += o.amount
+    else a.card += o.amount
   }
   return out
 }
@@ -1265,7 +1366,7 @@ export function incomeAt(state: Pick<MonthState, 'settings' | 'incomes' | 'incom
  */
 export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; phases?: Phase[]; ctx?: MonthCtx } = {}) {
   const ctx = opt.ctx ?? ctxOf(state)
-  const spend = spendingIn(state.spendings ?? [], ym, ctx)
+  const spend = spendingIn(state.spendings ?? [], ym, ctx, state)
   const s = priced(state.settings, state.currencies)
   const transfer = transferAt(state.subscriptions, state.planChanges, s, ym, spend.subs, ctx)
   const income = incomeAt(state, ym, ctx)
