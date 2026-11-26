@@ -571,7 +571,7 @@ export const ko = {
     addGeneral: '지출 추가',
     addInst: '할부 추가',
     monthTitle: '{ym} 지출 반영',
-    monthTip: '급여 통장이나 카드로 내는 돈은 그 달 여유에서 빼고, 구독 통장으로 내는 돈은 그 달 구독 이체에 더해요. 카드는 청구일이 속한 달에 반영해요.',
+    monthTip: '급여 통장이나 카드로 내는 돈은 그 달 여유에서 빼고, 구독 통장으로 내는 돈은 그 달 구독 이체에 더해요. 카드 청구는 청구일 바로 앞 월급날이 든 달에 반영해요(그 월급으로 내니까요). 청구일과 월급날이 같으면 그 전 월급날이에요.',
     monthSum: '일반 · 할부 · 구독 합계',
     fromRemainder: '여유에서 빠지는 돈',
     kindGeneral: '일반',
@@ -588,6 +588,7 @@ export const ko = {
     keepOthers: '다른 금액은 자동으로 바꾸지 않아요.',
     adjust: '월급 분배에서 조정 →',
     placeholderCount: '{n}건',
+    paidIn: '{month} 분배에서 냄',
     inst: {
       roundOfLong: '{no}/{n}회',
       payoffRound: '중도 완납',

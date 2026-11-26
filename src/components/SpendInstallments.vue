@@ -6,7 +6,7 @@ import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { monthShort } from '../lib/format'
 import { addYm, billingDayOf, cardBillDate, cardBillYm, needsHolidays, spendingIn, spendingKrw, ymLabel } from '../lib/calc'
-import { monthBasis, thisYm, ymOfDay } from '../lib/month'
+import { monthBasis, roundYmOf, thisYm, ymOfDay } from '../lib/month'
 import type { Card, PayBy, Spending, SpendingRound } from '../data/types'
 import ConfirmDialog from './ConfirmDialog.vue'
 import PayOffDialog from './PayOffDialog.vue'
@@ -24,8 +24,10 @@ import { spendingCsvRows } from '../lib/spending-csv'
 // the body); the editors are RoundEditor and PayOffDialog. The whole-spending editor is SpendEditor (W-7).
 // A buffer use (spec 013 S-8) is listed here too: its rounds are the refills, taken off the remainder of their months.
 const ym = thisYm()
-// the month a date counts in: the one whose period holds it (spec 018 S-3)
+// the month a date lies in: the one whose period holds it (spec 018 S-3)
 const mon = (d: string) => monthShort(Number(ymOfDay(d).slice(5, 7)))
+// a month's short name, from its name (YYYY-MM)
+const monOf = (m: string) => monthShort(Number(m.slice(5, 7)))
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
 const ymText = (d: string) => ymLabel(ymOfDay(d)).replace('.', '. ')
 const payName = (p: PayBy) => t(`spending.gen.pay.${p}` as 'spending.gen.pay.card')
@@ -167,7 +169,9 @@ const d = computed(() => {
     : s.payBy === 'card'
       ? (card ? t('spending.inst.payCardNamed', { card: cardLabel, day: billingDayOf(card, store.settings) }) : t('spending.inst.pay.card', { day: store.settings.billingDay }))
       : `${t(`spending.inst.pay.${s.payBy}` as 'spending.inst.pay.salary')}${per ? ` · ${per}` : ''}`
-  const where = s.how === 'buffer' ? t('spending.inst.whereBuffer', { account: acc?.name ?? '—' }) : t(`spending.inst.where.${s.payBy}` as 'spending.inst.where.card')
+  // a card installment counts with the pay before each bill (spec 018 S-5); a split, also one paid by card, on the dates it is paid
+  const where = s.how === 'buffer' ? t('spending.inst.whereBuffer', { account: acc?.name ?? '—' })
+    : t(`spending.inst.where.${s.how === 'split' && s.payBy === 'card' ? 'salary' : s.payBy}` as 'spending.inst.where.card')
   // an edited round or an early payoff may leave the rounds adding up to something else than the total (S-4)
   const total = totalOf(s)
   const diff = s.rounds.some((r) => r.edited || r.state === 'merged') ? i.liveSum - total : 0
@@ -186,9 +190,13 @@ const d = computed(() => {
   const nextNo = i.next?.no
   const rounds = [...s.rounds].sort((a, b) => a.no - b.no).map((r) => {
     const st = r.state === 'merged' ? 'merged' : r.state === 'paid' ? 'paid' : r.no === nextNo ? 'next' : 'left'
-    const m = mon(r.date)
-    const reflect = r.state === 'merged' || (s.cancelled && r.state === 'left') ? t('spending.inst.reflectNone') : s.payBy === 'subs' ? t('spending.inst.reflectSubs', { month: m }) : t('spending.inst.reflectRem', { month: m })
-    return { r, st, label: roundLabel(s, r.no), reflect }
+    // the month that counts the round (spec 018 S-5); a card bill counted in another month than its date's says which month's allocation pays it
+    const rym = roundYmOf(s, r)
+    const m = monOf(rym)
+    const none = r.state === 'merged' || (s.cancelled && r.state === 'left')
+    const reflect = none ? t('spending.inst.reflectNone') : s.payBy === 'subs' ? t('spending.inst.reflectSubs', { month: m }) : t('spending.inst.reflectRem', { month: m })
+    const paidIn = !none && rym !== ymOfDay(r.date) ? t('spending.paidIn', { month: m }) : ''
+    return { r, st, label: roundLabel(s, r.no), reflect, paidIn, rym }
   })
   return {
     i, s, name: s.name, state: t(`spending.inst.state.${stateName}`), pill: stateName === 'active' ? 'ok' : 'mute',
@@ -329,7 +337,7 @@ const pickItem = (id: string) => { picked.value = id; error.value = '' }
               <tbody>
                 <tr v-for="x in d.rounds" :key="x.r.no" :class="{ nx: x.st === 'next', gone: x.st === 'merged' }">
                   <td class="num pl lbl">{{ x.label }}</td>
-                  <td class="mono dt">{{ x.r.date }}</td>
+                  <td class="mono dt" :data-paid-in="x.paidIn ? x.rym : undefined">{{ x.r.date }}<small v-if="x.paidIn" class="hint pin">{{ x.paidIn }}</small></td>
                   <td class="r num amt">{{ fmtMoney(x.r.amount) }}<span v-if="x.r.edited && x.st !== 'merged'" class="hint ed" :title="t('spending.inst.editedTitle')">{{ t('spending.inst.edited') }}</span></td>
                   <td class="refl">{{ x.reflect }}</td>
                   <td class="c"><span class="pill" :class="ST_PILL[x.st]">{{ t(`spending.inst.st.${x.st}` as 'spending.inst.st.paid') }}</span></td>
@@ -423,6 +431,7 @@ const pickItem = (id: string) => { picked.value = id; error.value = '' }
 .rt th.c,.rt td.c{text-align:center}
 .rt td.lbl{color:var(--text-2)}
 .rt td.dt{font-size:12px}
+.rt td.dt .pin{display:block;font-family:var(--font);font-size:11px;white-space:nowrap}
 .rt td.amt{font-weight:600}
 .rt td.amt .ed{font-weight:500}
 .rt tr.nx{background:color-mix(in srgb,var(--accent-soft) 45%,transparent)}

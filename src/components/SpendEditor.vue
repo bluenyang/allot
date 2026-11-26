@@ -24,6 +24,7 @@ import { addYm, billingDayOf, bufferGauge, cardBillDate, monthDay, needsHolidays
 import { fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { store } from '../lib/store'
+import { roundYmOf } from '../lib/month'
 import { useEditor } from '../lib/useEditor'
 import type { Card, Currency, PayBy, Spending, SpendingRound, SpendHow, SpendInterval } from '../data/types'
 import { localToday } from '../lib/now'
@@ -287,7 +288,10 @@ const planHint = computed(() => {
 const whereLine = computed(() => {
   if (how.value === 'lump' && lumpState.value === 'cancelled') return t('spending.inst.reflectNone')
   if (isBuf.value) return t('spending.ed.whereBuffer', { date: md(billDate.value) })
-  const m = live.value[0]?.date ? Number(live.value[0].date.slice(5, 7)) : 0
+  // the month that counts the first round (spec 018 S-5): a card bill with the pay before it, any other round by its date
+  const f = live.value[0]?.date
+  const m = f && DATE.test(f) ? Number(roundYmOf({ how: how.value, payBy: payBy.value }, { date: f }).slice(5, 7)) : 0
+  if (how.value === 'installment' && payBy.value === 'card') return t('spending.ed.whereMultiCard')
   const k = `spending.ed.${multi.value ? 'whereMulti' : 'whereLump'}${payBy.value === 'subs' ? 'Subs' : 'Rem'}` as 'spending.ed.whereLumpRem'
   return t(k, { month: m })
 })

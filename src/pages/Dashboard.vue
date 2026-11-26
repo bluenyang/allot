@@ -235,7 +235,7 @@ const cardMeta = (p: Proposal) => t('pending.meta', { key: p.keyName, at: when(p
 const wcls = (d: Date) => (d.getDay() === 6 ? 'sat' : d.getDay() === 0 ? 'sun' : '')
 // ---------- 내보내기 (spec 013 S-17): the shown month's summary as CSV ----------
 // Distribution rows (target, kind, amount), the subscription transfer, the remainder (and its split), then the
-// month's subscription payments and spending rounds (date, name, amount) in date order.
+// month's subscription payments (the ones dated in it) and the spending rounds it counts (date, name, amount) in date order.
 function exportCsv() {
   const m = ym.value
   const H = (k: string) => t(`dashboard.csv.${k}` as MessageKey)
@@ -257,9 +257,10 @@ function exportCsv() {
   for (const p of upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), first, days)) {
     if (ymOfDay(ymd(p.date)) === m) due.push({ date: ymd(p.date), row: [H('secPay'), p.sub.name, H('kindSub'), ymd(p.date), wonCell(p.krw)] })
   }
-  // every round of the month that counts (paid or to pay; not merged, not a cancelled spending's open round)
-  for (const s of store.spendings) for (const r of s.rounds) {
-    if (r.state === 'merged' || (s.cancelled && r.state === 'left') || ymOfDay(r.date) !== m) continue
+  // every round the month counts (paid or to pay; not merged, not a cancelled spending's open round): the rounds its
+  // left over and transfer take (calc monthOutgo). A card bill counts with the pay before it (spec 018 S-5), so its date
+  // may lie after the month's period.
+  for (const { spending: s, round: r } of monthNow.value.spend.items) {
     due.push({ date: r.date, row: [H('secRound'), s.name, roundSuffix(s, r) || t('dashboard.spendOne'), r.date, r.amount] })
   }
   for (const x of due.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))) rows.push(x.row)

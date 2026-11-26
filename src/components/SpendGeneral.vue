@@ -5,7 +5,7 @@ import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort } from '../lib/format'
 import { num, spendState, spendingIn, ymd, type SpendStateName } from '../lib/calc'
-import { monthBasis, thisYm, ymOfDay } from '../lib/month'
+import { monthBasis, roundYmOf, thisYm, ymOfDay } from '../lib/month'
 import type { PayBy, Spending } from '../data/types'
 import Seg from './Seg.vue'
 import Select from './Select.vue'
@@ -26,8 +26,8 @@ const editing = ref<Spending | null>(null)
 const general = computed(() => store.spendings.filter((s) => s.how === 'lump'))
 const round = (s: Spending) => s.rounds.find((r) => r.state !== 'merged') ?? s.rounds[0]
 const krw = (s: Spending) => s.rounds.filter((r) => r.state !== 'merged').reduce((a, r) => a + r.amount, 0)
-// the month a date (or a month name) counts in: the one whose period holds it (spec 018 S-3)
-const mon = (d: string) => monthShort(Number((d.length > 7 ? ymOfDay(d) : d).slice(5, 7)))
+// a month's short name, from its name (YYYY-MM)
+const mon = (m: string) => monthShort(Number(m.slice(5, 7)))
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
 // a foreign amount by its own code (spec 013 S-23): "USD 12.50", "EUR 8.00"
 const orig = (s: Spending) => (s.currency !== 'KRW' ? `${s.currency} ${s.amount.toFixed(2)}` : `KRW ${num(s.amount)}`)
@@ -44,11 +44,15 @@ const rows = computed(() =>
     const st = spendState(s, nowYmd, store.settings, OFF, s.cardId ? store.cards.find((c) => c.id === s.cardId) : null)
     // a cancelled spending keeps only its paid rounds in the month sums (S-5): a left round of it counts nowhere
     const counted = !!r && !(s.cancelled && r.state === 'left')
+    // the month that counts the round (spec 018 S-5): a card bill is paid with the pay before it, so that may be the
+    // month before the one its date lies in; then the row says which month's allocation pays it
+    const rym = r ? roundYmOf(s, r) : ''
+    const paidIn = counted && rym !== ymOfDay(r!.date) ? t('spending.paidIn', { month: mon(rym) }) : ''
     const where = !counted ? t('spending.gen.where.none')
-      : s.payBy === 'card' ? t('spending.gen.where.card', { date: md(r!.date) })
+      : s.payBy === 'card' ? (paidIn ? t('spending.gen.where.cardPaidIn', { date: md(r!.date), paidIn }) : t('spending.gen.where.card', { date: md(r!.date) }))
       : s.payBy === 'subs' ? t('spending.gen.where.subs') : t('spending.gen.where.salary')
     return {
-      s, st, krw: krw(s), orig: orig(s), where, month: counted ? mon(r!.date) : '—', rym: r ? ymOfDay(r.date) : '',
+      s, st, krw: krw(s), orig: orig(s), where, month: counted ? mon(rym) : '—', rym, paidIn,
       pay: s.payBy === 'card' ? cardLump(s) : payName(s.payBy),
     }
   }).sort((a, b) => (a.s.bought < b.s.bought ? -1 : a.s.bought > b.s.bought ? 1 : a.s.name.localeCompare(b.s.name))),
@@ -203,7 +207,7 @@ const share = (v: number, total: number) => (total ? (v / total) * 100 : 0)
               <td class="n mono cell2">{{ r.orig }}</td>
               <td class="n amt">{{ fmtMoney(r.krw) }}</td>
               <td class="cell2">{{ r.pay }}</td>
-              <td><span class="blk">{{ r.month }}</span><small class="hint">{{ r.where }}</small></td>
+              <td :data-paid-in="r.paidIn ? r.rym : undefined"><span class="blk">{{ r.month }}</span><small class="hint">{{ r.where }}</small></td>
               <td class="c"><span class="pill" :class="PILL[r.st]">{{ t(`spending.gen.state.${r.st}` as 'spending.gen.state.paid') }}</span></td>
               <td class="n"><button class="btn sm ghost" type="button" :aria-label="t('common.editLabel', { name: r.s.name })" @click="editing = r.s">{{ t('common.edit') }}</button></td>
             </tr>
@@ -214,7 +218,7 @@ const share = (v: number, total: number) => (total ? (v / total) * 100 : 0)
       <ul class="mlist">
         <li v-for="r in shown" :key="r.s.id" class="mcard" :class="{ off: r.st === 'cancelled' }">
           <div class="m1"><span class="m-name"><b>{{ r.s.name }}</b> <small class="hint">{{ r.s.category }}</small></span><b class="num m-amt">{{ fmtMoney(r.krw) }}</b></div>
-          <div class="m2"><span>{{ r.pay }} · {{ r.month }}</span><span class="pill" :class="PILL[r.st]">{{ t(`spending.gen.state.${r.st}` as 'spending.gen.state.paid') }}</span></div>
+          <div class="m2"><span>{{ r.pay }} · {{ r.paidIn || r.month }}</span><span class="pill" :class="PILL[r.st]">{{ t(`spending.gen.state.${r.st}` as 'spending.gen.state.paid') }}</span></div>
           <div class="m3"><span class="mono hint">{{ fmtDate(r.s.bought) }} · {{ r.orig }}</span><button class="btn sm" type="button" :aria-label="t('common.editLabel', { name: r.s.name })" @click="editing = r.s">{{ t('common.edit') }}</button></div>
         </li>
       </ul>

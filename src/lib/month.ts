@@ -3,7 +3,8 @@
 // the text of its period. The sums take the same basis from the store itself (calc `ctxOf`), so a screen and its numbers
 // cannot disagree. With the calendar basis every answer is what the screens showed before: the calendar month, no period.
 import { computed } from 'vue'
-import { ctxOf, dayOn, monthDatesIn, periodOf, ymd, ymLabel, ymOfDate, type MonthCtx } from './calc'
+import { ctxOf, dayOn, monthDatesIn, periodOf, roundYm, ymd, ymLabel, ymOfDate, type MonthCtx } from './calc'
+import type { Spending, SpendingRound } from '../data/types'
 import { periodText } from './format'
 import { localToday } from './now'
 import { store } from './store'
@@ -25,6 +26,12 @@ export const hasPeriod = computed(() => monthBasis.value.basis !== 'calendar')
 
 /** The month that holds `date` (YYYY-MM-DD). */
 export const ymOfDay = (date: string): string => ymOfDate(date, monthBasis.value)
+
+/**
+ * The month a spending round counts in (calc `roundYm`, spec 018 S-5): a card bill in the month of the last pay date
+ * before it, every other round in the month that holds its date.
+ */
+export const roundYmOf = (s: Pick<Spending, 'how' | 'payBy'>, r: Pick<SpendingRound, 'date'>): string => roundYm(s, r, monthBasis.value)
 
 /** This month: the month that holds today in the user's time zone. */
 export const thisYm = (): string => ymOfDay(ymd(localToday()))
