@@ -71,13 +71,21 @@ test('projectAccount: the transfers of a month are dated inside its period, and 
 
 test('projectAccount: a card bill leaves in the month whose period holds its date', () => {
   const spendings = [spending('a', '2026-12-14', 50_000), spending('b', '2026-12-25', 30_000)]
-  // calendar: both bills are December's: 1,200,000 + 200,000 − 80,000; then +300,000 twice
-  assert.deepEqual(ends(state(S, { spendings }), '2026-12', 3), [1_320_000, 1_620_000, 1_920_000])
-  // pay basis: 12-14 is in "2026-12" (1,000,000 + 200,000 − 50,000), 12-25 opens "2027-01" (+300,000 − 30,000)
+  // Both bills are paid with the pay of 11-25 (a bill dated on a pay date belongs to the pay before): the paying account
+  // gets their 80,000 with the transfer of the month that counts them, and each bill leaves on its date (spec 018 S-5, S-6).
+  // calendar: November counts both: 1,000,000 + 200,000 + 80,000 on 11-26; December +200,000 − 80,000 = 1,400,000; then +300,000 twice
+  assert.deepEqual(projectAccount(emergency, state(S, { spendings }), none, '2026-11', 4), [
+    { ym: '2026-11', inflow: 280_000, outflow: 0, end: 1_280_000 },
+    { ym: '2026-12', inflow: 200_000, outflow: 80_000, end: 1_400_000 },
+    { ym: '2027-01', inflow: 300_000, outflow: 0, end: 1_700_000 },
+    { ym: '2027-02', inflow: 300_000, outflow: 0, end: 2_000_000 },
+  ])
+  // pay basis: "2026-12" (11-25 … 12-24) counts both and gets 80,000 with its transfer of 11-26; 12-14 leaves in it
+  // (1,000,000 + 280,000 − 50,000), 12-25 leaves in "2027-01", whose period holds it (+300,000 − 30,000)
   assert.deepEqual(projectAccount(emergency, state(PAY, { spendings }), none, '2026-12', 3), [
-    { ym: '2026-12', inflow: 200_000, outflow: 50_000, end: 1_150_000 },
-    { ym: '2027-01', inflow: 300_000, outflow: 30_000, end: 1_420_000 },
-    { ym: '2027-02', inflow: 300_000, outflow: 0, end: 1_720_000 },
+    { ym: '2026-12', inflow: 280_000, outflow: 50_000, end: 1_230_000 },
+    { ym: '2027-01', inflow: 300_000, outflow: 30_000, end: 1_500_000 },
+    { ym: '2027-02', inflow: 300_000, outflow: 0, end: 1_800_000 },
   ])
   // a bill dated on or before the record is in the record already, on every basis
   const early = [spending('c', '2026-11-25', 70_000)]

@@ -5,8 +5,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
-import type { Account, AllocationTarget, Card, Phase, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
-import { distributionAt, monthMoney, priced, type AccountState } from '../../src/lib/calc'
+import type { Account, AllocationTarget, Balance, Card, Phase, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
+import { distributionAt, monthMoney, priced, projectAccount, type AccountState } from '../../src/lib/calc'
+import { accountMonthIn } from '../../src/lib/accounts'
 
 // Pay day 25, transfer day 26, card billing day 14, calendar months, no weekend rule.
 const S: Settings = { ...DEFAULT_SETTINGS, netPay: 3_000_000, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000 }
@@ -115,4 +116,122 @@ test('payouts: nothing when no account is named and nothing is paid through a ca
   assert.deepEqual(monthMoney(state({ targets, spendings: [], cards: [] }), '2026-11').dist.payouts, [])
   // a subscriptions target with an account but no subscription and no spending: the transfer is 0, so no entry
   assert.deepEqual(monthMoney(state({ subscriptions: [], spendings: [] }), '2026-11').dist.payouts, [])
+})
+
+// ---------- the balance projection reads the same list (S-6) ----------
+const none: ReadonlySet<string> = new Set()
+const bal = (accountId: string, date: string, amount: number): Balance => ({ id: `${accountId}-${date}`, accountId, date, amount })
+const project = (st: AccountState, id: string, from: string, months: number) => projectAccount(st.accounts.find((a) => a.id === id)!, st, none, from, months)!
+// Everything here goes through c1, the card of pay-acc (which no target sends to):
+// an installment billed 12-14, 01-14 and 02-14 (60,000 each), a lump sum billed 01-14 (25,000), and a buffer use of
+// 40,000 bought 11-01 (its bill leaves the buffer on 12-14) refilled on 11-25 and 12-25 (20,000 each).
+const ONE: Spending[] = [
+  spending('inst3', { how: 'installment', count: 3, cardId: 'c1', rounds: [round(1, '2026-12-14', 60_000), round(2, '2027-01-14', 60_000), round(3, '2027-02-14', 60_000)] }),
+  spending('lumpx', { cardId: 'c1', bought: '2026-12-03', rounds: [round(1, '2027-01-14', 25_000)] }),
+  spending('buf', { how: 'buffer', count: 2, cardId: 'c1', amount: 40_000, refillFrom: '2026-11-25', rounds: [round(1, '2026-11-25', 20_000), round(2, '2026-12-25', 20_000)] }),
+]
+
+test('one number: the spendings off the left over, the paying account\'s card and refill parts and the projection\'s money in agree, three months running', () => {
+  const st = state({ spendings: ONE, balances: [bal('pay-acc', '2026-11-01', 500_000)] })
+  const rows = project(st, 'pay-acc', '2026-11', 4)
+  // November counts the bill of 12-14 (60,000) and the refill of 11-25 (20,000); December the bills of 01-14
+  // (60,000 + 25,000) and the refill of 12-25; January the bill of 02-14
+  const expected = [['2026-11', 60_000, 20_000], ['2026-12', 85_000, 20_000], ['2027-01', 60_000, 0]] as const
+  expected.forEach(([ym, card, refill], i) => {
+    const m = monthMoney(st, ym)
+    const p = m.dist.payouts.find((x) => x.accountId === 'pay-acc')!
+    assert.deepEqual([p.card, p.refill], [card, refill], ym)
+    // the spendings part of the left over
+    assert.equal(m.spend.remainder, card + refill, ym)
+    assert.equal(m.dist.remainder, m.income.total - m.dist.subscriptions - 500_000 - (card + refill), ym)
+    // what the projection brings into the paying account that month, and the accounts table's column
+    assert.equal(rows[i]!.inflow, card + refill, ym)
+    assert.equal(accountMonthIn(st.accounts.find((a) => a.id === 'pay-acc')!, st, ym), card + refill, ym)
+  })
+  // the money leaves on the bills' dates: December 60,000 (12-14) + the buffer use's bill 40,000 (12-14); January
+  // 60,000 + 25,000 (01-14); February 60,000 (02-14)
+  assert.deepEqual(rows, [
+    { ym: '2026-11', inflow: 80_000, outflow: 0, end: 580_000 },
+    { ym: '2026-12', inflow: 105_000, outflow: 100_000, end: 585_000 },
+    { ym: '2027-01', inflow: 60_000, outflow: 85_000, end: 560_000 },
+    { ym: '2027-02', inflow: 0, outflow: 60_000, end: 500_000 },
+  ])
+  // all in all what came in for the cards has left for the cards: the balance is back where it started
+  assert.equal(rows.reduce((a, r) => a + r.inflow - r.outflow, 0), 0)
+})
+
+test('one number on a pay and a card basis: the same three agree in every month', () => {
+  const basisCard: Card = { id: 'basis', name: 'Basis', last4: '', accountId: null, billingDay: 25, usageFrom: 12 }
+  for (const settings of [{ ...S, monthBasis: 'pay' as const }, { ...S, monthBasis: 'card' as const, monthBasisCardId: 'basis' }]) {
+    const st = state({ settings, spendings: ONE, cards: [...CARDS, basisCard], balances: [bal('pay-acc', '2026-10-01', 500_000)] })
+    const rows = project(st, 'pay-acc', '2026-10', 6)
+    let counted = 0
+    for (const r of rows) {
+      const m = monthMoney(st, r.ym)
+      const p = m.dist.payouts.find((x) => x.accountId === 'pay-acc')
+      assert.equal(m.spend.remainder, (p?.card ?? 0) + (p?.refill ?? 0), `${settings.monthBasis} ${r.ym}`)
+      assert.equal(r.inflow, m.spend.remainder, `${settings.monthBasis} ${r.ym}`)
+      counted += m.spend.remainder
+    }
+    // every round is counted once (3 × 60,000 + 25,000 + 2 × 20,000), and the balance ends where it started
+    assert.equal(counted, 245_000, settings.monthBasis)
+    assert.equal(rows[rows.length - 1]!.end, 500_000, settings.monthBasis)
+  }
+  // pay basis by hand: "2026-12" = 11-25 … 12-24 counts the bill of 12-14 and the refill of 11-25 (its first day), and
+  // both the bill (60,000) and the buffer use's bill (40,000) leave inside it
+  const pay = state({ settings: { ...S, monthBasis: 'pay' }, spendings: ONE, balances: [bal('pay-acc', '2026-10-01', 500_000)] })
+  assert.deepEqual(project(pay, 'pay-acc', '2026-12', 1), [{ ym: '2026-12', inflow: 80_000, outflow: 100_000, end: 480_000 }])
+})
+
+test('an account that takes the left over: its card bills neither come in nor go out, the left over has them off already', () => {
+  // rest-acc takes the left over and pays c2: the installment's bills of 12-14 and 01-14 (40,000 each)
+  const st = state({ balances: [bal('rest-acc', '2026-11-01', 0)] })
+  // November: left over 2,300,000 (40,000 of it already off for the bill of 12-14); December 2,410,000; January 3,000,000 − 20,000 − 500,000
+  assert.deepEqual(project(st, 'rest-acc', '2026-11', 3), [
+    { ym: '2026-11', inflow: 2_300_000, outflow: 0, end: 2_300_000 },
+    { ym: '2026-12', inflow: 2_410_000, outflow: 0, end: 4_710_000 },
+    { ym: '2027-01', inflow: 2_480_000, outflow: 0, end: 7_190_000 },
+  ])
+  // the allocation table still names what the account's card takes that month
+  assert.equal(monthMoney(st, '2026-11').dist.payouts.find((p) => p.accountId === 'rest-acc')!.card, 40_000)
+  assert.equal(accountMonthIn(st.accounts.find((a) => a.id === 'rest-acc')!, st, '2026-11'), 2_300_000)
+  // its buffer use is not off the left over twice: the refills come in and the bill goes out, as before (review 2 F-2)
+  const buf = spending('rbuf', { how: 'buffer', count: 1, cardId: 'c2', amount: 50_000, refillFrom: '2026-12-25', rounds: [round(1, '2026-12-25', 50_000)] })
+  const withBuf = state({ spendings: [buf], balances: [bal('rest-acc', '2026-11-30', 0)] })
+  // December: left over 3,000,000 − 20,000 − 500,000 − 50,000 = 2,430,000, + the refill 50,000; the bill of 12-14 leaves
+  assert.deepEqual(project(withBuf, 'rest-acc', '2026-12', 1), [{ ym: '2026-12', inflow: 2_480_000, outflow: 50_000, end: 2_430_000 }])
+})
+
+test('a round paid from the subscription account leaves the account linked to the subscriptions target on its date', () => {
+  // November: the transfer of 30,000 (12,300 + the round of 9,000, rounded up) comes in on 11-26; the round left on 11-20
+  const st = state({ balances: [bal('subs-acc', '2026-11-01', 100_000)] })
+  assert.deepEqual(project(st, 'subs-acc', '2026-11', 2), [
+    { ym: '2026-11', inflow: 30_000, outflow: 9_000, end: 121_000 },
+    { ym: '2026-12', inflow: 20_000, outflow: 0, end: 141_000 },
+  ])
+  // a record after the round's date has it already
+  assert.deepEqual(project(state({ balances: [bal('subs-acc', '2026-11-20', 100_000)] }), 'subs-acc', '2026-11', 1), [{ ym: '2026-11', inflow: 30_000, outflow: 0, end: 130_000 }])
+  // also when that account takes the left over: the round is in the transfer, not off the left over
+  const targets = TARGETS.map((t) => (t.kind === 'remainder' ? { ...t, accountId: 'subs-acc' } : t))
+  const both = project(state({ targets, spendings: SPENDINGS.filter((x) => x.id === 'bysubs'), balances: [bal('subs-acc', '2026-11-01', 0)] }), 'subs-acc', '2026-11', 1)[0]!
+  // in: the transfer 30,000 + the left over 3,000,000 − 30,000 − 500,000; out: the round
+  assert.deepEqual([both.inflow, both.outflow], [30_000 + 2_470_000, 9_000])
+  // without an account on the subscriptions target the round leaves no account
+  const loose = TARGETS.map((t) => (t.kind === 'subscriptions' ? { ...t, accountId: null } : t))
+  for (const a of ACCOUNTS) {
+    const rows = project(state({ targets: loose, spendings: SPENDINGS.filter((x) => x.id === 'bysubs'), balances: ACCOUNTS.map((x) => bal(x.id, '2026-11-01', 0)) }), a.id, '2026-11', 1)
+    assert.equal(rows[0]!.outflow, 0, a.id)
+  }
+})
+
+test('a split paid by card goes through the card\'s paying account by its own dates', () => {
+  // paid by c1 on 11-10 and 12-10 (4,000 each); the record is of 10-31
+  const split = spending('split', { how: 'split', count: 2, interval: 'monthly', cardId: 'c1', rounds: [round(1, '2026-11-10', 4_000), round(2, '2026-12-10', 4_000)] })
+  const st = state({ spendings: [split], balances: [bal('pay-acc', '2026-10-31', 10_000)] })
+  // November counts the round of 11-10: 4,000 comes in with the transfer of 11-26 and left on 11-10; the same in December
+  assert.deepEqual(project(st, 'pay-acc', '2026-11', 2), [
+    { ym: '2026-11', inflow: 4_000, outflow: 4_000, end: 10_000 },
+    { ym: '2026-12', inflow: 4_000, outflow: 4_000, end: 10_000 },
+  ])
+  assert.deepEqual(monthMoney(st, '2026-11').dist.payouts.find((p) => p.accountId === 'pay-acc'), { accountId: 'pay-acc', subscriptions: 0, card: 4_000, refill: 0, total: 4_000 })
 })

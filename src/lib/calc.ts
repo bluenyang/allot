@@ -840,6 +840,13 @@ interface Move { date: string; amount: number }
  * The movements of account `acc` in month `ym`: transfers in on the transfer day, refills in, card bills out (S-6, S-8, S-13).
  * The month is the one of the basis `ctx` (spec 018 S-3): its transfers are dated on the transfer day inside its period,
  * and the dated movements (bills, rounds) are the ones whose date its period holds.
+ * The rounds are the ones of the month's outgoing list (`outgoOf`, spec 018 S-6), so the projection moves the same money
+ * the left over and the allocation table count:
+ * - a paying account gets, on the month's transfer day, what the month counts of its cards' rounds (`payouts[].card`),
+ *   and each round leaves it on its own date;
+ * - a buffer refill comes in on its date; the buffer use's bill leaves on the card's bill date;
+ * - a round paid from the subscription account leaves the account linked to the subscriptions target on its date (the
+ *   month's transfer already carries it).
  */
 function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<string>, ctx: MonthCtx): Move[] {
   const s = st.settings
@@ -857,21 +864,31 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
     }
   }
   // An account that takes the remainder gets it after the month's spendings: its ordinary card bills are taken off it
-  // already. A buffer use is not: its bill leaves the buffer and its refills come back (review 2 F-2).
+  // already, so they neither come in nor go out. A buffer use is not: its bill leaves the buffer and its refills come
+  // back (review 2 F-2). A subscription-account round is not either: it is in the transfer, not off the remainder.
   const remainder = takesRemainder(acc, st.targets)
-  const cards = new Set(st.cards.filter((c) => c.accountId === acc.id).map((c) => c.id))
-  for (const sp of st.spendings ?? []) {
-    if (!sp.cardId || !cards.has(sp.cardId)) continue
-    const card = st.cards.find((c) => c.id === sp.cardId)
-    const live = sp.rounds.filter((r) => r.state !== 'merged' && !(sp.cancelled && r.state === 'left'))
-    if (sp.how === 'buffer') {
-      // the bill leaves the account's buffer on the billing date; the refills come back on their dates
-      const bill = cardBillDate(sp.bought, card, s, off)
-      if (here(bill)) moves.push({ date: bill, amount: -live.reduce((a, r) => a + r.amount, 0) })
-      for (const r of live) if (here(r.date)) moves.push({ date: r.date, amount: r.amount })
+  let cardIn = 0
+  for (const o of outgoOf(st, ctx)) {
+    if (o.accountId !== acc.id) continue
+    const dated = here(o.round.date)
+    if (o.kind === 'refill') {
+      if (dated) moves.push({ date: o.round.date, amount: o.amount })
+    } else if (o.from === 'subs') {
+      if (dated) moves.push({ date: o.round.date, amount: -o.amount })
     } else if (!remainder) {
-      for (const r of live) if (here(r.date)) moves.push({ date: r.date, amount: -r.amount })
+      // what the month counts comes in with its transfer (a card bill: the month of the pay date before it); the round leaves on its date
+      if (o.ym === ym) cardIn += o.amount
+      if (dated) moves.push({ date: o.round.date, amount: -o.amount })
     }
+  }
+  if (cardIn) moves.push({ date: transfer, amount: cardIn })
+  // a buffer use: the bill leaves the account's buffer on the card's bill date (its refills are the rounds above)
+  for (const sp of st.spendings ?? []) {
+    if (sp.how !== 'buffer' || !sp.cardId) continue
+    const card = st.cards.find((c) => c.id === sp.cardId)
+    if (card?.accountId !== acc.id) continue
+    const bill = cardBillDate(sp.bought, card, s, off)
+    if (here(bill)) moves.push({ date: bill, amount: -liveRounds([sp]).reduce((a, x) => a + x.round.amount, 0) })
   }
   return moves
 }
