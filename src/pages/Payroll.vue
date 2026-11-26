@@ -720,7 +720,7 @@ s.orig{margin-right:6px;color:var(--subtle);font-weight:400}
 .po-h{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap}
 .po-h h3{margin:0;font-size:14px}
 .po-h .hint{flex:1 1 280px;font-size:12px}
-.po{list-style:none;margin:10px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.po{list-style:none;margin:10px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
 .po li{min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-ctl);display:flex;flex-direction:column;gap:6px}
 .po-n{font-size:13px;overflow-wrap:anywhere}
 .po dl{margin:0;display:flex;flex-direction:column;gap:4px}
