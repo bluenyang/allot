@@ -198,6 +198,7 @@ function distributionBefore(ym: string, netPay: number, phases: Phase[], targets
     phase, rows, remainder, remainderTarget,
     living: targets.some((t) => t.kind === 'living') ? livingSum : 0,
     subscriptions: targets.some((t) => t.kind === 'subscriptions') ? subsTransfer : 0,
+    payouts: [], // spec 018 S-6 added the field; no target here names an account and there is no spending, so it is empty
   }
 }
 

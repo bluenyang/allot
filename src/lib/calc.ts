@@ -450,6 +450,14 @@ export interface AllocRow {
   detail: string
 }
 
+/**
+ * What one account gets in a month for the bills paid from it (spec 018 S-6, the allocation table's paying-account
+ * block), in parts: `subscriptions` = the subscription transfer, when the subscriptions target is linked to the account;
+ * `card` = the month's rounds paid through its cards (the card bills the month counts, `roundYm`); `refill` = the
+ * month's buffer refills through its cards; `total` = the three added up.
+ */
+export interface Payout { accountId: string; subscriptions: number; card: number; refill: number; total: number }
+
 export interface Distribution {
   phase: Phase | null
   rows: AllocRow[]
@@ -458,6 +466,13 @@ export interface Distribution {
   subscriptions: number
   /** the remainder target, if the user defined one */
   remainderTarget: AllocationTarget | null
+  /**
+   * What goes to each paying account that month (spec 018 S-6): one entry per account that is a card's paying account
+   * or the subscriptions target's account and gets something, in the order of the account list. The rows and the remainder do not change with it: `card`
+   * and `refill` are the part of the month's spendings (already off the remainder) that goes through that account, and
+   * `subscriptions` repeats the subscriptions row.
+   */
+  payouts: Payout[]
 }
 
 /**
@@ -466,6 +481,8 @@ export interface Distribution {
  * fixed = the phase's amount for that target, remainder = pay minus everything else.
  * Zero rows are hidden, except the remainder. `ym` is a month's name: the phases, the adjustments and the items' from
  * and stop months are compared as names (spec 018 S-4); `ctx` only places the plan changes of the subscription transfer.
+ * `paid` is what the month's spendings send through each paying account (`spendingIn().byAccount`): with the
+ * subscriptions target's account it makes `payouts`.
  */
 export function distributionAt(
   ym: string,
@@ -481,6 +498,7 @@ export function distributionAt(
   accounts: Account[] = [],
   adjusts: MonthAdjust[] = [],
   ctx: MonthCtx = CALENDAR,
+  paid: readonly PaidThrough[] = [],
 ): Distribution {
   const phase = phaseAt(phases, ym)
   // one month's amount of a target, in place of its phase amount (spec 013 S-14)
@@ -509,10 +527,28 @@ export function distributionAt(
       detail: t.note || '', // the user's own note; the screens show how the amount is worked out when it is empty (src/lib/labels.ts)
     }))
     .filter((r) => r.amount !== 0 || r.kind === 'remainder')
+  // the paying accounts (spec 018 S-6), in the order of the account list so every month lists them alike (an account
+  // that is not in the list comes after, in the order found: the subscriptions target's, then the cards')
+  const payouts: Payout[] = []
+  const payout = (accountId: string) => {
+    let p = payouts.find((x) => x.accountId === accountId)
+    if (!p) payouts.push(p = { accountId, subscriptions: 0, card: 0, refill: 0, total: 0 })
+    return p
+  }
+  for (const t of targets) if (t.kind === 'subscriptions' && t.accountId) payout(t.accountId).subscriptions += subsTransfer
+  for (const x of paid) {
+    const p = payout(x.accountId)
+    p.card += x.card
+    p.refill += x.refill
+  }
+  for (const p of payouts) p.total = p.subscriptions + p.card + p.refill
+  const place = (p: Payout) => { const i = accounts.findIndex((a) => a.id === p.accountId); return i < 0 ? accounts.length : i }
+  payouts.sort((a, b) => place(a) - place(b))
   return {
     phase, rows, remainder, remainderTarget,
     living: targets.some((t) => t.kind === 'living') ? livingSum : 0,
     subscriptions: targets.some((t) => t.kind === 'subscriptions') ? subsTransfer : 0,
+    payouts: payouts.filter((p) => p.total !== 0),
   }
 }
 
@@ -1372,7 +1408,7 @@ export function monthMoney(state: MonthState, ym: string, opt: { pay?: number; p
   const income = incomeAt(state, ym, ctx)
   const dist = distributionAt(
     ym, opt.pay ?? income.total, opt.phases ?? state.phases, state.targets, state.livingItems ?? state.living,
-    state.subscriptions, state.planChanges, s, spend.remainder, spend.subs, state.accounts ?? [], state.monthAdjusts ?? [], ctx,
+    state.subscriptions, state.planChanges, s, spend.remainder, spend.subs, state.accounts ?? [], state.monthAdjusts ?? [], ctx, spend.byAccount,
   )
   return { transfer, dist, spend, income }
 }
