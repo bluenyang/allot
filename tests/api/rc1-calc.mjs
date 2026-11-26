@@ -14,7 +14,7 @@
 //             as they are), kept by a body that leaves it out, cleared by null; 0, 32, 1.5, a string → 400 and the row
 //             stays; list_accounts carries it; propose_changes sets it, keeps it when left out and refuses 32; a change
 //             of it is reverted, and a card change logged before the column existed still reverts and leaves it
-//   basis     the settings' three month keys (spec 018 S-3, S-12): calendar / no card / auto before anything is saved;
+//   basis     the settings' three month keys (spec 018 S-3, S-12): calendar / no card / auto until a body names them;
 //             saved and read back; kept by a body that leaves them out, each on its own; an unknown value, a card id that
 //             does not exist and another user's card id are refused (400) and leave the row; deleting the basis card
 //             puts the basis back to calendar in the same change set, and reverting the delete brings both back; a card
@@ -268,7 +268,7 @@ try {
   ok(mcols.map((c) => `${c.column_name} ${c.data_type} ${c.is_nullable} ${c.column_default}`).join('; ')
     === "month_basis text NO 'calendar'::text; month_basis_card_id text YES null; month_naming text NO 'auto'::text" && mcons.length === 3,
     `settings has the three month columns with their defaults, the two checks and the card foreign key (${mcons.map((c) => c.conname)})`)
-  ok(await monthNow() === 'calendar//auto', `a settings row saved before the keys existed reads calendar, no card, auto (${await monthNow()})`)
+  ok(await monthNow() === 'calendar//auto', `a settings row saved only by bodies without the three keys reads calendar, no card, auto (${await monthNow()})`)
   // an account that never saved its settings gets the same from the defaults
   const emailV = `rc1-v-${Date.now()}@example.com`
   const cv = await A('POST', '/api/auth/admin/create-user', { email: emailV, password: PASS, name: 'RC1 V', role: 'user' })
