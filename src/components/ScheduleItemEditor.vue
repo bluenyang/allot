@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 기준 일정 추가·수정 (spec 013 S-22, A-36): a monthly date of the user's own — name, day (1–31), account (optional),
-// money in or out, note (optional). No amount: it is not part of the distribution or transfer. EditSheet + useEditor;
-// the API decides what is valid and its message is shown. The page shows the date after the weekend/holiday shift.
+// money in or out, its own weekend and holiday rule (spec 018 S-1), note (optional). No amount: it is not part of the
+// distribution or transfer. EditSheet + useEditor; the API decides what is valid and its message is shown. The page shows
+// the date after the item's rule.
 import { computed, watch } from 'vue'
 import { t } from '../i18n'
 import EditSheet from './EditSheet.vue'
@@ -28,6 +29,7 @@ const account = computed({
 const accountOpts = computed(() => [{ value: '', label: t('schedule.accountNone') }, ...store.accounts.map((a) => ({ value: a.id, label: a.name }))])
 const dayOpts = Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: t('schedule.dayOf', { n: i + 1 }) }))
 const DIRS = computed(() => [{ id: 'in', label: t('schedule.dirIn') }, { id: 'out', label: t('schedule.dirOut') }])
+const SHIFTS = computed(() => (['before', 'none', 'after'] as const).map((id) => ({ id, label: t(`settings.general.shiftShort.${id}`) })))
 const note = computed({
   get: () => edit.value?.note ?? '',
   set: (v: string) => { edit.value!.note = v },
@@ -51,6 +53,10 @@ const note = computed({
     <div class="field">
       <span id="si-dir" class="lbl">{{ t('schedule.direction') }}</span>
       <Seg :options="DIRS" :model-value="edit.direction" labelledby="si-dir" @update:model-value="edit.direction = $event" />
+    </div>
+    <div class="field">
+      <span id="si-shift" class="lbl">{{ t('settings.general.shiftLabel') }}</span>
+      <Seg :options="SHIFTS" :model-value="edit.shift ?? 'none'" labelledby="si-shift" @update:model-value="edit.shift = $event" />
     </div>
     <div class="field">
       <label for="si-acc">{{ t('schedule.account') }} <span class="opt">{{ t('common.optional') }}</span></label>

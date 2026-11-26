@@ -4,7 +4,7 @@
 // It changes the settings, so it runs only on a throwaway server: the test server (:15174) or the API of
 // scripts/test-server/disposable.sh (:15184, started with STATIC_DIR=dist so it serves the built screens).
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { MARK as RUN } from './helpers'
+import { MARK as RUN, saveSheet, sheet } from './helpers'
 
 const THROWAWAY = ['http://127.0.0.1:15174', 'http://127.0.0.1:15184']
 if (!THROWAWAY.includes(process.env.BASE ?? '')) throw new Error(`rc1-calc.spec runs only against ${THROWAWAY.join(' or ')} (BASE=${process.env.BASE ?? 'unset'})`)
@@ -153,6 +153,47 @@ test.describe.serial('W-1 the weekend and holiday rule of each date', () => {
     } finally {
       if (id) await api(request, 'DELETE', `/api/schedules/${id}`)
       expect((await state(request)).schedules.some((x) => x.id === id)).toBe(false)
+    }
+  })
+
+  test('(S-1, V-6) the editor of an own date has the rule: a new date starts at 그대로, a date saved before shows its rule, a change is read back', async ({ page, request }) => {
+    const name = `${MARK}-sheet`
+    const rule = (title: string) => sheet(page, title).getByRole('group', { name: '주말·공휴일이면', exact: true })
+    let id = ''
+    try {
+      // a date saved before, with 앞당김
+      const made = await api(request, 'POST', '/api/schedules', { name, day: 9, accountId: null, direction: 'out', note: 'memo', shift: 'before' })
+      expect(made.status).toBe(201)
+      id = (made.json as Sched).id
+      await page.goto('/settings/general')
+      // a new date: 그대로 by default (nothing is saved here)
+      await page.getByRole('button', { name: '+ 일정 추가' }).click()
+      await shows(rule('기준 일정 추가'), 'none')
+      await sheet(page, '기준 일정 추가').getByRole('button', { name: '취소', exact: true }).click()
+      // the saved date shows 앞당김; saving the sheet untouched keeps every field
+      await page.getByRole('button', { name: `${name} 수정` }).click()
+      await shows(rule('기준 일정 수정'), 'before')
+      await saveSheet(page, '기준 일정 수정')
+      expect((await state(request)).schedules.find((x) => x.id === id)).toMatchObject({ name, day: 9, direction: 'out', accountId: null, note: 'memo', shift: 'before' })
+      // changed to 미룸 in the sheet: saved at once (the sheet is its own save), and the row shows it
+      await page.getByRole('button', { name: `${name} 수정` }).click()
+      await pick(rule('기준 일정 수정'), 'after')
+      await saveSheet(page, '기준 일정 수정')
+      expect((await state(request)).schedules.find((x) => x.id === id)).toMatchObject({ name, day: 9, direction: 'out', note: 'memo', shift: 'after' })
+      await shows(seg(page, name), 'after')
+      await expect(form(page).getByRole('button', { name: '저장', exact: true })).toBeDisabled()
+      // a rule picked on the row and not saved yet is what the sheet opens with, and saving the sheet saves it
+      await pick(seg(page, name), 'none')
+      await expect(form(page).getByRole('button', { name: '저장', exact: true })).toBeEnabled()
+      await page.getByRole('button', { name: `${name} 수정` }).click()
+      await shows(rule('기준 일정 수정'), 'none')
+      await saveSheet(page, '기준 일정 수정')
+      expect((await state(request)).schedules.find((x) => x.id === id)!.shift).toBe('none')
+      await expect(form(page).getByRole('button', { name: '저장', exact: true })).toBeDisabled()
+      await page.reload()
+      await shows(seg(page, name), 'none')
+    } finally {
+      if (id) await api(request, 'DELETE', `/api/schedules/${id}`)
     }
   })
 

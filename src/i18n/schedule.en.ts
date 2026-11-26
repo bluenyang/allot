@@ -12,7 +12,7 @@ export const scheduleEn: ScheduleMessages = {
     noAccount: 'No account',
     addTitle: 'Add a date',
     editTitle: 'Edit the date',
-    desc: 'A day that comes back every month, besides pay, transfer and card billing. It shows on the calendar and the schedule, and moves off weekends and holidays by the rule above. No amount is kept.',
+    desc: 'A day that comes back every month, besides pay, transfer and card billing. It shows on the calendar and the schedule, and moves off weekends and holidays the way you pick below. No amount is kept.',
     name: 'Name',
     namePh: 'e.g. Maintenance fee',
     needName: 'Enter a name',
