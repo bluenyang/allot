@@ -1,5 +1,5 @@
 import type {
-  Account, AllocationKind, AllocationTarget, Balance, BudgetGroup, Card, Currency, Cycle, DayShift, ForeignCurrency, IncomeExtra, IncomeItem, IncomeReceipt, Living, LivingItem, MonthAdjust, PayBy, Phase, Plan, PlanChange, Priced,
+  Account, AllocationKind, AllocationTarget, Balance, BudgetGroup, Card, Currency, Cycle, DayShift, ForeignCurrency, IncomeExtra, IncomeItem, IncomeReceipt, Living, LivingItem, MonthAdjust, MonthBasis, MonthNaming, PayBy, Phase, Plan, PlanChange, Priced,
   RemainderSplit, Settings, SpendHow, Spending, SpendingRound, SpendInterval, SplitMode, Subscription,
 } from '../data/types'
 
@@ -648,6 +648,95 @@ export function payDayFrom(date: string, s: Settings, off: ReadonlySet<string>):
   const ym = date.slice(0, 7)
   const here = monthDay(ym, s.payDay, shiftOf(s, 'pay'), off).date
   return here >= date ? here : monthDay(addYm(ym, 1), s.payDay, shiftOf(s, 'pay'), off).date
+}
+
+// ---------- what a month is (spec 018 S-3) ----------
+/**
+ * The basis of a month, worked out once from the settings (`monthCtx`) and handed to `periodOf`, `ymOfDate` and `dayIn`.
+ * `basis` is the one in use: 'calendar' also for a card basis whose card is gone or has no first day.
+ */
+export interface MonthCtx {
+  basis: MonthBasis
+  /** 'start': a month is named after the calendar month its period starts in; 'end': after the next one, where it ends. */
+  naming: Exclude<MonthNaming, 'auto'>
+  /** The period's first day as set: 1 (calendar), the card's `usageFrom`, or the pay day. */
+  day: number
+  settings: Pick<Settings, 'payDay'> & Partial<Shifts>
+  off: ReadonlySet<string>
+  /** First days already worked out, by month name: a pay basis asks the same months many times. Only a memo. */
+  firsts: Map<string, string>
+}
+
+type MonthSettings = Pick<Settings, 'payDay' | 'monthBasis' | 'monthBasisCardId' | 'monthNaming'> & Partial<Shifts>
+
+/**
+ * The month basis of the settings (spec 018 S-3). A card basis needs its card and that card's first day of the usage
+ * period: without either it is the calendar month. The naming 'auto' is 'start' when the period's first day as set (the
+ * pay day, or the card's first day) is the 15th or earlier, 'end' from the 16th. `off` holds the holidays (a pay basis
+ * starts on the actual pay date); the calendar and card bases do not read it.
+ */
+export function monthCtx(s: MonthSettings, cards: readonly Pick<Card, 'id' | 'usageFrom'>[], off: ReadonlySet<string>): MonthCtx {
+  const settings = { payDay: s.payDay, payShift: s.payShift, transferShift: s.transferShift, billingShift: s.billingShift }
+  const calendar: MonthCtx = { basis: 'calendar', naming: 'start', day: 1, settings, off, firsts: new Map() }
+  const basis = s.monthBasis ?? 'calendar'
+  const usageFrom = basis === 'card' ? cards.find((c) => c.id === s.monthBasisCardId)?.usageFrom ?? null : null
+  if (basis === 'calendar' || (basis === 'card' && usageFrom === null)) return calendar
+  const day = basis === 'pay' ? s.payDay : usageFrom!
+  const picked = s.monthNaming ?? 'auto'
+  return { ...calendar, basis, naming: picked === 'auto' ? (day <= 15 ? 'start' : 'end') : picked, day }
+}
+
+/** The calendar month the period of month `ym` starts in: `ym` itself, or the month before when months are named by their end. */
+const baseYm = (ym: string, ctx: MonthCtx) => (ctx.naming === 'start' ? ym : addYm(ym, -1))
+
+/**
+ * The first day of the month named `ym`. Calendar: the 1st. Card: the card's first day in the base month, as set (the
+ * last day in a shorter month, never moved). Pay: the actual pay date of the base month, moved by the pay rule.
+ */
+function monthStart(ym: string, ctx: MonthCtx): string {
+  if (ctx.basis === 'calendar') return ym + '-01'
+  const known = ctx.firsts.get(ym)
+  if (known) return known
+  const m0 = baseYm(ym, ctx)
+  const first = ctx.basis === 'pay' ? monthDay(m0, ctx.day, shiftOf(ctx.settings, 'pay'), ctx.off).date : nominalDay(m0, ctx.day)
+  ctx.firsts.set(ym, first)
+  return first
+}
+
+/** The dates of month `ym`, both included (spec 018 S-3): from its first day to the day before the next month's. */
+export function periodOf(ym: string, ctx: MonthCtx): { ym: string; start: string; end: string } {
+  return { ym, start: monthStart(ym, ctx), end: ymd(dayPlus(parseDate(monthStart(addYm(ym, 1), ctx)), -1)) }
+}
+
+/** The name of the month whose period holds `date` (spec 018 S-3). Calendar: the date's own month. */
+export function ymOfDate(date: string, ctx: MonthCtx): string {
+  const own = date.slice(0, 7)
+  if (ctx.basis === 'calendar') return own
+  // the month whose period starts in the date's calendar month, then a step either way: the date may come before that
+  // first day, and a pay date moved off a weekend may lie in the calendar month before or after its own. A first day
+  // moves SHIFT_LIMIT days at most, so two steps reach any date; the count only keeps a malformed date from looping.
+  let ym = ctx.naming === 'start' ? own : addYm(own, 1)
+  for (let i = 0; i < 3 && date < monthStart(ym, ctx); i++) ym = addYm(ym, -1)
+  for (let i = 0; i < 3 && date >= monthStart(addYm(ym, 1), ctx); i++) ym = addYm(ym, 1)
+  return ym
+}
+
+/**
+ * Day `day` of month `ym` (spec 018 S-3): the occurrence of that day inside the month's period, moved by the rule of
+ * `which` date. Calendar: `monthDay(ym, …)` as it is. Otherwise the period touches two calendar months: a day on or
+ * after the period's first day (by number) is taken in the first, an earlier one in the second; then it is moved. So
+ * with a pay basis the pay day is the period's first day. When the second month is too short for the day to come before
+ * the next period (first day 31, day 29, February), it is the last day of the period as set.
+ * A date moved off a weekend or holiday may leave the period by a day or two (spec 018, concern 4): it is not pulled back.
+ */
+export function dayIn(ym: string, day: number, which: ShiftDate, ctx: MonthCtx): MonthDate {
+  const shift = shiftOf(ctx.settings, which)
+  if (ctx.basis === 'calendar') return monthDay(ym, day, shift, ctx.off)
+  const m0 = baseYm(ym, ctx)
+  if (day >= ctx.day) return monthDay(m0, day, shift, ctx.off)
+  const m1 = addYm(m0, 1)
+  const next = nominalDay(m1, ctx.day)
+  return monthDay(m1, nominalDay(m1, day) < next ? day : Number(next.slice(8)) - 1, shift, ctx.off)
 }
 
 /** What `projectAccount` and the goal and limit checks read. */
