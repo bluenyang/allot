@@ -281,6 +281,8 @@ export const card = z.object({
   last4: last4,
   accountId: text.min(1).nullable(),
   billingDay: day.nullable(),
+  // The first day of the usage period (spec 018 S-2, S-12): 1..31 or null. Left out, the saved one stays (server/ops.ts).
+  usageFrom: day.nullable().optional(),
   note: memo,
 })
 

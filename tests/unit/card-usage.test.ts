@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import { addYm, cardBillDate, cardBillYm, monthDay, parseDate, planRounds, projectAccount, shiftOf, spendState, usagePeriod, ymd, type AccountState } from '../../src/lib/calc'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { Account, AllocationTarget, Card, DayShift, Settings, Spending } from '../../src/data/types'
+import { card as cardBody } from '../../server/validation'
 
 const none: ReadonlySet<string> = new Set()
 const S: Settings = { ...DEFAULT_SETTINGS, netPay: 3_000_000, payDay: 25, transferDay: 26, billingDay: 14 }
@@ -207,4 +208,18 @@ test('spendState: a card spending without rounds waits for the bill of its card\
   // a stored round is the bill, whatever the card says now (stored rounds are not worked out again)
   const stored = { ...sp, rounds: [{ no: 1, date: '2026-12-14', amount: 10_000, state: 'left', edited: false }] } as Spending
   assert.equal(spendState(stored, '2026-12-14', S, none, card(25, 12)), 'planned')
+})
+
+test('the card body: the first day is 1..31, null or left out; a body in the 0.1.9 shape passes and names no first day (S-12)', () => {
+  const old = { name: 'Card', last4: '', accountId: null, billingDay: 25 }
+  const parsed = cardBody.safeParse(old)
+  assert.equal(parsed.success, true)
+  // left out stays left out: the row that is written has no `usageFrom`, so the saved one stays
+  assert.equal('usageFrom' in (parsed.data as object), false)
+  for (const usageFrom of [1, 12, 31, null]) {
+    const r = cardBody.safeParse({ ...old, usageFrom })
+    assert.equal(r.success, true, String(usageFrom))
+    assert.equal((r.data as { usageFrom?: number | null }).usageFrom, usageFrom)
+  }
+  for (const usageFrom of [0, 32, 1.5, -1, '12', true]) assert.equal(cardBody.safeParse({ ...old, usageFrom }).success, false, String(usageFrom))
 })

@@ -351,6 +351,8 @@ export const RESOURCES = {
     toRow: (x) => ({ ...x, note: x.note || null }),
   }),
   cards: list(t.card, v.card, {
+    // `usageFrom` (spec 018 S-2) is not in `optional`: left out of an update it is not in the row that is written, so
+    // the saved value stays (a client in the 0.1.9 shape does not erase it); null clears it; it is answered as null.
     optional: ['note'],
     toRow: (x) => ({ ...x, note: x.note || null }),
     // A card that a buffer use goes through keeps a paying account: clearing it is refused, moving it to another
