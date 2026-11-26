@@ -79,3 +79,27 @@ test('view.ym starts on this month of the basis once the state has loaded', () =
   status.loaded = false
   store.settings = { ...DEFAULT_SETTINGS }
 })
+
+test('when the user changes what a month is, the month looked at goes back to this month', async () => {
+  const { monthKey } = await import('../../src/lib/month')
+  store.settings = { ...DEFAULT_SETTINGS, payDay: 25 }
+  store.preferences.timezone = 'Asia/Seoul'
+  status.loaded = true
+  assert.equal(monthKey.value, 'calendar')
+  view.ym = '2030-05' // the user moved the month
+  // a save that leaves the basis alone leaves the month alone
+  store.settings = { ...store.settings, netPay: 1 }
+  assert.equal(view.ym, '2030-05')
+  store.settings = { ...store.settings, monthBasis: 'pay' }
+  assert.equal(monthKey.value, 'pay-end-25-none')
+  assert.equal(view.ym, thisYm())
+  view.ym = '2030-05'
+  store.settings = { ...store.settings, monthNaming: 'start' }
+  assert.equal(monthKey.value, 'pay-start-25-none')
+  assert.equal(view.ym, thisYm())
+  // before a session's state has loaded nothing is reset
+  status.loaded = false
+  view.ym = '2030-05'
+  store.settings = { ...DEFAULT_SETTINGS }
+  assert.equal(view.ym, '2030-05')
+})

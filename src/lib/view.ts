@@ -4,7 +4,7 @@
 import { reactive, watch } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import { showToast } from './toast'
-import { thisYm } from './month'
+import { monthKey, thisYm } from './month'
 import { status } from './store'
 
 export const view = reactive({ ym: thisYm() })
@@ -14,6 +14,9 @@ export const view = reactive({ ym: thisYm() })
 // once a session's state has loaded (the zone and the basis are known), it starts again from that session's today
 // (review rc3-1 F-3). Later loads (after a save) leave the month the user moved to alone.
 watch(() => status.loaded, (loaded) => { if (loaded) view.ym = thisYm() }, { flush: 'sync' })
+// When the user changes what a month is (spec 018 S-3, S-4), the month looked at goes back to this month: the name of
+// today's month may be another one now.
+watch(monthKey, () => { if (status.loaded) view.ym = thisYm() }, { flush: 'sync' })
 
 /** Say that a control is not there yet (it is drawn as in the design). `what` is a message key. */
 export function notReady(what: MessageKey) {

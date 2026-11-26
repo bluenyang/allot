@@ -11,6 +11,15 @@ import { store } from './store'
 /** The basis now. A new value whenever the settings, the cards or the holidays change (it remembers the first days it worked out). */
 export const monthBasis = computed<MonthCtx>(() => ctxOf(store))
 
+/**
+ * What the basis is, as one word: it changes when "this month" may have changed its name or its dates — the basis, the
+ * naming, the first day, or the pay date's weekend rule. 'calendar' for the calendar month.
+ */
+export const monthKey = computed(() => {
+  const c = monthBasis.value
+  return c.basis === 'calendar' ? 'calendar' : `${c.basis}-${c.naming}-${c.day}-${c.basis === 'pay' ? c.settings.payShift ?? 'none' : 'none'}`
+})
+
 /** Is a month something else than the calendar month (a card or pay basis in use)? */
 export const hasPeriod = computed(() => monthBasis.value.basis !== 'calendar')
 
