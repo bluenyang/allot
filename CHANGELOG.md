@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased — 0.1.9-rc.3
+## 0.1.9-rc.3 — 2026-11-26
 
-How to connect each AI app, inside the app. Spec 017 (`.agents/intent/017_rc3-app-connect-guide/spec.md`). No migration.
+How to connect each AI app, inside the app. Released as a prerelease after the merge (PR #70, merged by the user:
+"머지 완료"); the image is `ghcr.io/bluenyang/allot:0.1.9-rc.3` and `latest` does not move. Spec 017 (`.agents/intent/017_rc3-app-connect-guide/spec.md`). No migration.
 
 ### Added
 - **Connect an app** (Settings › AI & integrations): nine apps — Claude Code (plugin with OAuth, plugin with an API key),
