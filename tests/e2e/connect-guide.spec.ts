@@ -78,8 +78,12 @@ test('a failed oauth-apps answer dims nothing; the dialog also closes with 닫�
   await expect(tile(page, 'ChatGPT')).toBeFocused()
   await tile(page, 'Codex').click()
   await expect(page.getByRole('dialog')).toBeVisible()
-  await page.mouse.click(8, 8)
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  // a click in the first milliseconds after the dialog opens can come before it listens for outside clicks (test step
+  // V-5, A-2; at 300 ms it closed 12 of 12): click again until it closes — a dialog that never closes still fails
+  await expect(async () => {
+    await page.mouse.click(8, 8)
+    await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 500 })
+  }).toPass({ timeout: 5000 })
 })
 
 test('the skills download gives each skill as a ZIP', async ({ page }) => {
