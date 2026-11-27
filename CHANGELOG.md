@@ -19,10 +19,12 @@ only (below).
   changes, so every proposal made before the upgrade is stale afterwards and cannot be applied; propose again.
 - **Numbers that change on the day of the upgrade**, with nothing new chosen yet:
   - *Card bills count one pay earlier.* A card bill (a lump sum or an installment paid by card) counts in the month of
-    the pay before it, no longer in the month of its billing date. With a pay day after the billing day (pay day 25,
-    billing day 14) the bill of 14 December comes off November's left over: this month's and next month's left over
-    move, and the totals over the months stay the same. Buffer refills, split payments and rounds paid from the salary
-    or the subscription account count where they did.
+    the pay before it, no longer in the month of its billing date. With a pay day on or after the billing day — on the
+    same day too — that is one month earlier: with pay day 25 and billing day 14 the bill of 14 December comes off
+    November's left over, and with both on the 25th so does the bill of 25 December. The dates count as the weekend
+    and holiday rule moves them. This month's and next month's left over move, and the totals over the months stay the
+    same. Buffer refills, split payments and rounds paid from the salary or the subscription account count where they
+    did.
   - *Each subscription charge uses the plan in force on its own date.* A plan change dated after a month's charge leaves
     that charge at the old price; a cancellation dated after it leaves it in the lists, and a plan that comes back is
     charged from its date. After a change from monthly to yearly the first billing date on or after the change is the
@@ -85,8 +87,9 @@ only (below).
 
 ### Changed
 - **The month a card bill counts in**: the month of the pay before the bill (a bill dated on a pay date: the pay before
-  that), replacing "card → the month of its billing date" of 0.1.5. With a pay month basis that is the month the bill's
-  date lies in.
+  that), replacing "card → the month of its billing date" of 0.1.5. With a pay month basis that is the month whose
+  period holds the bill's date, except for a bill dated on the pay date itself: it counts in the month before, with the
+  pay before it.
 - **Subscription charges** on the home, the calendar, the notices, the lists and MCP use the plan in force on the
   charge's date. The subscription list's next payment is the next charge that will really be made — before a
   cancellation's date, and after a cancelled plan comes back — with that charge's own plan and amount under the date
