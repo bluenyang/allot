@@ -1110,7 +1110,7 @@ test.describe.serial('W-7 how a subscription is paid', () => {
       let s = await openSub(page, name)
       await expect(pressed(payGroup(s))).toHaveText('없음')
       await expect(s.locator('#e-pay-card, #e-pay-acc')).toHaveCount(0)
-      await expect(s.getByTestId('sub-pay-hint')).toHaveText('고르지 않으면 어느 통장의 잔액 예상에서도 빠지지 않아요.')
+      await expect(s.getByTestId('sub-pay-hint')).toHaveText('이 구독료가 어디서 빠지는지 고르면 그 통장의 잔액 예상에서 결제마다 빠져요. 고르지 않으면 어디서도 빠지지 않아요. 결제 경로와는 따로예요.')
       await saveSub(page, name)
       expect(await subOf(request, sid)).toMatchObject({ ...OLD, cardId: null, accountId: null })
       await expect(listRow(page, name).locator('.paid')).toHaveCount(0)
@@ -1244,7 +1244,7 @@ test.describe.serial('W-7 how a subscription is paid', () => {
       await payGroup(e, 'Paid with').getByRole('button', { name: 'Account', exact: true }).click()
       await expect(e.getByTestId('sub-pay-hint')).toHaveText('Each charge leaves this account on its date.')
       await payGroup(e, 'Paid with').getByRole('button', { name: 'None', exact: true }).click()
-      await expect(e.getByTestId('sub-pay-hint')).toHaveText('Without one, no account\'s balance forecast takes its charges out.')
+      await expect(e.getByTestId('sub-pay-hint')).toHaveText('Choose where this subscription is charged and each charge is taken out of that account\'s balance forecast. Without a choice nothing is taken out. It is apart from the payment path.')
       await e.getByRole('button', { name: 'Cancel', exact: true }).click()
       // cancelled: nothing was saved
       expect(await subOf(request, saved.id)).toMatchObject({ cardId: card.id, accountId: null })

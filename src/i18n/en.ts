@@ -689,7 +689,6 @@ export const en = {
     pathTip: 'If you pay through an app store or a carrier, you also cancel there.',
     pay: {
       label: 'Paid with',
-      tip: 'Where this subscription is charged. Once chosen, each charge is taken out of that account\'s balance forecast. It is apart from the payment path (direct, app store, carrier).',
       none: 'None',
       card: 'Card',
       account: 'Account',
@@ -697,7 +696,7 @@ export const en = {
       pickAccount: 'Account it is paid from',
       cardOpt: '{card} · paid from {account}',
       cardOptNone: '{card} · no paying account',
-      hintNone: 'Without one, no account\'s balance forecast takes its charges out.',
+      hintNone: 'Choose where this subscription is charged and each charge is taken out of that account\'s balance forecast. Without a choice nothing is taken out. It is apart from the payment path.',
       hintCard: 'Each charge leaves this card\'s paying account on the card\'s billing date after the usage period that holds the charge.',
       hintCardNoAccount: 'This card has no paying account, so the charges leave no balance forecast. Set its paying account under Salary split, Accounts and cards.',
       hintAccount: 'Each charge leaves this account on its date.',

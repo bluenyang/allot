@@ -174,7 +174,7 @@ async function confirmDelete() { await remove() }
           <Seg v-model="edit.status" :options="statusOpts" labelledby="e-st-l" />
         </div>
         <div class="field" data-testid="sub-pay">
-          <div class="lrow"><span id="e-pay-l" class="flabel">{{ t('subscriptions.pay.label') }}</span><Tip :text="t('subscriptions.pay.tip')" /></div>
+          <span id="e-pay-l" class="flabel">{{ t('subscriptions.pay.label') }}</span>
           <Seg v-model="payKind" :options="payKindOpts" labelledby="e-pay-l" />
           <Select v-if="payKind === 'card' && (payCardOpts.length || payCard)" id="e-pay-card" v-model="payCard" :options="payCardOpts" :aria-label="t('subscriptions.pay.pickCard')" />
           <Select v-else-if="payKind === 'account' && (payAccOpts.length || payAcc)" id="e-pay-acc" v-model="payAcc" :options="payAccOpts" :aria-label="t('subscriptions.pay.pickAccount')" />
