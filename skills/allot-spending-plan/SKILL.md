@@ -22,7 +22,8 @@ makes a month's left over negative. Ask the user which they prefer; do not decid
 A card bill (a lump sum or an installment paid by card) counts in the month of the pay before it (`countsIn` in
 `list_spendings`), so with calendar months and a pay day on or after the billing day a card purchase usually comes
 off the left over a month before its bill date (with months that run from pay day to pay day it counts in the month
-that holds the bill's date). Read `countsIn` rather than working the month out. A buffer refill or a split counts by its own date. The bill dates follow the card's usage
+that holds the bill's date; a bill dated on the pay date itself counts in the month before, on every basis). Read
+`countsIn` rather than working the month out. A buffer refill or a split counts by its own date. The bill dates follow the card's usage
 period (`usageFrom` in `list_accounts`).
 
 ## Proposing
