@@ -431,7 +431,8 @@ test('(V-16, S-17) CSV: the overview month, the 지출 일반 tab and the subscr
     d = await wait
     expect(d.suggestedFilename()).toMatch(/^allot-subscriptions-\d{4}-\d{2}\.csv$/)
     lines = await csvOf(d)
-    expect(lines[0]).toBe('이름,분류,요금제,금액,통화,주기,상태,다음 결제일,월 환산(원)')
+    // the last three columns name the next charge when it is not the row's plan (spec 018 A-35); empty for this row
+    expect(lines[0]).toBe('이름,분류,요금제,금액,통화,주기,상태,다음 결제일,월 환산(원),다음 결제 요금제,다음 결제 금액,다음 결제 통화')
     const srow = lines.find((l) => l.startsWith(`${sname},`))
     expect(srow, `the subscription's row:\n${lines.join('\n')}`).toBeTruthy()
     expect(srow).toContain(',E2E plan,4500,KRW,')

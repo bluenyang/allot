@@ -1181,36 +1181,72 @@ test.describe.serial('W-6 a charge uses the plan in force on its own date', () =
 })
 
 test.describe.serial('W-6 follow-up: the subscription list names a charge due before a cancellation', () => {
-  test('(S-7, A-20) 구독 목록: a row cancelled from tomorrow still shows today\'s charge as its next payment; one cancelled from today shows none', async ({ page, request }) => {
+  test('(S-7, A-20, A-35) 구독 목록: a row cancelled or changed from tomorrow still shows today\'s charge as its next payment, with that charge\'s own plan and amount; one cancelled from today shows none; the CSV carries the same', async ({ page, request }) => {
     const st0 = (await api(request, 'GET', '/api/state')).json as State & { preferences: Record<string, unknown> }
     const prefs = st0.preferences
     const now = seoulToday()
     const today = iso(now)
     const tomorrow = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
-    const [dueName, goneName] = [`${MARK}-w6-due`, `${MARK}-w6-gone`]
+    const [dueName, goneName, chgName, plainName] = [`${MARK}-w6-due`, `${MARK}-w6-gone`, `${MARK}-w6-chg`, `${MARK}-w6-plain`]
     const subs: string[] = []
-    const sub = async (name: string, effective: string) => {
+    const sub = async (name: string, effective: string | null, to: Record<string, unknown> = { status: 'cancelled' }) => {
       const r = await api(request, 'POST', '/api/subscriptions', { name, category: 'tool', plan: '기본요금', amount: 7_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: today, path: 'direct', verified: false })
       expect(r.status, JSON.stringify(r.json)).toBe(201)
       const id = (r.json as { id: string }).id
       subs.push(id)
-      expect((await api(request, 'POST', '/api/plan-changes', { subId: id, effective, to: { status: 'cancelled' }, note: '' })).status).toBe(201)
+      if (effective) expect((await api(request, 'POST', '/api/plan-changes', { subId: id, effective, to, note: '' })).status).toBe(201)
     }
+    // On the month's last day tomorrow's change is next month's: the row still is the old plan, so nothing differs.
+    const sameMonth = tomorrow.slice(0, 7) === today.slice(0, 7)
     try {
       expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
       // both are charged today: one is cancelled from tomorrow (today's charge is still made), one from today (no charge)
       await sub(dueName, tomorrow)
       await sub(goneName, today)
+      // a plan change dated tomorrow: the row is the month's (new) plan, today's charge is still the old plan's (review 4 finding 1)
+      await sub(chgName, tomorrow, { plan: '새요금', amount: 9_000 })
+      await sub(plainName, null)
       await page.goto('/spend/subs')
       // every status: a row cancelled later this month reads 해지 for the month
       await page.getByRole('group', { name: '상태로 거르기', exact: true }).getByRole('button', { name: /^전체/ }).click()
-      const next = (name: string) => page.locator('table.subs-t tbody tr', { hasText: name }).locator('td').nth(5)
-      await expect(next(dueName)).toHaveText(today)
+      const row = (name: string) => page.locator('table.subs-t tbody tr', { hasText: name })
+      const next = (name: string) => row(name).locator('td').nth(5)
+      const said = (name: string) => next(name).getByTestId('sub-next-charge')
+      await expect(next(dueName)).toContainText(today)
       await expect(next(goneName)).toHaveText('—')
-      // the phone list shows the same date
+      await expect(next(chgName)).toContainText(today)
+      // nothing scheduled: the date alone, the row's own plan is what is charged
+      await expect(next(plainName)).toHaveText(today)
+      await expect(said(plainName)).toHaveCount(0)
+      if (sameMonth) {
+        // the charge of today is made with the plan in force today: said under the date, since the row shows another
+        await expect(said(dueName)).toHaveText('기본요금 · KRW 7,000')
+        await expect(row(chgName).locator('td').first()).toContainText('새요금')
+        await expect(row(chgName).locator('td').nth(3)).toHaveText('KRW 9,000')
+        await expect(said(chgName)).toHaveText('기본요금 · KRW 7,000')
+      } else {
+        await expect(said(dueName)).toHaveCount(0)
+        await expect(said(chgName)).toHaveCount(0)
+      }
+      // the CSV: the row's plan in its columns, the next charge's own plan, amount and currency in the last three
+      const wait = page.waitForEvent('download')
+      await page.getByRole('button', { name: 'CSV 내보내기', exact: true }).click()
+      const file = await (await wait).path()
+      const lines = (await import('node:fs')).readFileSync(file!, 'utf8').replace(/^\uFEFF/, '').trim().split('\r\n')
+      expect(lines[0]!.endsWith(',다음 결제일,월 환산(원),다음 결제 요금제,다음 결제 금액,다음 결제 통화')).toBe(true)
+      const line = (name: string) => lines.find((l) => l.startsWith(`${name},`)) ?? ''
+      expect(line(plainName)).toMatch(new RegExp(`,기본요금,7000,KRW,.*,${today},\\d+,,,$`))
+      if (sameMonth) {
+        expect(line(chgName)).toMatch(new RegExp(`,새요금,9000,KRW,.*,${today},\\d+,기본요금,7000,KRW$`))
+        expect(line(dueName)).toMatch(new RegExp(`,${today},\\d*,기본요금,7000,KRW$`))
+      }
+      expect(line(goneName)).toMatch(/,,\d*,,,$/)
+      // the phone list shows the same date, with the charge's own plan and amount where it differs
       await page.setViewportSize({ width: 390, height: 844 })
       await expect(page.locator('ul.mlist li', { hasText: dueName }).locator('.m3')).toContainText(today)
       await expect(page.locator('ul.mlist li', { hasText: goneName }).locator('.m3')).not.toContainText(today)
+      await expect(page.locator('ul.mlist li', { hasText: plainName }).locator('.m3')).toContainText(`${today} · KRW 7,000`)
+      if (sameMonth) await expect(page.locator('ul.mlist li', { hasText: chgName }).locator('.m3')).toContainText(`${today} · 기본요금 · KRW 7,000`)
     } finally {
       for (const id of subs) await api(request, 'DELETE', `/api/subscriptions/${id}`)
       await api(request, 'PUT', '/api/preferences', prefs)

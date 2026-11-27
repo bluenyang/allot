@@ -58,9 +58,17 @@ const rows = computed(() =>
     // later this month may still have a charge before the cancellation's date. The next charge is looked for while
     // either is active, as the home, the calendar and MCP list_subscriptions name it (A-15).
     const live = p.status === 'active' || planOn(base, store.planChanges, ymd(now)).status === 'active'
-    return { base, p, monthly: monthly(p), next: live ? upcoming(base) : null, pending }
+    const next = live ? upcoming(base) : null
+    // The plan that charge is made with, when it is not what the row shows (the month's plan): another plan or another
+    // amount — a change dated after the charge, or a row looked at in another month — or a row that is not active. The
+    // list then says the charge's own plan and amount with its date, as MCP list_subscriptions' nextCharge does (review 4 finding 1).
+    const at = next ? planOn(base, store.planChanges, ymd(next)) : null
+    const nextCharge = at && (at.plan !== p.plan || charge(at) !== charge(p) || p.status !== 'active') ? at : null
+    return { base, p, monthly: monthly(p), next, nextCharge, pending }
   }),
 )
+/** The next charge's own plan and amount ("Basic · KRW 10,000"), for a row whose next charge is not what the row shows. */
+const nextChargeText = (at: Plan) => [firstLine(at.plan), charge(at)].filter(Boolean).join(' · ')
 // The month's transfer with its subscription-account one-offs (spec 011 S-5).
 const xfer = computed(() => monthMoney(store, ym.value).transfer)
 const xferNext = computed(() => monthMoney(store, addYm(ym.value, 1)).transfer)
@@ -100,10 +108,12 @@ const remainderName = computed(() => store.targets.find((x) => x.kind === 'remai
 // ---------- CSV (spec 013 S-17): the subscriptions the list shows (its filters and base month) ----------
 function exportCsv() {
   const H = (k: string) => t(`subscriptions.csv.${k}` as MessageKey)
-  const rows: CsvCell[][] = [['name', 'category', 'plan', 'amount', 'currency', 'cycle', 'status', 'next', 'monthly'].map(H)]
+  // the last three columns: the next charge's own plan, amount and currency, filled when it is not what the row's plan says (as on the screen)
+  const rows: CsvCell[][] = [['name', 'category', 'plan', 'amount', 'currency', 'cycle', 'status', 'next', 'monthly', 'nextPlan', 'nextAmount', 'nextCurrency'].map(H)]
   for (const r of shown.value) {
     const p = r.p
-    rows.push([p.name, catLabel(p.category), p.plan, p.amount, p.currency, cycleLabel(p.cycle), statusLabel(p.status), r.next ? ymd(r.next) : '', wonCell(r.monthly)])
+    const at = r.nextCharge
+    rows.push([p.name, catLabel(p.category), p.plan, p.amount, p.currency, cycleLabel(p.cycle), statusLabel(p.status), r.next ? ymd(r.next) : '', wonCell(r.monthly), at ? at.plan : '', at ? at.amount : '', at ? at.currency : ''])
   }
   downloadCsv(`allot-subscriptions-${ym.value}.csv`, rows)
 }
@@ -279,7 +289,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
                   <td class="c cell2">{{ cycleLabel(r.p.cycle) }}</td>
                   <td class="n mono cell2">{{ chargeText(r) }}</td>
                   <td class="n amt">{{ r.p.status === 'active' ? fmtMoney(r.monthly) : '—' }}</td>
-                  <td class="mono">{{ r.next ? fmtDate(r.next) : '—' }}</td>
+                  <td class="mono">{{ r.next ? fmtDate(r.next) : '—' }}<small v-if="r.nextCharge" class="hint nextc" data-testid="sub-next-charge">{{ nextChargeText(r.nextCharge) }}</small></td>
                   <td class="c cell2">{{ pathText(r) }}<small v-if="paidWith(r.base)" class="hint paid">{{ paidWith(r.base) }}</small></td>
                   <td class="c"><span class="pill" :class="receipt(r).cls">{{ receipt(r).text }}</span></td>
                   <td class="n"><button class="btn sm ghost" type="button" :aria-label="t('common.editLabel', { name: r.p.name })" @click="openSub(r.base)">{{ t('common.edit') }}</button></td>
@@ -292,7 +302,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
             <li v-for="r in shown" :key="r.base.id" class="mcard" :class="{ off: r.p.status === 'cancelled' }">
               <div class="m1"><span class="m-name"><b>{{ r.p.name }}</b> <small class="hint">{{ firstLine(r.p.plan) || '—' }}</small></span><b class="num m-amt">{{ r.p.status === 'active' ? fmtMoney(r.monthly) : '—' }}</b></div>
               <div class="m2"><span>{{ catLabel(r.p.category) }} · {{ cycleLabel(r.p.cycle) }} · {{ pathText(r) }}<template v-if="paidWith(r.base)"> · <span class="paid">{{ paidWith(r.base) }}</span></template></span><span class="pill" :class="receipt(r).cls">{{ receipt(r).text }}</span></div>
-              <div class="m3"><span class="mono hint">{{ r.next ? fmtDate(r.next) : '—' }} · {{ chargeText(r) }}</span><button class="btn sm" type="button" :aria-label="t('common.editLabel', { name: r.p.name })" @click="openSub(r.base)">{{ t('common.edit') }}</button></div>
+              <div class="m3"><span class="mono hint">{{ r.next ? fmtDate(r.next) : '—' }} · <span v-if="r.nextCharge" data-testid="sub-next-charge-phone">{{ nextChargeText(r.nextCharge) }}</span><template v-else>{{ chargeText(r) }}</template></span><button class="btn sm" type="button" :aria-label="t('common.editLabel', { name: r.p.name })" @click="openSub(r.base)">{{ t('common.edit') }}</button></div>
             </li>
           </ul>
 
