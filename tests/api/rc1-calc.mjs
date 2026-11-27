@@ -48,7 +48,8 @@
 //             without a paying account may be linked; a card with an account, an id that does not exist, another
 //             user's id and an empty id are refused (400) and leave the row; a change logged before the columns existed
 //             still reverts; deleting the card or the account unlinks the subscription in the same change set and the
-//             revert brings both back; propose_changes sets, keeps and refuses the same way; an account with
+//             revert brings both back; the insert of a card or an account is not reverted while a subscription is paid
+//             with it (409), and is once it is unlinked; propose_changes sets, keeps and refuses the same way; an account with
 //             subscriptions paid with its card and from its account can be deleted by the admin
 // Exit 0 only if every check passed.
 import postgres from 'postgres'
@@ -777,6 +778,25 @@ try {
       `pay: deleting the account → ${delA.status}, the subscription paid from it has no way of paying; the one paid by card keeps its card`)
     const rvA = await U('POST', `/api/changes/${setA.id}/revert`)
     ok(rvA.status === 200 && way(await saved(sid2)) === '-/acc1' && (await state()).cards.find((c) => c.id === card1)?.accountId === acc1, `pay: reverting the delete → ${rvA.status}: the account is back, with the subscription and the card on it`)
+
+    // the insert of a card or an account is not reverted while a subscription is paid with it (S-12); unlinked first, it is
+    const acc2 = await mkAcc('RC1 sub account 2')
+    const setAcc2 = await lastSet()
+    const card2 = await mkCard('RC1 sub card 2', null)
+    const setCard2 = await lastSet()
+    const CHILD = 'Something was linked to it afterwards, so this cannot be reverted.'
+    ok((await put1({ cardId: card2, accountId: null })).status === 200 && (await U('PUT', `/api/subscriptions/${sid2}`, { ...SUB, name: 'RC1 paid sub 2', cardId: null, accountId: acc2 })).status === 200, 'pay: one subscription uses the new card, the other the new account')
+    const rvCard2 = await U('POST', `/api/changes/${setCard2.id}/revert`, undefined, EN)
+    const rvAcc2 = await U('POST', `/api/changes/${setAcc2.id}/revert`, undefined, EN)
+    const st2 = await state()
+    ok(rvCard2.status === 409 && rvAcc2.status === 409 && rvCard2.json?.error === rvAcc2.json?.error && st2.cards.some((c) => c.id === card2) && st2.accounts.some((a) => a.id === acc2),
+      `pay: reverting the insert of a card or an account a subscription is paid with → ${rvCard2.status}, ${rvAcc2.status} "${rvCard2.json?.error}"; both stay`)
+    ok(rvCard2.json?.error === CHILD, `pay: the answer is the one for a linked item ("${CHILD}")`)
+    ok((await put1({ cardId: card1, accountId: null })).status === 200 && (await U('PUT', `/api/subscriptions/${sid2}`, { ...SUB, name: 'RC1 paid sub 2', cardId: null, accountId: acc1 })).status === 200, 'pay: the two subscriptions go back to the first card and account')
+    const rvCard2b = await U('POST', `/api/changes/${setCard2.id}/revert`)
+    const rvAcc2b = await U('POST', `/api/changes/${setAcc2.id}/revert`)
+    const st3 = await state()
+    ok(rvCard2b.status === 200 && rvAcc2b.status === 200 && !st3.cards.some((c) => c.id === card2) && !st3.accounts.some((a) => a.id === acc2), `pay: once nothing uses them the two inserts are reverted → ${rvCard2b.status}, ${rvAcc2b.status}`)
 
     // a proposal sets the card, keeps it when the keys are left out, refuses both, and deletes a card in use the same way
     const pSet = await apply([{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', cardId: loose, accountId: null } }])

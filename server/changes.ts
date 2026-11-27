@@ -160,9 +160,10 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
  * reverting the insert of a row they point at is a conflict, like a child (review 1 F-11).
  */
 const LINKS = new Map<PgTable, [OwnedTable, PgColumn][]>([
-  [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId], [t.scheduleItem, t.scheduleItem.accountId], [t.incomeItem, t.incomeItem.accountId]]],
+  // a subscription paid from the account, or with the card, too (spec 018 S-8, S-12 "되돌리기": approved by the user on 2026-11-27)
+  [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId], [t.scheduleItem, t.scheduleItem.accountId], [t.incomeItem, t.incomeItem.accountId], [t.subscription, t.subscription.accountId]]],
   // the settings' month basis card too (spec 018 S-3): the foreign key would refuse the delete with a less clear message
-  [t.card, [[t.spending, t.spending.cardId], [t.settings, t.settings.monthBasisCardId]]],
+  [t.card, [[t.spending, t.spending.cardId], [t.settings, t.settings.monthBasisCardId], [t.subscription, t.subscription.cardId]]],
 ])
 
 /** Tables that are gone; their logged changes cannot be reverted. */
