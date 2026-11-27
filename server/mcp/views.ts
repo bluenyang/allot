@@ -4,7 +4,7 @@
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
   addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, ctxOf, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDatesIn, monthlyKrw, monthMoney, monthOutgo, nextPayment, outgoOf, parseDate,
-  periodOf, phaseAt, planAt, priced, projectAccount, roundYm, shiftOf, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf, ymOfDate,
+  periodOf, phaseAt, planAt, planOn, priced, projectAccount, roundYm, shiftOf, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf, ymOfDate,
   type AccountState, type Distribution, type MonthCtx, type MonthDate, type Outgo, type ShiftDate,
   maturityAlerts, maturityAmount,
 } from '../../src/lib/calc'
@@ -357,9 +357,18 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
   // this month by the user's basis: the plan in force is the one of the changes that came in by this month
   const ctx = basisOf(d, ymOf(now))
   const ym = ymOfDate(ymd(now), ctx)
+  const s = priced(d.settings, d.currencies)
   const rows = d.subscriptions.map((base) => {
     const p = planAt(base, d.planChanges, ym, ctx)
-    const next = p.status === 'active' ? nextPayment(base, d.planChanges, now) : null
+    // A charge goes by the plan in force on its own date (spec 018 S-7), the row by the month's plan. The next charge is
+    // looked for while either is active: a cancellation dated later this month leaves the charges before its date.
+    const live = p.status === 'active' || planOn(base, d.planChanges, ymd(now)).status === 'active'
+    const next = live ? nextPayment(base, d.planChanges, now) : null
+    const at = next ? planOn(base, d.planChanges, ymd(next)) : null
+    const charge = krw(chargeKrw(p, s))
+    const nextKrw = at ? krw(chargeKrw(at, s)) : null
+    // said only when the next charge is not what the row shows: another plan, another amount, or a row that is not active
+    const differs = at !== null && (at.plan !== p.plan || nextKrw !== charge || p.status !== 'active')
     return {
       id: base.id,
       name: base.name,
@@ -370,9 +379,10 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
       vat: p.vat,
       cycle: p.cycle,
       status: p.status,
-      chargeKrw: krw(chargeKrw(p, priced(d.settings, d.currencies))),
-      monthlyKrw: krw(monthlyKrw(p, priced(d.settings, d.currencies))),
+      chargeKrw: charge,
+      monthlyKrw: krw(monthlyKrw(p, s)),
       nextPayment: next ? ymd(next) : null,
+      ...(differs ? { nextCharge: { date: ymd(next!), plan: at!.plan, krw: nextKrw! } } : {}),
       payPath: base.path,
       receiptVerified: base.verified,
       ...(base.note ? { note: base.note } : {}),
