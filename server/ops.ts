@@ -285,7 +285,8 @@ const list = <T extends ListTable, S extends z.ZodType>(table: T, schema: S, o: 
 export const RESOURCES = {
   subscriptions: list(t.subscription, v.subscription, {
     // `cardId` and `accountId` (spec 018 S-8) are not in `optional`: left out of an update they are not in the row that
-    // is written, so the saved way of paying stays (a client in the 0.1.9 shape does not erase it); null clears one.
+    // is written, so the saved way of paying stays (a client in the 0.1.9 shape does not erase it); null clears one,
+    // and one named with a value clears the other (`toRow`).
     optional: ['note'],
     // KRW, USD or a code in the currency list (spec 013 S-23).
     check: (q, uid, x) => currencyProblem(q, uid, x.currency),
