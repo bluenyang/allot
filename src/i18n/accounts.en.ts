@@ -108,7 +108,7 @@ export const accountsEn: AccountsMessages = {
       usageNone: 'Not set',
       usageHint: 'The first day of the period your card company bills together (e.g. usually the 12th when the billing day is the 25th). What you buy in a period is billed on the first billing day after it ends. Empty: billed on the billing day of the month after the purchase.',
       usageNow: 'Right now, what you buy from {start} to {end} is billed on {bill}.',
-      usageNote: 'Used for spendings you add from now on; the dates of saved spendings stay. If the period ends a day or two before the billing day, the real bill may differ.',
+      usageNote: 'Used for spendings you add from now on; the round dates of saved spendings stay. The card bill date of a buffer use is not saved but worked out each time, so it follows this period as soon as you save. If the period ends a day or two before the billing day, the real bill may differ.',
       note: 'Note',
       needName: 'Enter the card name.',
     },

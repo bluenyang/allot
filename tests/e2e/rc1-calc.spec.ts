@@ -272,6 +272,8 @@ test.describe.serial('W-2 the card\'s usage period', () => {
       await expect(e.locator('#cd-usage')).toContainText('정하지 않음')
       await expect(e.getByTestId('cd-usage-now')).toHaveCount(0)
       await expect(e.getByText('예: 결제일이 25일이면 보통 12일', { exact: false })).toBeVisible()
+      // the note tells saved rounds (kept) from a buffer use's card bill date (worked out, so it follows the period) — review 1 finding 2
+      await expect(e.getByText('이미 저장된 지출의 회차 날짜는 그대로예요. 다만 버퍼 사용의 카드값 나가는 날은 저장하지 않고 그때마다 계산해서, 저장하면 바로 이 기간을 따라요.', { exact: false })).toBeVisible()
       await saveSheet(page, '카드 수정')
       expect(await cardOf(request, id)).toMatchObject({ name, last4: '4321', accountId: null, billingDay: 25, usageFrom: null, note: 'memo' })
 
@@ -446,6 +448,7 @@ test.describe.serial('W-2 the card\'s usage period', () => {
       await enRow.click()
       const en = sheet(page, 'Edit card')
       await expect(en.getByText('First day of the usage period')).toBeVisible()
+      await expect(en.getByText('the round dates of saved spendings stay. The card bill date of a buffer use is not saved but worked out each time, so it follows this period as soon as you save.', { exact: false })).toBeVisible()
       await expect(en.getByTestId('cd-usage-now')).toHaveText(/^Right now, what you buy from \d+\/\d+ to \d+\/\d+ is billed on \d+\/\d+\.$/)
       expect(await fits()).toBe(true)
     } finally {
