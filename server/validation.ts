@@ -176,6 +176,12 @@ export const subscription = plan.extend({
   path: payPath,
   verified: z.boolean(),
   note: optText,
+  // How it is paid (spec 018 S-8, S-12): a card, an account, or neither. Optional, so a client that does not know them
+  // keeps the stored ones; null clears one. Never both (the API checks the stored one too, when a body names only one).
+  cardId: text.min(1).nullable().optional(),
+  accountId: text.min(1).nullable().optional(),
+}).superRefine((x, ctx) => {
+  if (x.cardId && x.accountId) ctx.addIssue({ code: 'custom', path: ['accountId'], message: 'payOneOf' satisfies MsgKey })
 })
 
 export const planChange = z.object({

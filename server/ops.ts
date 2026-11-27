@@ -126,7 +126,7 @@ async function writeItemAmounts(q: Db, rec: Recorder, uid: string, table: typeof
   return { amounts: { ...amounts } }
 }
 
-/** Set `col` to null, with logs, in every row of `table` where it is `id` (a card's or a target's account, a spending's card). */
+/** Set `col` to null, with logs, in every row of `table` where it is `id` (a card's or a target's account, a spending's card, a subscription's card or account). */
 async function unlink(q: Db, rec: Recorder, uid: string, table: OwnedTable & { id: PgColumn }, col: PgColumn, id: string) {
   const rows = await q.select().from(table as never).where(and(eq(table.userId, uid), eq(col, id))) as Row[]
   for (const old of rows) {
@@ -284,9 +284,21 @@ const list = <T extends ListTable, S extends z.ZodType>(table: T, schema: S, o: 
 
 export const RESOURCES = {
   subscriptions: list(t.subscription, v.subscription, {
+    // `cardId` and `accountId` (spec 018 S-8) are not in `optional`: left out of an update they are not in the row that
+    // is written, so the saved way of paying stays (a client in the 0.1.9 shape does not erase it); null clears one.
     optional: ['note'],
-    // KRW, USD or a code in the currency list (spec 013 S-23).
-    check: (q, uid, x) => currencyProblem(q, uid, x.currency),
+    // KRW, USD or a code in the currency list (spec 013 S-23). A card or an account, never both (spec 018 S-12): a body
+    // that names only one is checked against the stored other one, which would stay.
+    check: async (q, uid, x, id) => {
+      const unknown = await currencyProblem(q, uid, x.currency)
+      if (unknown) return unknown
+      if (!id || (!x.cardId && !x.accountId) || (x.cardId !== undefined && x.accountId !== undefined)) return null
+      const [row] = await q.select({ cardId: t.subscription.cardId, accountId: t.subscription.accountId }).from(t.subscription)
+        .where(and(eq(t.subscription.userId, uid), eq(t.subscription.id, id)))
+      const card = x.cardId === undefined ? row?.cardId : x.cardId
+      const account = x.accountId === undefined ? row?.accountId : x.accountId
+      return card && account ? m('payOneOf') : null
+    },
     // KRW items carry no VAT (the same rule the editor applied before).
     toRow: (s) => ({ ...s, vat: s.currency === 'KRW' ? 0 : s.vat, note: s.note || null }),
   }),
@@ -332,6 +344,8 @@ export const RESOURCES = {
       await unlink(q, rec, uid, t.allocationTarget, t.allocationTarget.accountId, id)
       await unlink(q, rec, uid, t.scheduleItem, t.scheduleItem.accountId, id)
       await unlink(q, rec, uid, t.incomeItem, t.incomeItem.accountId, id)
+      // a subscription paid from it goes back to "not said" (spec 018 S-8, S-12)
+      await unlink(q, rec, uid, t.subscription, t.subscription.accountId, id)
     },
   }),
   // One month's amount of a target (spec 013 S-14): fixed, saving and invest targets only. The check holds the
@@ -378,6 +392,8 @@ export const RESOURCES = {
     alsoLocks: ['settings'],
     onDelete: async (q, rec, uid, id) => {
       await unlink(q, rec, uid, t.spending, t.spending.cardId, id)
+      // a subscription paid with it goes back to "not said" (spec 018 S-8, S-12)
+      await unlink(q, rec, uid, t.subscription, t.subscription.cardId, id)
       await dropBasisCard(q, rec, uid, id)
     },
   }),

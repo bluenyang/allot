@@ -172,11 +172,23 @@ export const subscription = pgTable('subscription', {
   path: payPath('path').notNull().default('direct'),
   verified: boolean('verified').notNull().default(false),
   note: text('note'),
+  /**
+   * How it is paid (spec 018 S-8): one of the user's cards, one of their accounts, or neither (both null: not said, as
+   * every subscription was before). The balance projection takes its charges out of the card's paying account on the
+   * card's bill date, or out of the account on the charge date (S-9). `path` (direct, app store, telecom) is another thing.
+   */
+  cardId: text('card_id'),
+  accountId: text('account_id'),
 }, (t) => [
   userScoped(t.userId),
   unique('subscription_user_id_id').on(t.userId, t.id),
   check('subscription_amount_nonneg', sql`${t.amount} >= 0`),
   check('subscription_currency_code', sql`${t.currency} ~ '^[A-Z]{3}$'`),
+  // One of the user's own cards or accounts (the pattern of spending_card_fk and card_account_fk). Deleting the card or
+  // the account unlinks the subscription first (server/ops.ts), so these never refuse a delete.
+  foreignKey({ name: 'subscription_card_fk', columns: [t.userId, t.cardId], foreignColumns: [card.userId, card.id] }),
+  foreignKey({ name: 'subscription_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
+  check('subscription_pay_one_of', sql`${t.cardId} is null or ${t.accountId} is null`),
 ])
 
 export const planChange = pgTable('plan_change', {

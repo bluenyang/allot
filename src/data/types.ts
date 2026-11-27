@@ -26,6 +26,12 @@ export interface Subscription extends Plan {
   path: PayPath
   verified: boolean // 영수증으로 금액·VAT 확인
   note?: string
+  /**
+   * How it is paid (spec 018 S-8): a card or an account, never both; neither = not said. The balance projection takes
+   * the charges out of the card's paying account on the card's bill date, or out of the account on the charge date.
+   */
+  cardId?: string | null
+  accountId?: string | null
 }
 
 /** 예약된 플랜 전환. effective가 없으면 '날짜 미정'으로 보관만 한다. */

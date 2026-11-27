@@ -1,6 +1,6 @@
 // API check for spec 018 (0.1.10-rc.1, V-5). W-1: the weekend and holiday rule of each date. W-2: a card's usage period.
 // W-3: what a month is (the settings' monthBasis, monthBasisCardId, monthNaming). W-4: the basis applied to the MCP answers.
-// W-5: the month a spending round counts in and the transfers to the paying accounts. W-6: a charge uses the plan of its date.
+// W-5: the month a spending round counts in and the transfers to the paying accounts. W-6: a charge uses the plan of its date. W-7: how a subscription is paid.
 //   bash scripts/test-server/disposable.sh rc1-api node tests/api/rc1-calc.mjs   (it writes to the database directly)
 // A is ADMIN_EMAIL. U is made here and deleted at the end; every row below is U's.
 //   shifts    a settings body with the old dayShift alone sets the three rules; a rule the body names wins, each on its
@@ -43,6 +43,13 @@
 //             stays by month (the new plan, without the cancelled one); list_subscriptions keeps the month's plan in
 //             the row and adds nextCharge when the next charge is another plan or amount, or when a row cancelled later
 //             this month is still charged before that date
+//   pay       how a subscription is paid (spec 018 S-8, S-12, W-7): a subscription in the 0.1.9 shape has no card and no
+//             account; either is saved and read back, kept by a body that leaves the keys out, cleared by null; a card
+//             without a paying account may be linked; a card with an account, an id that does not exist, another
+//             user's id and an empty id are refused (400) and leave the row; a change logged before the columns existed
+//             still reverts; deleting the card or the account unlinks the subscription in the same change set and the
+//             revert brings both back; propose_changes sets, keeps and refuses the same way; an account with
+//             subscriptions paid with its card and from its account can be deleted by the admin
 // Exit 0 only if every check passed.
 import postgres from 'postgres'
 import { arm, cleanupStep, disarm, failures, ok, threw } from './lib/check.mjs'
@@ -672,7 +679,131 @@ try {
     ok(back.status === 200 && !left.subscriptions.some((x) => subIds.includes(x.id)) && !left.planChanges.some((x) => subIds.includes(x.subId)), `plans: the subscriptions and their changes are gone and the settings are put back → ${back.status}`)
   }
 
-  // an account whose basis is a card can be deleted (the settings row goes before the card)
+  // ── pay: how a subscription is paid (W-7) ──
+  const vAcc = await V('POST', '/api/accounts', { name: 'RC1 V account', role: '', inflow: '', outflow: '' })
+  ok(vAcc.status === 201, `V makes an account → ${vAcc.status}`)
+  {
+    const ONE_OF = 'A subscription is paid with a card or from an account, not both.'
+    const SUB = { name: 'RC1 paid sub', category: 'tool', plan: 'RC1 Basic', amount: 10_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-02-10', path: 'direct', verified: false }
+    const mkAcc = async (name) => {
+      const r = await U('POST', '/api/accounts', { name, role: '', inflow: '', outflow: '' })
+      if (r.status !== 201) throw new Error(`account ${name} → ${r.status} ${r.text}`)
+      return r.json.id
+    }
+    const mkCard = async (name, accountId) => {
+      const r = await U('POST', '/api/cards', { name, last4: '', accountId, billingDay: 14 })
+      if (r.status !== 201) throw new Error(`card ${name} → ${r.status} ${r.text}`)
+      return r.json.id
+    }
+    const acc1 = await mkAcc('RC1 sub account')
+    const card1 = await mkCard('RC1 sub card', acc1)
+    const loose = await mkCard('RC1 sub card, no account', null)
+    const way = (x) => `${x?.cardId ?? '-'}/${x?.accountId ?? '-'}`.replace(card1, 'card1').replace(loose, 'loose').replace(acc1, 'acc1')
+    const saved = async (id) => (await state()).subscriptions.find((x) => x.id === id)
+
+    // the 0.1.9 shape: no way of paying, answered as null
+    const c0 = await U('POST', '/api/subscriptions', SUB)
+    const sid = c0.json?.id
+    ok(c0.status === 201 && c0.json.cardId === null && c0.json.accountId === null && way(await saved(sid)) === '-/-', `pay: a subscription in the 0.1.9 shape → ${c0.status}, no card and no account (${way(c0.json)})`)
+    const put1 = (body, headers) => U('PUT', `/api/subscriptions/${sid}`, { ...SUB, ...body }, headers)
+    // saved and read back, kept by a body that leaves the keys out, cleared by null
+    const p1 = await put1({ cardId: card1 })
+    ok(p1.status === 200 && way(p1.json) === 'card1/-' && way(await saved(sid)) === 'card1/-', `pay: a card is saved and read back (${p1.status}, ${way(p1.json)})`)
+    const p2 = await put1({ plan: 'RC1 Plus' })
+    ok(p2.status === 200 && p2.json.plan === 'RC1 Plus' && way(p2.json) === 'card1/-' && way(await saved(sid)) === 'card1/-', `pay: a body in the 0.1.9 shape keeps the card and writes the rest (${way(p2.json)})`)
+    const p3 = await put1({ cardId: null, accountId: acc1 })
+    ok(p3.status === 200 && way(p3.json) === '-/acc1' && way(await saved(sid)) === '-/acc1', `pay: the card cleared and an account set in one body (${way(p3.json)})`)
+    const p4 = await put1({})
+    ok(p4.status === 200 && way(p4.json) === '-/acc1', `pay: a body in the 0.1.9 shape keeps the account (${way(p4.json)})`)
+    const p5 = await put1({ accountId: null })
+    ok(p5.status === 200 && way(p5.json) === '-/-' && way(await saved(sid)) === '-/-', `pay: null clears the account (${way(p5.json)})`)
+    const p6 = await put1({ cardId: loose })
+    ok(p6.status === 200 && way(p6.json) === 'loose/-', `pay: a card without a paying account may be linked (${p6.status}, ${way(p6.json)})`)
+    const p7 = await put1({ cardId: card1, accountId: null })
+    ok(p7.status === 200 && way(p7.json) === 'card1/-', `pay: the whole row sent, as the screen does (${way(p7.json)})`)
+    const c1 = await U('POST', '/api/subscriptions', { ...SUB, name: 'RC1 paid sub 2', accountId: acc1 })
+    ok(c1.status === 201 && way(c1.json) === '-/acc1', `pay: a new subscription with an account → ${c1.status} (${way(c1.json)})`)
+    const sid2 = c1.json.id
+
+    // refused: both, an id that does not exist, another user's id, an empty id
+    const both = await put1({ cardId: card1, accountId: acc1 }, EN)
+    const bothNew = await U('POST', '/api/subscriptions', { ...SUB, name: 'RC1 both', cardId: card1, accountId: acc1 }, EN)
+    ok(both.status === 400 && both.json?.error === ONE_OF && bothNew.status === 400 && bothNew.json?.error === ONE_OF, `pay: a card and an account together → ${both.status} "${both.json?.error}", also for a new one (${bothNew.status})`)
+    // the stored card would stay next to the account the body names: the same refusal
+    const half = await put1({ accountId: acc1 }, EN)
+    const half2 = await U('PUT', `/api/subscriptions/${sid2}`, { ...SUB, name: 'RC1 paid sub 2', cardId: card1 }, EN)
+    ok(half.status === 400 && half.json?.error === ONE_OF && half2.status === 400 && half2.json?.error === ONE_OF, `pay: an account named while a card is saved (and a card while an account is) → ${half.status}, ${half2.status} "${half.json?.error}"`)
+    const got = []
+    for (const [k, id] of [['cardId', 'no-such-card'], ['accountId', 'no-such-account'], ['cardId', vCard.json.id], ['accountId', vAcc.json.id], ['cardId', acc1], ['accountId', card1]]) {
+      const r = await put1({ cardId: null, accountId: null, [k]: id }, EN)
+      got.push(r.status === 400 && r.json?.error === LINK ? 400 : `${r.status}! ${r.json?.error}`)
+    }
+    ok(got.every((x) => x === 400), `pay: a card or account id that does not exist, another user's, and an id of the other kind → ${got.join(', ')} "${LINK}"`)
+    const empties = []
+    for (const k of ['cardId', 'accountId']) for (const bad of ['', 12, true]) empties.push((await put1({ [k]: bad })).status)
+    ok(empties.every((x) => x === 400), `pay: '', a number and a boolean for either key → ${empties.join(', ')}`)
+    ok(way(await saved(sid)) === 'card1/-' && way(await saved(sid2)) === '-/acc1' && !(await state()).subscriptions.some((x) => x.name === 'RC1 both'), 'pay: the refused bodies left the rows as they were')
+
+    // a change logged before the columns existed (the 0.1.9 shape) is still reverted, and leaves the way of paying
+    ok((await put1({ plan: 'RC1 Max' })).status === 200, 'pay: a plan change of the row')
+    const oldSet = await lastSet()
+    const stripped = await sql.begin(async (q) => {
+      await q`select set_config('app.user_id', ${uid}, true)`
+      const r = await q`update change_log set before = before - 'cardId' - 'accountId', after = after - 'cardId' - 'accountId'
+        where user_id = ${uid} and set_id = ${oldSet.id} and table_name = 'subscription' and op = 'update'`
+      return r.count
+    })
+    const rvOld = await U('POST', `/api/changes/${oldSet.id}/revert`)
+    const afterOld = await saved(sid)
+    ok(stripped === 1 && rvOld.status === 200 && afterOld.plan === 'RC1 Basic' && way(afterOld) === 'card1/-', `pay: a subscription change logged without the two keys is reverted → ${rvOld.status}, the plan is back (${afterOld.plan}) and the card stays (${way(afterOld)})`)
+
+    // deleting the card: not refused, the subscription is unlinked in the same change set; the revert brings both back
+    const delC = await U('DELETE', `/api/cards/${card1}`)
+    const setC = await lastSet()
+    const logsC = (await U('GET', `/api/changes/${setC.id}`)).json.changes
+    const subLog = logsC.find((c) => c.tableName === 'subscription')
+    ok(delC.status === 204 && way(await saved(sid)) === '-/-' && logsC.length === 2 && logsC.some((c) => c.tableName === 'card' && c.op === 'delete')
+      && subLog?.op === 'update' && subLog.rowKey.id === sid && subLog.before.cardId === card1 && subLog.after.cardId === null,
+      `pay: deleting the card → ${delC.status}, the subscription has no way of paying and the change set holds the card and the subscription row`)
+    const rvC = await U('POST', `/api/changes/${setC.id}/revert`)
+    ok(rvC.status === 200 && (await state()).cards.some((c) => c.id === card1) && way(await saved(sid)) === 'card1/-', `pay: reverting the delete → ${rvC.status}: the card is back and the subscription uses it again`)
+    // deleting the account: the same for the subscription paid from it (its card is unlinked from it too, as before)
+    const delA = await U('DELETE', `/api/accounts/${acc1}`)
+    const setA = await lastSet()
+    const logsA = (await U('GET', `/api/changes/${setA.id}`)).json.changes
+    const subLogA = logsA.find((c) => c.tableName === 'subscription')
+    ok(delA.status === 204 && way(await saved(sid2)) === '-/-' && way(await saved(sid)) === 'card1/-' && subLogA?.rowKey.id === sid2 && subLogA.before.accountId === acc1 && subLogA.after.accountId === null
+      && logsA.some((c) => c.tableName === 'bank_account' && c.op === 'delete') && logsA.some((c) => c.tableName === 'card' && c.op === 'update'),
+      `pay: deleting the account → ${delA.status}, the subscription paid from it has no way of paying; the one paid by card keeps its card`)
+    const rvA = await U('POST', `/api/changes/${setA.id}/revert`)
+    ok(rvA.status === 200 && way(await saved(sid2)) === '-/acc1' && (await state()).cards.find((c) => c.id === card1)?.accountId === acc1, `pay: reverting the delete → ${rvA.status}: the account is back, with the subscription and the card on it`)
+
+    // a proposal sets the card, keeps it when the keys are left out, refuses both, and deletes a card in use the same way
+    const pSet = await apply([{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', cardId: loose, accountId: null } }])
+    ok(!pSet.failed && way(await saved(sid2)) === 'loose/-', `pay: propose_changes sets the card, applied (${way(await saved(sid2))})`)
+    const pKeep = await apply([{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', plan: 'RC1 Pro' } }])
+    const afterKeep = await saved(sid2)
+    ok(!pKeep.failed && afterKeep.plan === 'RC1 Pro' && way(afterKeep) === 'loose/-', `pay: a proposal that leaves the keys out keeps the card (${way(afterKeep)})`)
+    const pBoth = await tool(kChat, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', cardId: loose, accountId: acc1 } }] })
+    const pHalf = await tool(kChat, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', accountId: acc1 } }] })
+    const pGone = await tool(kChat, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', cardId: vCard.json.id } }] })
+    ok(pBoth.failed && pHalf.failed && pGone.failed && way(await saved(sid2)) === 'loose/-', 'pay: propose_changes refuses a card with an account, an account next to the saved card, and another user\'s card')
+    const pNew = await apply([{ resource: 'subscriptions', action: 'create', data: { ...SUB, name: 'RC1 proposed sub', accountId: acc1 } }])
+    const proposed = (await state()).subscriptions.find((x) => x.name === 'RC1 proposed sub')
+    ok(!pNew.failed && way(proposed) === '-/acc1', `pay: propose_changes creates a subscription paid from an account (${way(proposed)})`)
+    const pDel = await apply([{ resource: 'cards', action: 'delete', id: loose }])
+    ok(!pDel.failed && way(await saved(sid2)) === '-/-' && !(await state()).cards.some((c) => c.id === loose), `pay: propose_changes deletes a card a subscription uses, applied: the subscription is unlinked (${way(await saved(sid2))})`)
+
+    for (const id of [sid, sid2, proposed?.id]) if (id) await U('DELETE', `/api/subscriptions/${id}`)
+    ok((await U('DELETE', `/api/cards/${card1}`)).status === 204 && (await U('DELETE', `/api/accounts/${acc1}`)).status === 204, 'pay: the card and the account are deleted again')
+    ok(!(await state()).subscriptions.some((x) => x.name.startsWith('RC1 paid') || x.name === 'RC1 proposed sub'), 'pay: the subscriptions are gone')
+  }
+
+  // an account whose basis is a card can be deleted (the settings row goes before the card), also with subscriptions
+  // that are paid with its card and from its account (they go before both)
+  const vSubs = [await V('POST', '/api/subscriptions', { name: 'RC1 V sub', category: 'tool', plan: '', amount: 1_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-02-10', path: 'direct', verified: false, cardId: vCard.json.id }),
+    await V('POST', '/api/subscriptions', { name: 'RC1 V sub 2', category: 'tool', plan: '', amount: 1_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2031-02-10', path: 'direct', verified: false, accountId: vAcc.json.id })]
+  ok(vSubs.every((r) => r.status === 201) && vSubs[0].json.cardId === vCard.json.id && vSubs[1].json.accountId === vAcc.json.id, `V has a subscription paid with its card and one paid from its account → ${vSubs.map((r) => r.status)}`)
   ok((await V('PUT', '/api/settings', { ...BODY, monthBasis: 'card', monthBasisCardId: vCard.json.id })).status === 200, 'V counts its month by its card')
   const delV = await A('DELETE', `/api/admin/users/${vid}`, { confirmEmail: emailV })
   ok(delV.status === 204, `the admin deletes V, whose basis is a card → ${delV.status}`)
