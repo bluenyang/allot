@@ -790,6 +790,62 @@ test.describe.serial('W-4 the month basis', () => {
     }
   })
 
+  // Review 6 finding 4 (A-48): no question when no month changes, and the editor's own check comes before the question.
+  test('(S-4, A-48) the basis card\'s first day of use empty ↔ 1 leaves the months as they are and is saved without the question; a card without a name is told so before any question', async ({ page, request }) => {
+    const s0 = (await state(request)).settings
+    const prefs = ((await api(request, 'GET', '/api/state')).json as { preferences: Record<string, unknown> }).preferences
+    const name = `${MARK}-one`
+    const made = await api(request, 'POST', '/api/cards', { name, last4: '', accountId: null, billingDay: 25, usageFrom: null, note: '' })
+    expect(made.status).toBe(201)
+    const card = made.json as CardRow
+    const dlg = page.getByRole('alertdialog')
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      // a card basis on this run's card, which has no first day of use: the calendar month; months named the default way (자동)
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payShift: 'none', monthBasis: 'card', monthBasisCardId: card.id, monthNaming: 'auto' })).status).toBe(200)
+      const table = await cardsTable(page)
+      const row = () => table.locator('tbody tr').filter({ hasText: name })
+      // empty → 1: the usage period of the 1st is the calendar month, so nothing is asked
+      await row().click()
+      let e = sheet(page, '카드 수정')
+      await choose(e.locator('#cd-usage'), '1')
+      await saveSheet(page, '카드 수정')
+      await expect(dlg).toHaveCount(0)
+      expect((await cardOf(request, card.id))!.usageFrom).toBe(1)
+      // 1 → empty: the same
+      await row().click()
+      e = sheet(page, '카드 수정')
+      await choose(e.locator('#cd-usage'), { label: '정하지 않음' })
+      await saveSheet(page, '카드 수정')
+      await expect(dlg).toHaveCount(0)
+      expect((await cardOf(request, card.id))!.usageFrom).toBeNull()
+
+      // a save that would be asked (empty → 12) with the name taken out: the name is asked for first, with no question
+      await row().click()
+      e = sheet(page, '카드 수정')
+      await choose(e.locator('#cd-usage'), '12')
+      await e.locator('#cd-name').fill('')
+      await e.getByRole('button', { name: '저장', exact: true }).click()
+      await expect(e.getByRole('alert')).toHaveText('카드 이름을 입력해 주세요.')
+      await expect(dlg).toHaveCount(0)
+      expect(await cardOf(request, card.id)).toMatchObject({ name, usageFrom: null })
+      // with the name back the question comes; cancelled, the card is as saved
+      await e.locator('#cd-name').fill(name)
+      await e.getByRole('button', { name: '저장', exact: true }).click()
+      await expect(dlg.getByRole('heading', { name: '달의 기준을 바꿀까요?' })).toBeVisible()
+      await expect(dlg.getByTestId('month-before')).toHaveText(/-01~\d{2}-(28|29|30|31)$/)
+      await expect(dlg.getByTestId('month-after')).toHaveText(/-12~\d{2}-11$/)
+      await dlg.getByRole('button', { name: '취소', exact: true }).click()
+      await expect(dlg).toBeHidden()
+      await expect(e).toBeVisible()
+      expect(await cardOf(request, card.id)).toMatchObject({ name, usageFrom: null })
+    } finally {
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'DELETE', `/api/cards/${card.id}`)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
   // Review 6 finding 1 (A-46): the fourth save that moves a pay month's dates — the pay day in 수입 › 월급 고치기.
   test('(S-4, A-46) 수입 › 월급: under a pay basis a changed pay day is asked first; cancelled, nothing is saved and the form stays as typed; the amount alone, and any save under the calendar basis, is not asked', async ({ page, request }) => {
     const s0 = (await state(request)).settings

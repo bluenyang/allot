@@ -80,14 +80,22 @@ export function monthLine(ctx: MonthCtx): string {
 }
 
 /**
+ * Does this basis give every month the calendar month's name and dates? The calendar basis, and a card basis whose
+ * card's usage period starts on the 1st with the month named after its start (`usagePeriod`: a first day of 1 is the
+ * calendar month). Named after its end, the same dates carry the next month's name, so that one is not the calendar.
+ */
+const calendarMonths = (c: MonthCtx): boolean => c.basis === 'calendar' || (c.basis === 'card' && c.day === 1 && c.naming === 'start')
+
+/**
  * What a save would do to the months (spec 018 S-4): null when every month keeps its name and its dates, else this
  * month before and after, for the question that is asked first. `next` is what the save changes: keys of the settings
  * (the pay day and its rule under a pay basis), or the cards as they would be (the basis card's first day of use, or
- * the list without it) — review 2 F-2.
+ * the list without it) — review 2 F-2. Two bases with different words can still be the same months — the basis card's
+ * first day of use empty ↔ 1 under a naming by the start: not asked either (review 6 finding 4).
  */
 export function monthChange(next: { settings?: Partial<Settings>; cards?: readonly Pick<Card, 'id' | 'usageFrom'>[] }): { before: string; after: string } | null {
   const now = monthBasis.value
   const then = monthCtx({ ...store.settings, ...next.settings }, next.cards ?? store.cards, store.off ?? new Set())
-  return basisKey(now) === basisKey(then) ? null : { before: monthLine(now), after: monthLine(then) }
+  if (basisKey(now) === basisKey(then) || (calendarMonths(now) && calendarMonths(then))) return null
+  return { before: monthLine(now), after: monthLine(then) }
 }
-

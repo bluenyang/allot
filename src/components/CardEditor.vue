@@ -22,7 +22,8 @@ const props = defineProps<{ initial: Card | null }>()
 const emit = defineEmits<{ close: [] }>()
 
 const blank = (): Card => ({ id: '', name: '', last4: '', accountId: null, billingDay: null, usageFrom: null, note: '' })
-const { item: edit, error, busy, open, close, save, remove } = useEditor('cards', blank, (c) => (!c.name.trim() ? t('accounts.cardEditor.needName') : null))
+const check = (c: Card) => (!c.name.trim() ? t('accounts.cardEditor.needName') : null)
+const { item: edit, error, busy, open, close, save, remove } = useEditor('cards', blank, check)
 open(props.initial ?? undefined)
 watch(edit, (v) => { if (!v) emit('close') })
 const title = props.initial ? t('accounts.cardEditor.editTitle') : t('accounts.cardEditor.addTitle')
@@ -30,7 +31,9 @@ const title = props.initial ? t('accounts.cardEditor.editTitle') : t('accounts.c
 // The card the month basis counts by (설정 › 달의 기준 › 카드 집계): its first day of use is what a month is, so a save
 // that changes it, and deleting the card (the basis goes back to the calendar month), are asked first with the same
 // question as a change of the basis (spec 018 S-4, review 2 F-2). Any other card, and a save that leaves the months as
-// they are, goes straight through. Cancelled, nothing is saved or deleted and the editor stays open.
+// they are, goes straight through. Cancelled, nothing is saved or deleted and the editor stays open. A save is asked
+// only for a card the editor would send: what the fields lack (the name) is said first, with no question (review 6
+// finding 4).
 const ask = ref<{ before: string; after: string; run: () => Promise<unknown> } | null>(null)
 function askOr(cards: (id: string) => Parameters<typeof monthChange>[0]['cards'], run: () => Promise<unknown>) {
   const c = edit.value
@@ -38,7 +41,11 @@ function askOr(cards: (id: string) => Parameters<typeof monthChange>[0]['cards']
   if (change) ask.value = { ...change, run }
   else void run()
 }
-const saveAsked = () => askOr((id) => store.cards.map((x) => (x.id === id ? edit.value! : x)), save)
+function saveAsked() {
+  const problem = edit.value ? check(edit.value) : null
+  if (problem) return (error.value = problem)
+  askOr((id) => store.cards.map((x) => (x.id === id ? edit.value! : x)), save)
+}
 const removeAsked = () => askOr((id) => store.cards.filter((x) => x.id !== id), remove)
 async function confirmAsk() {
   const a = ask.value

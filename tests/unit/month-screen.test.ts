@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { Card, Settings } from '../../src/data/types'
-import { monthMoney, todayIn, ymd, ymOf, ymOfDate, monthCtx } from '../../src/lib/calc'
+import { monthMoney, periodOf, roundYm, todayIn, ymd, ymOf, ymOfDate, monthCtx } from '../../src/lib/calc'
 import { hasPeriod, monthBasis, monthChange, monthDatesOf, monthLabel, monthLine, periodLabel, periodOfYm, thisYm, withPeriod, ymOfDay } from '../../src/lib/month'
 import { status, store } from '../../src/lib/store'
 import { view } from '../../src/lib/view'
@@ -152,6 +152,51 @@ test('monthChange: a save that changes what a month is gives this month before a
   store.settings = { ...DEFAULT_SETTINGS, payDay: 15, monthBasis: 'pay', monthBasisCardId: 'c1' }
   assert.equal(monthChange({ cards: [other] }), null)
   assert.equal(monthChange({ cards: [{ ...card, usageFrom: 20 }, other] }), null)
+  store.cards = []
+  store.settings = { ...DEFAULT_SETTINGS }
+})
+
+// Review 6 finding 4: the basis card's first day of use empty ↔ 1 changes the basis's word (calendar ↔ card-start-1) but
+// no month — a first day of 1 named by its start is the calendar month — so the question is not asked. Named by its
+// end, the same dates carry the next month's name: that is asked.
+test('monthChange: the basis card\'s first day of use empty ↔ 1 leaves every month as it is and is not asked, unless the month is named by its end', () => {
+  store.preferences.timezone = 'Asia/Seoul'
+  store.preferences.dateFormat = 'iso'
+  const card: Card = { id: 'c1', name: 'Card', last4: '', accountId: null, billingDay: 25, usageFrom: null }
+  const one: Card = { ...card, usageFrom: 1 }
+  const base: Settings = { ...DEFAULT_SETTINGS, payDay: 25, billingDay: 14, monthBasis: 'card', monthBasisCardId: 'c1' }
+  for (const monthNaming of ['auto', 'start'] as const) {
+    store.settings = { ...base, monthNaming }
+    store.cards = [card]
+    assert.equal(monthChange({ cards: [one] }), null, `${monthNaming}: empty → 1`)
+    store.cards = [one]
+    assert.equal(monthChange({ cards: [card] }), null, `${monthNaming}: 1 → empty`)
+    assert.equal(monthChange({ cards: [] }), null, `${monthNaming}: the card of the 1st deleted`)
+    // any other first day is asked, from either side
+    assert.notEqual(monthChange({ cards: [{ ...card, usageFrom: 2 }] }), null, `${monthNaming}: 1 → 2`)
+    store.cards = [card]
+    assert.notEqual(monthChange({ cards: [{ ...card, usageFrom: 2 }] }), null, `${monthNaming}: empty → 2`)
+    // why it is not asked: with either card every month has the same name and dates, and a card bill counts in the same month
+    const [a, b] = [monthCtx(store.settings, [card], none), monthCtx(store.settings, [one], none)]
+    assert.deepEqual([a.basis, b.basis], ['calendar', 'card'])
+    assert.equal(monthLine(a), monthLine(b))
+    for (let i = 0; i < 800; i++) {
+      const date = ymd(new Date(2026, 0, 1 + i))
+      assert.equal(ymOfDate(date, b), ymOfDate(date, a), date)
+      assert.equal(roundYm({ how: 'lump', payBy: 'card' }, { date }, b), roundYm({ how: 'lump', payBy: 'card' }, { date }, a), `card bill ${date}`)
+    }
+    for (const ym of ['2026-02', '2026-12', '2027-01', '2028-02']) assert.deepEqual(periodOf(ym, b), periodOf(ym, a), ym)
+  }
+  // named by its end, the period of the 1st carries the next month's name: the saved month names would stand for other dates
+  store.settings = { ...base, monthNaming: 'end' }
+  store.cards = [card]
+  const asked = monthChange({ cards: [one] })
+  assert.notEqual(asked, null)
+  assert.notEqual(asked!.before, asked!.after)
+  assert.equal(asked!.before.slice(7), asked!.after.slice(7), 'the same dates under another name')
+  store.cards = [one]
+  assert.notEqual(monthChange({ cards: [card] }), null)
+  assert.notEqual(monthChange({ cards: [] }), null)
   store.cards = []
   store.settings = { ...DEFAULT_SETTINGS }
 })
