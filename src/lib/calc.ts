@@ -130,6 +130,18 @@ export function planAt(sub: Subscription, changes: PlanChange[], ym: string, ctx
     .reduce<Subscription>((acc, c) => ({ ...acc, ...c.to }), { ...sub })
 }
 
+/**
+ * The plan in force on `date` (YYYY-MM-DD): every change whose effective date is that day or earlier, applied in order
+ * (spec 018 S-7). A charge is priced with this, by its own date; the monthly sums (the monthly cost, the subscription
+ * transfer, the allocation's subscription amount) keep `planAt`, by the month's name.
+ */
+export function planOn(sub: Subscription, changes: PlanChange[], date: string): Subscription {
+  return changes
+    .filter((c) => c.subId === sub.id && c.effective && c.effective <= date)
+    .sort((a, b) => (a.effective! < b.effective! ? -1 : 1))
+    .reduce<Subscription>((acc, c) => ({ ...acc, ...c.to }), { ...sub })
+}
+
 /** Settings and the foreign currencies together (spec 013 S-23): what the subscription sums take. */
 export const priced = (s: Settings, currencies: ForeignCurrency[] = []): Priced => ({ ...s, currencies })
 
@@ -230,8 +242,8 @@ export interface Payment {
 interface Seg { start: number; end: number; cycle: Cycle; bill: number; active: boolean }
 /**
  * The schedule's frame: the billing day, the one cycle ahead of a future anchor that may still be charged, and the cycle segments between plan-change months.
- * The charges are dates: their schedule and the plan of each charge go by the calendar month of the charge, whatever the
- * month basis is (spec 018 S-7 puts them on the charge date itself; only the monthly sums follow the basis, S-3).
+ * The charges are dates: their schedule goes by the calendar month of the charge, whatever the month basis is (only the
+ * monthly sums follow the basis, spec 018 S-3). The plan of each charge is the one in force on its date (`planOn`, S-7).
  */
 function frame(base: Subscription, changes: PlanChange[]) {
   const anchor = parseDate(base.nextDate)
@@ -304,12 +316,14 @@ export function nextPayment(base: Subscription, changes: PlanChange[], from: Dat
   return null
 }
 
+/** The charges from `from` over `days` days, the soonest first: each with the plan in force on its date and that plan's amount. */
 export function upcomingPayments(subs: Subscription[], changes: PlanChange[], s: Priced, from: Date, days: number): Payment[] {
   const end = new Date(from.getFullYear(), from.getMonth(), from.getDate() + days)
   const out: Payment[] = []
   for (const base of subs) {
     for (const d of paymentDates(base, changes, from, end)) {
-      const p = planAt(base, changes, ymOf(d))
+      // the plan in force on the charge's own date: a change dated after it in the same month does not price it (spec 018 S-7)
+      const p = planOn(base, changes, ymd(d))
       out.push({ date: d, sub: p, krw: chargeKrw(p, s), dday: Math.round((d.getTime() - from.getTime()) / DAY) })
     }
   }
@@ -359,10 +373,11 @@ export function paysAfter31(subs: Subscription[], changes: PlanChange[], s: Pric
   const end = dayPlus(from, 365)
   const out: LaterPayment[] = []
   for (const base of subs) {
-    const now = planAt(base, changes, ymOf(from))
+    // what it pays now: the plan in force today; each later charge: the plan in force on its date (spec 018 S-7)
+    const now = planOn(base, changes, ymd(from))
     for (const d of paymentDates(base, changes, start, end)) {
       if (d <= start) continue
-      const p = planAt(base, changes, ymOf(d))
+      const p = planOn(base, changes, ymd(d))
       const krw = chargeKrw(p, s)
       const yearly = p.cycle === 'yearly'
       const changed = p.plan !== now.plan || krw !== chargeKrw(now, s)
