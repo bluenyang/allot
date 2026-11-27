@@ -239,45 +239,57 @@ export interface Payment {
   dday: number
 }
 
+/** One stretch of the schedule with one plan: the dates `start` (included) to `end` (not included), as local-midnight times. */
 interface Seg { start: number; end: number; cycle: Cycle; bill: number; active: boolean }
-/**
- * The schedule's frame: the billing day, the one cycle ahead of a future anchor that may still be charged, and the cycle segments between plan-change months.
- * The charges are dates: their schedule goes by the calendar month of the charge, whatever the month basis is (only the
- * monthly sums follow the basis, spec 018 S-3). The plan of each charge is the one in force on its date (`planOn`, S-7).
- */
-function frame(base: Subscription, changes: PlanChange[]) {
-  const anchor = parseDate(base.nextDate)
-  const idx = (ym: string) => Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1
-  const ymAt = (i: number) => `${String(Math.floor(i / 12)).padStart(4, '0')}-${String((i % 12) + 1).padStart(2, '0')}`
-  const cuts = [...new Set(changes.filter((c) => c.subId === base.id && c.effective).map((c) => idx(c.effective!.slice(0, 7))))].sort((x, y) => x - y)
-  const segs: Seg[] = []
-  let bill = anchor.getMonth()
-  for (let i = 0; i <= cuts.length; i++) {
-    const start = i === 0 ? -Infinity : cuts[i - 1]!
-    // the plan is the same in every month of a segment: it only changes in a change month
-    const plan = i === 0 ? base : planAt(base, changes, ymAt(start))
-    if (i > 0 && plan.cycle === 'yearly' && segs[i - 1]!.cycle === 'monthly') bill = start % 12
-    segs.push({ start, end: i < cuts.length ? cuts[i]! : Infinity, cycle: plan.cycle, bill, active: plan.status === 'active' })
-  }
-  return { day: anchor.getDate(), segs, floor: addMonths(anchor, base.cycle === 'yearly' ? -12 : -1) }
-}
 const dateIn = (i: number, day: number) => {
   const y = Math.floor(i / 12)
   const m = i % 12
   return new Date(y, m, Math.min(day, new Date(y, m + 1, 0).getDate()))
 }
 const monthIdx = (d: Date) => d.getFullYear() * 12 + d.getMonth()
+/** The month of a segment edge; an open edge (±Infinity) stays open. */
+const edgeIdx = (t: number) => (Number.isFinite(t) ? monthIdx(new Date(t)) : t)
 const okDate = (base: Subscription) => /^\d{4}-\d{2}-\d{2}$/.test(base.nextDate)
+/**
+ * The schedule's frame: the billing day, the one cycle ahead of a future anchor that may still be charged, and the
+ * segments between the effective DATES of the plan changes — `[effective, next effective)`, each with the plan in force
+ * on its first day (`planOn`, spec 018 S-7). A billing date is charged by the segment that holds it: its cycle, its
+ * status. The charges are dates, whatever the month basis is (only the monthly sums follow the basis, S-3).
+ * A yearly segment's billing month is the anchor's month; after a change from monthly to yearly it is the month of the
+ * first billing date on or after that change's effective date.
+ */
+function frame(base: Subscription, changes: PlanChange[]) {
+  const anchor = parseDate(base.nextDate)
+  const day = anchor.getDate()
+  const cuts = [...new Set(changes.filter((c) => c.subId === base.id && c.effective).map((c) => c.effective!))].sort()
+  const segs: Seg[] = []
+  let bill = anchor.getMonth()
+  for (let i = 0; i <= cuts.length; i++) {
+    const from = i === 0 ? null : parseDate(cuts[i - 1]!)
+    // the plan is the same on every day of a segment: it only changes on an effective date
+    const plan = i === 0 ? base : planOn(base, changes, cuts[i - 1]!)
+    if (from && plan.cycle === 'yearly' && segs[i - 1]!.cycle === 'monthly') {
+      const m = monthIdx(from)
+      bill = (dateIn(m, day) < from ? m + 1 : m) % 12
+    }
+    segs.push({ start: from ? from.getTime() : -Infinity, end: i < cuts.length ? parseDate(cuts[i]!).getTime() : Infinity, cycle: plan.cycle, bill, active: plan.status === 'active' })
+  }
+  return { day, segs, floor: addMonths(anchor, base.cycle === 'yearly' ? -12 : -1) }
+}
 
 /**
  * The dates `base` is charged on within [from, end]. The schedule is fixed by the billing anchor
  * (`nextDate`) and the scheduled plan changes alone, never by the window asked for: the billing day
  * is the anchor's day, or the month's last day when the month is shorter (Jan 31 → Feb 28 → Mar 31).
- * The plan's cycle is a series of segments between change months. A monthly segment charges every
- * month; a yearly one once a year, in the billing month — the anchor's month, or the month a change
- * from monthly to yearly came in (that month is charged too). Only the months of the window are
- * visited, so an old anchor or a far window costs the same. Nothing before one cycle ahead of the
- * anchor is charged (the date the user entered is the next one), and a cancelled plan is not charged.
+ * The plan is a series of segments between the changes' effective dates, and each billing date goes by
+ * the segment that holds it (spec 018 S-7): a change dated after a month's billing date leaves that
+ * charge as it was, one dated on it or before it applies to it. A monthly segment charges every month;
+ * a yearly one once a year, in the billing month — the anchor's month, or the month of the first
+ * billing date on or after a change from monthly to yearly (that date is the first yearly charge).
+ * A cancelled segment is not charged: the billing dates from the cancellation's effective date on are
+ * gone, the earlier ones stay, and a plan that comes back is charged from its effective date on.
+ * Only the months of the window are visited, so an old anchor or a far window costs the same. Nothing
+ * before one cycle ahead of the anchor is charged (the date the user entered is the next one).
  */
 export function paymentDates(base: Subscription, changes: PlanChange[], from: Date, end: Date): Date[] {
   if (!okDate(base)) return []
@@ -288,10 +300,12 @@ export function paymentDates(base: Subscription, changes: PlanChange[], from: Da
   const out: Date[] = []
   for (const g of segs) {
     if (!g.active) continue
-    for (let i = Math.max(loI, g.start); i <= Math.min(hiI, g.end - 1); i++) {
+    // the segment's last month may hold a billing date before its end: visit it and let the dates decide
+    for (let i = Math.max(loI, edgeIdx(g.start)); i <= Math.min(hiI, edgeIdx(g.end)); i++) {
       if (g.cycle === 'yearly' && i % 12 !== g.bill) continue
       const d = dateIn(i, day)
-      if (d >= lo && d <= end) out.push(d)
+      const t = d.getTime()
+      if (d >= lo && d <= end && t >= g.start && t < g.end) out.push(d)
     }
   }
   return out
@@ -304,14 +318,16 @@ export function paymentDates(base: Subscription, changes: PlanChange[], from: Da
 export function nextPayment(base: Subscription, changes: PlanChange[], from: Date): Date | null {
   if (!okDate(base)) return null
   const { day, segs, floor } = frame(base, changes)
-  const lo = new Date(Math.max(from.getTime(), floor.getTime()))
-  const loI = monthIdx(lo)
+  const lo = Math.max(from.getTime(), floor.getTime())
   for (const g of segs) {
-    if (!g.active) continue
-    let i = Math.max(loI, g.start)
+    if (!g.active || lo >= g.end) continue
+    // the first billing date of this segment on or after `first`
+    const first = Math.max(lo, g.start)
+    let i = monthIdx(new Date(first))
     if (g.cycle === 'yearly') i += (((g.bill - i) % 12) + 12) % 12
-    if (dateIn(i, day) < lo) i += g.cycle === 'yearly' ? 12 : 1
-    if (i <= g.end - 1) return dateIn(i, day)
+    if (dateIn(i, day).getTime() < first) i += g.cycle === 'yearly' ? 12 : 1
+    const d = dateIn(i, day)
+    if (d.getTime() < g.end) return d
   }
   return null
 }
