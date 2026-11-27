@@ -1346,15 +1346,15 @@ test.describe.serial('W-7 how a subscription is paid', () => {
 
       // ── an account ──
       s = await openSub(page, name)
-      await payGroup(s).getByRole('button', { name: '계좌', exact: true }).click()
+      await payGroup(s).getByRole('button', { name: '통장', exact: true }).click()
       await choose(s.locator('#e-pay-acc'), acc2)
-      await expect(s.getByTestId('sub-pay-hint')).toHaveText('결제일마다 이 계좌에서 바로 빠져요.')
+      await expect(s.getByTestId('sub-pay-hint')).toHaveText('결제일마다 이 통장에서 바로 빠져요.')
       await saveSub(page, name)
       expect(await subOf(request, sid)).toMatchObject({ ...OLD, cardId: null, accountId: acc2 })
       await page.reload()
       await expect(listRow(page, name).locator('.paid')).toHaveText(acc2Name)
       s = await openSub(page, name)
-      await expect(pressed(payGroup(s))).toHaveText('계좌')
+      await expect(pressed(payGroup(s))).toHaveText('통장')
       await expect(s.locator('#e-pay-acc')).toHaveAttribute('data-value', acc2)
       // each charge leaves the account on the 5th: this month's only when the 5th is still to come (the record is today's)
       rows = await forecast(page, acc2Name)

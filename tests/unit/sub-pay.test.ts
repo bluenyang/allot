@@ -30,7 +30,7 @@ test('subscription body: a card, an account, null for either or both; never both
   const both = subBody.safeParse({ ...OLD, cardId: 'c1', accountId: 'a1' })
   assert.equal(both.success, false)
   assert.equal(both.error!.issues[0]!.message, 'payOneOf')
-  assert.equal(issueMessage('ko', both.error!.issues[0]), '구독의 결제 수단은 카드와 계좌 중 하나만 고를 수 있어요.')
+  assert.equal(issueMessage('ko', both.error!.issues[0]), '구독의 결제 수단은 카드와 통장 중 하나만 고를 수 있어요.')
   assert.equal(issueMessage('en', both.error!.issues[0]), 'A subscription is paid with a card or from an account, not both.')
   // W-7's report, spec 018 A-37: a body that names one of the two with a value clears the other in the row that is
   // written (the way of paying is one of the two), so a saved other one never makes the save a refusal

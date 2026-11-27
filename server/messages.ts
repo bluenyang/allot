@@ -38,7 +38,7 @@ const ko = {
   groupOnly: '매달 금액·비율·구간별 금액은 저축·투자 항목인 통장에만 둘 수 있어요.',
   bufferNeedsCard: '버퍼 사용은 결제 통장이 정해진 카드를 골라야 해요.',
   cardOnlyCard: '카드는 카드로 낸 지출에만 고를 수 있어요.',
-  payOneOf: '구독의 결제 수단은 카드와 계좌 중 하나만 고를 수 있어요.',
+  payOneOf: '구독의 결제 수단은 카드와 통장 중 하나만 고를 수 있어요.',
   refillOnlyBuffer: '채우기 시작 날짜는 버퍼 사용에만 있어요.',
   accountBufferInUse: '이 통장 버퍼를 쓰는 지출이 있어요. 그 지출을 먼저 바꾸거나 지우세요.',
   cardBufferInUse: '이 카드로 버퍼를 쓰는 지출이 있어요. 그 지출을 먼저 바꾸거나 지우세요.',
