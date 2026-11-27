@@ -117,7 +117,7 @@ test('paid from an account: each charge leaves that account on its own date', ()
   assert.deepEqual(off({}, [change('s1', '2026-12-05', { status: 'cancelled' })]), [20_000, 0, 0])
 })
 
-test('an account that takes the left over pays its subscription charges, though not its one-off card bills', () => {
+test('an account that takes the left over pays its subscription charges, and its one-off card bills like any paying account', () => {
   // 10,000 on the 5th with the left-over account's card, 5,000 on the 10th straight from it, and a card lump sum of
   // 40,000 billed on 12-14 with that card (counted in November: the pay of 11-25 pays it).
   // Transfer: 15,000 → 20,000. Left over: November 3,000,000 − 20,000 − 40,000 = 2,940,000; December 2,980,000.
@@ -128,9 +128,10 @@ test('an account that takes the left over pays its subscription charges, though 
   })
   assert.equal(monthMoney(st, '2026-11').dist.remainder, 2_940_000)
   assert.equal(monthMoney(st, '2026-12').dist.remainder, 2_980_000)
-  // November: in 2,940,000 (11-26); out 5,000 (11-10) + 10,000 (11-14, the charge of 10-05) = 15,000.
-  // December: in 2,980,000; out 5,000 + 10,000; the one-off's bill of 12-14 is off the left over already, so it does not leave again.
-  assert.deepEqual(rows(st, 'rest-acc', '2026-11', 2), [[2_940_000, 15_000, 2_925_000], [2_980_000, 15_000, 5_890_000]])
+  // November: in 2,940,000 + the 40,000 for the one-off's bill (11-26); out 5,000 (11-10) + 10,000 (11-14, the charge of 10-05) = 15,000.
+  // December: in 2,980,000; out 5,000 + 10,000 + the one-off's bill of 12-14 (review 3 F-1, spec 018 A-31: the card
+  // money comes in beside the left over and the bill leaves on its date; the end of December is what it was).
+  assert.deepEqual(rows(st, 'rest-acc', '2026-11', 2), [[2_980_000, 15_000, 2_965_000], [2_980_000, 55_000, 5_890_000]])
 })
 
 test('a card without a paying account moves nothing', () => {

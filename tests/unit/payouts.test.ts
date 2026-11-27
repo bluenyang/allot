@@ -183,19 +183,23 @@ test('one number on a pay and a card basis: the same three agree in every month'
   assert.deepEqual(project(pay, 'pay-acc', '2026-12', 1), [{ ym: '2026-12', inflow: 80_000, outflow: 100_000, end: 480_000 }])
 })
 
-test('an account that takes the left over: its card bills neither come in nor go out, the left over has them off already', () => {
+// Changed with review 3 F-1 (spec 018 S-6 as changed on 2026-11-27, A-31): up to then the bills of the left-over
+// account's card neither came in nor went out. The ends of the three months are what they were (7,190,000).
+test('an account that takes the left over is a paying account like the others: the card money comes in beside the left over and each bill leaves on its date', () => {
   // rest-acc takes the left over and pays c2: the installment's bills of 12-14 and 01-14 (40,000 each)
   const st = state({ balances: [bal('rest-acc', '2026-11-01', 0)] })
-  // November: left over 2,300,000 (40,000 of it already off for the bill of 12-14); December 2,410,000; January 3,000,000 − 20,000 − 500,000
+  // November: left over 2,300,000 (40,000 already off it for the bill of 12-14) + that 40,000; December 2,410,000 + 40,000
+  // (the bill of 01-14), the bill of 12-14 leaves; January 3,000,000 − 20,000 − 500,000, the bill of 01-14 leaves
   assert.deepEqual(project(st, 'rest-acc', '2026-11', 3), [
-    { ym: '2026-11', inflow: 2_300_000, outflow: 0, end: 2_300_000 },
-    { ym: '2026-12', inflow: 2_410_000, outflow: 0, end: 4_710_000 },
-    { ym: '2027-01', inflow: 2_480_000, outflow: 0, end: 7_190_000 },
+    { ym: '2026-11', inflow: 2_340_000, outflow: 0, end: 2_340_000 },
+    { ym: '2026-12', inflow: 2_450_000, outflow: 40_000, end: 4_750_000 },
+    { ym: '2027-01', inflow: 2_480_000, outflow: 40_000, end: 7_190_000 },
   ])
-  // the allocation table still names what the account's card takes that month
+  // the allocation table names what the account's card takes that month, and the accounts table's "this month" has it too
   assert.equal(monthMoney(st, '2026-11').dist.payouts.find((p) => p.accountId === 'rest-acc')!.card, 40_000)
-  assert.equal(accountMonthIn(st.accounts.find((a) => a.id === 'rest-acc')!, st, '2026-11'), 2_300_000)
-  // its buffer use is not off the left over twice: the refills come in and the bill goes out, as before (review 2 F-2)
+  assert.equal(monthMoney(st, '2026-11').dist.remainder, 2_300_000)
+  assert.equal(accountMonthIn(st.accounts.find((a) => a.id === 'rest-acc')!, st, '2026-11'), 2_340_000)
+  // its buffer use: the refills come in and the bill goes out, as before (review 2 F-2)
   const buf = spending('rbuf', { how: 'buffer', count: 1, cardId: 'c2', amount: 50_000, refillFrom: '2026-12-25', rounds: [round(1, '2026-12-25', 50_000)] })
   const withBuf = state({ spendings: [buf], balances: [bal('rest-acc', '2026-11-30', 0)] })
   // December: left over 3,000,000 − 20,000 − 500,000 − 50,000 = 2,430,000, + the refill 50,000; the bill of 12-14 leaves

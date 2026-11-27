@@ -674,9 +674,6 @@ export function itemSent(acc: Account, st: Pick<MonthState, 'phases' | 'targets'
   return g.target ? (g.rows.find((r) => r.account.id === acc.id)?.amount ?? 0) : 0
 }
 
-/** Does the remainder target send to this account? Its money is the remainder after the month's spendings (review 1 F-9). */
-export const takesRemainder = (acc: Account, targets: AllocationTarget[]) => targets.some((t) => t.kind === 'remainder' && t.accountId === acc.id)
-
 /** Targets whose money a linked account receives as a transfer: not the Savings / Investment totals, whose money goes to their items (review 1 F-9). */
 export const sendsToLinked = (t: AllocationTarget) => t.kind !== 'saving' && t.kind !== 'invest'
 
@@ -874,7 +871,7 @@ interface Move { date: string; amount: number }
  * The rounds are the ones of the month's outgoing list (`outgoOf`, spec 018 S-6), so the projection moves the same money
  * the left over and the allocation table count:
  * - a paying account gets, on the month's transfer day, what the month counts of its cards' rounds (`payouts[].card`),
- *   and each round leaves it on its own date;
+ *   and each round leaves it on its own date — the account that takes the remainder too;
  * - a buffer refill comes in on its date; the buffer use's bill leaves on the card's bill date;
  * - a round paid from the subscription account leaves the account linked to the subscriptions target on its date (the
  *   month's transfer already carries it);
@@ -895,10 +892,11 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
       if (t?.accountId === acc.id && sendsToLinked(t) && r.amount > 0) moves.push({ date: transfer, amount: r.amount })
     }
   }
-  // An account that takes the remainder gets it after the month's spendings: its ordinary card bills are taken off it
-  // already, so they neither come in nor go out. A buffer use is not: its bill leaves the buffer and its refills come
-  // back (review 2 F-2). A subscription-account round is not either: it is in the transfer, not off the remainder.
-  const remainder = takesRemainder(acc, st.targets)
+  // An account that takes the remainder is a paying account like any other (spec 018 S-6 as changed on 2026-11-27,
+  // review 3 F-1): the remainder it gets is what is left after the month's spendings, so the money for its cards' bills
+  // comes in beside it on the transfer day and each bill leaves on its own date. (Up to rc.1's first cut the bills
+  // neither came in nor went out; with S-5 a bill counts in an earlier month than the one that holds its date, so a
+  // balance record between that month's transfer and the bill then lost the bill.)
   let cardIn = 0
   for (const o of outgoOf(st, ctx)) {
     if (o.accountId !== acc.id) continue
@@ -907,7 +905,7 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
       if (dated) moves.push({ date: o.round.date, amount: o.amount })
     } else if (o.from === 'subs') {
       if (dated) moves.push({ date: o.round.date, amount: -o.amount })
-    } else if (!remainder) {
+    } else {
       // what the month counts comes in with its transfer (a card bill: the month of the pay date before it); the round leaves on its date
       if (o.ym === ym) cardIn += o.amount
       if (dated) moves.push({ date: o.round.date, amount: -o.amount })
@@ -934,9 +932,9 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
  * - paid from an account: out of that account on the charge date;
  * - paid with a card: out of the card's paying account on the card's bill date for the charge date (`cardBillDate`: the
  *   first billing date after the usage period that holds it, S-2); a card without a paying account moves nothing.
- * A movement belongs to the month whose period holds its date. An account that takes the left over pays them too:
- * subscriptions are never off the left over (the subscription transfer funds them), unlike its one-off card bills.
- * Nothing comes in for them here: the money is the subscription transfer, wherever its target sends it.
+ * A movement belongs to the month whose period holds its date. An account that takes the left over pays them too.
+ * Nothing comes in for them here: subscriptions are never off the left over, their money is the subscription transfer,
+ * wherever its target sends it.
  */
 function subCharges(acc: Account, st: AccountState, ym: string, off: ReadonlySet<string>, ctx: MonthCtx): Move[] {
   const moves: Move[] = []

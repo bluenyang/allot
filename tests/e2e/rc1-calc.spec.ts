@@ -1026,6 +1026,8 @@ test.describe.serial('W-5 the month a card bill counts in and the paying account
       expect(await amountOf(accRow.locator('td.amt'))).toBe(TOTAL)
       await accRow.click()
       const rows = await forecastOf(page, accName)
+      // the note under the table: the account that takes the left over is no exception any more (review 3 F-1)
+      await expect(sheet(page, accName).getByTestId('account-forecast')).toContainText('이 통장에서 내는 카드값은 그 달 분배일에 들어오고 청구일에 나가요(여유를 받는 통장도 같아요: 여유와 따로 들어와요)')
       // this month: the card rounds come in with the transfer of the 1st and the refill on the 1st; nothing leaves yet
       expect(rows[0]).toEqual({ ym: c.ym, inflow: TOTAL, outflow: 0, end: 1_000_000 + TOTAL })
       // next month: 30,000 in for the second bill; out go the two bills of the 1st (153,000) and the buffer use's own bill (20,000)

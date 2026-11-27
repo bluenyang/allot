@@ -1,6 +1,6 @@
 // The accounts table of 월급 분배 (spec 013 S-5, S-8, S-13): pure helpers, no store, so the unit tests can
 // call them. What goes into an account this month mirrors the inflows of the projection (calc.ts movesIn).
-import { ctxOf, itemSent, monthMoney, sendsToLinked, spendingIn, takesRemainder, type AccountState, type Distribution } from './calc'
+import { ctxOf, itemSent, monthMoney, sendsToLinked, spendingIn, type AccountState, type Distribution } from './calc'
 import type { Account, AllocationTarget } from '../data/types'
 
 /** The targets whose money goes to account `accountId` (shown read-only on the account). */
@@ -20,8 +20,8 @@ export function unlinkedTargets(targets: AllocationTarget[], accounts: Pick<Acco
  * The money sent into account `acc` in month `ym` (the 이번 달 column): a Savings / Investment item gets its
  * item amount; any other account the month's amounts of the targets linked to it (positive ones, as the
  * projection counts them). Both also get what the month sends through the cards the account pays: the month's buffer
- * refills (S-8) and, unless the account takes the left over (its card bills are off it already), the card rounds the
- * month counts (spec 018 S-6) — the card and refill parts of the allocation table's paying-account block.
+ * refills (S-8) and the card rounds the month counts (spec 018 S-6) — the card and refill parts of the allocation
+ * table's paying-account block, for the account that takes the left over too (review 3 F-1).
  * `dist` may be passed when the caller has the month's distribution already.
  * `ym` is a month of the state's basis (spec 018 S-3): a refill counts in the month whose period holds its date, a
  * card bill in the month of the last pay date before it (S-5).
@@ -39,7 +39,7 @@ export function accountMonthIn(acc: Account, st: AccountState, ym: string, dist?
     }
   }
   const paid = spendingIn(st.spendings ?? [], ym, ctx, st).byAccount.find((x) => x.accountId === acc.id)
-  if (paid) sum += paid.refill + (takesRemainder(acc, st.targets) ? 0 : paid.card)
+  if (paid) sum += paid.refill + paid.card
   return sum
 }
 
