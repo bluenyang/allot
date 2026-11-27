@@ -61,12 +61,16 @@ only (below).
   pick, or one actual pay date to the day before the next. A period over two months is named after the month it starts
   in when its first day is the 15th or earlier, else the month it ends in — or pick which. The home, income,
   allocation, spending, subscriptions, savings and investment screens, the notices, the CSV files and the MCP tools
-  follow it and show the period next to the month; the event calendar, the yearly contribution limit (a calendar year)
-  and the change history's period do not. Values saved by a month's name (phases, month adjustments, money received,
-  from and stop months) keep their names: the dates a name stands for change, and a confirmation shows this month
-  before and after — also when the pay day or its rule, the basis card's first day of use, or the basis card itself
-  changes it. The pay, transfer and billing dates of a month are the occurrence of each day in its period, moved by
-  their rule afterwards, so a moved date can lie a day or two outside the period.
+  follow it; the event calendar, the yearly contribution limit (a calendar year) and the change history's period do
+  not. With a pay basis, or a card basis whose card has a first day of use, a month's period is shown next to it on
+  the home and income pages, in 월급 분배's 월별 시뮬레이션, on 지출's 이번 달 반영, next to the subscriptions' base month and
+  on each row of an account's balance projection; the notices, 대기 중인 변경, the savings and investment screens and the
+  CSV files name the month without it. The monthly MCP answers always carry it, as `period`. Values saved by a month's
+  name (phases, month adjustments, money received, from and stop months) keep their names: the dates a name stands for
+  change, and a confirmation shows this month before and after — also when the pay day or its rule, the basis card's
+  first day of use, or the basis card itself changes it. The pay, transfer and billing dates of a month are the
+  occurrence of each day in its period, moved by their rule afterwards, so a moved date can lie a day or two outside
+  the period.
 - **Transfers to the paying accounts** (월급 분배 › 월별 시뮬레이션 › 대금 계좌 이체): for each account a card or the
   subscriptions are paid from, the subscription transfer, the card spending the month counts, the buffer refills and
   their sum. The left over, 지출's 이번 달 반영 and the account's balance projection read the same list. A card round paid
