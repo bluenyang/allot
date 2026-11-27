@@ -145,10 +145,26 @@ const fields = (c: Change) => {
     .filter((f) => c.op !== 'update' || JSON.stringify(f.b) !== JSON.stringify(f.a))
 }
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v))
-/** A field's value: an allocation target by its name (a month adjustment's or a phase amount's target; review rc2-1 F-3), else as stored. */
+/** A card's or an account's name, also when it has been deleted since (taken from the loaded history, as subLabel does); else its id. */
+const linkName = (table: 'card' | 'bank_account', id: string) => {
+  const live = (table === 'card' ? store.cards : store.accounts).find((x) => x.id === id)
+  if (live) return live.name
+  for (const set of sets.value) for (const ch of set.changes) {
+    const r = ch.tableName === table && ch.rowKey.id === id ? ch.after ?? ch.before : null
+    if (typeof r?.name === 'string') return r.name
+  }
+  return id
+}
+/**
+ * A field's value: an allocation target by its name (a month adjustment's or a phase amount's target; review rc2-1 F-3),
+ * a card or an account by its name (a subscription's way of paying, a spending's card, the settings' basis card, the
+ * account of a card or a target; spec 018 S-8), else as stored.
+ */
 const valueOf = (k: string, v: unknown, table?: string) =>
   table === 'income_receipt' && k === 'itemId' ? incomeLabel(v) // the income's name; null = the salary (review 3 F-1)
-  : k === 'targetId' && typeof v === 'string' ? targetName(v) : show(v)
+  : k === 'targetId' && typeof v === 'string' ? targetName(v)
+  : (k === 'cardId' || k === 'monthBasisCardId') && typeof v === 'string' && v ? linkName('card', v)
+  : k === 'accountId' && typeof v === 'string' && v ? linkName('bank_account', v) : show(v)
 const isAi = (s: ChangeSet) => s.actorKind === 'api_key' || s.actorKind === 'oauth_app'
 const actorOf = (s: ChangeSet) => (isAi(s) ? (s.actorLabel ? t('history.byKey', { key: s.actorLabel }) : t('history.aiOnly')) : s.actorKind === 'system' ? t('currency.system') : t('history.you'))
 

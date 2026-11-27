@@ -1092,6 +1092,12 @@ test.describe.serial('W-7 how a subscription is paid', () => {
       s = await openSub(page, name)
       await expect(pressed(payGroup(s))).toHaveText('카드')
       await expect(s.locator('#e-pay-card')).toHaveAttribute('data-value', card)
+      // the change history words the card by its name, not its id (the newest set is that save)
+      await page.goto('/history')
+      await page.locator('button.disc').first().click()
+      const cardField = page.locator('.det').first().locator('tbody tr').filter({ has: page.locator('th', { hasText: /^카드$/ }) })
+      await expect(cardField.locator('td.bef')).toHaveText('—')
+      await expect(cardField.locator('td.aft')).toHaveText(cardName)
       // the forecast of the card's paying account: the charge of this month's 5th is billed on the 14th of next month,
       // the one of next month's 5th on the 14th of the month after
       let rows = await forecast(page, accName)
@@ -1139,6 +1145,12 @@ test.describe.serial('W-7 how a subscription is paid', () => {
       // deleting the card on its screen's API unlinks the subscription; the list follows after a reload
       expect((await api(request, 'DELETE', `/api/cards/${loose}`)).status).toBe(204)
       expect(await subOf(request, sid)).toMatchObject({ ...OLD, cardId: null, accountId: null })
+      // the history of that delete names the card the subscription lost, though the card is gone
+      await page.goto('/history')
+      await page.locator('button.disc').first().click()
+      const lost = page.locator('.det').first().locator('.chg-row', { hasText: name }).locator('tbody tr').filter({ has: page.locator('th', { hasText: /^카드$/ }) })
+      await expect(lost.locator('td.bef')).toHaveText(`${cardName}-loose`)
+      await expect(lost.locator('td.aft')).toHaveText('—')
     } finally {
       for (const [path, id] of made) await api(request, 'DELETE', `${path}/${id}`)
       expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
