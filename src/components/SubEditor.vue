@@ -2,6 +2,7 @@
 // 구독 추가·수정 (spec 010 S-7): two steps, 기본 정보 and 결제. Edit mode ends step 2 with a box for
 // "해지로 바꾸기" and 구독 삭제 (asks first). Every change goes through the API (useEditor); the page
 // closes the editor when `close` is emitted. The amount takes everything a number field took (S-10).
+// Step 1 also asks how it is paid (spec 018 S-8): 없음, a card or an account. It is apart from the payment path of step 2.
 import { computed, ref, watch } from 'vue'
 import { t } from '../i18n'
 import EditSheet from './EditSheet.vue'
@@ -31,7 +32,7 @@ const CATS: Category[] = [...new Set<Category>([...CATEGORY_IDS, 'other'])]
 
 const blank = (): Subscription => ({
   id: '', name: '', category: 'tool', plan: '', amount: 0, currency: 'KRW', vat: 0, cycle: 'monthly',
-  status: 'active', nextDate: '', path: 'direct', verified: false, note: '',
+  status: 'active', nextDate: '', path: 'direct', verified: false, note: '', cardId: null, accountId: null,
 })
 function validate(s: Subscription) {
   if (!s.name.trim()) { step.value = 0; return t('subscriptions.needName') }
@@ -56,6 +57,34 @@ const cycleOpts = computed(() => (['monthly', 'yearly'] as const).map((id) => ({
 const currencyOpts = computed(() => currencyCodes(store.currencies, props.initial?.currency).map((id) => ({ id, label: id })))
 const isNew = !props.initial
 
+// ---------- how it is paid (spec 018 S-8) ----------
+// 없음 / 카드 / 계좌, then one of the user's cards or accounts. A saved card or account that is gone from the lists stays
+// selected (Select keeps a stored value). Picking 카드 or 계좌 with nothing to pick, or without picking, saves 없음.
+type PayKind = 'none' | 'card' | 'account'
+const payKind = ref<PayKind>(edit.value?.cardId ? 'card' : edit.value?.accountId ? 'account' : 'none')
+const payCard = ref(edit.value?.cardId ?? '')
+const payAcc = ref(edit.value?.accountId ?? '')
+const payKindOpts = computed(() => (['none', 'card', 'account'] as const).map((id) => ({ id, label: t(`subscriptions.pay.${id}`) })))
+const accName = (id: string | null | undefined) => (id ? store.accounts.find((a) => a.id === id)?.name ?? null : null)
+const payCardOpts = computed(() => store.cards.map((c) => {
+  const card = c.name + (c.last4 ? ` ${c.last4}` : '')
+  const account = accName(c.accountId)
+  return { value: c.id, label: account ? t('subscriptions.pay.cardOpt', { card, account }) : t('subscriptions.pay.cardOptNone', { card }) }
+}))
+const payAccOpts = computed(() => store.accounts.map((a) => ({ value: a.id, label: a.name })))
+// moving to 카드 or 계좌 picks the first one, so the choice is never empty while there is something to choose
+watch(payKind, (k) => {
+  if (k === 'card' && !payCard.value) payCard.value = store.cards[0]?.id ?? ''
+  if (k === 'account' && !payAcc.value) payAcc.value = store.accounts[0]?.id ?? ''
+})
+const payHint = computed(() => {
+  if (payKind.value === 'account') return t(store.accounts.length ? 'subscriptions.pay.hintAccount' : 'subscriptions.pay.noAccounts')
+  if (payKind.value === 'none') return t('subscriptions.pay.hintNone')
+  if (!store.cards.length && !payCard.value) return t('subscriptions.pay.noCards')
+  const c = store.cards.find((x) => x.id === payCard.value)
+  return t(c && !accName(c.accountId) ? 'subscriptions.pay.hintCardNoAccount' : 'subscriptions.pay.hintCard')
+})
+
 // The model of an amount field is a number, or '' while it is empty.
 const amount = computed({
   get: () => edit.value!.amount as number | '',
@@ -79,6 +108,9 @@ function save() {
   if (!s) return
   if (s.currency === 'KRW') s.vat = 0
   else if ((s.vat as unknown) === '') s.vat = 0
+  // one of the two, or neither: both keys are always sent, so the server never keeps an old one next to the new one
+  s.cardId = payKind.value === 'card' && payCard.value ? payCard.value : null
+  s.accountId = payKind.value === 'account' && payAcc.value ? payAcc.value : null
   void saveDraft()
 }
 
@@ -140,6 +172,13 @@ async function confirmDelete() { await remove() }
         <div class="field">
           <span id="e-st-l" class="flabel">{{ t('subscriptions.status') }}</span>
           <Seg v-model="edit.status" :options="statusOpts" labelledby="e-st-l" />
+        </div>
+        <div class="field" data-testid="sub-pay">
+          <div class="lrow"><span id="e-pay-l" class="flabel">{{ t('subscriptions.pay.label') }}</span><Tip :text="t('subscriptions.pay.tip')" /></div>
+          <Seg v-model="payKind" :options="payKindOpts" labelledby="e-pay-l" />
+          <Select v-if="payKind === 'card' && (payCardOpts.length || payCard)" id="e-pay-card" v-model="payCard" :options="payCardOpts" :aria-label="t('subscriptions.pay.pickCard')" />
+          <Select v-else-if="payKind === 'account' && (payAccOpts.length || payAcc)" id="e-pay-acc" v-model="payAcc" :options="payAccOpts" :aria-label="t('subscriptions.pay.pickAccount')" />
+          <span class="hint" data-testid="sub-pay-hint">{{ payHint }}</span>
         </div>
       </template>
 

@@ -5,11 +5,12 @@
 // W-5: the month a card bill counts in and the transfers to the paying accounts (월급 분배 › 월별 시뮬레이션 › 대금 계좌 이체): the
 // block, 지출's reflection strip and the account sheet's forecast show the same money.
 // W-6: a charge uses the plan in force on its own date (현황 › 결제 예정), and the plan change editor's date hint says so.
+// W-7: how a subscription is paid (구독 › the editor's 결제 수단, the list, and the account sheet's forecast).
 // Every row made here carries the run mark and is removed by id in `finally`; the settings the tests change are put back.
 // It changes the settings, so it runs only on a throwaway server: the test server (:15174) or the API of
 // scripts/test-server/disposable.sh (:15184, started with STATIC_DIR=dist so it serves the built screens).
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { MARK as RUN, choose, menu, readDate, saveSheet, sheet } from './helpers'
+import { MARK as RUN, choose, fillDate, menu, readDate, saveSheet, sheet } from './helpers'
 
 const THROWAWAY = ['http://127.0.0.1:15174', 'http://127.0.0.1:15184']
 if (!THROWAWAY.includes(process.env.BASE ?? '')) throw new Error(`rc1-calc.spec runs only against ${THROWAWAY.join(' or ')} (BASE=${process.env.BASE ?? 'unset'})`)
@@ -1009,6 +1010,196 @@ test.describe.serial('W-6 a charge uses the plan in force on its own date', () =
       await sheet(page, 'Schedule plan change').getByRole('button', { name: 'Cancel', exact: true }).click()
     } finally {
       for (const id of subs) await api(request, 'DELETE', `/api/subscriptions/${id}`)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+})
+
+test.describe.serial('W-7 how a subscription is paid', () => {
+  type SubRow = Record<string, unknown> & { id: string; name: string; cardId: string | null; accountId: string | null }
+  const subOf = async (request: APIRequestContext, id: string) => ((await api(request, 'GET', '/api/state')).json as { subscriptions: SubRow[] }).subscriptions.find((x) => x.id === id)!
+  const payGroup = (s: Locator, name = '결제 수단') => s.getByRole('group', { name, exact: true })
+  const pressed = (g: Locator) => g.locator('button[aria-pressed="true"]')
+  const listRow = (page: Page, name: string) => page.locator('table.subs-t tbody tr', { hasText: name })
+  async function openSub(page: Page, name: string) {
+    await page.goto('/spend/subs')
+    await listRow(page, name).getByRole('button', { name: `${name} 수정`, exact: true }).click()
+    const s = sheet(page, `구독 수정 · ${name}`)
+    await expect(payGroup(s)).toBeVisible()
+    return s
+  }
+  async function saveSub(page: Page, name: string) {
+    await sheet(page, `구독 수정 · ${name}`).getByRole('button', { name: '다음', exact: true }).click()
+    await saveSheet(page, `구독 수정 · ${name}`)
+  }
+  async function forecast(page: Page, account: string) {
+    await page.goto('/pay')
+    await page.getByRole('tab', { name: '통장·생활비·설정' }).click()
+    await page.getByTestId('accounts-table').locator('tbody tr', { hasText: account }).click()
+    return forecastOf(page, account)
+  }
+
+  test('(S-8, S-9, V-6) 결제 수단: a card is set in the editor and read back, then an account, then 없음; the account sheet\'s forecast takes the charges out', async ({ page, request }) => {
+    const st0 = (await api(request, 'GET', '/api/state')).json as State & { preferences: Record<string, unknown> }
+    const s0 = st0.settings
+    const prefs = st0.preferences
+    const now = seoulToday()
+    const today = iso(now)
+    // the date entered is the 5th of next month, so the 5th of this month is a charge too (one cycle before it)
+    const next5 = iso(new Date(now.getFullYear(), now.getMonth() + 1, 5))
+    const [name, cardName, accName, acc2Name] = [`${MARK}-w7-sub`, `${MARK}-w7-card`, `${MARK}-w7-accA`, `${MARK}-w7-accB`]
+    const made: [string, string][] = []
+    const mk = async (path: string, body: unknown) => {
+      const r = await api(request, 'POST', path, body)
+      expect(r.status, JSON.stringify(r.json)).toBe(201)
+      made.unshift([path, (r.json as { id: string }).id])
+      return (r.json as { id: string }).id
+    }
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      // calendar months, no date moves, card billing day 14
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, billingDay: 14, payShift: 'none', transferShift: 'none', billingShift: 'none', monthBasis: 'calendar', monthBasisCardId: null, monthNaming: 'auto' })).status).toBe(200)
+      const acc = await mk('/api/accounts', { name: accName, role: '', inflow: '', outflow: '' })
+      const acc2 = await mk('/api/accounts', { name: acc2Name, role: '', inflow: '', outflow: '' })
+      for (const accountId of [acc, acc2]) await mk('/api/balances', { accountId, date: today, amount: 1_000_000, note: '' })
+      const card = await mk('/api/cards', { name: cardName, last4: '', accountId: acc, billingDay: null })
+      // saved the way 0.1.9 saved it: no way of paying
+      const OLD = { name, category: 'content', plan: '기본요금\n둘째 줄', amount: 12_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: next5, path: 'google', verified: true, note: '메모 그대로' }
+      const sid = await mk('/api/subscriptions', OLD)
+      expect(await subOf(request, sid)).toMatchObject({ cardId: null, accountId: null })
+
+      // ── the old value: 없음 is shown, and a save that does not touch it keeps every field as it was ──
+      let s = await openSub(page, name)
+      await expect(pressed(payGroup(s))).toHaveText('없음')
+      await expect(s.locator('#e-pay-card, #e-pay-acc')).toHaveCount(0)
+      await expect(s.getByTestId('sub-pay-hint')).toHaveText('고르지 않으면 어느 통장의 잔액 예상에서도 빠지지 않아요.')
+      await saveSub(page, name)
+      expect(await subOf(request, sid)).toMatchObject({ ...OLD, cardId: null, accountId: null })
+      await expect(listRow(page, name).locator('.paid')).toHaveCount(0)
+
+      // ── a card ──
+      s = await openSub(page, name)
+      await payGroup(s).getByRole('button', { name: '카드', exact: true }).click()
+      await choose(s.locator('#e-pay-card'), card)
+      await expect(s.locator('#e-pay-card')).toContainText(`${cardName} · ${accName}에서 결제`)
+      await expect(s.getByTestId('sub-pay-hint')).toHaveText('결제한 날이 든 이용 기간이 끝난 뒤의 카드 결제일에, 이 카드의 결제 통장에서 빠져요.')
+      await saveSub(page, name)
+      // every other field is stored as before; the card is saved and the account stays empty
+      expect(await subOf(request, sid)).toMatchObject({ ...OLD, cardId: card, accountId: null })
+      await page.reload()
+      await expect(listRow(page, name).locator('.paid')).toHaveText(cardName)
+      await expect(listRow(page, name)).toContainText('Google Play')
+      s = await openSub(page, name)
+      await expect(pressed(payGroup(s))).toHaveText('카드')
+      await expect(s.locator('#e-pay-card')).toHaveAttribute('data-value', card)
+      // the forecast of the card's paying account: the charge of this month's 5th is billed on the 14th of next month,
+      // the one of next month's 5th on the 14th of the month after
+      let rows = await forecast(page, accName)
+      expect(rows.slice(0, 3).map((r) => r.outflow)).toEqual([0, 12_000, 12_000])
+      expect(rows.slice(0, 3).map((r) => r.end)).toEqual([1_000_000, 988_000, 976_000])
+      expect((await forecast(page, acc2Name)).slice(0, 3).map((r) => r.outflow)).toEqual([0, 0, 0])
+
+      // ── an account ──
+      s = await openSub(page, name)
+      await payGroup(s).getByRole('button', { name: '계좌', exact: true }).click()
+      await choose(s.locator('#e-pay-acc'), acc2)
+      await expect(s.getByTestId('sub-pay-hint')).toHaveText('결제일마다 이 계좌에서 바로 빠져요.')
+      await saveSub(page, name)
+      expect(await subOf(request, sid)).toMatchObject({ ...OLD, cardId: null, accountId: acc2 })
+      await page.reload()
+      await expect(listRow(page, name).locator('.paid')).toHaveText(acc2Name)
+      s = await openSub(page, name)
+      await expect(pressed(payGroup(s))).toHaveText('계좌')
+      await expect(s.locator('#e-pay-acc')).toHaveAttribute('data-value', acc2)
+      // each charge leaves the account on the 5th: this month's only when the 5th is still to come (the record is today's)
+      rows = await forecast(page, acc2Name)
+      expect(rows.slice(0, 3).map((r) => r.outflow)).toEqual([now.getDate() < 5 ? 12_000 : 0, 12_000, 12_000])
+      expect((await forecast(page, accName)).slice(0, 3).map((r) => r.outflow)).toEqual([0, 0, 0])
+
+      // ── back to 없음 ──
+      s = await openSub(page, name)
+      await payGroup(s).getByRole('button', { name: '없음', exact: true }).click()
+      await expect(s.locator('#e-pay-card, #e-pay-acc')).toHaveCount(0)
+      await saveSub(page, name)
+      expect(await subOf(request, sid)).toMatchObject({ ...OLD, cardId: null, accountId: null })
+      await page.reload()
+      await expect(listRow(page, name)).toBeVisible()
+      await expect(listRow(page, name).locator('.paid')).toHaveCount(0)
+      expect((await forecast(page, acc2Name)).slice(0, 3).map((r) => r.outflow)).toEqual([0, 0, 0])
+
+      // ── a card without a paying account may be chosen; the editor says what that means ──
+      const loose = await mk('/api/cards', { name: `${cardName}-loose`, last4: '', accountId: null, billingDay: null })
+      s = await openSub(page, name)
+      await payGroup(s).getByRole('button', { name: '카드', exact: true }).click()
+      await choose(s.locator('#e-pay-card'), loose)
+      await expect(s.locator('#e-pay-card')).toContainText(`${cardName}-loose · 결제 통장 없음`)
+      await expect(s.getByTestId('sub-pay-hint')).toContainText('이 카드에는 결제 통장이 없어서 잔액 예상에서 빠지지 않아요.')
+      await saveSub(page, name)
+      expect(await subOf(request, sid)).toMatchObject({ cardId: loose, accountId: null })
+      // deleting the card on its screen's API unlinks the subscription; the list follows after a reload
+      expect((await api(request, 'DELETE', `/api/cards/${loose}`)).status).toBe(204)
+      expect(await subOf(request, sid)).toMatchObject({ ...OLD, cardId: null, accountId: null })
+    } finally {
+      for (const [path, id] of made) await api(request, 'DELETE', `${path}/${id}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
+  test('(S-8, V-6) 결제 수단 on a new subscription, on a phone and in English', async ({ page, request }) => {
+    const st0 = (await api(request, 'GET', '/api/state')).json as State & { preferences: Record<string, unknown> }
+    const prefs = st0.preferences
+    const [name, cardName, accName] = [`${MARK}-w7-new`, `${MARK}-w7-card2`, `${MARK}-w7-accC`]
+    const made: [string, string][] = []
+    const fits = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      const acc = (await api(request, 'POST', '/api/accounts', { name: accName, role: '', inflow: '', outflow: '' })).json as { id: string }
+      made.unshift(['/api/accounts', acc.id])
+      const card = (await api(request, 'POST', '/api/cards', { name: cardName, last4: '1234', accountId: acc.id, billingDay: null })).json as { id: string }
+      made.unshift(['/api/cards', card.id])
+
+      // a new subscription: 없음 until something is picked; picked here, it is saved with the rest
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto('/spend/subs?add')
+      const s = sheet(page, '구독 추가')
+      await expect(pressed(payGroup(s))).toHaveText('없음')
+      await s.getByLabel('서비스 이름').fill(name)
+      await payGroup(s).getByRole('button', { name: '카드', exact: true }).click()
+      await choose(s.locator('#e-pay-card'), card.id)
+      await expect(s.locator('#e-pay-card')).toContainText(`${cardName} 1234 · ${accName}에서 결제`)
+      expect(await fits()).toBe(true)
+      await s.getByRole('button', { name: '다음', exact: true }).click()
+      await s.getByLabel('금액', { exact: true }).fill('3300')
+      await fillDate(s.getByRole('group', { name: '다음 결제일' }), '2031-02-10')
+      await saveSheet(page, '구독 추가')
+      const saved = ((await api(request, 'GET', '/api/state')).json as { subscriptions: SubRow[] }).subscriptions.find((x) => x.name === name)!
+      made.unshift(['/api/subscriptions', saved.id])
+      expect(saved).toMatchObject({ cardId: card.id, accountId: null, amount: 3300, nextDate: '2031-02-10', path: 'direct' })
+      // the phone list names the card after the payment path
+      await page.reload()
+      await expect(page.locator('ul.mlist li', { hasText: name }).locator('.paid')).toHaveText(cardName)
+      expect(await fits()).toBe(true)
+
+      // English
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'en' })).status).toBe(200)
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await page.goto('/spend/subs')
+      await listRow(page, name).getByRole('button', { name: `Edit ${name}`, exact: true }).click()
+      const e = sheet(page, `Edit subscription · ${name}`)
+      await expect(payGroup(e, 'Paid with').getByRole('button')).toHaveText(['None', 'Card', 'Account'])
+      await expect(pressed(payGroup(e, 'Paid with'))).toHaveText('Card')
+      await expect(e.locator('#e-pay-card')).toContainText(`${cardName} 1234 · paid from ${accName}`)
+      await expect(e.getByTestId('sub-pay-hint')).toHaveText('Each charge leaves this card\'s paying account on the card\'s billing date after the usage period that holds the charge.')
+      await payGroup(e, 'Paid with').getByRole('button', { name: 'Account', exact: true }).click()
+      await expect(e.getByTestId('sub-pay-hint')).toHaveText('Each charge leaves this account on its date.')
+      await payGroup(e, 'Paid with').getByRole('button', { name: 'None', exact: true }).click()
+      await expect(e.getByTestId('sub-pay-hint')).toHaveText('Without one, no account\'s balance forecast takes its charges out.')
+      await e.getByRole('button', { name: 'Cancel', exact: true }).click()
+      // cancelled: nothing was saved
+      expect(await subOf(request, saved.id)).toMatchObject({ cardId: card.id, accountId: null })
+    } finally {
+      for (const [path, id] of made) await api(request, 'DELETE', `${path}/${id}`)
       await api(request, 'PUT', '/api/preferences', prefs)
     }
   })

@@ -88,6 +88,8 @@ const receipt = (r: (typeof rows.value)[number]) => r.p.status !== 'active'
   : r.p.verified ? { cls: 'ok', text: t('subscriptions.verified') } : { cls: 'warn', text: t('subscriptions.unverified') }
 const chargeText = (r: (typeof rows.value)[number]) => (r.p.status === 'company' ? t('subscriptions.companyPays') : charge(r.p))
 const pathText = (r: (typeof rows.value)[number]) => (r.p.status === 'company' ? t('subscriptions.company') : pathLabel(r.p.path))
+/** The card or the account a subscription is paid with (spec 018 S-8), by name; '' when it does not say (or the row it names is gone). */
+const paidWith = (s: Subscription) => (s.cardId ? store.cards.find((c) => c.id === s.cardId)?.name : s.accountId ? store.accounts.find((a) => a.id === s.accountId)?.name : '') ?? ''
 const subsName = computed(() => store.targets.find((x) => x.kind === 'subscriptions')?.name ?? t('subscriptions.transferName'))
 const remainderName = computed(() => store.targets.find((x) => x.kind === 'remainder')?.name ?? '')
 
@@ -274,7 +276,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
                   <td class="n mono cell2">{{ chargeText(r) }}</td>
                   <td class="n amt">{{ r.p.status === 'active' ? fmtMoney(r.monthly) : '—' }}</td>
                   <td class="mono">{{ r.next ? fmtDate(r.next) : '—' }}</td>
-                  <td class="c cell2">{{ pathText(r) }}</td>
+                  <td class="c cell2">{{ pathText(r) }}<small v-if="paidWith(r.base)" class="hint paid">{{ paidWith(r.base) }}</small></td>
                   <td class="c"><span class="pill" :class="receipt(r).cls">{{ receipt(r).text }}</span></td>
                   <td class="n"><button class="btn sm ghost" type="button" :aria-label="t('common.editLabel', { name: r.p.name })" @click="openSub(r.base)">{{ t('common.edit') }}</button></td>
                 </tr>
@@ -285,7 +287,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
           <ul class="mlist">
             <li v-for="r in shown" :key="r.base.id" class="mcard" :class="{ off: r.p.status === 'cancelled' }">
               <div class="m1"><span class="m-name"><b>{{ r.p.name }}</b> <small class="hint">{{ firstLine(r.p.plan) || '—' }}</small></span><b class="num m-amt">{{ r.p.status === 'active' ? fmtMoney(r.monthly) : '—' }}</b></div>
-              <div class="m2"><span>{{ catLabel(r.p.category) }} · {{ cycleLabel(r.p.cycle) }} · {{ pathText(r) }}</span><span class="pill" :class="receipt(r).cls">{{ receipt(r).text }}</span></div>
+              <div class="m2"><span>{{ catLabel(r.p.category) }} · {{ cycleLabel(r.p.cycle) }} · {{ pathText(r) }}<template v-if="paidWith(r.base)"> · <span class="paid">{{ paidWith(r.base) }}</span></template></span><span class="pill" :class="receipt(r).cls">{{ receipt(r).text }}</span></div>
               <div class="m3"><span class="mono hint">{{ r.next ? fmtDate(r.next) : '—' }} · {{ chargeText(r) }}</span><button class="btn sm" type="button" :aria-label="t('common.editLabel', { name: r.p.name })" @click="openSub(r.base)">{{ t('common.edit') }}</button></div>
             </li>
           </ul>
