@@ -4,6 +4,7 @@
 // W-4: the month basis (Settings › General › 달의 기준): the confirmation, the period next to a month's name, the numbers.
 // W-5: the month a card bill counts in and the transfers to the paying accounts (월급 분배 › 월별 시뮬레이션 › 대금 계좌 이체): the
 // block, 지출's reflection strip and the account sheet's forecast show the same money.
+// W-6: a charge uses the plan in force on its own date (현황 › 결제 예정), and the plan change editor's date hint says so.
 // Every row made here carries the run mark and is removed by id in `finally`; the settings the tests change are put back.
 // It changes the settings, so it runs only on a throwaway server: the test server (:15174) or the API of
 // scripts/test-server/disposable.sh (:15184, started with STATIC_DIR=dist so it serves the built screens).
@@ -948,6 +949,66 @@ test.describe.serial('W-5 the month a card bill counts in and the paying account
     } finally {
       for (const [path, id] of made) await api(request, 'DELETE', `${path}/${id}`)
       expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+})
+
+test.describe.serial('W-6 a charge uses the plan in force on its own date', () => {
+  test('(S-7, V-6) 결제 예정: a plan change and a cancellation dated the day after a charge leave that charge as it was, and the next charge has the new plan; the change editor says so in both languages', async ({ page, request }) => {
+    const st0 = (await api(request, 'GET', '/api/state')).json as State & { preferences: Record<string, unknown> }
+    const prefs = st0.preferences
+    const p2 = (n: number) => String(n).padStart(2, '0')
+    const iso = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+    const now = new Date(new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).replace(' ', 'T'))
+    const today = iso(now)
+    const tomorrow = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
+    const [upName, endName] = [`${MARK}-w6-up`, `${MARK}-w6-end`]
+    const subs: string[] = []
+    const sub = async (name: string, plan: string, amount: number) => {
+      const r = await api(request, 'POST', '/api/subscriptions', { name, category: 'tool', plan, amount, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: today, path: 'direct', verified: false })
+      expect(r.status, JSON.stringify(r.json)).toBe(201)
+      subs.push((r.json as { id: string }).id)
+      return (r.json as { id: string }).id
+    }
+    const change = async (subId: string, to: Record<string, unknown>) =>
+      expect((await api(request, 'POST', '/api/plan-changes', { subId, effective: tomorrow, to, note: '' })).status).toBe(201)
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      // both are charged today. Tomorrow one moves to a dearer plan and the other is cancelled.
+      await change(await sub(upName, '기본요금', 11_000), { plan: '상위요금', amount: 33_000 })
+      await change(await sub(endName, '기본요금', 7_000), { status: 'cancelled' })
+
+      await page.goto('/')
+      const rows = (name: string) => page.locator('section.paycard ul.pays > li').filter({ hasText: name })
+      // today's charge is the old plan's; the one a month on (inside the 31 days) is the new plan's
+      await expect(rows(upName)).toHaveCount(2)
+      await expect(rows(upName).nth(0)).toContainText('기본요금')
+      await expect(rows(upName).nth(0)).toContainText('11,000')
+      await expect(rows(upName).nth(0)).toContainText('D-0')
+      await expect(rows(upName).nth(1)).toContainText('상위요금')
+      await expect(rows(upName).nth(1)).toContainText('33,000')
+      // the cancelled one is still charged today, and not again
+      await expect(rows(endName)).toHaveCount(1)
+      await expect(rows(endName)).toContainText('7,000')
+      await expect(rows(endName)).toContainText('D-0')
+
+      // the plan change editor's date hint
+      await page.goto('/spend/subs')
+      await page.getByRole('tablist').first().waitFor()
+      await page.getByRole('tab', { name: '변경 일정' }).click()
+      await page.getByRole('button', { name: '+ 전환 예약' }).click()
+      await expect(sheet(page, '플랜 전환 예약')).toContainText('월 비용과 이체액은 적용일이 속한 달부터 새 금액으로 계산하고, 결제는 적용일부터 새 플랜으로 내요.')
+      await sheet(page, '플랜 전환 예약').getByRole('button', { name: '취소', exact: true }).click()
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'en' })).status).toBe(200)
+      await page.goto('/spend/subs')
+      await page.getByRole('tablist').first().waitFor()
+      await page.getByRole('tab', { name: 'Scheduled changes' }).click()
+      await page.getByRole('button', { name: '+ Schedule change' }).click()
+      await expect(sheet(page, 'Schedule plan change')).toContainText('The monthly cost and the transfer count it from the month of this date; charges use the new plan from this date on.')
+      await sheet(page, 'Schedule plan change').getByRole('button', { name: 'Cancel', exact: true }).click()
+    } finally {
+      for (const id of subs) await api(request, 'DELETE', `/api/subscriptions/${id}`)
       await api(request, 'PUT', '/api/preferences', prefs)
     }
   })
