@@ -2,7 +2,7 @@
 // and the result survives a reload (it came back from PostgreSQL).
 // Each test cleans up after itself so the seeded data is left as it was.
 import { expect, test } from '@playwright/test'
-import { MARK, choose, deleteInSheet, fillDate, go, noSaveError, reload, saveSheet, sheet } from './helpers'
+import { MARK, choose, deleteInSheet, fillDate, go, noSaveError, optionTexts, reload, saveSheet, sheet } from './helpers'
 
 test.describe('login', () => {
   test.use({ storageState: { cookies: [], origins: [] } })
@@ -17,20 +17,45 @@ test.describe('login', () => {
   })
 })
 
-test('settings: edit, reload, restore', async ({ page }) => {
+// The rounding unit the account starts with is whatever it is: one of the usual three, off, or another unit (a fresh
+// seed has 1,000), which the list offers only while it is the stored one. The test changes it to another unit, reads
+// that back after a reload, then puts the starting unit back — through the list when the list still has it, else
+// through the API — and reads that back on the screen too.
+test('settings: edit, reload, restore', async ({ page, request }) => {
+  const origin = test.info().project.use.baseURL!
+  const settings = async () => ((await (await request.get('/api/state')).json()) as { settings: Record<string, unknown> & { subRound: number } }).settings
+  const s0 = await settings()
   await go(page, 'pay', '통장·생활비·설정')
   const form = () => page.getByRole('form', { name: '분배 설정' })
   const round = () => form().getByLabel('구독 이체 올림 단위')
+  const save = async () => {
+    await form().getByRole('button', { name: '저장', exact: true }).click()
+    await expect(form().getByRole('status')).toHaveText('저장했어요.')
+  }
   const before = (await round().textContent())!.trim()
-  await choose(round(), { label: '₩50,000' })
-  await form().getByRole('button', { name: '저장', exact: true }).click()
-  await expect(form().getByRole('status')).toHaveText('저장했어요.')
-  await reload(page, 'pay', '통장·생활비·설정')
-  await expect(round()).toHaveText('₩50,000')
-  await choose(round(), { label: before })
-  await form().getByRole('button', { name: '저장', exact: true }).click()
-  await expect(form().getByRole('status')).toHaveText('저장했어요.')
-  await noSaveError(page)
+  const other = s0.subRound === 50_000 ? { unit: 10_000, label: '₩10,000' } : { unit: 50_000, label: '₩50,000' }
+  expect(before, 'the unit picked is another one than the starting unit').not.toBe(other.label)
+  try {
+    await choose(round(), { label: other.label })
+    await save()
+    expect((await settings()).subRound).toBe(other.unit)
+    await reload(page, 'pay', '통장·생활비·설정')
+    await expect(round()).toHaveText(other.label)
+    if ((await optionTexts(round())).includes(before)) {
+      await choose(round(), { label: before })
+      await save()
+    } else {
+      // the starting unit is none of the list's own and is no longer the stored one: the list does not offer it
+      expect((await request.put('/api/settings', { data: s0, headers: { origin } })).status()).toBe(200)
+    }
+    expect((await settings()).subRound).toBe(s0.subRound)
+    await reload(page, 'pay', '통장·생활비·설정')
+    await expect(round()).toHaveText(before)
+    await noSaveError(page)
+  } finally {
+    // the account ends with the unit it started with, also when a step above failed
+    if ((await settings()).subRound !== s0.subRound) await request.put('/api/settings', { data: s0, headers: { origin } })
+  }
 })
 
 // spec 013 S-2: the three fields of 0.1.6 are now the three coded items of 생활. The values they took (whole won,
