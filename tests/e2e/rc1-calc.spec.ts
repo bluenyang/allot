@@ -246,6 +246,8 @@ async function cardsTable(page: Page) {
   await expect(page.getByRole('heading', { name: '돈의 흐름' })).toBeVisible()
   return page.getByTestId('cards-table')
 }
+/** The third tab of 월급 분배, where the accounts and the cards are. */
+const accountsTab = (page: Page) => page.getByRole('tab', { name: '통장·생활비·설정', exact: true })
 const cardOf = async (request: APIRequestContext, id: string) => (await state(request)).cards.find((c) => c.id === id)
 
 test.describe.serial('W-2 the card\'s usage period', () => {
@@ -756,10 +758,12 @@ test.describe.serial('W-4 the month basis', () => {
       await answer(/-12~\d{2}-11$/, /-20~\d{2}-19$/, '바꾸기')
       await expect(e).toBeHidden()
       await expect.poll(async () => (await cardOf(request, card.id))!.usageFrom).toBe(20)
-      // deleting the basis card: the delete question, then this one (the basis goes back to the calendar month).
-      // The page was made again when the basis changed (A-6), so the tab is opened again.
-      await cardsTable(page)
+      // The page was made again when the basis changed (A-6): it is still on the tab the user was on (A-41), with no
+      // reload and no click on the tab.
+      await expect(accountsTab(page)).toHaveAttribute('aria-selected', 'true')
+      await expect(page.getByRole('heading', { name: '돈의 흐름' })).toBeVisible()
       await expect(row().getByTestId('card-usage')).toHaveText('이용 20일~19일')
+      // deleting the basis card: the delete question, then this one (the basis goes back to the calendar month)
       await row().click()
       e = sheet(page, '카드 수정')
       await e.getByRole('button', { name: '삭제', exact: true }).click()
@@ -774,9 +778,81 @@ test.describe.serial('W-4 the month basis', () => {
       await expect(e).toBeHidden()
       await expect.poll(async () => (await cardOf(request, card.id)) ?? null).toBeNull()
       gone = true
-      await cardsTable(page)
+      // made again once more (the calendar month is back): the same tab still, and the card is off the list
+      await expect(accountsTab(page)).toHaveAttribute('aria-selected', 'true')
+      await expect(page.getByRole('heading', { name: '돈의 흐름' })).toBeVisible()
       await expect(row()).toHaveCount(0)
       expect((await state(request)).settings).toMatchObject({ monthBasis: 'calendar', monthBasisCardId: null })
+    } finally {
+      if (!gone) await api(request, 'DELETE', `/api/cards/${card.id}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
+  // Report 13 point 9 (A-41): 월급 분배 is made again when the month basis changes (A-6). Made again under the user's hands
+  // — the basis card deleted on its own third tab — it stays on that tab; made again while another page is on screen, it
+  // starts on its first tab as before.
+  test('(A-6, A-41) 월급 분배 keeps the tab the user was on when a save on it changes what a month is, also when the page that comes back is one kept from the calendar basis; changed from the settings, it opens on its first tab', async ({ page, request }) => {
+    const s0 = (await state(request)).settings
+    const prefs = ((await api(request, 'GET', '/api/state')).json as { preferences: Record<string, unknown> }).preferences
+    const name = `${MARK}-tab`
+    const made = await api(request, 'POST', '/api/cards', { name, last4: '', accountId: null, billingDay: 25, usageFrom: 12, note: '' })
+    expect(made.status).toBe(201)
+    const card = made.json as CardRow
+    let gone = false
+    const dlg = page.getByRole('alertdialog')
+    const tabOf = (label: string) => page.getByRole('tab', { name: label, exact: true })
+    /** Answer the month question with 바꾸기 and wait for the settings to be saved. */
+    async function confirmMonth() {
+      await expect(dlg.getByRole('heading', { name: '달의 기준을 바꿀까요?' })).toBeVisible()
+      const put = page.waitForResponse((r) => r.request().method() === 'PUT' && new URL(r.url()).pathname === '/api/settings')
+      await dlg.getByRole('button', { name: '바꾸기', exact: true }).click()
+      expect((await put).ok()).toBe(true)
+      await expect(dlg).toBeHidden()
+    }
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, monthBasis: 'calendar', monthBasisCardId: null, monthNaming: 'auto' })).status).toBe(200)
+      // the page of the calendar basis, left on its second tab: it is kept while the app stays open
+      await page.goto('/pay')
+      await tabOf('월별 시뮬레이션').click()
+      await expect(tabOf('월별 시뮬레이션')).toHaveAttribute('aria-selected', 'true')
+      // the basis becomes this run's card, in the settings (no page load from here on)
+      await menu(page, '설정')
+      await basisSeg(page).getByRole('button', { name: '카드 집계', exact: true }).click()
+      await confirmMonth()
+      if ((await state(request)).settings.monthBasisCardId !== card.id) {
+        await choose(page.locator('#g-mcard'), card.id)
+        await confirmMonth()
+      }
+      expect((await state(request)).settings).toMatchObject({ monthBasis: 'card', monthBasisCardId: card.id })
+      // made again while the settings were on screen: the first tab, as before
+      await menu(page, '월급 분배')
+      await expect(tabOf('구간')).toHaveAttribute('aria-selected', 'true')
+      // the third tab; the basis card is deleted there, so the calendar month is back and with it the page kept above
+      await accountsTab(page).click()
+      const row = () => page.getByTestId('cards-table').locator('tbody tr').filter({ hasText: name })
+      await row().click()
+      const e = sheet(page, '카드 수정')
+      await e.getByRole('button', { name: '삭제', exact: true }).click()
+      await dlg.getByRole('button', { name: '삭제', exact: true }).click()
+      await expect(dlg.getByRole('heading', { name: '달의 기준을 바꿀까요?' })).toBeVisible()
+      await dlg.getByRole('button', { name: '바꾸기', exact: true }).click()
+      await expect(dlg).toBeHidden()
+      await expect.poll(async () => (await cardOf(request, card.id)) ?? null).toBeNull()
+      gone = true
+      expect((await state(request)).settings).toMatchObject({ monthBasis: 'calendar', monthBasisCardId: null })
+      // the tab the user was on, not the first one and not the one the kept page was left on
+      await expect(accountsTab(page)).toHaveAttribute('aria-selected', 'true')
+      await expect(tabOf('월별 시뮬레이션')).toHaveAttribute('aria-selected', 'false')
+      await expect(page.getByRole('heading', { name: '돈의 흐름' })).toBeVisible()
+      await expect(row()).toHaveCount(0)
+      // a tab picked afterwards is the page's own again: leaving and coming back keeps it (KeepAlive, as before)
+      await tabOf('구간').click()
+      await menu(page, '현황')
+      await menu(page, '월급 분배')
+      await expect(tabOf('구간')).toHaveAttribute('aria-selected', 'true')
     } finally {
       if (!gone) await api(request, 'DELETE', `/api/cards/${card.id}`)
       expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)

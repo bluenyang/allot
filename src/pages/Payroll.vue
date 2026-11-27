@@ -1,3 +1,8 @@
+<script lang="ts">
+// The tab of a page that is made again while it is on screen, for the page that takes its place (see `takeTab` below).
+let handedTab: string | null = null
+</script>
+
 <script setup lang="ts">
 // 월급 분배 (spec 010 S-8, S-10): the split targets and phases, the month's simulation with the
 // remainder split, and the accounts, living costs and pay settings. Every change goes to the API first
@@ -18,7 +23,7 @@
 // spec 014 S-8 (W-6): the pay is what comes in that month (monthMoney's income: the salary and the other incomes,
 // received or expected), shown as 들어올 돈 with a link to the Income menu; a take-home tried on the screen still wins.
 import { t, tl } from '../i18n'
-import { computed, onActivated, ref, watch } from 'vue'
+import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
@@ -38,7 +43,7 @@ import { allocColor } from '../lib/colors'
 import { kindDetail, usageLabel } from '../lib/labels'
 import { adjustable, adjustOf, adjustPreview } from '../lib/budget-page'
 import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, ymLabel, type AllocRow } from '../lib/calc'
-import { thisYm } from '../lib/month'
+import { monthKey, thisMonthKey, thisYm } from '../lib/month'
 import MonthPeriod from '../components/MonthPeriod.vue'
 import type { Account, AllocationKind, Card, AllocationTarget, BudgetGroup, Settings } from '../data/types'
 import Select from '../components/Select.vue'
@@ -50,7 +55,24 @@ const tabs = computed(() => [
   { id: 'sim', label: t('payroll.tabSim'), icon: 'chart' },
   { id: 'accounts', label: t('payroll.tabAccounts'), icon: 'money' },
 ])
-// the tab a link names (S-16)
+// Saving the basis card's first day of use, or deleting the basis card, here on the 통장·생활비·설정 tab changes what a month
+// is, and the shell then makes the kept pages again (spec 018 A-6, A-24) — this one too, under the user's hands. The page
+// that takes its place opens on the tab the user was on, not on the first one (A-41). Only the tab is handed over: the
+// month looked at and the rest start again, as A-6 means. A page made again while another page is on screen (the basis
+// changed in the settings) starts on its first tab, as before.
+let onScreen = true
+function takeTab() {
+  onScreen = true
+  if (handedTab) tab.value = handedTab
+  handedTab = null
+}
+takeTab()
+onActivated(takeTab) // also a kept page that comes back for the same reason (the basis card deleted: the calendar's page)
+onDeactivated(() => { onScreen = false })
+onUnmounted(() => { handedTab = null })
+// sync: the value is there before the shell renders the page that replaces this one
+watch([monthKey, thisMonthKey], () => { if (onScreen) handedTab = tab.value }, { flush: 'sync' })
+// the tab a link names (S-16): it wins over a tab handed over
 const route = useRoute()
 const TAB_IDS = ['phases', 'sim', 'accounts']
 function tabFromQuery() {
