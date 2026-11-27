@@ -103,12 +103,34 @@ test('MCP list_subscriptions: the row is the month\'s plan; nextCharge is there 
   assert.ok(!('nextCharge' in row(d2, '2026-11-20', 'later')))
   assert.equal(row(d2, '2026-11-20', 'later').nextPayment, '2026-11-27')
 
-  // a plan without any change, a stored cancelled one, and a cancelled one that comes back in a later month: as before
+  // a plan without any change and a stored cancelled one: as before. A cancelled one that comes back in a later month
+  // names the first charge after it comes back (review 4 finding 2, spec 018 A-36; it was null)
   const d3 = data(
     [sub('plain'), sub('off', { status: 'cancelled' }), sub('back', { status: 'cancelled' })],
     [{ id: 'c-back', subId: 'back', effective: '2027-03-01', to: { status: 'active' }, note: '' }],
   )
   assert.deepEqual([row(d3, '2026-11-20', 'plain').nextPayment, 'nextCharge' in row(d3, '2026-11-20', 'plain')], ['2026-11-27', false])
   assert.deepEqual([row(d3, '2026-11-20', 'off').nextPayment, 'nextCharge' in row(d3, '2026-11-20', 'off')], [null, false])
-  assert.deepEqual([row(d3, '2026-11-20', 'back').nextPayment, 'nextCharge' in row(d3, '2026-11-20', 'back')], [null, false])
+  assert.deepEqual([row(d3, '2026-11-20', 'back').status, row(d3, '2026-11-20', 'back').nextPayment], ['cancelled', '2027-03-27'])
+  assert.deepEqual(row(d3, '2026-11-20', 'back').nextCharge, { date: '2027-03-27', plan: 'Basic', krw: 10_000 })
+})
+
+// Review 4 finding 2: nextPayment is the next charge that will really be made — the same before and after a
+// cancellation's date. Charged on the 25th; cancelled from 11/28; back on 2027-02-01 with another plan.
+test('MCP list_subscriptions: a plan cancelled on a date and resumed later names its next real charge, before and after the cancellation', () => {
+  const D = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)))
+  const d = data([sub('gap', { nextDate: '2026-11-25' })], [
+    { id: 'c-off', subId: 'gap', effective: '2026-11-28', to: { status: 'cancelled' }, note: '' },
+    { id: 'c-on', subId: 'gap', effective: '2027-02-01', to: { status: 'active', plan: 'Back', amount: 12_000 }, note: '' },
+  ])
+  const row = (today: string) => { const r = subscriptionList(d, D(today)).subscriptions[0]!; return [r.status, r.nextPayment, r.nextCharge ?? null] }
+  // before the last charge of the old plan: that charge
+  assert.deepEqual(row('2026-11-20'), ['cancelled', '2026-11-25', { date: '2026-11-25', plan: 'Basic', krw: 10_000 }])
+  assert.deepEqual(row('2026-11-25'), ['cancelled', '2026-11-25', { date: '2026-11-25', plan: 'Basic', krw: 10_000 }])
+  // after it, before the cancellation's date, on it and after it: the first charge after the plan comes back
+  const back = ['cancelled', '2027-02-25', { date: '2027-02-25', plan: 'Back', krw: 12_000 }]
+  for (const today of ['2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29', '2026-12-15', '2027-01-31']) assert.deepEqual(row(today), back, today)
+  // once it is back the row is the plan that is charged: nothing to add
+  assert.deepEqual(row('2027-02-10'), ['active', '2027-02-25', null])
+  assert.deepEqual(row('2027-02-26'), ['active', '2027-03-25', null])
 })

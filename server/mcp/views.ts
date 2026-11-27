@@ -362,10 +362,12 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
   const s = priced(d.settings, d.currencies)
   const rows = d.subscriptions.map((base) => {
     const p = planAt(base, d.planChanges, ym, ctx)
-    // A charge goes by the plan in force on its own date (spec 018 S-7), the row by the month's plan. The next charge is
-    // looked for while either is active: a cancellation dated later this month leaves the charges before its date.
-    const live = p.status === 'active' || planOn(base, d.planChanges, ymd(now)).status === 'active'
-    const next = live ? nextPayment(base, d.planChanges, now) : null
+    // A charge goes by the plan in force on its own date (spec 018 S-7), the row by the month's plan. The next payment
+    // is the next charge that will really be made, whatever the row's status is (review 4 finding 2, A-36): a
+    // cancellation dated later this month leaves the charges before its date, and a cancelled plan that comes back
+    // is charged again from the date it comes back — the same answer before and after the cancellation's date. A
+    // plan that never charges again has none.
+    const next = nextPayment(base, d.planChanges, now)
     const at = next ? planOn(base, d.planChanges, ymd(next)) : null
     const charge = krw(chargeKrw(p, s))
     const nextKrw = at ? krw(chargeKrw(at, s)) : null
