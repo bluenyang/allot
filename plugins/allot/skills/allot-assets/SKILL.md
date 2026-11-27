@@ -10,7 +10,9 @@ Amounts are whole KRW; dates are the user's time zone. Allot's projections have 
 
 ## Read first
 1. `list_accounts`: each account with its group (saving, invest), last balance record, projected balance by
-   month, the month a goal is reached, this year's contribution against its yearly limit, maturity.
+   month, the month a goal is reached, this year's contribution against its yearly limit, maturity. The months
+   are those of the user's month basis (`projectionMonths` gives their dates); the yearly limit always counts a
+   calendar year, and money that only passes through an account to pay its card bills is no contribution.
 2. `get_budget`: the savings and investment menus (items, amounts or ratios, maturities).
 3. `get_allocation`: the allocation targets that send to each account, the phases, the remainder split.
 4. `list_notifications`: goals reached, maturities, yearly limits near their end.

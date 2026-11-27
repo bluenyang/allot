@@ -16,10 +16,13 @@ Never guess an amount.
 
 ## Is it a subscription?
 Check `list_subscriptions` (or `search` with the shop name). If the receipt is a charge of a subscription
-already in Allot:
+already in Allot, compare it with the charge of that date: a charge uses the plan in force on its own date, so
+with a scheduled change the row (this month's plan) can show another amount — `nextCharge` gives the next
+charge's own plan and amount when it differs.
 - the amount matches: say so, and that the user can tick its receipt check (영수증 확인) on the Subscriptions screen.
   Do not propose an update of the subscription row: an update sends the whole stored row, and `list_subscriptions`
-  shows a computed view (this month's plan, `nextPayment`, `payPath`, `receiptVerified`), not that row;
+  shows a computed view (this month's plan, `nextPayment`, `nextCharge`, `payPath`, `card`, `account`,
+  `receiptVerified`), not that row;
 - the amount differs: say by how much and ask whether the plan changed. If it did, propose a plan change from the
   date it started (resource `plan-changes`: `subId` = the subscription's id, `effective`, `to` = only the changed plan fields, `note`).
 
@@ -27,7 +30,9 @@ already in Allot:
 Check `list_spendings` for the same purchase first (no duplicates). Then propose it: `propose_changes`, resource
 `spendings`, with the name, category (ask, or use one the user already uses), the purchase date, amount and
 currency, and how it is paid (at once, installments, or rounds), in the shape `list_spendings` shows.
-For a card, use the card's id from `list_accounts`.
+For a card, use the card's id from `list_accounts` and plan the rounds on that card's bills: with `usageFrom`
+(the first day of its usage period) a purchase is billed on the first billing day after the period that holds it
+ends; without one, on the billing day of the month after the purchase.
 
 ## Confirmation
 A proposal changes nothing until the user confirms it: in Allot under Pending changes, or in this conversation

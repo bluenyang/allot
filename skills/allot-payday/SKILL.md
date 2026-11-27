@@ -10,13 +10,16 @@ Amounts are whole KRW; dates are the user's time zone.
 
 ## Read first
 1. `get_income` (this month): the salary line (incomeId null) and every regular income with expected,
-   received and counted amounts, the money that came in once (extras), and `leftOverKrw`.
+   received and counted amounts, the money that came in once (extras), and `leftOverKrw`. `month` and `period`
+   say which month this is and its dates: with a pay month basis a month starts on the actual pay date, so on
+   payday "this month" is already the new one.
 2. `get_overview` (this month) for the distribution the counted total feeds.
 
 ## Recording what came in
 Ask for the amount and the date if the user did not say them. Then propose:
 - the salary or a regular income received: `propose_changes`, resource `income-receipts`
-  (`itemId`: the income's id, or null for the salary; `ym`; `amount`; `date`);
+  (`itemId`: the income's id, or null for the salary; `ym` = the month's name as `get_income` gives it, which
+  is not always the calendar month of the date; `amount`; `date`);
 - money that came in once (a bonus, a refund): resource `income-extras` (`date`, `name`, `amount`).
 A proposal changes nothing until the user confirms it: in Allot under Pending changes, or in this conversation
 when your connection confirms in the chat (call `apply_proposal` only after they agree).
