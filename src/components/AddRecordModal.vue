@@ -12,7 +12,8 @@ import { DEFAULT_EVENT_KIND, EVENT_KINDS, eventKindLabel } from '../lib/labels'
 import { showToast } from '../lib/toast'
 import type { EventKind } from '../data/types'
 import Select from './Select.vue'
-import { thisYm } from '../lib/month'
+import { ymOf } from '../lib/calc'
+import { localToday } from '../lib/now'
 
 type Kind = 'todo' | 'event' | 'sub' | 'oneoff'
 const props = defineProps<{ start: Kind }>()
@@ -21,7 +22,8 @@ const emit = defineEmits<{ close: [] }>()
 const kind = ref<Kind>(props.start)
 const text = ref('')
 const title = ref('')
-const when = ref(thisYm())
+// an event's month is a calendar month (spec 018 S-3): today's, whatever the month basis names today's period
+const when = ref(ymOf(localToday()))
 const evKind = ref<EventKind>(DEFAULT_EVENT_KIND)
 const error = ref('')
 const busy = ref(false)

@@ -12,12 +12,15 @@ import { DEFAULT_EVENT_KIND, EVENT_KINDS, eventKindLabel } from '../lib/labels'
 import { WHEN_RE, composeWhen, whenParts, type WhenMode } from '../lib/event-when'
 import type { EventState, PlanEvent } from '../data/types'
 import MonthInput from './MonthInput.vue'
-import { thisYm } from '../lib/month'
+import { ymOf } from '../lib/calc'
+import { localToday } from '../lib/now'
 
 const props = defineProps<{ initial: PlanEvent | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const now = thisYm()
+// An event's month is a month of the calendar (the events' calendar is always the 1st to the last day, spec 018 S-3):
+// a new one starts on today's calendar month, not on the name the month basis gives today's period (review 2 F-7).
+const now = ymOf(localToday())
 const blank = (): PlanEvent => ({ id: '', when: now, kind: DEFAULT_EVENT_KIND, title: '', state: 'todo' })
 const parts = ref(whenParts(props.initial?.when ?? now))
 

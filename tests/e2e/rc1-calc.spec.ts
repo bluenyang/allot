@@ -784,6 +784,60 @@ test.describe.serial('W-4 the month basis', () => {
     }
   })
 
+  // Review 2 F-7: two places that named a month without saying which dates it stands for, or by the wrong calendar.
+  test('(S-3) under a pay basis a new event starts on today\'s calendar month, and the account sheet\'s forecast shows each month\'s period; with the calendar basis the forecast has none', async ({ page, request }) => {
+    const s0 = (await state(request)).settings
+    const prefs = ((await api(request, 'GET', '/api/state')).json as { preferences: Record<string, unknown> }).preferences
+    const accName = `${MARK}-mf`
+    const now = seoulToday()
+    const calendar = `${now.getFullYear()}-${p2(now.getMonth() + 1)}`
+    // pay day 1, named after the month the period ends in: today's period is named after the next calendar month
+    const named = iso(new Date(now.getFullYear(), now.getMonth() + 1, 1)).slice(0, 7)
+    const acc = (await api(request, 'POST', '/api/accounts', { name: accName, role: '', inflow: '', outflow: '' })).json as { id: string }
+    try {
+      expect((await api(request, 'POST', '/api/balances', { accountId: acc.id, date: iso(now), amount: 1_000_000, note: '' })).status).toBe(201)
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payDay: 1, payShift: 'none', monthBasis: 'pay', monthBasisCardId: null, monthNaming: 'end' })).status).toBe(200)
+      // this month by the basis is the next calendar month's name
+      await page.goto('/')
+      await expect(headerMonth(page)).toContainText(named.replace('-', '. '))
+      // a new event: the calendar month of today, where the events' calendar puts it
+      await page.goto('/events')
+      await page.getByRole('button', { name: '이벤트 추가' }).click()
+      const ev = sheet(page, '이벤트 추가')
+      await expect(ev.getByRole('textbox', { name: '월', exact: true })).toHaveValue(calendar)
+      await ev.getByRole('button', { name: '취소', exact: true }).click()
+      // the forecast: twelve months from this month, each with its dates (the 1st to the last day of the month before its name)
+      await page.goto('/pay')
+      await page.getByRole('tab', { name: '통장·생활비·설정' }).click()
+      await page.getByTestId('accounts-table').locator('tbody tr', { hasText: accName }).click()
+      const rows = sheet(page, accName).getByTestId('account-forecast').locator('tbody tr')
+      await expect(rows).toHaveCount(12)
+      const periods = rows.getByTestId('forecast-period')
+      await expect(periods).toHaveCount(12)
+      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+      await expect(rows.first().locator('td').first()).toContainText(named.replace('-', '.'))
+      await expect(periods.first()).toHaveText(`${p2(now.getMonth() + 1)}-01~${p2(now.getMonth() + 1)}-${p2(last)}`)
+      await page.setViewportSize({ width: 390, height: 844 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), 'no sideways scrolling on a phone').toBe(true)
+      await page.setViewportSize({ width: 1440, height: 900 })
+      // the calendar basis: the table is as it was, and a new event still starts on the calendar month
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, monthBasis: 'calendar', monthBasisCardId: null })).status).toBe(200)
+      await page.goto('/pay')
+      await page.getByRole('tab', { name: '통장·생활비·설정' }).click()
+      await page.getByTestId('accounts-table').locator('tbody tr', { hasText: accName }).click()
+      await expect(sheet(page, accName).getByTestId('account-forecast').locator('tbody tr')).toHaveCount(12)
+      await expect(sheet(page, accName).getByTestId('forecast-period')).toHaveCount(0)
+      await page.goto('/events')
+      await page.getByRole('button', { name: '이벤트 추가' }).click()
+      await expect(sheet(page, '이벤트 추가').getByRole('textbox', { name: '월', exact: true })).toHaveValue(calendar)
+    } finally {
+      await api(request, 'DELETE', `/api/accounts/${acc.id}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
   test('(V-6) on a phone the month bar shows the period without sideways scrolling, and the English screen words the block and the question', async ({ page, request }) => {
     const c = payCase()
     const s0 = (await state(request)).settings

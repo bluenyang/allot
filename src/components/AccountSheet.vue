@@ -14,7 +14,7 @@ import { useEditor } from '../lib/useEditor'
 import { offDays } from '../lib/holidays-lazy'
 import { bankLine, targetsOf } from '../lib/accounts'
 import { addYm, bufferGauge, goalMonth, needsHolidays, projectAccount, yearContribution, ymLabel, ymd } from '../lib/calc'
-import { thisYm } from '../lib/month'
+import { hasPeriod, periodLabel, thisYm } from '../lib/month'
 import { fmtMoney } from '../lib/display'
 import type { Balance } from '../data/types'
 import { localToday } from '../lib/now'
@@ -119,7 +119,7 @@ const balDeposit = computed({
             <thead><tr><th scope="col">{{ t('accounts.detail.colYm') }}</th><th scope="col" class="n">{{ t('accounts.detail.colIn') }}</th><th scope="col" class="n">{{ t('accounts.detail.colOut') }}</th><th scope="col" class="n">{{ t('accounts.detail.colEnd') }}</th></tr></thead>
             <tbody>
               <tr v-for="r in rows" :key="r.ym" :class="{ goal: goalYm === r.ym }">
-                <td class="num">{{ ymLabel(r.ym) }}<span v-if="goalYm === r.ym" class="pill ok gm">{{ t('accounts.detail.goalMark') }}</span></td>
+                <td class="num">{{ ymLabel(r.ym) }}<span v-if="goalYm === r.ym" class="pill ok gm">{{ t('accounts.detail.goalMark') }}</span><span v-if="hasPeriod" class="per" data-testid="forecast-period">{{ periodLabel(r.ym) }}</span></td>
                 <td class="n num">{{ r.inflow ? fmtMoney(r.inflow) : '—' }}</td>
                 <td class="n num">{{ r.outflow ? fmtMoney(r.outflow) : '—' }}</td>
                 <td class="n num amt">{{ fmtMoney(r.end) }}</td>
@@ -146,6 +146,8 @@ td.amt{font-weight:600}
 tr.click{cursor:pointer}
 tr.goal td{background:var(--primary-tint)}
 .gm{margin-left:8px}
+/* a month's dates under its name when a month is not the calendar month (spec 018 S-3) */
+.per{display:block;font-size:11px;font-weight:400;color:var(--muted);white-space:nowrap}
 .gbar{height:8px;border-radius:2px;background:var(--fill);overflow:hidden}
 .gbar div{height:100%;background:var(--primary)}
 .gbar div.bad{background:var(--neg)}
