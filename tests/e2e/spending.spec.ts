@@ -1113,8 +1113,10 @@ test('(S-8, W-7) 기록 추가 › 일회성 지출 › 다음 opens the three-s
   const name = `${EDM}-home`
   const nameS = `${EDM}-hs`
   try {
-    // a split with its first round today, 3 payments: "1/3회"
-    const rs: R[] = [0, 1, 2].map((k) => ({ no: k + 1, date: k === 0 ? today : `${ymAdd(today.slice(0, 7), k)}-28`, amount: 40_000, state: 'left', edited: false }))
+    // a split with its first round today, 3 payments: "1/3회". The later rounds are 40 and 80 days ahead: on any day
+    // of the year that is outside the 31 days the home lists and in a later calendar month than today's. (Next
+    // month's 28th, as this test had it, is inside the 31 days from the 27th or 28th of a month on: two rows then.)
+    const rs: R[] = [0, 1, 2].map((k) => ({ no: k + 1, date: k === 0 ? today : kstDay(40 * k), amount: 40_000, state: 'left', edited: false }))
     expect((await api(request, 'POST', '/api/spendings', instBody(nameS, { how: 'split', payBy: 'salary', amount: 120_000, count: 3, rounds: rs }))).status).toBe(201)
     await go(page, 'home')
     await page.getByRole('button', { name: '기록 추가', exact: true }).click()
@@ -1148,7 +1150,7 @@ test('(S-8, W-7) 기록 추가 › 일회성 지출 › 다음 opens the three-s
     const day = page.locator('.agenda li[data-kind="spend"]')
     await expect(day.filter({ hasText: name })).toContainText('₩77,000')
     await expect(day.filter({ hasText: `${nameS} 1/3회` })).toContainText('₩40,000')
-    await expect(day.filter({ hasText: `${nameS} 2/3회` })).toHaveCount(0) // next month's round is on next month's page
+    await expect(day.filter({ hasText: `${nameS} 2/3회` })).toHaveCount(0) // a later month's round is on that month's page
     // a round marked paid and a cancelled spending leave both places
     await api(request, 'PUT', `/api/spendings/${got.id}`, { ...got, id: undefined, cancelled: true })
     await page.goto('/')
