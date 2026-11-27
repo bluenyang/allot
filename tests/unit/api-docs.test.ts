@@ -43,6 +43,19 @@ test('the data resources show their request body', () => {
   }
 })
 
+test('the lines of the settings, cards, subscriptions, plan changes and own dates name what spec 018 added', () => {
+  const line = (method: string, path: string) => describeRoute({ method, path }) ?? ''
+  const settings = line('PUT', '/api/settings')
+  for (const key of ['payShift', 'transferShift', 'billingShift', 'dayShift', 'monthBasis', 'monthBasisCardId', 'monthNaming']) assert.match(settings, new RegExp(`\\b${key}\\b`), key)
+  assert.match(settings, /^Replace the settings record \(the whole record; body below\)\. /)
+  assert.match(line('POST', '/api/cards'), /\busageFrom\b/)
+  assert.match(line('POST', '/api/subscriptions'), /\bcardId\b.*\baccountId\b/)
+  assert.match(line('POST', '/api/plan-changes'), /\beffective\b/)
+  assert.match(line('POST', '/api/schedules'), /\bshift\b/)
+  // the records without a note keep the plain line
+  assert.equal(line('PUT', '/api/preferences'), 'Replace the preferences record (the whole record; body below).')
+})
+
 test('the MCP tools are the ones the endpoint serves to a write key, twelve read and four write', async () => {
   const tools = await mcpToolDocs()
   assert.deepEqual(tools.map((t) => t.name).sort(), [...READ, ...WRITE].sort())
