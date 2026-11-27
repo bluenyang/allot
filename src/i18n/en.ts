@@ -734,7 +734,7 @@ export const en = {
     perMonth: 'month',
     perYear: 'year',
     effective: 'Effective date',
-    dateHintDated: 'Counted from the month of this date.',
+    dateHintDated: 'The monthly cost and the transfer count it from the month of this date; charges use the new plan from this date on.',
     dateHintUndated: 'Not counted in the transfer until you set a date.',
     newPlan: 'New plan name',
     newPlanPh: 'e.g. Higher plan · yearly',

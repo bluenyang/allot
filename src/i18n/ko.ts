@@ -734,7 +734,7 @@ export const ko = {
     perMonth: '월',
     perYear: '연',
     effective: '적용일',
-    dateHintDated: '적용일이 속한 달부터 새 금액으로 계산해요.',
+    dateHintDated: '월 비용과 이체액은 적용일이 속한 달부터 새 금액으로 계산하고, 결제는 적용일부터 새 플랜으로 내요.',
     dateHintUndated: '날짜를 정하기 전까지는 이체액 계산에 반영하지 않아요.',
     newPlan: '새 플랜 이름',
     newPlanPh: '예: 상위 플랜 · 연간',
