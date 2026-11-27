@@ -1222,8 +1222,8 @@ const isCardBill = (sp: Pick<Spending, 'how' | 'payBy'>) => sp.payBy === 'card' 
 
 /**
  * The month a round counts in (spec 018 S-5, A-14). A card bill is paid with the pay that came in last before it: it
- * counts in the month of the last actual pay date strictly before the bill's date (a bill dated on a pay date: the pay
- * date before). Pay day 25, calendar months: a bill of 12-14 or 12-25 counts in November, one of 12-26 in December.
+ * counts in the month of the pay whose actual date is the last one strictly before the bill's date (a bill dated on a
+ * pay date: the pay before). Pay day 25, calendar months: a bill of 12-14 or 12-25 counts in November, one of 12-26 in December.
  * Every other round — a buffer refill, a split, a round paid from the salary or the subscription account — counts in
  * the month whose period holds its date.
  */
@@ -1231,10 +1231,14 @@ export function roundYm(spending: Pick<Spending, 'how' | 'payBy'>, round: Pick<S
   if (!isCardBill(spending)) return ymOfDate(round.date, ctx)
   const known = ctx.bills.get(round.date)
   if (known) return known
-  // the month of that pay: on the calendar basis the month the pay is named for (the salary line of that month, also
-  // when the pay rule dates it in the neighbouring month); on the card and pay bases the month whose period holds it
+  // The month of that pay. On a pay basis a month starts on the actual pay date, so it is the month whose period that
+  // date opens. Otherwise it is the month whose period holds the pay's date as set (the pay day in its calendar month,
+  // before the pay rule moves it): a pay the rule moves across a month's edge still is its own month's pay. On the
+  // calendar basis that is the calendar month the pay is named for (A-14: pay day 1 moved back is November's pay dated
+  // 10-30); on a card basis the same holds at the edge of the card's period (review 3 F-2: first day 12, pay day 12
+  // moved back to 04-10 is still the pay of the month that starts on 04-12).
   const pay = payBefore(round.date, ctx)
-  const ym = ctx.basis === 'calendar' ? pay.ym : ymOfDate(pay.date, ctx)
+  const ym = ctx.basis === 'pay' ? ymOfDate(pay.date, ctx) : ymOfDate(nominalDay(pay.ym, ctx.settings.payDay), ctx)
   ctx.bills.set(round.date, ym)
   return ym
 }

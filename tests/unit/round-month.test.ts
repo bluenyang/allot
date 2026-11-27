@@ -1,5 +1,6 @@
 // The month a spending round counts in and the month's outgoing rounds (spec 018 S-5, S-6, W-5): a card bill counts in
-// the month that holds the last actual pay date before it; every other round in the month whose period holds its date.
+// the month of the pay before it (the pay whose actual date is the last one before the bill; A-14, A-32); every other
+// round in the month whose period holds its date.
 // Every expected value is worked out by hand in the comments. No database.
 //   pnpm test:unit
 import assert from 'node:assert/strict'
@@ -87,6 +88,47 @@ test('the card basis: the month whose usage period holds the pay date before the
   assert.equal(roundYm(bill, at('2026-12-14'), ctx), '2026-11')
   // 12-26: the pay of 12-25, in "2026-12"
   assert.equal(roundYm(bill, at('2026-12-26'), ctx), '2026-12')
+})
+
+// Review 3 F-2: on a card basis a pay that the pay rule moves across the edge of the card's period still names its own
+// month — the month whose period holds the pay day as set — as A-14 does on the calendar basis. Otherwise one month
+// took the bills of two and its neighbour none.
+test('the card basis: a pay moved across the period\'s edge still names its own month (first day 12, pay day 12)', () => {
+  // 2026-04-12 is a Sunday: with the rule "before" April's pay is dated 04-10, inside "2026-03" (03-12 … 04-11)
+  const before = ctxOfS({ ...S, payDay: 12, payShift: 'before', monthBasis: 'card', monthBasisCardId: 'basis' })
+  assert.equal(new Date(2026, 3, 12).getDay(), 0)
+  assert.equal(ymOfDate('2026-04-10', before), '2026-03')
+  // a bill of 04-10 is dated on that pay date: the pay before it, 03-12 (a Thursday) → March
+  assert.equal(roundYm(bill, at('2026-04-10'), before), '2026-03')
+  // 04-11 … 05-12: the pay of 04-10 is April's pay → April (it was March: two months of bills in one)
+  for (const d of ['2026-04-11', '2026-04-12', '2026-04-30', '2026-05-11', '2026-05-12']) assert.equal(roundYm(bill, at(d), before), '2026-04', d)
+  // 05-13: May's pay of 05-12 (a Tuesday) → May
+  assert.equal(roundYm(bill, at('2026-05-13'), before), '2026-05')
+  // the rule "after", pay day 11: 2026-04-11 is a Saturday, so April's pay is dated 04-13, inside "2026-04" (04-12 …),
+  // but it is the pay of the month that holds the 11th as set: "2026-03" (03-12 … 04-11)
+  const after = ctxOfS({ ...S, payDay: 11, payShift: 'after', monthBasis: 'card', monthBasisCardId: 'basis' })
+  assert.equal(new Date(2026, 3, 11).getDay(), 6)
+  assert.equal(roundYm(bill, at('2026-04-13'), after), '2026-02', 'dated on the pay date: the pay before it, 03-11, the pay of "2026-02" (02-12 … 03-11)')
+  assert.equal(roundYm(bill, at('2026-04-14'), after), '2026-03')
+  assert.equal(roundYm(bill, at('2026-05-11'), after), '2026-03', '05-11 is a pay date itself (a Monday): the pay before it')
+  assert.equal(roundYm(bill, at('2026-05-12'), after), '2026-04')
+  // no month takes two months of bills and none is left without: every month of two years counts 26 to 35 days of
+  // bills, with each rule and a pay day on either side of the card's first day
+  const p2 = (n: number) => String(n).padStart(2, '0')
+  for (const payShift of ['none', 'before', 'after'] as const) {
+    for (const payDay of [9, 10, 11, 12, 13, 14]) {
+      const ctx = ctxOfS({ ...S, payDay, payShift, monthBasis: 'card', monthBasisCardId: 'basis' })
+      const days = new Map<string, number>()
+      for (let d = new Date(2026, 0, 1); d < new Date(2028, 0, 1); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+        const ym = roundYm(bill, at(`${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`), ctx)
+        days.set(ym, (days.get(ym) ?? 0) + 1)
+      }
+      for (const [ym, n] of days) {
+        if (ym < '2026-02' || ym > '2027-10') continue // the months at the ends are cut by the range of dates
+        assert.equal(n >= 26 && n <= 35, true, `pay day ${payDay}, ${payShift}: ${ym} counts ${n} days of bills`)
+      }
+    }
+  }
 })
 
 test('the pay date is the actual one: moved by the pay rule off a weekend or a holiday', () => {
