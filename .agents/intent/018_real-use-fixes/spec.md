@@ -224,6 +224,7 @@ intent 018의 '가. 계산 (rc.1)'과 계획 2를 옮긴다. 캔버스 비교 �
 - A-60 (2026-11-27, W-8) 설명 문자열만(계산·입력 변경 없음): A-57이 빠뜨린 한 곳 — `/api/docs`의 subscriptions 줄(`server/docs.ts`)의 "counted from one billing cycle before nextDate"를 A-57과 같은 말("only the charges that leave after the account's last balance record, and none earlier than one billing cycle before nextDate")로 고침 · 리뷰 7의 지적 4와 같은 원인. A-57의 커밋에서 화면 안내·MCP 설명·README·CHANGELOG만 고치고 같은 문장을 가진 API 문서 줄을 놓쳤다(위임 17이 다음 지적을 고치다 찾음; 커밋을 고쳐 쓰지 않으므로 따로 커밋) · 커밋은 이 줄이 든 커밋 · 예전 입력 거부·새 제한: 없음
 - A-61 (2026-11-27, W-8) 문구만(계산·입력 변경 없음): 스킬 `allot-spending-plan`의 카드 문장을 리뷰 7 지적 1·8의 고침(A-54, A-59)과 같은 말로 — "card round" → "card bill(카드로 낸 일시불·할부)", "pay day after the billing day" → "on or after", 채우기·나눠 내기는 자기 날짜. 플러그인 사본 둘도 같이(`scripts/plugins-sync.mjs`) · 위임 17 보고가 남긴 한 곳, PM이 직접 고침 · 커밋은 이 줄이 든 커밋 · 예전 입력 거부·새 제한: 없음
 - A-62 (2026-11-27, W-8) 문구만(계산·입력 변경 없음): CHANGELOG와 README의 "한 달 앞"을 "보통 한 달 앞"으로 하고, 휴일 규칙이 월급날이나 청구일을 달의 경계 너머로 옮기는 달 끝·달 초의 청구는 그대로이거나 두 달 옮겨질 수 있다고 적음 · 리뷰 8의 지적 1(앞당김 229건은 안 옮겨지고 미룸 62건은 두 달 옮겨짐, 11,904건 중 — `review/tmp/8/`) · PM이 직접 고침 · 커밋은 이 줄이 든 커밋 · 예전 입력 거부·새 제한: 없음
+- A-63 (2026-11-27, W-8) 문구만(계산·입력 변경 없음): 스킬 `allot-spending-plan`의 카드 문장(A-61)에 기준을 적음 — "한 달 앞"은 1일~말일 기준에서 보통 그렇고, 월급 기준에서는 청구일이 든 달이며, 달을 스스로 셈하지 말고 `countsIn`을 읽으라고. 플러그인 사본 둘도 같이 · 리뷰 8의 지적 2 · PM이 직접 고침 · 커밋은 이 줄이 든 커밋 · 예전 입력 거부·새 제한: 없음
 
 ## 우려
 1. **크기.** 달을 정하는 곳이 계산·화면·MCP에 걸쳐 있다(앞 일곱 글자로 자르는 곳 58군데, 파일 18개). W-3에서 달력 기준의 결과가 같음을 먼저 못박고(V-3) W-4에서 한 곳씩 바꾼다. W-4가 두 번 실패하면 멈추고 원인을 찾는다.
