@@ -571,7 +571,7 @@ export const en = {
     addGeneral: 'Add spending',
     addInst: 'Add installment',
     monthTitle: 'Spending in {ym}',
-    monthTip: 'Money paid from the salary account or by card comes off that month\'s left over; money paid from the subscription account is added to that month\'s subscription transfer. A card bill is counted in the month with the last pay day before it (that pay pays it); a bill on a pay day goes with the pay day before.',
+    monthTip: 'Money paid from the salary account or by card comes off that month\'s left over; money paid from the subscription account is added to that month\'s subscription transfer. A card bill is counted in the month of the pay before it (that pay pays it); a bill on a pay date goes with the pay before.',
     monthSum: 'One-off, installments and subscriptions in total',
     fromRemainder: 'Taken off the left over',
     kindGeneral: 'One-off',

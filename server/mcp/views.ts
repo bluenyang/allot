@@ -127,7 +127,7 @@ const payoutsView = (d: Data, dist: Distribution) => dist.payouts.map((p) => ({
 }))
 /**
  * The rounds month `ym` counts: the ones its transfer and remainder take (calc `monthOutgo`). A card bill counts in the
- * month of the last pay date before it (spec 018 S-5), so its date may lie after the month's period.
+ * month of the pay before it (spec 018 S-5, A-14, A-32), so its date may lie after the month's period.
  */
 const spendRoundsIn = (d: Data, ym: string, ctx: MonthCtx) => roundsView(monthOutgo(d, ym, ctx))
 /** The rounds dated in the period of month `ym`, whichever month counts them: what a schedule lists next to the charges of those dates. */

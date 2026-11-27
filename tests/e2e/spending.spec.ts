@@ -310,7 +310,7 @@ test('(S-6, S-7) the 일반 tab: rows, states, 반영 text, filters, counts and 
     // the edit button opens the editor (W-7)
     await expect(page.getByRole('button', { name: `${names.bill} 수정` })).toBeEnabled()
     // the note under the list names the billing day and links to the 할부 tab
-    await expect(page.locator('.foot')).toContainText(`카드는 청구일(매달 ${billingDay}일) 바로 앞 월급날이 든 달이에요`)
+    await expect(page.locator('.foot')).toContainText(`카드는 청구일(매달 ${billingDay}일) 바로 앞 월급의 달이에요`)
     await page.locator('.foot').getByRole('link', { name: '할부' }).click()
     await expect(page).toHaveURL(/\/spend\/inst$/)
   })
@@ -365,6 +365,8 @@ test('(S-10) the 일반 tab in English: filters, columns, states, the reason and
       await expect(gRow(page, names.off!)).toContainText('Not counted')
       await expect(page.getByText(/^\d+ items · by payment date$/)).toBeVisible()
       await expect(page.locator('.foot')).toContainText('of each month')
+      // a card bill counts in the month of the pay before it, also when the pay rule dates that pay in another month (spec 018 A-14; review 3 F-5)
+      await expect(page.locator('.foot')).toContainText('For a card, that is the month of the pay before the bill')
       await expect(page.locator('.foot').getByRole('link', { name: 'Installments' })).toBeVisible()
     })
   } finally {
@@ -871,7 +873,7 @@ test('(S-4, W-7) 할부 추가: a card installment with a fee shows 6 rounds wit
     await expect(s.locator('.rl li')).toHaveCount(6)
     await expect(s.locator('.rl li').last()).toContainText('₩220,850')
     await expect(s.getByText('끝전 ₩20은 마지막 회차가 받아요.').first()).toBeVisible()
-    await expect(s.getByText('회차마다 청구일 바로 앞 월급날이 든 달의 여유에서 빠지고 할부에 들어가요')).toBeVisible()
+    await expect(s.getByText('회차마다 청구일 바로 앞 월급의 달 여유에서 빠지고 할부에 들어가요')).toBeVisible()
     await saveSheet(page, '할부 추가')
     const got = await byName(request, 'fee')
     expect(got).toMatchObject({ how: 'installment', payBy: 'card', count: 6, fee: 35_000, amount: 1_290_000, interval: null, fxRate: null })
