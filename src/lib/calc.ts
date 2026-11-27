@@ -877,7 +877,8 @@ interface Move { date: string; amount: number }
  *   and each round leaves it on its own date;
  * - a buffer refill comes in on its date; the buffer use's bill leaves on the card's bill date;
  * - a round paid from the subscription account leaves the account linked to the subscriptions target on its date (the
- *   month's transfer already carries it).
+ *   month's transfer already carries it);
+ * - a subscription that says how it is paid leaves with each of its charges (`subCharges`, spec 018 S-9).
  */
 function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<string>, ctx: MonthCtx): Move[] {
   const s = st.settings
@@ -920,6 +921,43 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
     if (card?.accountId !== acc.id) continue
     const bill = cardBillDate(sp.bought, card, s, off)
     if (here(bill)) moves.push({ date: bill, amount: -liveRounds([sp]).reduce((a, x) => a + x.round.amount, 0) })
+  }
+  moves.push(...subCharges(acc, st, ym, off, ctx))
+  return moves
+}
+
+/**
+ * The subscription charges that leave account `acc` in month `ym` (spec 018 S-8, S-9): the charges of every
+ * subscription that says how it is paid, each on the schedule's own date (`paymentDates`) and priced with the plan in
+ * force on that date (`planOn`, S-7) in KRW at the exchange rate (`chargeKrw`: no transfer buffer %, which only the
+ * transfer carries).
+ * - paid from an account: out of that account on the charge date;
+ * - paid with a card: out of the card's paying account on the card's bill date for the charge date (`cardBillDate`: the
+ *   first billing date after the usage period that holds it, S-2); a card without a paying account moves nothing.
+ * A movement belongs to the month whose period holds its date. An account that takes the left over pays them too:
+ * subscriptions are never off the left over (the subscription transfer funds them), unlike its one-off card bills.
+ * Nothing comes in for them here: the money is the subscription transfer, wherever its target sends it.
+ */
+function subCharges(acc: Account, st: AccountState, ym: string, off: ReadonlySet<string>, ctx: MonthCtx): Move[] {
+  const moves: Move[] = []
+  let period: { start: string; end: string } | null = null
+  let s: Priced | null = null
+  for (const base of st.subscriptions) {
+    const card = base.cardId ? st.cards.find((c) => c.id === base.cardId) ?? null : null
+    if (base.cardId ? card?.accountId !== acc.id : base.accountId !== acc.id) continue
+    period ??= periodOf(ym, ctx)
+    s ??= priced(st.settings, st.currencies)
+    const [first, last] = [parseDate(period.start), parseDate(period.end)]
+    // A bill comes after its charge: up to a usage period and a billing cycle later, and the billing rule may move it
+    // either way. The charges of four months back to a month ahead are looked at and the bill's own date decides.
+    const dates = card ? paymentDates(base, st.planChanges, addMonths(first, -4), dayPlus(last, SHIFT_LIMIT)) : paymentDates(base, st.planChanges, first, last)
+    for (const d of dates) {
+      const charged = ymd(d)
+      const date = card ? cardBillDate(charged, card, st.settings, off) : charged
+      if (date < period.start || date > period.end) continue
+      const amount = chargeKrw(planOn(base, st.planChanges, charged), s)
+      if (amount) moves.push({ date, amount: -amount })
+    }
   }
   return moves
 }
