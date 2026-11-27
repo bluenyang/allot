@@ -32,7 +32,9 @@ only (below).
   - *The balance projection of an account that pays card bills.* The money for a bill now comes in on the transfer date
     of the month that counts the bill and leaves on the bill date (before, only the bill left). The account that takes
     the left over is no exception: it shows its card money in and its bills out. A one-off round paid from the
-    subscription account now leaves the account the subscriptions target sends to.
+    subscription account now leaves the account the subscriptions target sends to. The accounts table's 이번 달 column
+    (월급 분배 › 통장·생활비·설정) counts the same card money for such an account: the card rounds this month counts,
+    next to the buffer refills it counted before.
   - A subscription leaves an account's projection only after you say how it is paid (below); until then it takes nothing
     out, as in 0.1.9.
 - **API clients**: `/api/state` and the MCP answers no longer carry `settings.dayShift`; read `payShift`, `transferShift`
