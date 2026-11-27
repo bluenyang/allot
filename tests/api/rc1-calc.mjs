@@ -49,7 +49,9 @@
 //             user's id and an empty id are refused (400) and leave the row; a change logged before the columns existed
 //             still reverts; deleting the card or the account unlinks the subscription in the same change set and the
 //             revert brings both back; the insert of a card or an account is not reverted while a subscription is paid
-//             with it (409), and is once it is unlinked; propose_changes sets, keeps and refuses the same way; an account with
+//             with it (409), and is once it is unlinked; propose_changes sets, keeps and refuses the same way;
+//             list_subscriptions carries cardId, card, accountId and account, and list_accounts' projection takes the
+//             charges out of the account (its own on the charge date, its card's on the bill date after); an account with
 //             subscriptions paid with its card and from its account can be deleted by the admin
 // Exit 0 only if every check passed.
 import postgres from 'postgres'
@@ -725,6 +727,34 @@ try {
     const c1 = await U('POST', '/api/subscriptions', { ...SUB, name: 'RC1 paid sub 2', accountId: acc1 })
     ok(c1.status === 201 && way(c1.json) === '-/acc1', `pay: a new subscription with an account → ${c1.status} (${way(c1.json)})`)
     const sid2 = c1.json.id
+
+    // the MCP answers: list_subscriptions names the card or the account, list_accounts takes the charges out
+    const was = (await state()).settings
+    ok((await put({ ...BODY, payShift: 'none', transferShift: 'none', billingShift: 'none', monthBasis: 'calendar', monthBasisCardId: null, monthNaming: 'auto' })).status === 200, 'pay: calendar months, no rule')
+    const nowP = new Date(new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).replace(' ', 'T'))
+    const todayP = `${nowP.getFullYear()}-${String(nowP.getMonth() + 1).padStart(2, '0')}-${String(nowP.getDate()).padStart(2, '0')}`
+    ok((await U('POST', '/api/balances', { accountId: acc1, date: todayP, amount: 500_000, note: '' })).status === 201, 'pay: a balance record of the account, today')
+    const sid3 = (await U('POST', '/api/subscriptions', { ...SUB, name: 'RC1 paid sub 3' })).json?.id
+    const lsP = await tool(kRead, 'list_subscriptions', {})
+    const rowP = (id) => lsP.data?.subscriptions?.find((x) => x.id === id)
+    const said = (x) => JSON.stringify([x?.cardId, x?.card, x?.accountId, x?.account, x?.payPath])
+    ok(!lsP.failed && said(rowP(sid)) === JSON.stringify([card1, 'RC1 sub card', null, null, 'direct']) && said(rowP(sid2)) === JSON.stringify([null, null, acc1, 'RC1 sub account', 'direct']),
+      `list_subscriptions: the card and its name, the account and its name (${said(rowP(sid)).replace(card1, 'card1')}, ${said(rowP(sid2)).replace(acc1, 'acc1')})`)
+    ok(!!sid3 && said(rowP(sid3)) === JSON.stringify([null, null, null, null, 'direct']), `list_subscriptions: a subscription that does not say has the four keys as null (${said(rowP(sid3))})`)
+    ok((await U('DELETE', `/api/subscriptions/${sid3}`)).status === 204, 'pay: that subscription is deleted again')
+    // both are charged on the 10th from January 2031 on (one cycle before the date entered): the account pays its own
+    // charge on the 10th, and on the 14th of the month after the card's charge of the 10th
+    const laP = await tool(kRead, 'list_accounts', { months: 60 })
+    const outP = (m) => laP.data?.accounts?.find((a) => a.id === acc1)?.projection?.find((r) => r.month === m)?.outflowKrw
+    ok(!laP.failed && outP('2030-12') === 0 && outP('2031-01') === 10_000 && outP('2031-02') === 20_000 && outP('2031-03') === 20_000,
+      `list_accounts: the account pays nothing in 2030-12 (${outP('2030-12')}), its own charge in 2031-01 (${outP('2031-01')}), and from 2031-02 that and the card's bill (${outP('2031-02')}, ${outP('2031-03')})`)
+    ok((await put1({ cardId: loose, accountId: null })).status === 200, 'pay: the first subscription moves to the card without a paying account')
+    const laP2 = await tool(kRead, 'list_accounts', { months: 60 })
+    const outP2 = (m) => laP2.data?.accounts?.find((a) => a.id === acc1)?.projection?.find((r) => r.month === m)?.outflowKrw
+    ok(outP2('2031-02') === 10_000 && laP2.data?.accounts?.every((a) => a.id === acc1 || !a.projection || a.projection.every((r, i) => r.outflowKrw === laP.data.accounts.find((b) => b.id === a.id).projection[i].outflowKrw)),
+      `list_accounts: with a card that has no paying account its charge leaves no account (the account's 2031-02: ${outP2('2031-02')})`)
+    ok((await put1({ cardId: card1, accountId: null })).status === 200 && (await put({ ...BODY, payShift: was.payShift, transferShift: was.transferShift, billingShift: was.billingShift, monthBasis: was.monthBasis, monthBasisCardId: was.monthBasisCardId, monthNaming: was.monthNaming })).status === 200,
+      'pay: the first card again, and the settings are put back')
 
     // refused: both, an id that does not exist, another user's id, an empty id
     const both = await put1({ cardId: card1, accountId: acc1 }, EN)

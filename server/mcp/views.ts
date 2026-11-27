@@ -384,6 +384,11 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
       nextPayment: next ? ymd(next) : null,
       ...(differs ? { nextCharge: { date: ymd(next!), plan: at!.plan, krw: nextKrw! } } : {}),
       payPath: base.path,
+      // how it is paid (spec 018 S-8): one of the user's cards or accounts with its name, or neither (all null)
+      cardId: base.cardId ?? null,
+      card: base.cardId ? (d.cards ?? []).find((c) => c.id === base.cardId)?.name ?? null : null,
+      accountId: base.accountId ?? null,
+      account: base.accountId ? d.accounts.find((a) => a.id === base.accountId)?.name ?? null : null,
       receiptVerified: base.verified,
       ...(base.note ? { note: base.note } : {}),
     }

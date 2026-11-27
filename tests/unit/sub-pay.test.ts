@@ -7,7 +7,8 @@ import { subscription as subBody } from '../../server/validation'
 import { issueMessage } from '../../server/messages'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { Account, AllocationTarget, Balance, Card, DayShift, ForeignCurrency, Phase, PlanChange, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
-import { monthMoney, projectAccount, type AccountState } from '../../src/lib/calc'
+import { monthMoney, parseDate, projectAccount, type AccountState } from '../../src/lib/calc'
+import { accountList, subscriptionList, type Data } from '../../server/mcp/views'
 
 // ── the request body (S-12) ──
 const OLD = { name: 'Stream', category: 'content', plan: 'Basic', amount: 9900, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: '2026-12-05', path: 'direct', verified: false }
@@ -214,4 +215,30 @@ test('a charge belongs to the month whose period holds its date, on the pay basi
   // a charge on the period's first day (the pay day) is that month's: nextDate 11-25
   const first = state({ settings: pay, subscriptions: [sub('s1', 20_000, '2026-11-25', { accountId: 'plain-acc' })], balances: [bal('plain-acc', '2026-11-24', 100_000)] })
   assert.deepEqual(outs(first, 'plain-acc', '2026-11', 2), [0, 20_000])
+})
+
+// ── the MCP answers (S-10) ──
+test('MCP: list_subscriptions names the card or the account, and list_accounts takes the charges out of the projection', () => {
+  const subs = [
+    sub('by-card', 100_000, '2026-11-05', { cardId: 'c-subs' }), sub('by-acc', 20_000, '2026-11-10', { accountId: 'plain-acc' }),
+    sub('not-said', 1_000, '2026-11-10'), sub('nulls', 1_000, '2026-11-10', { cardId: null, accountId: null }), sub('loose', 1_000, '2026-11-10', { cardId: 'c-none' }),
+  ]
+  const d: Data = {
+    ...state({ subscriptions: subs, balances: [bal('subs-acc', '2026-11-01', 0), bal('plain-acc', '2026-11-01', 50_000)] }),
+    events: [], checks: [], debts: [], remainderSplit: [], holidaySets: [],
+  }
+  const now = parseDate('2026-11-02')
+  const pay = Object.fromEntries(subscriptionList(d, now).subscriptions.map((x) => [x.id, [x.cardId, x.card, x.accountId, x.account, x.payPath]]))
+  assert.deepEqual(pay, {
+    'by-card': ['c-subs', 'Subs card', null, null, 'direct'],
+    'by-acc': [null, null, 'plain-acc', 'plain-acc', 'direct'],
+    'not-said': [null, null, null, null, 'direct'],
+    nulls: [null, null, null, null, 'direct'],
+    loose: ['c-none', 'No account', null, null, 'direct'],
+  })
+  // the transfer: 123,000 a month → 130,000 into subs-acc on 11-26; the card's bill of 11-14 (the charge of 10-05) leaves it
+  const proj = (id: string) => accountList(d, now, 2).accounts.find((a) => a.id === id)!.projection!.map((r) => [r.inflowKrw, r.outflowKrw, r.endKrw])
+  assert.deepEqual(proj('subs-acc'), [[130_000, 100_000, 30_000], [130_000, 100_000, 60_000]])
+  // the account the 20,000 is paid from: out on 11-10 and 12-10
+  assert.deepEqual(proj('plain-acc'), [[0, 20_000, 30_000], [0, 20_000, 10_000]])
 })
