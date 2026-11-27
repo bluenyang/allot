@@ -287,20 +287,12 @@ export const RESOURCES = {
     // `cardId` and `accountId` (spec 018 S-8) are not in `optional`: left out of an update they are not in the row that
     // is written, so the saved way of paying stays (a client in the 0.1.9 shape does not erase it); null clears one.
     optional: ['note'],
-    // KRW, USD or a code in the currency list (spec 013 S-23). A card or an account, never both (spec 018 S-12): a body
-    // that names only one is checked against the stored other one, which would stay.
-    check: async (q, uid, x, id) => {
-      const unknown = await currencyProblem(q, uid, x.currency)
-      if (unknown) return unknown
-      if (!id || (!x.cardId && !x.accountId) || (x.cardId !== undefined && x.accountId !== undefined)) return null
-      const [row] = await q.select({ cardId: t.subscription.cardId, accountId: t.subscription.accountId }).from(t.subscription)
-        .where(and(eq(t.subscription.userId, uid), eq(t.subscription.id, id)))
-      const card = x.cardId === undefined ? row?.cardId : x.cardId
-      const account = x.accountId === undefined ? row?.accountId : x.accountId
-      return card && account ? m('payOneOf') : null
-    },
-    // KRW items carry no VAT (the same rule the editor applied before).
-    toRow: (s) => ({ ...s, vat: s.currency === 'KRW' ? 0 : s.vat, note: s.note || null }),
+    // KRW, USD or a code in the currency list (spec 013 S-23).
+    check: (q, uid, x) => currencyProblem(q, uid, x.currency),
+    // KRW items carry no VAT (the same rule the editor applied before). A card or an account, never both (spec 018
+    // S-12): a body with both is refused by the schema; one that names only one with a value clears the other, saved
+    // or not (`payRow`, A-37), so the two are never both set.
+    toRow: (s) => ({ ...v.payRow(s), vat: s.currency === 'KRW' ? 0 : s.vat, note: s.note || null }),
   }),
   'plan-changes': list(t.planChange, v.planChange, {
     check: (q, uid, x) => currencyProblem(q, uid, x.to.currency),

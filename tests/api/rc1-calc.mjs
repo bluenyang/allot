@@ -793,10 +793,16 @@ try {
     const both = await put1({ cardId: card1, accountId: acc1 }, EN)
     const bothNew = await U('POST', '/api/subscriptions', { ...SUB, name: 'RC1 both', cardId: card1, accountId: acc1 }, EN)
     ok(both.status === 400 && both.json?.error === ONE_OF && bothNew.status === 400 && bothNew.json?.error === ONE_OF, `pay: a card and an account together → ${both.status} "${both.json?.error}", also for a new one (${bothNew.status})`)
-    // the stored card would stay next to the account the body names: the same refusal
+    // a body that names one of the two while the other is saved is not refused: the way of paying is one of the two,
+    // so naming one clears the other (W-7's report, A-37) — through the API and through propose_changes
     const half = await put1({ accountId: acc1 }, EN)
     const half2 = await U('PUT', `/api/subscriptions/${sid2}`, { ...SUB, name: 'RC1 paid sub 2', cardId: card1 }, EN)
-    ok(half.status === 400 && half.json?.error === ONE_OF && half2.status === 400 && half2.json?.error === ONE_OF, `pay: an account named while a card is saved (and a card while an account is) → ${half.status}, ${half2.status} "${half.json?.error}"`)
+    ok(half.status === 200 && way(half.json) === '-/acc1' && way(await saved(sid)) === '-/acc1', `pay: an account named while a card is saved → ${half.status}, the account replaces the card (${way(await saved(sid))})`)
+    ok(half2.status === 200 && way(half2.json) === 'card1/-' && way(await saved(sid2)) === 'card1/-', `pay: a card named while an account is saved → ${half2.status}, the card replaces the account (${way(await saved(sid2))})`)
+    // and back the same way: the card named for the first, the account for the second
+    const back1 = await put1({ cardId: card1 }, EN)
+    const back2 = await U('PUT', `/api/subscriptions/${sid2}`, { ...SUB, name: 'RC1 paid sub 2', accountId: acc1 }, EN)
+    ok(back1.status === 200 && back2.status === 200 && way(await saved(sid)) === 'card1/-' && way(await saved(sid2)) === '-/acc1', `pay: named the other way round, each is back (${way(await saved(sid))}, ${way(await saved(sid2))})`)
     const got = []
     for (const [k, id] of [['cardId', 'no-such-card'], ['accountId', 'no-such-account'], ['cardId', vCard.json.id], ['accountId', vAcc.json.id], ['cardId', acc1], ['accountId', card1]]) {
       const r = await put1({ cardId: null, accountId: null, [k]: id }, EN)
@@ -861,16 +867,20 @@ try {
     const st3 = await state()
     ok(rvCard2b.status === 200 && rvAcc2b.status === 200 && !st3.cards.some((c) => c.id === card2) && !st3.accounts.some((a) => a.id === acc2), `pay: once nothing uses them the two inserts are reverted → ${rvCard2b.status}, ${rvAcc2b.status}`)
 
-    // a proposal sets the card, keeps it when the keys are left out, refuses both, and deletes a card in use the same way
+    // a proposal sets the card, keeps it when the keys are left out, refuses both, replaces the card when it names an
+    // account alone (A-37), and deletes a card in use the same way
     const pSet = await apply([{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', cardId: loose, accountId: null } }])
     ok(!pSet.failed && way(await saved(sid2)) === 'loose/-', `pay: propose_changes sets the card, applied (${way(await saved(sid2))})`)
     const pKeep = await apply([{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', plan: 'RC1 Pro' } }])
     const afterKeep = await saved(sid2)
     ok(!pKeep.failed && afterKeep.plan === 'RC1 Pro' && way(afterKeep) === 'loose/-', `pay: a proposal that leaves the keys out keeps the card (${way(afterKeep)})`)
     const pBoth = await tool(kChat, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', cardId: loose, accountId: acc1 } }] })
-    const pHalf = await tool(kChat, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', accountId: acc1 } }] })
     const pGone = await tool(kChat, 'propose_changes', { changes: [{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', cardId: vCard.json.id } }] })
-    ok(pBoth.failed && pHalf.failed && pGone.failed && way(await saved(sid2)) === 'loose/-', 'pay: propose_changes refuses a card with an account, an account next to the saved card, and another user\'s card')
+    ok(pBoth.failed && pGone.failed && way(await saved(sid2)) === 'loose/-', 'pay: propose_changes refuses a card with an account in one body, and another user\'s card')
+    const pHalf = await apply([{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', plan: 'RC1 Pro', accountId: acc1 } }])
+    ok(!pHalf.failed && way(await saved(sid2)) === '-/acc1', `pay: a proposal that names an account while a card is saved is taken: the account replaces the card (${way(await saved(sid2))})`)
+    const pHalf2 = await apply([{ resource: 'subscriptions', action: 'update', id: sid2, data: { ...SUB, name: 'RC1 paid sub 2', plan: 'RC1 Pro', cardId: loose } }])
+    ok(!pHalf2.failed && way(await saved(sid2)) === 'loose/-', `pay: and one that names the card again puts it back (${way(await saved(sid2))})`)
     const pNew = await apply([{ resource: 'subscriptions', action: 'create', data: { ...SUB, name: 'RC1 proposed sub', accountId: acc1 } }])
     const proposed = (await state()).subscriptions.find((x) => x.name === 'RC1 proposed sub')
     ok(!pNew.failed && way(proposed) === '-/acc1', `pay: propose_changes creates a subscription paid from an account (${way(proposed)})`)

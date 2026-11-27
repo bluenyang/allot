@@ -187,12 +187,26 @@ export const subscription = plan.extend({
   verified: z.boolean(),
   note: optText,
   // How it is paid (spec 018 S-8, S-12): a card, an account, or neither. Optional, so a client that does not know them
-  // keeps the stored ones; null clears one. Never both (the API checks the stored one too, when a body names only one).
+  // keeps the stored ones; null clears one. Never both in one body; a body that names one with a value means that one,
+  // and the other is cleared (`payRow`).
   cardId: text.min(1).nullable().optional(),
   accountId: text.min(1).nullable().optional(),
 }).superRefine((x, ctx) => {
   if (x.cardId && x.accountId) ctx.addIssue({ code: 'custom', path: ['accountId'], message: 'payOneOf' satisfies MsgKey })
 })
+
+/**
+ * The way of paying a subscription body writes (spec 018 S-8, S-12): it is one of the two, a card or an account. A body
+ * that names one of them with a value and leaves the other out means "paid this way": the other is written as null,
+ * so a saved account does not stay next to the card the body names (it is not refused — W-7's report, A-37). A body
+ * that names neither, or only clears one (null), leaves the other as it is saved; a body with both values never gets
+ * here (the schema refuses it, `payOneOf`).
+ */
+export function payRow<T extends { cardId?: string | null; accountId?: string | null }>(x: T): T {
+  if (x.cardId && x.accountId === undefined) return { ...x, accountId: null }
+  if (x.accountId && x.cardId === undefined) return { ...x, cardId: null }
+  return x
+}
 
 export const planChange = z.object({
   subId: text.min(1),

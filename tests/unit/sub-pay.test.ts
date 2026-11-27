@@ -3,7 +3,7 @@
 //   pnpm test:unit
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { subscription as subBody } from '../../server/validation'
+import { payRow, subscription as subBody } from '../../server/validation'
 import { issueMessage } from '../../server/messages'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { Account, AllocationTarget, Balance, Card, DayShift, ForeignCurrency, Phase, PlanChange, Settings, Spending, SpendingRound, Subscription } from '../../src/data/types'
@@ -32,6 +32,20 @@ test('subscription body: a card, an account, null for either or both; never both
   assert.equal(both.error!.issues[0]!.message, 'payOneOf')
   assert.equal(issueMessage('ko', both.error!.issues[0]), '구독의 결제 수단은 카드와 계좌 중 하나만 고를 수 있어요.')
   assert.equal(issueMessage('en', both.error!.issues[0]), 'A subscription is paid with a card or from an account, not both.')
+  // W-7's report, spec 018 A-37: a body that names one of the two with a value clears the other in the row that is
+  // written (the way of paying is one of the two), so a saved other one never makes the save a refusal
+  const way = (pay: Record<string, unknown>) => { const r = payRow(subBody.parse({ ...OLD, ...pay })); return ['cardId' in r ? r.cardId : 'kept', 'accountId' in r ? r.accountId : 'kept'] }
+  assert.deepEqual(way({ cardId: 'c1' }), ['c1', null])
+  assert.deepEqual(way({ accountId: 'a1' }), [null, 'a1'])
+  assert.deepEqual(way({ cardId: 'c1', accountId: null }), ['c1', null])
+  assert.deepEqual(way({ cardId: null, accountId: 'a1' }), [null, 'a1'])
+  // naming neither keeps both saved; clearing one alone keeps the other
+  assert.deepEqual(way({}), ['kept', 'kept'])
+  assert.deepEqual(way({ cardId: null }), [null, 'kept'])
+  assert.deepEqual(way({ accountId: null }), ['kept', null])
+  assert.deepEqual(way({ cardId: null, accountId: null }), [null, null])
+  // the rest of the body is written as it is
+  assert.deepEqual(payRow(subBody.parse({ ...OLD, cardId: 'c1' })), { ...subBody.parse(OLD), cardId: 'c1', accountId: null })
   // an id is a text of at least one character, like a spending's card
   for (const bad of ['', 12, true, {}]) {
     assert.equal(subBody.safeParse({ ...OLD, cardId: bad }).success, false, `cardId ${JSON.stringify(bad)}`)
