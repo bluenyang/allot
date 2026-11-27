@@ -60,7 +60,8 @@ const rows = computed<Row[]>(() => income.value.rows.map((line) => {
   }
   const it = itemOf(line.key)
   const when = it ? cycleText(it) : ''
-  const date = dayOfYm(ym.value, line.day)
+  // a yearly income is a calendar date (the one that falls in this month's period); a monthly one is its day inside the period
+  const date = line.date ?? dayOfYm(ym.value, line.day)
   return { key: line.key, itemId: line.key, name: line.name ?? '', yearly: it?.cycle === 'yearly', line, when, hint: [when, mdd(date), accountName(it?.accountId)].filter(Boolean).join(' · ') }
 }))
 const extras = computed(() => income.value.extras)

@@ -64,7 +64,7 @@ test('the three bases name the same dates differently (the scenario of this file
   assert.deepEqual(periodOf('2026-12', ctxOf(state(CARD))), { ym: '2026-12', start: '2026-12-12', end: '2027-01-11' })
 })
 
-test('incomeAt: money that came in once counts in the month whose period holds its date; the salary, a receipt and a yearly income go by the name', () => {
+test('incomeAt: money that came in once counts in the month whose period holds its date; the salary and a receipt go by the name (the yearly income of 12-20 lies in "2026-12" on all three bases)', () => {
   // calendar, 2026-12: the extras of 12-05, 12-24 and 12-25 = 131,000
   const cal = incomeAt(state(S), '2026-12')
   assert.deepEqual(cal.extras.map((x) => x.date), ['2026-12-05', '2026-12-24', '2026-12-25'])
@@ -94,6 +94,50 @@ test('incomeAt: money that came in once counts in the month whose period holds i
   assert.equal(incomeAt(state(PAY), '2026-11').total, 3_000_000)
   // the yearly income of another month comes next in the month of that name
   assert.deepEqual(incomeAt(state(PAY), '2027-01').later, [{ id: 'bonus', name: 'Bonus', amount: 400_000, ym: '2027-12' }])
+})
+
+// Review 2 F-5: a yearly income is a calendar date (its month number and day), so it counts — and is shown — in the
+// month whose period holds that date, not on "its day inside the period named after its month number".
+test('incomeAt: a yearly income counts in the month whose period holds its calendar date; a monthly income keeps its day inside the period', () => {
+  const yearly = (id: string, month: number, day: number): IncomeItem => ({ id, name: id, cycle: 'yearly', month, day, amount: 400_000 })
+  const st = (s: Settings, list: IncomeItem[]) => state(s, { incomes: list, incomeReceipts: [], incomeExtras: [] })
+  const row = (s: Settings, list: IncomeItem[], ym: string, id: string) => incomeAt(st(s, list), ym).rows.find((r) => r.key === id)
+  // pay day 25, named by the end: "2026-12" = 11-25 … 12-24, "2027-01" = 12-25 … 01-24
+  const late = [yearly('late', 12, 28)]
+  assert.equal(row(PAY, late, '2026-12', 'late'), undefined, '12-28 is not in 11-25 … 12-24')
+  assert.deepEqual(row(PAY, late, '2027-01', 'late'), { key: 'late', name: 'late', day: 28, date: '2026-12-28', expected: 400_000, received: null, used: 400_000, diff: 0 })
+  assert.equal(incomeAt(st(PAY, late), '2026-12').total, 3_000_000)
+  assert.equal(incomeAt(st(PAY, late), '2027-01').total, 3_400_000)
+  // once a year, in one month only
+  const names = ['2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03']
+  assert.deepEqual(names.filter((ym) => row(PAY, late, ym, 'late')), ['2027-01'])
+  // the months that do not count it name the month it comes next
+  assert.deepEqual(incomeAt(st(PAY, late), '2026-12').later, [{ id: 'late', name: 'late', amount: 400_000, ym: '2027-01' }])
+  assert.deepEqual(incomeAt(st(PAY, late), '2027-02').later, [{ id: 'late', name: 'late', amount: 400_000, ym: '2028-01' }])
+  assert.deepEqual(incomeAt(st(PAY, late), '2027-01').later, [])
+  // pay day 10, named by the start: "2026-12" = 12-10 … 01-09, so 12-05 belongs to "2026-11" (11-10 … 12-09)
+  const PAY10: Settings = { ...PAY, payDay: 10 }
+  const early = [yearly('early', 12, 5)]
+  assert.equal(row(PAY10, early, '2026-12', 'early'), undefined)
+  assert.equal(row(PAY10, early, '2026-11', 'early')!.date, '2026-12-05')
+  // the card basis (first day 12): "2026-12" = 12-12 … 01-11; 12-05 is in "2026-11", 01-05 in "2026-12"
+  assert.equal(row(CARD, early, '2026-11', 'early')!.date, '2026-12-05')
+  assert.equal(row(CARD, early, '2026-12', 'early'), undefined)
+  assert.equal(row(CARD, [yearly('jan', 1, 5)], '2026-12', 'jan')!.date, '2027-01-05')
+  assert.deepEqual(incomeAt(st(CARD, [yearly('jan', 1, 5)]), '2027-01').later.map((l) => l.ym), ['2027-12'])
+  // a day the month lacks is its last day: 02-30 is 02-28 in 2027
+  assert.equal(row(PAY, [yearly('feb', 2, 30)], '2027-03', 'feb')!.date, '2027-02-28')
+  // the calendar basis is as it was: the month of that number, on that day
+  for (const ym of names) assert.equal(!!row(S, late, ym, 'late'), ym === '2026-12', ym)
+  assert.equal(row(S, late, '2026-12', 'late')!.date, '2026-12-28')
+  assert.deepEqual(incomeAt(st(S, late), '2026-11').later.map((l) => l.ym), ['2026-12'])
+  assert.deepEqual(incomeAt(st(S, late), '2027-01').later.map((l) => l.ym), ['2027-12'])
+  // a monthly income has no date of its own: every month counts it, by the name
+  const monthly: IncomeItem = { id: 'side', name: 'side', cycle: 'monthly', day: 28, amount: 100_000 }
+  for (const ym of ['2026-12', '2027-01']) assert.deepEqual([row(PAY, [monthly], ym, 'side')!.expected, row(PAY, [monthly], ym, 'side')!.date], [100_000, undefined], ym)
+  // a receipt written down for the yearly income in another month still counts there, with nothing expected and no date
+  const got = incomeAt(state(PAY, { incomes: late, incomeReceipts: [{ id: 'r', itemId: 'late', ym: '2026-12', amount: 390_000 }], incomeExtras: [] }), '2026-12')
+  assert.deepEqual(got.rows.find((r) => r.key === 'late'), { key: 'late', name: 'late', day: 28, expected: 0, received: 390_000, used: 390_000, diff: 390_000 })
 })
 
 test('spendingIn: each live round counts in the month whose period holds its date', () => {

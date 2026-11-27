@@ -1430,6 +1430,8 @@ export interface IncomeLine {
   key: string // 'salary' or the income's id
   name: string | null // null = the salary (the screens name it)
   day: number
+  /** A yearly income counted in this month: its calendar date (its month number and day in the year that falls in the month's period). */
+  date?: string
   expected: number
   received: number | null
   used: number
@@ -1444,8 +1446,11 @@ export interface IncomeLater { id: string; name: string; amount: number; ym: str
  * month (monthly ones always, yearly ones in their month), each with what was received for it that month or else its
  * expected amount, plus the money that came in once in that month. With no incomes, receipts or extras, `total` is
  * netPay: the month is what it was before 0.1.8.
- * `ym` is the month's name (spec 018 S-4): the salary line, the receipts (their saved month) and a yearly income (its
- * month number) go by the name; only money that came in once has a date, and counts in the month whose period holds it.
+ * `ym` is the month's name (spec 018 S-4): the salary line and the receipts (their saved month) go by the name, and a
+ * monthly income's day is the one inside the month's period. What has a calendar date counts in the month whose period
+ * holds it: money that came in once, and a yearly income — its month number and day are a date of the calendar
+ * (month 12, day 28 is 12-28 of some year; review 2 F-5), so with a pay basis of the 25th it belongs to the month named
+ * for 12-25 … 01-24, not to "day 28 of the period named 12". With the calendar basis that is the month of that number.
  */
 export function incomeAt(state: Pick<MonthState, 'settings' | 'incomes' | 'incomeReceipts' | 'incomeExtras' | 'cards' | 'off'>, ym: string, ctx: MonthCtx = ctxOf(state)) {
   const receipts = (state.incomeReceipts ?? []).filter((r) => r.ym === ym)
@@ -1453,28 +1458,37 @@ export function incomeAt(state: Pick<MonthState, 'settings' | 'incomes' | 'incom
     const mine = receipts.filter((r) => r.itemId === itemId)
     return mine.length ? mine.reduce((a, r) => a + r.amount, 0) : null
   }
-  const line = (key: string, itemId: string | null, name: string | null, day: number, expected: number): IncomeLine => {
+  const line = (key: string, itemId: string | null, name: string | null, day: number, expected: number, date?: string): IncomeLine => {
     const received = got(itemId)
     const used = received ?? expected
-    return { key, name, day, expected, received, used, diff: used - expected }
+    return { key, name, day, ...(date ? { date } : {}), expected, received, used, diff: used - expected }
   }
-  const month = Number(ym.slice(5, 7))
+  const year = Number(ym.slice(0, 4))
   const items = state.incomes ?? []
+  /** The calendar date of a yearly income in year `y` (a month without that day uses its last day). */
+  const dateIn = (i: IncomeItem, y: number) => nominalDay(`${y}-${String(i.month).padStart(2, '0')}`, i.day)
+  /** The date on which a yearly income falls in this month's period, or null: the year of the name, or the one next to it. */
+  const dueOn = (i: IncomeItem): string | null => (i.cycle === 'yearly' && i.month
+    ? [year - 1, year, year + 1].map((y) => dateIn(i, y)).find((d) => ymOfDate(d, ctx) === ym) ?? null
+    : null)
   const rows: IncomeLine[] = [
     line('salary', null, null, state.settings.payDay, state.settings.netPay),
     // an income of another month (yearly) shows only when something was written down for it in this month: it counts
     // with nothing expected, so a receipt is never dropped (an early bonus is this month's, and its own month still expects it)
-    ...items.filter((i) => i.cycle === 'monthly' || i.month === month || got(i.id) !== null)
-      .map((i) => line(i.id, i.id, i.name, i.day, i.cycle === 'monthly' || i.month === month ? i.amount : 0)),
+    ...items.flatMap((i) => {
+      const due = dueOn(i)
+      const counts = i.cycle === 'monthly' || due !== null
+      return counts || got(i.id) !== null ? [line(i.id, i.id, i.name, i.day, counts ? i.amount : 0, due ?? undefined)] : []
+    }),
   ]
   const extras = (state.incomeExtras ?? []).filter((x) => ymOfDate(x.date, ctx) === ym)
   const extraSum = extras.reduce((a, x) => a + x.amount, 0)
   const expected = rows.reduce((a, r) => a + r.expected, 0)
   const total = rows.reduce((a, r) => a + r.used, 0) + extraSum
-  // the yearly incomes of other months, each with the next month it comes in (after ym)
-  const later: IncomeLater[] = items.filter((i) => i.cycle === 'yearly' && i.month && i.month !== month).map((i) => {
-    const y = Number(ym.slice(0, 4)) + ((i.month as number) < month ? 1 : 0)
-    return { id: i.id, name: i.name, amount: i.amount, ym: `${y}-${String(i.month).padStart(2, '0')}` }
+  // the yearly incomes of other months, each with the next month it comes in (after ym): the month of its next date
+  const later: IncomeLater[] = items.filter((i) => i.cycle === 'yearly' && i.month && dueOn(i) === null).map((i) => {
+    const next = [year - 1, year, year + 1, year + 2].map((y) => ymOfDate(dateIn(i, y), ctx)).find((m) => m > ym)!
+    return { id: i.id, name: i.name, amount: i.amount, ym: next }
   }).sort((a, b) => a.ym.localeCompare(b.ym))
   return { rows, extras, extraSum, expected, total, diff: total - expected, allReceived: rows.every((r) => r.received !== null), later }
 }

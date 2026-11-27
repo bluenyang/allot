@@ -640,6 +640,10 @@ test('get_income: the salary with its receipts, a monthly and a yearly income, t
   assert.deepEqual([bonus.cycle, bonus.yearlyMonth, bonus.expectedKrw, bonus.receivedKrw, bonus.countedKrw, bonus.note], ['yearly', 3, 1_000_000, null, 1_000_000, 'once a year'])
   assert.equal(march.totalKrw, 4_200_000)
   assert.deepEqual(march.later, [])
+  // a yearly income counted in a month carries its calendar date there (review 2 F-5); a monthly one has none
+  assert.match(String(bonus.date), /^2027-03-\d{2}$/)
+  assert.equal(Number(String(bonus.date).slice(8)), bonus.day)
+  assert.equal('date' in g.incomes[1]!, false)
   // no income data: the salary alone, as before
   const plain = incomeView(data, '2026-11')
   assert.deepEqual(plain.incomes.map((r) => [r.name, r.expectedKrw, r.receivedKrw]), [['salary', 3_000_000, null]])

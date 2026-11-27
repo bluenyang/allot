@@ -264,6 +264,8 @@ export function incomeView(d: Data, ym: string) {
         cycle: item ? item.cycle : 'monthly' as const,
         ...(item?.cycle === 'yearly' ? { yearlyMonth: item.month ?? null } : {}),
         day: r.day,
+        /** a yearly income counted in this month: its calendar date (yearlyMonth and day), which lies in the month's period */
+        ...(r.date ? { date: r.date } : {}),
         accountId: item ? item.accountId ?? null : null,
         expectedKrw: krw(r.expected),
         /** null = nothing received is written down for it this month */
