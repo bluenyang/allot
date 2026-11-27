@@ -20,9 +20,10 @@ only (below).
 - **Numbers that change on the day of the upgrade**, with nothing new chosen yet:
   - *Card bills count one pay earlier.* A card bill (a lump sum or an installment paid by card) counts in the month of
     the pay before it, no longer in the month of its billing date. With a pay day on or after the billing day — on the
-    same day too — that is one month earlier: with pay day 25 and billing day 14 the bill of 14 December comes off
-    November's left over, and with both on the 25th so does the bill of 25 December. The dates count as the weekend
-    and holiday rule moves them. This month's and next month's left over move, and the totals over the months stay the
+    same day too — that is usually one month earlier: with pay day 25 and billing day 14 the bill of 14 December comes
+    off November's left over, and with both on the 25th so does the bill of 25 December. The dates count as the weekend
+    and holiday rule moves them, so a bill at the very end or start of a month can stay in its month or move two when
+    that rule carries the pay or the bill across the month's edge. This month's and next month's left over move, and the totals over the months stay the
     same. Buffer refills, split payments and rounds paid from the salary or the subscription account count where they
     did.
   - *Each subscription charge uses the plan in force on its own date.* A plan change dated after a month's charge leaves
