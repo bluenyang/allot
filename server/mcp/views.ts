@@ -84,7 +84,8 @@ export const moneyOf = (d: Data, ym: string) => monthMoney(d, ym, { ctx: basisOf
 const dateOf = (m: MonthDate) => ({ date: m.date, nominal: m.nominal, shifted: m.shifted, ...(m.unresolved ? { unresolved: true } : {}) })
 /**
  * The three dates of a month, each with its own weekend and holiday rule (`shift`, spec 018 S-1) next to what the rule did
- * (`shifted`): the pay, transfer and billing day inside the month's period (spec 018 S-3).
+ * (`shifted`): the occurrence of the pay, transfer and billing day in the month's period (spec 018 S-3) — the rule is
+ * applied after that, so a moved date can lie a day or two outside the period (concern 11).
  */
 function datesOf(d: Data, ym: string, ctx: MonthCtx) {
   const x = monthDatesIn(ym, d.settings, ctx)
