@@ -283,7 +283,7 @@ export const en = {
       monthPreview: 'This month: {month}',
       monthAskTitle: 'Change what a month is?',
       monthAskBody: 'Month names stay as they are; the dates each one stands for change.',
-      monthAskKept: 'What is saved by month name (phases, month adjustments, money received) stays with that name. What has a date (spending rounds, money that came in once) counts in the month that holds the date.',
+      monthAskKept: 'What is saved by month name (phases, month adjustments, money received) stays with that name. What has a date (money that came in once, spending rounds) counts in the month that holds the date; only a card bill counts in the month of the pay before it.',
       monthAskBefore: 'This month now',
       monthAskAfter: 'This month after',
       monthAskOk: 'Change',

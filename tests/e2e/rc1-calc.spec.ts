@@ -499,6 +499,8 @@ async function askMonth(page: Page, g: Locator, option: string, want: { before: 
   const dlg = page.getByRole('alertdialog')
   await expect(dlg.getByRole('heading', { name: '달의 기준을 바꿀까요?' })).toBeVisible()
   await expect(dlg.getByText('달 이름은 그대로이고, 그 달이 가리키는 날짜가 바뀌어요.')).toBeVisible()
+  // what has a date counts by the date, a card bill by the pay before it (spec 018 S-5; review 2 F-6)
+  await expect(dlg.getByText('날짜가 있는 것(한 번 들어온 돈, 지출 회차)은 그 날짜가 든 달에 셈하고, 카드 청구 회차만 청구일 바로 앞 월급의 달에 셈해요.', { exact: false })).toBeVisible()
   await expect(dlg.getByTestId('month-before')).toHaveText(want.before)
   await expect(dlg.getByTestId('month-after')).toHaveText(want.after)
   if (answer === '취소') {
@@ -825,6 +827,7 @@ test.describe.serial('W-4 the month basis', () => {
       const ask = page.getByRole('alertdialog')
       await expect(ask.getByRole('heading', { name: 'Change what a month is?' })).toBeVisible()
       await expect(ask.getByText('Month names stay as they are; the dates each one stands for change.')).toBeVisible()
+      await expect(ask.getByText('counts in the month that holds the date; only a card bill counts in the month of the pay before it.', { exact: false })).toBeVisible()
       await expect(ask.getByText('This month now')).toBeVisible()
       await expect(ask.getByText('This month after')).toBeVisible()
       expect(await fits()).toBe(true)

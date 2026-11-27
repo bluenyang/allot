@@ -283,7 +283,7 @@ export const ko = {
       monthPreview: '이번 달: {month}',
       monthAskTitle: '달의 기준을 바꿀까요?',
       monthAskBody: '달 이름은 그대로이고, 그 달이 가리키는 날짜가 바뀌어요.',
-      monthAskKept: '구간, 달 조정, 받은 금액처럼 달 이름으로 저장된 값은 그 이름에 그대로 있어요. 날짜가 있는 것(지출 회차, 한 번 들어온 돈)은 그 날짜가 든 달에 셈해요.',
+      monthAskKept: '구간, 달 조정, 받은 금액처럼 달 이름으로 저장된 값은 그 이름에 그대로 있어요. 날짜가 있는 것(한 번 들어온 돈, 지출 회차)은 그 날짜가 든 달에 셈하고, 카드 청구 회차만 청구일 바로 앞 월급의 달에 셈해요.',
       monthAskBefore: '지금 이번 달',
       monthAskAfter: '바꾼 뒤 이번 달',
       monthAskOk: '바꾸기',
