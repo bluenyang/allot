@@ -1,6 +1,6 @@
 // API check for spec 018 (0.1.10-rc.1, V-5). W-1: the weekend and holiday rule of each date. W-2: a card's usage period.
 // W-3: what a month is (the settings' monthBasis, monthBasisCardId, monthNaming). W-4: the basis applied to the MCP answers.
-// W-5: the month a spending round counts in and the transfers to the paying accounts.
+// W-5: the month a spending round counts in and the transfers to the paying accounts. W-6: a charge uses the plan of its date.
 //   bash scripts/test-server/disposable.sh rc1-api node tests/api/rc1-calc.mjs   (it writes to the database directly)
 // A is ADMIN_EMAIL. U is made here and deleted at the end; every row below is U's.
 //   shifts    a settings body with the old dayShift alone sets the three rules; a rule the body names wins, each on its
@@ -36,6 +36,13 @@
 //             this month's payouts; list_accounts' projection brings the card money into the paying account with the
 //             month's transfer and takes the bills out on their dates, and takes a subscription-account round out of
 //             the subscriptions target's account; with the pay basis a card bill counts in the period that holds it
+//   plans     every charge uses the plan in force on its own date (spec 018 S-7, W-6): a plan change and a cancellation
+//             dated after a month's charge leave that charge as it was (get_schedule and get_overview payments: the old
+//             plan and amount, the cancelled one still charged), a change dated on the charge date applies to it, and
+//             the month after has the new plan and no charge of the cancelled one; the month's subscription transfer
+//             stays by month (the new plan, without the cancelled one); list_subscriptions keeps the month's plan in
+//             the row and adds nextCharge when the next charge is another plan or amount, or when a row cancelled later
+//             this month is still charged before that date
 // Exit 0 only if every check passed.
 import postgres from 'postgres'
 import { arm, cleanupStep, disarm, failures, ok, threw } from './lib/check.mjs'
@@ -587,6 +594,82 @@ try {
     for (const id of Object.values(ids)) await U('DELETE', `/api/spendings/${id}`)
     const back = await put({ ...BODY, payShift: was.payShift, transferShift: was.transferShift, billingShift: was.billingShift, monthBasis: was.monthBasis, monthBasisCardId: was.monthBasisCardId, monthNaming: was.monthNaming })
     ok(back.status === 200 && !(await state()).spendings.some((x) => nameOf[x.id]), `outgo: the spendings are gone and the settings are put back → ${back.status}`)
+  }
+
+  // ── plans: every charge uses the plan in force on its own date (W-6) ──
+  {
+    const was = (await state()).settings
+    const NONE = { payShift: 'none', transferShift: 'none', billingShift: 'none' }
+    ok((await put({ ...BODY, ...NONE, monthBasis: 'calendar', monthBasisCardId: null, monthNaming: 'auto' })).status === 200, 'plans: calendar months, no rule')
+    const p2 = (n) => String(n).padStart(2, '0')
+    const iso = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+    const now = new Date(new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).replace(' ', 'T'))
+    const today = iso(now)
+    // two years on, so the dated checks do not depend on today: February and March of that year
+    const Y = now.getFullYear() + 2
+    const [FEB, MAR] = [`${Y}-02`, `${Y}-03`]
+    const SUB = { category: 'tool', plan: 'RC1 Basic', amount: 10_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', path: 'direct', verified: false }
+    const subIds = []
+    const mkSub = async (name, over) => {
+      const r = await U('POST', '/api/subscriptions', { ...SUB, name, ...over })
+      if (r.status !== 201) throw new Error(`subscription ${name} → ${r.status} ${r.text}`)
+      subIds.push(r.json.id)
+      return r.json.id
+    }
+    const mkChange = async (subId, effective, to) => {
+      const r = await U('POST', '/api/plan-changes', { subId, effective, to, note: '' })
+      if (r.status !== 201) throw new Error(`plan change of ${effective} → ${r.status} ${r.text}`)
+    }
+    // all three are charged on the 10th. On 20 February one moves to a dearer plan and one is cancelled; the third
+    // changes its amount on 10 February, the charge date itself.
+    const up = await mkSub('RC1 plan up', { nextDate: `${FEB}-10` })
+    const end = await mkSub('RC1 plan end', { nextDate: `${FEB}-10`, amount: 5_000 })
+    const same = await mkSub('RC1 plan same day', { nextDate: `${FEB}-10`, amount: 3_000 })
+    await mkChange(up, `${FEB}-20`, { plan: 'RC1 Pro', amount: 30_000 })
+    await mkChange(end, `${FEB}-20`, { status: 'cancelled' })
+    await mkChange(same, `${FEB}-10`, { amount: 4_000 })
+    const nameOf = { [up]: 'up', [end]: 'end', [same]: 'same' }
+    const pays = (list) => (list ?? []).filter((x) => nameOf[x.subscriptionId]).map((x) => `${nameOf[x.subscriptionId]}@${x.date}:${x.plan}:${x.amountKrw}`).sort().join(' ')
+
+    const sc = await tool(kRead, 'get_schedule', { from: FEB, months: 2 })
+    const [f, m] = sc.data?.months ?? []
+    ok(!sc.failed && pays(f?.payments) === `end@${FEB}-10:RC1 Basic:5000 same@${FEB}-10:RC1 Basic:4000 up@${FEB}-10:RC1 Basic:10000`,
+      `get_schedule ${FEB}: the charges of the 10th are the plans of that day - the change and the cancellation of the 20th do not touch them, the change of the 10th applies (${pays(f?.payments)})`)
+    ok(pays(m?.payments) === `same@${MAR}-10:RC1 Basic:4000 up@${MAR}-10:RC1 Pro:30000`, `get_schedule ${MAR}: the new plan, and no charge of the cancelled one (${pays(m?.payments)})`)
+    const ov = await tool(kRead, 'get_overview', { month: FEB })
+    ok(!ov.failed && pays(ov.data?.payments) === pays(f?.payments), `get_overview ${FEB}: the same charges (${pays(ov.data?.payments)})`)
+    const items = (ov.data?.subscriptionTransfer?.items ?? []).filter((x) => nameOf[x.subscriptionId]).map((x) => `${nameOf[x.subscriptionId]}:${x.monthlyKrw}`).sort().join(' ')
+    ok(items === 'same:4000 up:30000', `get_overview ${FEB}: the month's transfer stays by month - the new plan, without the cancelled one (${items})`)
+
+    // list_subscriptions, by today. One is charged on the 1st of next month, the day its new plan comes in.
+    const next1 = iso(new Date(now.getFullYear(), now.getMonth() + 1, 1))
+    const later = await mkSub('RC1 plan next', { nextDate: iso(new Date(now.getFullYear(), now.getMonth() + 2, 1)) })
+    await mkChange(later, next1, { plan: 'RC1 Pro', amount: 30_000 })
+    const ls = await tool(kRead, 'list_subscriptions', {})
+    const row = (id) => ls.data?.subscriptions?.find((x) => x.id === id)
+    const rl = row(later)
+    ok(!ls.failed && rl?.plan === 'RC1 Basic' && rl.chargeKrw === 10_000 && rl.nextPayment === next1 && JSON.stringify(rl.nextCharge) === JSON.stringify({ date: next1, plan: 'RC1 Pro', krw: 30_000 }),
+      `list_subscriptions: the row is this month's plan (${rl?.plan}, ${rl?.chargeKrw}), nextCharge the plan of the charge date (${JSON.stringify(rl?.nextCharge)})`)
+    const ru = row(up)
+    ok(ru?.plan === 'RC1 Basic' && ru.nextPayment === `${Y}-01-10` && !('nextCharge' in ru), `list_subscriptions: no nextCharge when the next charge is what the row shows (${ru?.nextPayment}, ${JSON.stringify(ru?.nextCharge)})`)
+    // charged today and cancelled on the month's last day: the row is cancelled (the month's plan), today's charge is still made
+    const lastDay = iso(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+    if (today < lastDay) {
+      const gone = await mkSub('RC1 plan gone', { nextDate: today })
+      await mkChange(gone, lastDay, { status: 'cancelled' })
+      const rg = (await tool(kRead, 'list_subscriptions', {})).data?.subscriptions?.find((x) => x.id === gone)
+      ok(rg?.status === 'cancelled' && rg.nextPayment === today && JSON.stringify(rg.nextCharge) === JSON.stringify({ date: today, plan: 'RC1 Basic', krw: 10_000 }),
+        `list_subscriptions: cancelled on ${lastDay}, the charge of ${today} is still the next one (${rg?.status}, ${rg?.nextPayment}, ${JSON.stringify(rg?.nextCharge)})`)
+      const sc0 = await tool(kRead, 'get_schedule', { months: 1 })
+      ok((sc0.data?.months?.[0]?.payments ?? []).some((x) => x.subscriptionId === gone && x.date === today && x.amountKrw === 10_000), `get_schedule: this month has the charge of ${today}`)
+    } else {
+      console.log(`  (skipped: today ${today} is the month's last day, so no cancellation can be dated later this month; the unit tests cover it)`)
+    }
+
+    for (const id of subIds) await U('DELETE', `/api/subscriptions/${id}`)
+    const back = await put({ ...BODY, payShift: was.payShift, transferShift: was.transferShift, billingShift: was.billingShift, monthBasis: was.monthBasis, monthBasisCardId: was.monthBasisCardId, monthNaming: was.monthNaming })
+    const left = await state()
+    ok(back.status === 200 && !left.subscriptions.some((x) => subIds.includes(x.id)) && !left.planChanges.some((x) => subIds.includes(x.subId)), `plans: the subscriptions and their changes are gone and the settings are put back → ${back.status}`)
   }
 
   // an account whose basis is a card can be deleted (the settings row goes before the card)
