@@ -41,7 +41,10 @@ try {
   const put = await A('PUT', '/api/preferences', want)
   ok(put.status === 200 && put.json.primary === '#1F5F8B', `PUT /api/preferences → ${put.status}, colour stored upper-case (${put.json?.primary})`)
   const read = (await A('GET', '/api/state')).json.preferences
-  ok(JSON.stringify(read) === JSON.stringify({ ...want, primary: '#1F5F8B' }), '/api/state answers what was saved')
+  // What the state answers: the nine values just saved, and the time zone — a key of the answer since 0.1.7 (spec 013),
+  // which this body leaves out and so keeps as it was. Compared key by key, whatever the order of the answer's keys.
+  const byKey = (o) => JSON.stringify(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  ok(byKey(read) === byKey({ ...want, primary: '#1F5F8B', timezone: prefs0.timezone }), `/api/state answers what was saved, the time zone kept (${read.timezone})`)
   for (const [why, bad] of [
     ['colour #12345', { ...want, primary: '#12345' }],
     ['unknown theme', { ...want, themeMode: 'sepia' }],
