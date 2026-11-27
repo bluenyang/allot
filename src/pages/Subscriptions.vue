@@ -54,11 +54,12 @@ const rows = computed(() =>
     // the plan of the month shown: the changes whose date lies in its period or before it (spec 018 S-3)
     const p = planAt(base, store.planChanges, ym.value, monthBasis.value)
     const pending = store.planChanges.some((c) => c.subId === base.id && (!c.effective || ymOfDay(c.effective) > ym.value))
-    // A charge goes by the plan in force on its own date (spec 018 S-7), the row by the month's plan: a row cancelled
-    // later this month may still have a charge before the cancellation's date. The next charge is looked for while
-    // either is active, as the home, the calendar and MCP list_subscriptions name it (A-15).
-    const live = p.status === 'active' || planOn(base, store.planChanges, ymd(now)).status === 'active'
-    const next = live ? upcoming(base) : null
+    // A charge goes by the plan in force on its own date (spec 018 S-7), the row by the month's plan. The next payment
+    // is the next charge that will really be made, whatever the row's status is, as MCP list_subscriptions names it
+    // (A-36, A-42): a row cancelled later this month may still have a charge before the cancellation's date, and a
+    // cancelled plan that a later change brings back is charged again from the date it comes back. A plan that never
+    // charges again has none.
+    const next = upcoming(base)
     // The plan that charge is made with, when it is not what the row shows (the month's plan): another plan or another
     // amount — a change dated after the charge, or a row looked at in another month — or a row that is not active. The
     // list then says the charge's own plan and amount with its date, as MCP list_subscriptions' nextCharge does (review 4 finding 1).

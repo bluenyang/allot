@@ -1257,16 +1257,19 @@ test.describe.serial('W-6 a charge uses the plan in force on its own date', () =
 })
 
 test.describe.serial('W-6 follow-up: the subscription list names a charge due before a cancellation', () => {
-  test('(S-7, A-20, A-35) 구독 목록: a row cancelled or changed from tomorrow still shows today\'s charge as its next payment, with that charge\'s own plan and amount; one cancelled from today shows none; the CSV carries the same', async ({ page, request }) => {
+  test('(S-7, A-20, A-35, A-42) 구독 목록: a row cancelled or changed from tomorrow still shows today\'s charge as its next payment, with that charge\'s own plan and amount; one cancelled from today shows none; one cancelled now and brought back by a later change shows the first charge after it is back; the CSV carries the same', async ({ page, request }) => {
     const st0 = (await api(request, 'GET', '/api/state')).json as State & { preferences: Record<string, unknown> }
     const prefs = st0.preferences
     const now = seoulToday()
     const today = iso(now)
     const tomorrow = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
-    const [dueName, goneName, chgName, plainName] = [`${MARK}-w6-due`, `${MARK}-w6-gone`, `${MARK}-w6-chg`, `${MARK}-w6-plain`]
+    const [dueName, goneName, chgName, plainName, backName] = [`${MARK}-w6-due`, `${MARK}-w6-gone`, `${MARK}-w6-chg`, `${MARK}-w6-plain`, `${MARK}-w6-back`]
+    // cancelled now, charged on the 15th; a change dated the first day of the third month from now brings it back
+    const backYm = ymAdd(today.slice(0, 7), 3)
+    const backDue = `${backYm}-15`
     const subs: string[] = []
-    const sub = async (name: string, effective: string | null, to: Record<string, unknown> = { status: 'cancelled' }) => {
-      const r = await api(request, 'POST', '/api/subscriptions', { name, category: 'tool', plan: '기본요금', amount: 7_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: today, path: 'direct', verified: false })
+    const sub = async (name: string, effective: string | null, to: Record<string, unknown> = { status: 'cancelled' }, base: Record<string, unknown> = {}) => {
+      const r = await api(request, 'POST', '/api/subscriptions', { name, category: 'tool', plan: '기본요금', amount: 7_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: today, path: 'direct', verified: false, ...base })
       expect(r.status, JSON.stringify(r.json)).toBe(201)
       const id = (r.json as { id: string }).id
       subs.push(id)
@@ -1282,6 +1285,8 @@ test.describe.serial('W-6 follow-up: the subscription list names a charge due be
       // a plan change dated tomorrow: the row is the month's (new) plan, today's charge is still the old plan's (review 4 finding 1)
       await sub(chgName, tomorrow, { plan: '새요금', amount: 9_000 })
       await sub(plainName, null)
+      // the row is 해지 for every month until the change's; the list named no next payment for it ("—", fix report 13 point 10)
+      await sub(backName, `${backYm}-01`, { status: 'active' }, { status: 'cancelled', nextDate: `${today.slice(0, 7)}-15` })
       await page.goto('/spend/subs')
       // every status: a row cancelled later this month reads 해지 for the month
       await page.getByRole('group', { name: '상태로 거르기', exact: true }).getByRole('button', { name: /^전체/ }).click()
@@ -1294,6 +1299,11 @@ test.describe.serial('W-6 follow-up: the subscription list names a charge due be
       // nothing scheduled: the date alone, the row's own plan is what is charged
       await expect(next(plainName)).toHaveText(today)
       await expect(said(plainName)).toHaveCount(0)
+      // the first charge after it is back, with that charge's plan and amount (the row itself is not active); as MCP
+      // list_subscriptions' nextPayment and nextCharge name it (A-36)
+      await expect(row(backName).locator('td').nth(7)).toHaveText('해지')
+      await expect(next(backName)).toContainText(backDue)
+      await expect(said(backName)).toHaveText('기본요금 · KRW 7,000')
       if (sameMonth) {
         // the charge of today is made with the plan in force today: said under the date, since the row shows another
         await expect(said(dueName)).toHaveText('기본요금 · KRW 7,000')
@@ -1317,11 +1327,13 @@ test.describe.serial('W-6 follow-up: the subscription list names a charge due be
         expect(line(dueName)).toMatch(new RegExp(`,${today},\\d*,기본요금,7000,KRW$`))
       }
       expect(line(goneName)).toMatch(/,,\d*,,,$/)
+      expect(line(backName)).toMatch(new RegExp(`,해지,${backDue},\\d*,기본요금,7000,KRW$`))
       // the phone list shows the same date, with the charge's own plan and amount where it differs
       await page.setViewportSize({ width: 390, height: 844 })
       await expect(page.locator('ul.mlist li', { hasText: dueName }).locator('.m3')).toContainText(today)
       await expect(page.locator('ul.mlist li', { hasText: goneName }).locator('.m3')).not.toContainText(today)
       await expect(page.locator('ul.mlist li', { hasText: plainName }).locator('.m3')).toContainText(`${today} · KRW 7,000`)
+      await expect(page.locator('ul.mlist li', { hasText: backName }).locator('.m3')).toContainText(`${backDue} · 기본요금 · KRW 7,000`)
       if (sameMonth) await expect(page.locator('ul.mlist li', { hasText: chgName }).locator('.m3')).toContainText(`${today} · 기본요금 · KRW 7,000`)
     } finally {
       for (const id of subs) await api(request, 'DELETE', `/api/subscriptions/${id}`)
