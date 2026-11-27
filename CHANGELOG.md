@@ -1,5 +1,110 @@
 # Changelog
 
+## 0.1.10-rc.1 — 2026-11-27
+
+The calculation fixes found in real use: a weekend and holiday rule for each date, a card's usage period, what a month
+is, the month a card bill counts in, charges at the plan in force on their date, and how a subscription is paid. Spec
+018 (`.agents/intent/018_real-use-fixes/spec.md`). The version carries a hyphen, so the image is
+`ghcr.io/bluenyang/allot:0.1.10-rc.1` and `latest` does not move. Migrations 0044–0049 run at start: three rule columns
+on the settings and one on each own monthly date (0044), a copy of the old rule into them (0045), the drop of
+`settings.day_shift` (0046), `card.usage_from` (0047), the month basis on the settings (0048) and a subscription's card
+and account (0049). Nothing the app, the API or a tool accepted before is refused; the new limits are on the new fields
+only (below).
+
+### Upgrading from 0.1.9
+- **Back up the database first.** Migration 0045 copies `settings.day_shift` into the three rules of the pay day, the
+  transfer day and the card billing day and into every own monthly date of that user, and 0046 drops the column. No date
+  moves by the upgrade. Going back to 0.1.9 needs the backup taken before it.
+- **Settle pending AI proposals before upgrading** (confirm or reject them under 대기 중인 변경). The shape of the data
+  changes, so every proposal made before the upgrade is stale afterwards and cannot be applied; propose again.
+- **Numbers that change on the day of the upgrade**, with nothing new chosen yet:
+  - *Card bills count one pay earlier.* A card bill (a lump sum or an installment paid by card) counts in the month of
+    the pay before it, no longer in the month of its billing date. With a pay day after the billing day (pay day 25,
+    billing day 14) the bill of 14 December comes off November's left over: this month's and next month's left over
+    move, and the totals over the months stay the same. Buffer refills, split payments and rounds paid from the salary
+    or the subscription account count where they did.
+  - *Each subscription charge uses the plan in force on its own date.* A plan change dated after a month's charge leaves
+    that charge at the old price; a cancellation dated after it leaves it in the lists, and a plan that comes back is
+    charged from its date. After a change from monthly to yearly the first billing date on or after the change is the
+    first yearly charge. The monthly cost, the subscription transfer and the allocation stay monthly, as before.
+  - *The balance projection of an account that pays card bills.* The money for a bill now comes in on the transfer date
+    of the month that counts the bill and leaves on the bill date (before, only the bill left). The account that takes
+    the left over is no exception: it shows its card money in and its bills out. A one-off round paid from the
+    subscription account now leaves the account the subscriptions target sends to.
+  - A subscription leaves an account's projection only after you say how it is paid (below); until then it takes nothing
+    out, as in 0.1.9.
+- **API clients**: `/api/state` and the MCP answers no longer carry `settings.dayShift`; read `payShift`, `transferShift`
+  and `billingShift`. A request body may still send `dayShift`: it sets each of the three rules the body leaves out or
+  sends back as it is saved (own monthly dates are not touched). A `pnpm db:seed` data file written for 0.1.9 is taken
+  the same way.
+- **Reverting** (the change history, MCP `propose_revert`): the change that made a card or an account cannot be reverted
+  while a subscription is paid with it or the card is the month basis card — unlink it first ("이후에 연결된 항목이 생겨서
+  되돌릴 수 없어요", the rule a card used by a spending already had). A revert that would write a row naming a card or an
+  account deleted since is refused ("연결된 항목을 찾을 수 없어요"): revert that delete first. As before, a revert is refused
+  when a row of that change was changed again afterwards; the delete of a card or an account now also carries the
+  subscriptions it set back to no way of paying. Reverting the delete of the month basis card brings the card back and,
+  when the basis was not changed since, the basis too.
+
+### Added
+- **A weekend and holiday rule for each date** (Settings › General › 기준 일정): the pay day, the transfer day, the card
+  billing day and each own monthly date are moved earlier, left or moved later on their own. A card's own billing day
+  follows the card billing day's rule. API: `settings.payShift`, `transferShift`, `billingShift` and `shift` on a
+  schedule item.
+- **A card's usage period** (월급 분배 › 통장·생활비·설정 › a card: 이용 기간 시작일, 1–31 or empty): what is bought from
+  that day of a month to the day before it in the next month is billed on the first billing day after the period ends
+  (billing day 25, first day 12: 12 November to 11 December is billed on 25 December). Empty is the rule of 0.1.9, the
+  billing day of the month after the purchase. It decides the dates of a new card spending's rounds, the day a buffer
+  use's card bill leaves, a subscription's card bill and the 청구 대기 state; saved rounds keep their dates.
+- **What a month is** (Settings › General › 달의 기준): the calendar month (default), the usage period of a card you
+  pick, or one actual pay date to the day before the next. A period over two months is named after the month it starts
+  in when its first day is the 15th or earlier, else the month it ends in — or pick which. The home, income,
+  allocation, spending, subscriptions, savings and investment screens, the notices, the CSV files and the MCP tools
+  follow it and show the period next to the month; the event calendar, the yearly contribution limit (a calendar year)
+  and the change history's period do not. Values saved by a month's name (phases, month adjustments, money received,
+  from and stop months) keep their names: the dates a name stands for change, and a confirmation shows this month
+  before and after — also when the pay day or its rule, the basis card's first day of use, or the basis card itself
+  changes it. The pay, transfer and billing dates of a month are the occurrence of each day in its period, moved by
+  their rule afterwards, so a moved date can lie a day or two outside the period.
+- **Transfers to the paying accounts** (월급 분배 › 월별 시뮬레이션 › 대금 계좌 이체): for each account a card or the
+  subscriptions are paid from, the subscription transfer, the card spending the month counts, the buffer refills and
+  their sum. The left over, 지출's 이번 달 반영 and the account's balance projection read the same list. A card round paid
+  with an earlier pay says so on the spending lists ("11월 분배에서 냄").
+- **How a subscription is paid** (the subscription editor: 결제 수단 — none, a card or an account; apart from the payment
+  path): the balance projection takes each charge out of the account on the charge date, or out of the card's paying
+  account on the card's bill date for it, at the plan in force on the charge date and at the exchange rate without the
+  buffer. The projection counts the charges from one billing cycle before the saved next payment date; an earlier one
+  is not taken out, also when the card has not billed it yet. Deleting the card or the account sets the subscription
+  back to none.
+- MCP: `period` on monthly answers and `projectionMonths` on `list_accounts`; `shift` on every date of `get_overview` and
+  `get_schedule`; `usageFrom` on a card; `payouts` on `get_allocation` and `get_overview`; `countsIn` on spending rounds;
+  `nextCharge`, `cardId` / `card` and `accountId` / `account` on `list_subscriptions`; `date` on a yearly income of
+  `get_income`. `propose_changes` takes the new keys of the settings, cards, own dates and subscriptions. The seven
+  skills, the plugin copies and the Gemini context file follow.
+- The subscriptions CSV has three more columns at its end (the next charge's plan, amount and currency), filled when
+  that charge is not what the row shows; the first nine columns are as before.
+
+### Changed
+- **The month a card bill counts in**: the month of the pay before the bill (a bill dated on a pay date: the pay before
+  that), replacing "card → the month of its billing date" of 0.1.5. With a pay month basis that is the month the bill's
+  date lies in.
+- **Subscription charges** on the home, the calendar, the notices, the lists and MCP use the plan in force on the
+  charge's date. The subscription list's next payment is the next charge that will really be made — before a
+  cancellation's date, and after a cancelled plan comes back — with that charge's own plan and amount under the date
+  when the row shows another; MCP `list_subscriptions.nextPayment` is the same.
+- **A yearly income** counts in the month whose period holds its calendar date, and the income screen shows that date
+  (the calendar basis is as before).
+- The change history and a proposal's preview name a card or an account by its name where they showed its id.
+- 월급 분배 stays on the tab you were on when a save there changes what a month is.
+
+### New limits (on the new fields only)
+- A card's first day of use: a whole number from 1 to 31, or empty.
+- A subscription's way of paying: a card and an account together in one body are refused; an id that is not one of
+  your cards or accounts is refused. Naming one alone replaces the other.
+- The month basis: one of three values; the basis card is one of your cards or empty; the naming one of three values.
+- The three rules and an own date's rule: one of the three values the old rule had.
+- Not refused: deleting a card or an account a subscription is paid with, deleting the month basis card (the basis goes
+  back to the calendar month), a subscription paid with a card that has no paying account.
+
 ## 0.1.9 — 2026-11-26
 
 AI connection, notices on every device, passwords for external sign-ins and the in-app connection guide: the same code
