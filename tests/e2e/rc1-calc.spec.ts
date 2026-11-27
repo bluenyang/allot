@@ -1015,6 +1015,44 @@ test.describe.serial('W-6 a charge uses the plan in force on its own date', () =
   })
 })
 
+test.describe.serial('W-6 follow-up: the subscription list names a charge due before a cancellation', () => {
+  test('(S-7, A-20) 구독 목록: a row cancelled from tomorrow still shows today\'s charge as its next payment; one cancelled from today shows none', async ({ page, request }) => {
+    const st0 = (await api(request, 'GET', '/api/state')).json as State & { preferences: Record<string, unknown> }
+    const prefs = st0.preferences
+    const now = seoulToday()
+    const today = iso(now)
+    const tomorrow = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
+    const [dueName, goneName] = [`${MARK}-w6-due`, `${MARK}-w6-gone`]
+    const subs: string[] = []
+    const sub = async (name: string, effective: string) => {
+      const r = await api(request, 'POST', '/api/subscriptions', { name, category: 'tool', plan: '기본요금', amount: 7_000, currency: 'KRW', vat: 0, cycle: 'monthly', status: 'active', nextDate: today, path: 'direct', verified: false })
+      expect(r.status, JSON.stringify(r.json)).toBe(201)
+      const id = (r.json as { id: string }).id
+      subs.push(id)
+      expect((await api(request, 'POST', '/api/plan-changes', { subId: id, effective, to: { status: 'cancelled' }, note: '' })).status).toBe(201)
+    }
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      // both are charged today: one is cancelled from tomorrow (today's charge is still made), one from today (no charge)
+      await sub(dueName, tomorrow)
+      await sub(goneName, today)
+      await page.goto('/spend/subs')
+      // every status: a row cancelled later this month reads 해지 for the month
+      await page.getByRole('group', { name: '상태로 거르기', exact: true }).getByRole('button', { name: /^전체/ }).click()
+      const next = (name: string) => page.locator('table.subs-t tbody tr', { hasText: name }).locator('td').nth(5)
+      await expect(next(dueName)).toHaveText(today)
+      await expect(next(goneName)).toHaveText('—')
+      // the phone list shows the same date
+      await page.setViewportSize({ width: 390, height: 844 })
+      await expect(page.locator('ul.mlist li', { hasText: dueName }).locator('.m3')).toContainText(today)
+      await expect(page.locator('ul.mlist li', { hasText: goneName }).locator('.m3')).not.toContainText(today)
+    } finally {
+      for (const id of subs) await api(request, 'DELETE', `/api/subscriptions/${id}`)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+})
+
 test.describe.serial('W-7 how a subscription is paid', () => {
   type SubRow = Record<string, unknown> & { id: string; name: string; cardId: string | null; accountId: string | null }
   const subOf = async (request: APIRequestContext, id: string) => ((await api(request, 'GET', '/api/state')).json as { subscriptions: SubRow[] }).subscriptions.find((x) => x.id === id)!

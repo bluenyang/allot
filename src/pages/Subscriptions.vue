@@ -10,7 +10,7 @@ import { pricedSettings, store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, ymd, ymRange } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, planOn, ymd, ymRange } from '../lib/calc'
 import { chargeLabel, fxAmount } from '../lib/currency'
 import type { Category, Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
@@ -54,7 +54,11 @@ const rows = computed(() =>
     // the plan of the month shown: the changes whose date lies in its period or before it (spec 018 S-3)
     const p = planAt(base, store.planChanges, ym.value, monthBasis.value)
     const pending = store.planChanges.some((c) => c.subId === base.id && (!c.effective || ymOfDay(c.effective) > ym.value))
-    return { base, p, monthly: monthly(p), next: p.status === 'active' ? upcoming(base) : null, pending }
+    // A charge goes by the plan in force on its own date (spec 018 S-7), the row by the month's plan: a row cancelled
+    // later this month may still have a charge before the cancellation's date. The next charge is looked for while
+    // either is active, as the home, the calendar and MCP list_subscriptions name it (A-15).
+    const live = p.status === 'active' || planOn(base, store.planChanges, ymd(now)).status === 'active'
+    return { base, p, monthly: monthly(p), next: live ? upcoming(base) : null, pending }
   }),
 )
 // The month's transfer with its subscription-account one-offs (spec 011 S-5).
