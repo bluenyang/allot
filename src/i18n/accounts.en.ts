@@ -57,7 +57,7 @@ export const accountsEn: AccountsMessages = {
       colIn: 'In',
       colOut: 'Out',
       colEnd: 'Month-end balance',
-      projNote: 'The money for card bills paid from this account comes in with that month\'s transfer and goes out on the billing dates (an account that takes the left over has them off it already) · other money going out is not counted. No interest.',
+      projNote: 'The money for card bills paid from this account comes in with that month\'s transfer and goes out on the billing dates (an account that takes the left over has them off it already) · the charges of subscriptions paid from this account, or with a card it pays, go out too (with a card, on the card\'s billing date) · other money going out is not counted. No interest.',
       goalLine: 'Goal {goal} · reached in {ym}',
       goalNone: 'Goal {goal} · not reached in the forecast yet',
       goalMark: 'Goal reached',
