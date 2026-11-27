@@ -80,9 +80,9 @@ only (below).
 - **How a subscription is paid** (the subscription editor: 결제 수단 — none, a card or an account; apart from the payment
   path): the balance projection takes each charge out of the account on the charge date, or out of the card's paying
   account on the card's bill date for it, at the plan in force on the charge date and at the exchange rate without the
-  buffer. The projection counts the charges from one billing cycle before the saved next payment date; an earlier one
-  is not taken out, also when the card has not billed it yet. Deleting the card or the account sets the subscription
-  back to none.
+  buffer. The projection takes out the charges that leave the account after its last balance record; a charge earlier
+  than one billing cycle before the saved next payment date is not taken out, also when the card has not billed it yet.
+  Deleting the card or the account sets the subscription back to none.
 - MCP: `period` on monthly answers and `projectionMonths` on `list_accounts`; `shift` on every date of `get_overview` and
   `get_schedule`; `usageFrom` on a card; `payouts` on `get_allocation` and `get_overview`; `countsIn` on spending rounds;
   `nextCharge`, `cardId` / `card` and `accountId` / `account` on `list_subscriptions`; `date` on a yearly income of
