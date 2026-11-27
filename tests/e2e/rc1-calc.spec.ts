@@ -790,6 +790,73 @@ test.describe.serial('W-4 the month basis', () => {
     }
   })
 
+  // Review 6 finding 1 (A-46): the fourth save that moves a pay month's dates — the pay day in 수입 › 월급 고치기.
+  test('(S-4, A-46) 수입 › 월급: under a pay basis a changed pay day is asked first; cancelled, nothing is saved and the form stays as typed; the amount alone, and any save under the calendar basis, is not asked', async ({ page, request }) => {
+    const s0 = (await state(request)).settings
+    const prefs = ((await api(request, 'GET', '/api/state')).json as { preferences: Record<string, unknown> }).preferences
+    const pay0 = Number(s0.netPay)
+    const dlg = page.getByRole('alertdialog')
+    const saved = async () => { const x = (await state(request)).settings; return [Number(x.netPay), x.payDay] }
+    async function open() {
+      await page.getByTestId('reg-salary').getByRole('button', { name: '월급 고치기' }).click()
+      return sheet(page, '월급')
+    }
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      // ── a pay basis: pay day 10, no rule
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payDay: 10, transferDay: 11, billingDay: 14, payShift: 'none', monthBasis: 'pay', monthBasisCardId: null, monthNaming: 'auto' })).status).toBe(200)
+      await page.goto('/income')
+      await expect(page.locator('header.ph h1')).toHaveText('수입')
+      // the amount alone leaves the months as they are: saved without a question
+      let e = await open()
+      await expect(e.locator('#sal-day')).toHaveText('10일')
+      await e.locator('#sal-amount').fill(String(pay0 + 1_000))
+      await saveSheet(page, '월급')
+      await expect(dlg).toHaveCount(0)
+      expect(await saved()).toEqual([pay0 + 1_000, 10])
+      // the pay day: asked; cancelled, nothing is saved, the editor is still open with what was typed
+      e = await open()
+      await e.locator('#sal-amount').fill(String(pay0 + 2_000))
+      await choose(e.locator('#sal-day'), '20')
+      await e.getByRole('button', { name: '저장', exact: true }).click()
+      await expect(dlg.getByRole('heading', { name: '달의 기준을 바꿀까요?' })).toBeVisible()
+      await expect(dlg.getByText('달 이름은 그대로이고, 그 달이 가리키는 날짜가 바뀌어요.')).toBeVisible()
+      await expect(dlg.getByTestId('month-before')).toHaveText(/^\d{4}\.\d{2} · \d{2}-10~\d{2}-09$/)
+      await expect(dlg.getByTestId('month-after')).toHaveText(/^\d{4}\.\d{2} · \d{2}-20~\d{2}-19$/)
+      await dlg.getByRole('button', { name: '취소', exact: true }).click()
+      await expect(dlg).toBeHidden()
+      expect(await saved()).toEqual([pay0 + 1_000, 10])
+      await expect(e).toBeVisible()
+      await expect(e.locator('#sal-amount')).toHaveValue((pay0 + 2_000).toLocaleString('en-US'))
+      await expect(e.locator('#sal-day')).toHaveText('20일')
+      // confirmed: both values are saved with the one request and the editor closes
+      await e.getByRole('button', { name: '저장', exact: true }).click()
+      await expect(dlg.getByTestId('month-before')).toHaveText(/-10~\d{2}-09$/)
+      await expect(dlg.getByTestId('month-after')).toHaveText(/-20~\d{2}-19$/)
+      const put = page.waitForResponse((r) => r.request().method() === 'PUT' && new URL(r.url()).pathname === '/api/settings')
+      await dlg.getByRole('button', { name: '바꾸기', exact: true }).click()
+      expect((await put).ok()).toBe(true)
+      await expect(dlg).toBeHidden()
+      await expect(e).toBeHidden()
+      expect(await saved()).toEqual([pay0 + 2_000, 20])
+      await expect(page.getByTestId('reg-salary')).toContainText('매달 20일')
+
+      // ── the calendar basis: the pay day is no part of a month, so it is saved as before, without a question
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payDay: 20, payShift: 'none', monthBasis: 'calendar', monthBasisCardId: null })).status).toBe(200)
+      await page.goto('/income')
+      await expect(page.locator('header.ph h1')).toHaveText('수입')
+      e = await open()
+      await choose(e.locator('#sal-day'), '10')
+      await saveSheet(page, '월급')
+      await expect(dlg).toHaveCount(0)
+      expect(await saved()).toEqual([pay0, 10])
+      await expect(page.getByTestId('reg-salary')).toContainText('매달 10일')
+    } finally {
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
   // Report 13 point 9 (A-41): 월급 분배 is made again when the month basis changes (A-6). Made again under the user's hands
   // — the basis card deleted on its own third tab — it stays on that tab; made again while another page is on screen, it
   // starts on its first tab as before.
