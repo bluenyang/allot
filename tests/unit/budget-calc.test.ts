@@ -221,6 +221,37 @@ test('review 3 F-1: a remainder account that pays a card ends where the real bal
   assert.equal(projectAccount(rest, at('2026-11-10'), none, '2026-11', 1)![0]!.inflow, 3_000_000)
 })
 
+// Review 3 F-4: the money that comes into a paying account for its cards' bills (spec 018 S-6) passes through — it is
+// no money put in, so the yearly limit does not count it. The reviewer's case: a bill of 100,000 on the 14th of every
+// month of 2027, paid from an account with a yearly limit; nothing is allocated to the account.
+test('review 3 F-4: the yearly contribution does not count the card money that passes through a paying account', () => {
+  const payer = acc('payer', { annualLimit: 1_000_000, goal: 1_050_000 })
+  const card: Card = { id: 'c1', name: 'Card', last4: '', accountId: 'payer', billingDay: 14 }
+  const bills: Spending = {
+    id: 's1', name: 'Year', category: 'home', bought: '2026-12-02', amount: 1_200_000, currency: 'KRW', fxRate: null, fxBuffer: null,
+    how: 'installment', payBy: 'card', count: 12, fee: 0, interval: null, cancelled: false, cardId: 'c1', refillFrom: null,
+    rounds: Array.from({ length: 12 }, (_, i) => ({ no: i + 1, date: `2027-${String(i + 1).padStart(2, '0')}-14`, amount: 100_000, state: 'left' as const, edited: false })),
+  }
+  const st = state({ accounts: [payer], cards: [card], spendings: [bills], balances: [{ id: 'b', accountId: 'payer', date: '2026-11-30', amount: 1_000_000 }] })
+  // the projection still moves the money: each bill's 100,000 comes in on the 26th of the month before and leaves on the 14th
+  const rows = projectAccount(payer, st, none, '2026-12', 3)!
+  assert.deepEqual(rows.map((r) => [r.inflow, r.outflow, r.end]), [[100_000, 0, 1_100_000], [100_000, 100_000, 1_100_000], [100_000, 100_000, 1_100_000]])
+  // but nothing was put into the account in 2027 (it was 1,100,000: eleven transfers of card money dated in the year)
+  assert.equal(yearContribution(payer, st, none, 2027), 0)
+  assert.equal(yearContribution(payer, st, none, 2026), 0)
+  assert.equal(yearContribution(payer, { ...st, spendings: [] }, none, 2027), 0)
+  // the same by dates, on a pay basis
+  const onPay = { ...st, settings: { ...st.settings, monthBasis: 'pay' as const } }
+  assert.equal(yearContribution(payer, onPay, none, 2027), 0)
+  // what is put in still counts next to it: a deposit named by a balance record, and a transfer of a target linked to the account
+  const withDeposit = { ...st, balances: [...st.balances, { id: 'b2', accountId: 'payer', date: '2027-03-02', amount: 1_300_000, deposit: 200_000 }] }
+  assert.equal(yearContribution(payer, withDeposit, none, 2027), 200_000)
+  const linked = state({ ...st, targets: [{ id: 'tf', name: 'Fixed', kind: 'fixed', accountId: 'payer' }], phases: [{ id: 'p', label: '', name: 'P', from: '2026-01', to: null, amounts: { tf: 50_000 } }] })
+  assert.equal(yearContribution(payer, linked, none, 2027), 12 * 50_000)
+  // goals are untouched: the projection's balance is what it is (the card money is in the account at the month's end)
+  assert.equal(goalMonth(payer, st, none), '2026-12')
+})
+
 test('review 2 F-2: a remainder account still counts its buffer use: the bill out and the refills back in', () => {
   const targets: AllocationTarget[] = [{ id: 'tr', name: 'Rest', kind: 'remainder', accountId: 'pay' }]
   const pay = acc('pay', { buffer: 1_000_000 })

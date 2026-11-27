@@ -861,8 +861,12 @@ export interface AccountState extends MonthState {
   cards: Card[]
 }
 
-/** One dated movement of an account (S-6). */
-interface Move { date: string; amount: number }
+/**
+ * One dated movement of an account (S-6). `through` marks the money that comes in for the card bills the account pays
+ * (spec 018 S-6): it only passes through — it leaves again with the bills — so it is no money put into the account
+ * (`yearContribution`, review 3 F-4).
+ */
+interface Move { date: string; amount: number; through?: true }
 
 /**
  * The movements of account `acc` in month `ym`: transfers in on the transfer day, refills in, card bills out (S-6, S-8, S-13).
@@ -911,7 +915,7 @@ function movesIn(acc: Account, st: AccountState, ym: string, off: ReadonlySet<st
       if (dated) moves.push({ date: o.round.date, amount: -o.amount })
     }
   }
-  if (cardIn) moves.push({ date: transfer, amount: cardIn })
+  if (cardIn) moves.push({ date: transfer, amount: cardIn, through: true })
   // a buffer use: the bill leaves the account's buffer on the card's bill date (its refills are the rounds above)
   for (const sp of st.spendings ?? []) {
     if (sp.how !== 'buffer' || !sp.cardId) continue
@@ -1013,7 +1017,9 @@ export function goalMonth(acc: Account, st: AccountState, off: ReadonlySet<strin
 /**
  * What goes into an account in calendar year `year` (S-7): the planned transfers and refills of that year, plus the
  * money put in at once that the balance records of that year name (`deposit`; review 1 F-12, user: "잔액 기록에 '넣은 돈'
- * 표시" — a balance alone is not counted as paid in).
+ * 표시" — a balance alone is not counted as paid in). The money that comes in for the card bills the account pays is
+ * not put in: it leaves again with the bills (spec 018 S-6, review 3 F-4), so a paying account's yearly limit is not
+ * used up by its cards.
  * The year stays the calendar year on every month basis (spec 018 S-3: the tax year is the calendar year). With the
  * calendar basis that is the twelve months named in the year, as before. With a card or pay basis a month's name and
  * its dates differ, so the movements are taken by their date: the twelve months and one on either side are looked
@@ -1025,11 +1031,11 @@ export function yearContribution(acc: Account, st: AccountState, off: ReadonlySe
   if (ctx.basis === 'calendar') {
     for (let m = 1; m <= 12; m++) {
       const ym = `${year}-${String(m).padStart(2, '0')}`
-      for (const mv of movesIn(acc, st, ym, off, ctx)) if (mv.amount > 0) total += mv.amount
+      for (const mv of movesIn(acc, st, ym, off, ctx)) if (mv.amount > 0 && !mv.through) total += mv.amount
     }
   } else {
     for (let ym = `${year - 1}-12`; ym <= `${year + 1}-01`; ym = addYm(ym, 1)) {
-      for (const mv of movesIn(acc, st, ym, off, ctx)) if (mv.amount > 0 && mv.date.slice(0, 4) === String(year)) total += mv.amount
+      for (const mv of movesIn(acc, st, ym, off, ctx)) if (mv.amount > 0 && !mv.through && mv.date.slice(0, 4) === String(year)) total += mv.amount
     }
   }
   for (const r of st.balances) if (r.accountId === acc.id && r.date.slice(0, 4) === String(year)) total += r.deposit ?? 0
