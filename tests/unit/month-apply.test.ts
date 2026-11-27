@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
 import type { AllocationTarget, Card, IncomeExtra, IncomeItem, IncomeReceipt, LivingItem, Phase, PlanChange, Settings, Spending, Subscription } from '../../src/data/types'
-import { changesIn, ctxOf, incomeAt, leftoverAfterTransfer, monthCtx, monthMoney, periodOf, planAt, spendingIn, transferAt, priced, type MonthState } from '../../src/lib/calc'
+import { changesIn, ctxOf, incomeAt, incomeNextYm, leftoverAfterTransfer, monthCtx, monthMoney, periodOf, planAt, spendingIn, transferAt, priced, type MonthState } from '../../src/lib/calc'
 import { dayText, periodText } from '../../src/lib/format'
 
 // Pay day 25 (a month is named by its end: "2026-12" = 11-25 … 12-24), transfer day 26, no weekend rule.
@@ -138,6 +138,43 @@ test('incomeAt: a yearly income counts in the month whose period holds its calen
   // a receipt written down for the yearly income in another month still counts there, with nothing expected and no date
   const got = incomeAt(state(PAY, { incomes: late, incomeReceipts: [{ id: 'r', itemId: 'late', ym: '2026-12', amount: 390_000 }], incomeExtras: [] }), '2026-12')
   assert.deepEqual(got.rows.find((r) => r.key === 'late'), { key: 'late', name: 'late', day: 28, expected: 0, received: 390_000, used: 390_000, diff: 390_000 })
+})
+
+// Review 6 finding 3: 수입's "다음 YYYY.MM" of a yearly income is the month that counts it next — the month looked at when
+// its date lies in that month's period, else the month `later` names — not the income's month number in the year looked at.
+test('incomeNextYm: a yearly income\'s next month is the one incomeAt counts it in', () => {
+  const yearly = (id: string, month: number, day: number): IncomeItem => ({ id, name: id, cycle: 'yearly', month, day, amount: 400_000 })
+  const next = (s: Settings, i: IncomeItem, ym: string, more: Partial<MonthState> = {}) => incomeNextYm(incomeAt(state(s, { incomes: [i], incomeReceipts: [], incomeExtras: [], ...more }), ym), i.id, ym)
+  // pay day 25, named by the end: 12-28 lies in "2027-01" (12-25 … 01-24), never in the month named 12
+  const late = yearly('late', 12, 28)
+  assert.equal(next(PAY, late, '2026-11'), '2027-01')
+  assert.equal(next(PAY, late, '2026-12'), '2027-01', 'the month number alone would say 2026-12, a month that does not count it')
+  assert.equal(next(PAY, late, '2027-01'), '2027-01', 'the month that counts it names itself')
+  assert.equal(next(PAY, late, '2027-02'), '2028-01')
+  // pay day 10, named by the start: 12-05 lies in "2026-11" (11-10 … 12-09)
+  const PAY10: Settings = { ...PAY, payDay: 10 }
+  const early = yearly('early', 12, 5)
+  assert.equal(next(PAY10, early, '2026-10'), '2026-11')
+  assert.equal(next(PAY10, early, '2026-11'), '2026-11')
+  assert.equal(next(PAY10, early, '2026-12'), '2027-11')
+  // the card basis (first day 12): 01-05 lies in "2026-12" (12-12 … 01-11)
+  const jan = yearly('jan', 1, 5)
+  assert.equal(next(CARD, jan, '2026-12'), '2026-12')
+  assert.equal(next(CARD, jan, '2027-01'), '2027-12')
+  // the calendar basis is what the page showed before: the month of that number, this year or the next
+  for (const [ym, want] of [['2026-11', '2026-12'], ['2026-12', '2026-12'], ['2027-01', '2027-12'], ['2027-12', '2027-12']] as const) {
+    assert.equal(next(S, late, ym), want, ym)
+    const [y, m] = [Number(ym.slice(0, 4)), Number(ym.slice(5, 7))]
+    assert.equal(next(S, late, ym), `${y + (12 < m ? 1 : 0)}-12`, `the old page's sum, ${ym}`)
+  }
+  for (const ym of ['2026-01', '2026-06', '2026-07', '2026-12']) {
+    const [y, m] = [Number(ym.slice(0, 4)), Number(ym.slice(5, 7))]
+    assert.equal(next(S, yearly('mid', 6, 30), ym), `${y + (6 < m ? 1 : 0)}-06`, `the old page's sum, ${ym}`)
+  }
+  // a receipt written down in another month puts a line there, but the income still comes next in its own month
+  assert.equal(next(PAY, late, '2026-12', { incomeReceipts: [{ id: 'r', itemId: 'late', ym: '2026-12', amount: 390_000 }] }), '2027-01')
+  // a monthly income has no next month
+  assert.equal(next(PAY, { id: 'side', name: 'side', cycle: 'monthly', day: 28, amount: 100_000 }, '2026-12'), null)
 })
 
 test('spendingIn: each live round counts in the month whose period holds its date', () => {

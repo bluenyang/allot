@@ -857,6 +857,45 @@ test.describe.serial('W-4 the month basis', () => {
     }
   })
 
+  // Review 6 finding 3 (A-47): the list of regular incomes names the month that really counts a yearly income next.
+  test('(S-4, A-28, A-47) 수입: a yearly income\'s "다음" is the month whose period holds its date — under a pay basis of the 25th an income of the 28th comes in the month after the one of its number; the calendar basis says the month of its number, as before', async ({ page, request }) => {
+    const s0 = (await state(request)).settings
+    const prefs = ((await api(request, 'GET', '/api/state')).json as { preferences: Record<string, unknown> }).preferences
+    // Pay day 25, never moved, a month named by its end: "this month" T is the calendar month from the 1st to the 24th
+    // and the next one from the 25th. An income on the 28th of T's month number lies in the period named T + 1.
+    const now = seoulToday()
+    const t = new Date(now.getFullYear(), now.getMonth() + (now.getDate() >= 25 ? 1 : 0), 1)
+    const after = new Date(t.getFullYear(), t.getMonth() + 1, 1)
+    const word = (d: Date) => `다음: ${d.getFullYear()}년 ${d.getMonth() + 1}월`
+    const name = `${MARK}-yearly`
+    const made = await api(request, 'POST', '/api/incomes', { name, cycle: 'yearly', month: t.getMonth() + 1, day: 28, amount: 400_000, note: '' })
+    expect(made.status).toBe(201)
+    const id = (made.json as { id: string }).id
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, language: 'ko' })).status).toBe(200)
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payDay: 25, payShift: 'none', monthBasis: 'pay', monthBasisCardId: null, monthNaming: 'auto' })).status).toBe(200)
+      await page.goto('/income')
+      await expect(page.locator('header.ph h1')).toHaveText('수입')
+      // the page opens on this month (T): the income is not one of its lines, and the list says it comes in T + 1
+      await expect(page.getByTestId('income-month').getByRole('heading', { level: 2 })).toHaveText(`${t.getMonth() + 1}월`)
+      await expect(page.getByTestId('income-month')).not.toContainText(name)
+      await expect(page.getByTestId(`reg-${id}`)).toContainText(word(after))
+      await expect(page.getByTestId(`reg-${id}`)).not.toContainText(word(t))
+
+      // the calendar basis, as before: the page opens on today's calendar month, and the income's next month is the
+      // month of its number — this one, or the next one when today is the 25th or later
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payDay: 25, payShift: 'none', monthBasis: 'calendar', monthBasisCardId: null })).status).toBe(200)
+      await page.goto('/income')
+      await expect(page.locator('header.ph h1')).toHaveText('수입')
+      await expect(page.getByTestId('income-month').getByRole('heading', { level: 2 })).toHaveText(`${now.getMonth() + 1}월`)
+      await expect(page.getByTestId(`reg-${id}`)).toContainText(word(t))
+    } finally {
+      await api(request, 'DELETE', `/api/incomes/${id}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
   // Report 13 point 9 (A-41): 월급 분배 is made again when the month basis changes (A-6). Made again under the user's hands
   // — the basis card deleted on its own third tab — it stays on that tab; made again while another page is on screen, it
   // starts on its first tab as before.

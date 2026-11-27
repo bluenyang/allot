@@ -1502,6 +1502,14 @@ export function incomeAt(state: Pick<MonthState, 'settings' | 'incomes' | 'incom
 }
 
 /**
+ * The month a yearly income comes in next, seen from month `ym` (수입's "다음 YYYY.MM"; review 6 finding 3): `ym` itself
+ * when `incomeAt` counts it there (its calendar date lies in the month's period), else the month `later` names. Null
+ * for an income that is in neither list (a monthly one).
+ */
+export const incomeNextYm = (at: Pick<ReturnType<typeof incomeAt>, 'rows' | 'later'>, id: string, ym: string): string | null =>
+  (at.rows.some((r) => r.key === id && r.date) ? ym : at.later.find((l) => l.id === id)?.ym ?? null)
+
+/**
  * The month's real money in one call (spec 011 S-5): the subscription transfer with the month's
  * subscription-account spendings, the distribution with the same and with the salary/card spendings
  * off the remainder, and the spendings themselves. Every screen and tool that shows the user's month

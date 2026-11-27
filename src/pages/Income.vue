@@ -20,13 +20,12 @@ import { view } from '../lib/view'
 import { phaseTag } from '../lib/labels'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
 import { monthLong, moneyShort, weekdayShort } from '../lib/format'
-import { addYm, incomeAt, monthMoney, parseDate, ymd, ymRange, type IncomeLine } from '../lib/calc'
+import { addYm, incomeAt, incomeNextYm, monthMoney, parseDate, ymd, ymRange, type IncomeLine } from '../lib/calc'
 import { dayOfYm, monthDatesOf, periodLabel, periodOfYm, thisYm } from '../lib/month'
 import { localToday } from '../lib/now'
 import type { IncomeExtra, IncomeItem, IncomeReceipt } from '../data/types'
 
 const ym = computed(() => view.ym)
-const year = computed(() => Number(view.ym.slice(0, 4)))
 const month = computed(() => Number(view.ym.slice(5, 7)))
 const monthName = computed(() => monthLong(month.value))
 const ymText = (x: string) => t('income.ym', { year: Number(x.slice(0, 4)), month: monthLong(Number(x.slice(5, 7))) })
@@ -74,10 +73,10 @@ const receivedNote = computed(() => {
 })
 
 // ---------- regular incomes (salary first) ----------
-const nextYm = (i: IncomeItem) => {
-  const m = i.month ?? month.value
-  return `${year.value + (m < month.value ? 1 : 0)}-${String(m).padStart(2, '0')}`
-}
+// A yearly income's next month is the one that counts it: the month shown when its date lies in this month's period,
+// else the month incomeAt's `later` names — the month number alone is another month under a pay or card basis
+// (spec 018 S-4, review 6 finding 3).
+const nextYm = (i: IncomeItem) => incomeNextYm(income.value, i.id, ym.value) ?? ym.value
 const regular = computed(() => store.incomes.map((i) => ({
   item: i,
   hint: [cycleText(i), accountName(i.accountId), i.cycle === 'yearly' ? t('income.next', { ym: ymText(nextYm(i)) }) : ''].filter(Boolean).join(' · '),
