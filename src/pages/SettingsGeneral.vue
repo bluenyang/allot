@@ -11,13 +11,14 @@ import { api } from '../lib/api'
 import { COMMON_CODES, currencyUses, normalCode, rateNum } from '../lib/currency'
 import { runSteps } from '../lib/session-guard'
 import { useEditor } from '../lib/useEditor'
-import { dateText, money, moneyClass, periodText } from '../lib/format'
+import { dateText, money, moneyClass } from '../lib/format'
 import { holidayList } from '../lib/holidays-lazy'
 import { BUILTIN_SETS } from '../data/holidays-kr'
 import { holidayName, setName } from '../lib/holiday-names'
-import { addYm, monthCtx, monthDatesIn, needsHolidays, periodOf, upcomingPayments, ymd, ymLabel, ymOf, ymOfDate, type MonthCtx } from '../lib/calc'
+import { addYm, monthCtx, monthDatesIn, needsHolidays, upcomingPayments, ymd, ymOf, ymOfDate, type MonthCtx } from '../lib/calc'
 import type { DayShift, ForeignCurrency, HolidaySet, MonthBasis, MonthNaming, Preferences, Settings } from '../data/types'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
+import MonthChangeDialog from '../components/MonthChangeDialog.vue'
+import { monthChange, monthLine } from '../lib/month'
 import { emptyRow, toRows, toRules, type RuleRow } from '../lib/holiday-rows'
 import Select from '../components/Select.vue'
 import { localToday } from '../lib/now'
@@ -212,8 +213,15 @@ const problem = computed(() => {
   const days = [d.value.payDay, d.value.transferDay, d.value.billingDay]
   return days.some((x) => !Number.isInteger(x) || x < 1 || x > 31) ? g('badDays') : ''
 })
-async function save() {
+function save() {
   if (problem.value) return (smsg.value = problem.value)
+  // Under a pay basis the pay day and its rule are what a month is: such a save is asked first, like a change of the
+  // basis itself (spec 018 S-4, review 2 F-2). Cancelled, nothing is saved and the draft stays as typed.
+  const change = daysDirty.value ? monthChange({ settings: d.value }) : null
+  if (change) return (mbAsk.value = { ...change, run: write })
+  return write()
+}
+async function write() {
   busy.value = true
   smsg.value = ''
   try {
@@ -308,22 +316,29 @@ const mbCardOpts = computed(() => [
 const mbCardNote = computed(() => (!store.cards.length ? g('monthNoCards') : !mbCard.value ? g('monthPickCard') : mbCard.value.usageFrom == null ? g('monthCardEqual') : ''))
 /** What a month is with the settings `s` (the store's cards and holidays). */
 const basisWith = (s: Settings): MonthCtx => monthCtx(s, store.cards, store.off ?? new Set())
-/** This month with a basis: its name and its dates, "2026.12 · 11-25~12-24". */
-function monthLine(ctx: MonthCtx) {
-  const m = ymOfDate(todayStr, ctx)
-  const p = periodOf(m, ctx)
-  return `${ymLabel(m)} · ${periodText(p.start, p.end, store.preferences)}`
-}
 const mbNow = computed(() => monthLine(basisWith(store.settings)))
 /** What 자동 names a period after now: by the first day (the pay day, or the card's first day). */
 const mbAuto = computed(() => {
   const ctx = basisWith({ ...store.settings, monthNaming: 'auto' })
   return ctx.basis === 'calendar' ? '' : t('settings.general.monthNamingAuto', { day: ctx.day, which: g(`monthNamings.${ctx.naming}`) })
 })
-const mbAsk = ref<{ patch: Partial<Settings>; before: string; after: string } | null>(null)
+/** The question that is open: this month before and after, and the save that waits for the answer. */
+const mbAsk = ref<{ before: string; after: string; run: () => Promise<unknown> } | null>(null)
 const mbBusy = ref(false)
 function askMonth(patch: Partial<Settings>) {
-  mbAsk.value = { patch, before: mbNow.value, after: monthLine(basisWith({ ...store.settings, ...patch })) }
+  mbAsk.value = {
+    before: mbNow.value,
+    after: monthLine(basisWith({ ...store.settings, ...patch })),
+    run: async () => {
+      const scope = sessionScope()
+      try {
+        await saveSettings(patch)
+        if (scope.alive()) showToast(g('monthSaved'))
+      } catch (e) {
+        if (scope.alive()) showToast((e as Error).message || status.error, { error: true })
+      }
+    },
+  }
 }
 function pickBasis(v: MonthBasis) {
   const patch: Partial<Settings> = { monthBasis: v }
@@ -336,13 +351,9 @@ const pickNaming = (v: MonthNaming) => askMonth({ monthNaming: v })
 async function confirmMonth() {
   const a = mbAsk.value
   if (!a) return
-  const scope = sessionScope()
   mbBusy.value = true
   try {
-    await saveSettings(a.patch)
-    if (scope.alive()) showToast(g('monthSaved'))
-  } catch (e) {
-    if (scope.alive()) showToast((e as Error).message || status.error, { error: true })
+    await a.run()
   } finally {
     mbBusy.value = false
     mbAsk.value = null
@@ -542,15 +553,8 @@ const setFoot = computed(() => (step.value === 0 ? g('setFoot1') : t('settings.g
 
     <ScheduleItemEditor v-if="itemEdit" :initial="itemEdit.item" @close="itemEdit = null" />
 
-    <!-- 달의 기준: asked before it is saved (spec 018 S-4) -->
-    <ConfirmDialog v-if="mbAsk" :title="g('monthAskTitle')" :confirm-label="g('monthAskOk')" :busy="mbBusy" @confirm="confirmMonth" @cancel="mbAsk = null">
-      <p>{{ g('monthAskBody') }}</p>
-      <dl class="mask">
-        <div><dt>{{ g('monthAskBefore') }}</dt><dd class="num" data-testid="month-before">{{ mbAsk.before }}</dd></div>
-        <div><dt>{{ g('monthAskAfter') }}</dt><dd class="num" data-testid="month-after">{{ mbAsk.after }}</dd></div>
-      </dl>
-      <p class="hint">{{ g('monthAskKept') }}</p>
-    </ConfirmDialog>
+    <!-- 달의 기준, and the pay day or its rule under a pay basis: asked before it is saved (spec 018 S-4) -->
+    <MonthChangeDialog v-if="mbAsk" :before="mbAsk.before" :after="mbAsk.after" :busy="mbBusy" @confirm="confirmMonth" @cancel="mbAsk = null" />
 
     <EditSheet v-if="fxEdit" :title="fxEdit.isNew ? c('addTitle') : t('settings.general.fxEditTitle', { code: fxEdit.code })" :desc="g('fxEditDesc')" :error="fxError" :busy="fxBusy" :hint="fxFoot"
       :can-delete="!fxEdit.isNew && !fxIsUsd" :delete-name="fxEdit.code" @save="saveFx" @cancel="fxEdit = null" @delete="removeFx">

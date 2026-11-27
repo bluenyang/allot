@@ -3,8 +3,8 @@
 // the text of its period. The sums take the same basis from the store itself (calc `ctxOf`), so a screen and its numbers
 // cannot disagree. With the calendar basis every answer is what the screens showed before: the calendar month, no period.
 import { computed } from 'vue'
-import { ctxOf, dayOn, monthDatesIn, periodOf, roundYm, ymd, ymLabel, ymOfDate, type MonthCtx } from './calc'
-import type { Spending, SpendingRound } from '../data/types'
+import { ctxOf, dayOn, monthCtx, monthDatesIn, periodOf, roundYm, ymd, ymLabel, ymOfDate, type MonthCtx } from './calc'
+import type { Card, Settings, Spending, SpendingRound } from '../data/types'
 import { periodText } from './format'
 import { localToday } from './now'
 import { store } from './store'
@@ -16,10 +16,10 @@ export const monthBasis = computed<MonthCtx>(() => ctxOf(store))
  * What the basis is, as one word: it changes when "this month" may have changed its name or its dates — the basis, the
  * naming, the first day, or the pay date's weekend rule. 'calendar' for the calendar month.
  */
-export const monthKey = computed(() => {
-  const c = monthBasis.value
-  return c.basis === 'calendar' ? 'calendar' : `${c.basis}-${c.naming}-${c.day}-${c.basis === 'pay' ? c.settings.payShift ?? 'none' : 'none'}`
-})
+export const monthKey = computed(() => basisKey(monthBasis.value))
+/** The same word for any basis: two bases with the same word give every month the same name and the same dates. */
+export const basisKey = (c: MonthCtx): string =>
+  (c.basis === 'calendar' ? 'calendar' : `${c.basis}-${c.naming}-${c.day}-${c.basis === 'pay' ? c.settings.payShift ?? 'none' : 'none'}`)
 
 /** Is a month something else than the calendar month (a card or pay basis in use)? */
 export const hasPeriod = computed(() => monthBasis.value.basis !== 'calendar')
@@ -72,3 +72,22 @@ export function withPeriod(text: string, ym: string): string {
 
 /** A month's name with its period: "2026.12 · 11/25~12/24"; "2026.12" with the calendar basis. */
 export const monthLabel = (ym: string): string => withPeriod(ymLabel(ym), ym)
+
+/** This month with a basis: its name and its dates, "2026.12 · 11-25~12-24". */
+export function monthLine(ctx: MonthCtx): string {
+  const p = periodOf(ymOfDate(ymd(localToday()), ctx), ctx)
+  return `${ymLabel(p.ym)} · ${periodText(p.start, p.end, store.preferences)}`
+}
+
+/**
+ * What a save would do to the months (spec 018 S-4): null when every month keeps its name and its dates, else this
+ * month before and after, for the question that is asked first. `next` is what the save changes: keys of the settings
+ * (the pay day and its rule under a pay basis), or the cards as they would be (the basis card's first day of use, or
+ * the list without it) — review 2 F-2.
+ */
+export function monthChange(next: { settings?: Partial<Settings>; cards?: readonly Pick<Card, 'id' | 'usageFrom'>[] }): { before: string; after: string } | null {
+  const now = monthBasis.value
+  const then = monthCtx({ ...store.settings, ...next.settings }, next.cards ?? store.cards, store.off ?? new Set())
+  return basisKey(now) === basisKey(then) ? null : { before: monthLine(now), after: monthLine(then) }
+}
+

@@ -679,6 +679,109 @@ test.describe.serial('W-4 the month basis', () => {
     }
   })
 
+  // Review 2 F-2: the saves that move a month's dates outside the three picks of 달의 기준 are asked with the same question.
+  test('(S-4) the question is also asked when the pay day or its rule is saved under a pay basis, when the basis card\'s first day of use is saved and when the basis card is deleted; cancelled, nothing changes; a save that leaves the months alone is not asked', async ({ page, request }) => {
+    const s0 = (await state(request)).settings
+    const prefs = ((await api(request, 'GET', '/api/state')).json as { preferences: Record<string, unknown> }).preferences
+    const name = `${MARK}-mq`
+    const made = await api(request, 'POST', '/api/cards', { name, last4: '', accountId: null, billingDay: 25, usageFrom: 12, note: '' })
+    expect(made.status).toBe(201)
+    const card = made.json as CardRow
+    let gone = false
+    const dlg = page.getByRole('alertdialog')
+    /** The open question: its words and the two lines; then the answer. */
+    async function answer(before: RegExp, after: RegExp, how: '바꾸기' | '취소') {
+      await expect(dlg.getByRole('heading', { name: '달의 기준을 바꿀까요?' })).toBeVisible()
+      await expect(dlg.getByText('달 이름은 그대로이고, 그 달이 가리키는 날짜가 바뀌어요.')).toBeVisible()
+      await expect(dlg.getByTestId('month-before')).toHaveText(before)
+      await expect(dlg.getByTestId('month-after')).toHaveText(after)
+      await dlg.getByRole('button', { name: how, exact: true }).click()
+      await expect(dlg).toBeHidden()
+    }
+    const days = (x: Settings) => [x.payDay, x.transferDay, x.billingDay, x.payShift]
+    try {
+      expect((await api(request, 'PUT', '/api/preferences', { ...prefs, dateFormat: 'iso', language: 'ko' })).status).toBe(200)
+      // ── a pay basis: pay day 10, no rule
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payDay: 10, transferDay: 11, billingDay: 14, payShift: 'none', monthBasis: 'pay', monthBasisCardId: null, monthNaming: 'auto' })).status).toBe(200)
+      await page.goto('/settings/general')
+      const pay = form(page).getByRole('spinbutton', { name: '월급일', exact: true })
+      const transfer = form(page).getByRole('spinbutton', { name: '분배일', exact: true })
+      // the transfer day is no part of a pay month: saved without a question
+      await transfer.fill('12')
+      await saveForm(page)
+      await expect(dlg).toHaveCount(0)
+      expect(days((await state(request)).settings)).toEqual([10, 12, 14, 'none'])
+      // the pay day: asked; cancelled, nothing is saved and the draft stays as typed
+      await pay.fill('20')
+      await form(page).getByRole('button', { name: '저장', exact: true }).click()
+      await answer(/^\d{4}\.\d{2} · \d{2}-10~\d{2}-09$/, /^\d{4}\.\d{2} · \d{2}-20~\d{2}-19$/, '취소')
+      expect(days((await state(request)).settings)).toEqual([10, 12, 14, 'none'])
+      await expect(pay).toHaveValue('20')
+      await expect(page.getByTestId('month-preview')).toHaveText(/-10~\d{2}-09$/)
+      // confirmed: saved, and the month block follows
+      await form(page).getByRole('button', { name: '저장', exact: true }).click()
+      await answer(/-10~\d{2}-09$/, /-20~\d{2}-19$/, '바꾸기')
+      await expect(form(page).getByRole('status')).toHaveText('저장했어요.')
+      expect(days((await state(request)).settings)).toEqual([20, 12, 14, 'none'])
+      await expect(page.getByTestId('month-preview')).toHaveText(/-20~\d{2}-19$/)
+      // the pay date's rule alone is asked too
+      await pick(seg(page, '월급일'), 'before')
+      await form(page).getByRole('button', { name: '저장', exact: true }).click()
+      await answer(/^\d{4}\.\d{2} · /, /^\d{4}\.\d{2} · /, '바꾸기')
+      await expect(form(page).getByRole('status')).toHaveText('저장했어요.')
+      expect(days((await state(request)).settings)).toEqual([20, 12, 14, 'before'])
+
+      // ── a card basis on this run's card (first day of use 12)
+      expect((await api(request, 'PUT', '/api/settings', { ...s0, payShift: 'none', monthBasis: 'card', monthBasisCardId: card.id, monthNaming: 'auto' })).status).toBe(200)
+      const table = await cardsTable(page)
+      const row = () => table.locator('tbody tr').filter({ hasText: name })
+      // a save that leaves the first day of use alone is not asked
+      await row().click()
+      let e = sheet(page, '카드 수정')
+      await e.locator('#cd-note').fill('memo')
+      await saveSheet(page, '카드 수정')
+      await expect(dlg).toHaveCount(0)
+      expect(await cardOf(request, card.id)).toMatchObject({ usageFrom: 12, note: 'memo' })
+      // the first day of use: asked; cancelled, the card is as saved and the editor is still open
+      await row().click()
+      e = sheet(page, '카드 수정')
+      await choose(e.locator('#cd-usage'), '20')
+      await e.getByRole('button', { name: '저장', exact: true }).click()
+      await answer(/-12~\d{2}-11$/, /-20~\d{2}-19$/, '취소')
+      await expect(e).toBeVisible()
+      expect((await cardOf(request, card.id))!.usageFrom).toBe(12)
+      await e.getByRole('button', { name: '저장', exact: true }).click()
+      await answer(/-12~\d{2}-11$/, /-20~\d{2}-19$/, '바꾸기')
+      await expect(e).toBeHidden()
+      await expect.poll(async () => (await cardOf(request, card.id))!.usageFrom).toBe(20)
+      // deleting the basis card: the delete question, then this one (the basis goes back to the calendar month).
+      // The page was made again when the basis changed (A-6), so the tab is opened again.
+      await cardsTable(page)
+      await expect(row().getByTestId('card-usage')).toHaveText('이용 20일~19일')
+      await row().click()
+      e = sheet(page, '카드 수정')
+      await e.getByRole('button', { name: '삭제', exact: true }).click()
+      await dlg.getByRole('button', { name: '삭제', exact: true }).click()
+      await answer(/-20~\d{2}-19$/, /-01~\d{2}-(28|29|30|31)$/, '취소')
+      await expect(e).toBeVisible()
+      expect(await cardOf(request, card.id), 'the card is still there').toBeTruthy()
+      expect((await state(request)).settings).toMatchObject({ monthBasis: 'card', monthBasisCardId: card.id })
+      await e.getByRole('button', { name: '삭제', exact: true }).click()
+      await dlg.getByRole('button', { name: '삭제', exact: true }).click()
+      await answer(/-20~\d{2}-19$/, /-01~\d{2}-(28|29|30|31)$/, '바꾸기')
+      await expect(e).toBeHidden()
+      await expect.poll(async () => (await cardOf(request, card.id)) ?? null).toBeNull()
+      gone = true
+      await cardsTable(page)
+      await expect(row()).toHaveCount(0)
+      expect((await state(request)).settings).toMatchObject({ monthBasis: 'calendar', monthBasisCardId: null })
+    } finally {
+      if (!gone) await api(request, 'DELETE', `/api/cards/${card.id}`)
+      expect((await api(request, 'PUT', '/api/settings', s0)).status).toBe(200)
+      await api(request, 'PUT', '/api/preferences', prefs)
+    }
+  })
+
   test('(V-6) on a phone the month bar shows the period without sideways scrolling, and the English screen words the block and the question', async ({ page, request }) => {
     const c = payCase()
     const s0 = (await state(request)).settings

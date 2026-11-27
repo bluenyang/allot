@@ -5,9 +5,11 @@
 // through the card; otherwise the spendings that named it lose the card (their rounds stay as saved).
 // The first day of the usage period (spec 018 S-2) is optional: with it, a purchase is billed on the first billing
 // day after the period that holds it ends; the line under the field shows the period of today and its bill.
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { t } from '../i18n'
 import EditSheet from './EditSheet.vue'
+import MonthChangeDialog from './MonthChangeDialog.vue'
+import { monthChange } from '../lib/month'
 import Select from './Select.vue'
 import { useEditor } from '../lib/useEditor'
 import { store } from '../lib/store'
@@ -24,6 +26,26 @@ const { item: edit, error, busy, open, close, save, remove } = useEditor('cards'
 open(props.initial ?? undefined)
 watch(edit, (v) => { if (!v) emit('close') })
 const title = props.initial ? t('accounts.cardEditor.editTitle') : t('accounts.cardEditor.addTitle')
+
+// The card the month basis counts by (설정 › 달의 기준 › 카드 집계): its first day of use is what a month is, so a save
+// that changes it, and deleting the card (the basis goes back to the calendar month), are asked first with the same
+// question as a change of the basis (spec 018 S-4, review 2 F-2). Any other card, and a save that leaves the months as
+// they are, goes straight through. Cancelled, nothing is saved or deleted and the editor stays open.
+const ask = ref<{ before: string; after: string; run: () => Promise<unknown> } | null>(null)
+function askOr(cards: (id: string) => Parameters<typeof monthChange>[0]['cards'], run: () => Promise<unknown>) {
+  const c = edit.value
+  const change = c?.id ? monthChange({ cards: cards(c.id) }) : null
+  if (change) ask.value = { ...change, run }
+  else void run()
+}
+const saveAsked = () => askOr((id) => store.cards.map((x) => (x.id === id ? edit.value! : x)), save)
+const removeAsked = () => askOr((id) => store.cards.filter((x) => x.id !== id), remove)
+async function confirmAsk() {
+  const a = ask.value
+  if (!a) return
+  ask.value = null
+  await a.run()
+}
 
 // '' in a select is "none" (null).
 const account = computed({
@@ -64,7 +86,7 @@ const usageNow = computed(() => {
 <template>
   <EditSheet
     v-if="edit" :title="title" :desc="t('accounts.cardEditor.desc')" :error="error" :busy="busy"
-    :can-delete="!!edit.id" :delete-name="edit.name" @save="save" @cancel="close" @delete="remove"
+    :can-delete="!!edit.id" :delete-name="edit.name" @save="saveAsked" @cancel="close" @delete="removeAsked"
   >
     <div class="field">
       <label for="cd-name">{{ t('accounts.cardEditor.name') }} <span class="star" aria-hidden="true">*</span></label>
@@ -96,6 +118,7 @@ const usageNow = computed(() => {
       <input id="cd-note" v-model="edit.note" class="in" autocomplete="off">
     </div>
   </EditSheet>
+  <MonthChangeDialog v-if="ask" :before="ask.before" :after="ask.after" :busy="busy" @confirm="confirmAsk" @cancel="ask = null" />
 </template>
 
 <style scoped>

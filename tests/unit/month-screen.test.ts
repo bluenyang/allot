@@ -5,8 +5,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_SETTINGS } from '../../src/data/defaults'
+import type { Card, Settings } from '../../src/data/types'
 import { monthMoney, todayIn, ymd, ymOf, ymOfDate, monthCtx } from '../../src/lib/calc'
-import { hasPeriod, monthBasis, monthDatesOf, monthLabel, periodLabel, periodOfYm, thisYm, withPeriod, ymOfDay } from '../../src/lib/month'
+import { hasPeriod, monthBasis, monthChange, monthDatesOf, monthLabel, monthLine, periodLabel, periodOfYm, thisYm, withPeriod, ymOfDay } from '../../src/lib/month'
 import { status, store } from '../../src/lib/store'
 import { view } from '../../src/lib/view'
 
@@ -102,4 +103,55 @@ test('when the user changes what a month is, the month looked at goes back to th
   view.ym = '2030-05'
   store.settings = { ...DEFAULT_SETTINGS }
   assert.equal(view.ym, '2030-05')
+})
+
+// Review 2 F-2 (spec 018 S-4): the saves that move a month's dates without touching the three picks of 달의 기준 — the
+// pay day or its rule under a pay basis, the basis card's first day of use, deleting the basis card. `monthChange` says
+// whether such a save is asked first, and with which two lines.
+test('monthChange: a save that changes what a month is gives this month before and after; any other save gives null', () => {
+  store.preferences.timezone = 'Asia/Seoul'
+  store.preferences.dateFormat = 'iso'
+  const line = (s: Settings, cards: Card[] = store.cards) => monthLine(monthCtx(s, cards, none))
+  // ── a pay basis: the pay day and its rule are the basis
+  store.settings = { ...DEFAULT_SETTINGS, payDay: 15, transferDay: 16, billingDay: 14, monthBasis: 'pay' }
+  store.cards = []
+  assert.equal(monthChange({ settings: {} }), null, 'nothing changed')
+  assert.equal(monthChange({ settings: { payDay: 15, transferDay: 20, billingDay: 3, transferShift: 'after', billingShift: 'before' } }), null, 'the other two dates and their rules are not the basis')
+  // 15 → 16 with the naming on auto: every saved month name moves a whole month
+  const moved = monthChange({ settings: { payDay: 16 } })
+  assert.deepEqual(moved, { before: line(store.settings), after: line({ ...store.settings, payDay: 16 }) })
+  assert.notEqual(moved!.before, moved!.after)
+  assert.match(moved!.before, /^\d{4}\.\d{2} · \d{2}-15~\d{2}-14$/)
+  assert.match(moved!.after, /^\d{4}\.\d{2} · \d{2}-16~\d{2}-15$/)
+  // the pay date's rule alone is asked too (it moves the first day on a weekend), even when this month reads the same
+  assert.notEqual(monthChange({ settings: { payShift: 'before' } }), null)
+  // ── the calendar basis: the pay day is no part of a month
+  store.settings = { ...DEFAULT_SETTINGS, payDay: 15 }
+  assert.equal(monthChange({ settings: { payDay: 16, payShift: 'before' } }), null)
+  // ── a card basis: the basis card's first day of use
+  const card: Card = { id: 'c1', name: 'Card', last4: '', accountId: null, billingDay: 25, usageFrom: 12 }
+  const other: Card = { id: 'c2', name: 'Other', last4: '', accountId: null, billingDay: 25, usageFrom: 5 }
+  store.cards = [card, other]
+  store.settings = { ...DEFAULT_SETTINGS, payDay: 15, monthBasis: 'card', monthBasisCardId: 'c1' }
+  assert.equal(monthChange({ settings: { payDay: 16, payShift: 'after' } }), null, 'the pay day is not the basis here')
+  assert.equal(monthChange({ cards: [{ ...card, billingDay: 3 }, other] }), null, 'the billing day is no part of the usage period')
+  assert.equal(monthChange({ cards: [card, { ...other, usageFrom: 20 }] }), null, 'another card')
+  assert.equal(monthChange({ cards: [card] }), null, 'another card deleted')
+  const used = monthChange({ cards: [{ ...card, usageFrom: 20 }, other] })
+  assert.deepEqual(used, { before: line(store.settings), after: line(store.settings, [{ ...card, usageFrom: 20 }, other]) })
+  assert.match(used!.after, /-20~\d{2}-19$/)
+  // cleared, or the card deleted: the calendar month
+  const calendar = line({ ...DEFAULT_SETTINGS })
+  assert.equal(monthChange({ cards: [{ ...card, usageFrom: null }, other] })!.after, calendar)
+  assert.deepEqual(monthChange({ cards: [other] }), { before: line(store.settings), after: calendar })
+  // a basis card without a first day already is the calendar month: deleting it changes nothing
+  store.cards = [{ ...card, usageFrom: null }, other]
+  assert.equal(monthChange({ cards: [other] }), null)
+  // the card id is kept under a pay basis: the card is not what a month is
+  store.cards = [card, other]
+  store.settings = { ...DEFAULT_SETTINGS, payDay: 15, monthBasis: 'pay', monthBasisCardId: 'c1' }
+  assert.equal(monthChange({ cards: [other] }), null)
+  assert.equal(monthChange({ cards: [{ ...card, usageFrom: 20 }, other] }), null)
+  store.cards = []
+  store.settings = { ...DEFAULT_SETTINGS }
 })
