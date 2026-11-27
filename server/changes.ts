@@ -11,7 +11,7 @@ import * as t from './db/schema'
 import { lockFor } from './db/scope'
 import { m, MsgError, type Msg } from './messages'
 import { roundsProblem } from '../src/lib/spending-rules'
-import { asNow, plain, same, stillAsLogged, userColumns } from './row-compare'
+import { asNow, basisAsLeft, isBasisDrop, plain, same, stillAsLogged, userColumns } from './row-compare'
 
 export type RowKey = Record<string, string>
 export { same, stillAsLogged }
@@ -130,6 +130,18 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
     // a row logged before a column was replaced reads in today's shape (the settings' dayShift, spec 018 S-1)
     const before = asNow(log.tableName, log.before)
     const expected = log.op === 'delete' ? null : asNow(log.tableName, log.after)
+    // The settings row of a basis card's delete (review 2 F-3 a, spec 018 A-26): only its two month keys count. The
+    // card is back already (its delete is logged after this row, so it was replayed first); the basis comes back with
+    // it while the month keys are still what the delete left them, else the settings stay as they are now. Any other
+    // column of the row may have changed since (the daily rate refresh, a save) and keeps its value: no conflict.
+    if (isBasisDrop(log, logs)) {
+      if (basisAsLeft(current, expected!)) {
+        const [written] = await q.update(table).set({ monthBasis: before!.monthBasis, monthBasisCardId: before!.monthBasisCardId } as never)
+          .where(whereKey(table, uid, log.rowKey)).returning()
+        await rec.record(table, log.rowKey, 'update', current, written as Row)
+      }
+      continue
+    }
     if (!stillAsLogged(current, expected)) {
       throw new Conflict(m('changeLater'), log.tableName, log.rowKey)
     }

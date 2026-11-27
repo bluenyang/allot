@@ -386,6 +386,34 @@ try {
     'the change set of the delete holds the card and the settings row, before and after')
   const rvDel = await U('POST', `/api/changes/${delSet.id}/revert`)
   ok(rvDel.status === 200 && (await state()).cards.some((c) => c.id === b3) && await monthNow() === `card/${b3}/end`, `reverting the delete → ${rvDel.status}: the card is back and the basis is card / b3 again`)
+  // review 2 F-3 (a), A-26: the revert of a basis card's delete is not refused because the settings row changed afterwards
+  // (the daily rate refresh changes it too). The card comes back; the basis comes back with it only while the month
+  // keys are still what the delete left them, and the later change of the row stays.
+  const b4 = (await U('POST', '/api/cards', { ...MCARD, name: 'RC1 basis card 4', usageFrom: 7 })).json.id
+  ok((await put({ ...BODY, monthBasisCardId: b4 })).status === 200 && await monthNow() === `card/${b4}/end`, 'basis: the card b4')
+  ok((await U('DELETE', `/api/cards/${b4}`)).status === 204 && await monthNow() === 'calendar//end', 'the basis card b4 is deleted: the calendar month')
+  const del4 = await lastSet()
+  const later = await put({ ...BODY, netPay: BODY.netPay + 1000, fxRate: 1234.5 })
+  ok(later.status === 200 && month(later.json) === 'calendar//end', 'then the settings row changes (net pay, rate), the month keys left alone')
+  const rv4 = await U('POST', `/api/changes/${del4.id}/revert`)
+  const s4 = (await state()).settings
+  ok(rv4.status === 200 && (await state()).cards.some((c) => c.id === b4) && month(s4) === `card/${b4}/end` && s4.netPay === BODY.netPay + 1000 && s4.fxRate === 1234.5,
+    `reverting the delete after that change → ${rv4.status}: the card is back, the basis is card / b4 again (${month(s4).replace(b4, 'b4')}) and the later net pay and rate stay (${s4.netPay}, ${s4.fxRate})`)
+  ok((await U('DELETE', `/api/cards/${b4}`)).status === 204 && await monthNow() === 'calendar//end', 'the basis card b4 is deleted once more')
+  const del4b = await lastSet()
+  ok((await put({ ...BODY, monthBasis: 'card', monthBasisCardId: b3 })).status === 200 && await monthNow() === `card/${b3}/end`, 'then another card (b3) is made the basis card')
+  const rv4b = await U('POST', `/api/changes/${del4b.id}/revert`)
+  ok(rv4b.status === 200 && (await state()).cards.some((c) => c.id === b4) && await monthNow() === `card/${b3}/end` && (await state()).settings.netPay === BODY.netPay,
+    `reverting the delete after the month keys changed → ${rv4b.status}: the card is back and the basis stays as it is now (${(await monthNow()).replace(b3, 'b3')})`)
+  // review 2 F-3 (b), not changed: a revert that would write a settings row naming a card that is gone is refused by
+  // the foreign key, as a save of such an id is (spec 018 S-12 "없는 카드 id는 거부")
+  const b5 = (await U('POST', '/api/cards', { ...MCARD, name: 'RC1 basis card 5', usageFrom: 9 })).json.id
+  ok((await put({ ...BODY, monthBasisCardId: b5 })).status === 200 && (await put({ ...BODY, monthBasisCardId: b4 })).status === 200, 'basis: the card b5, then the card b4')
+  const swap = await lastSet()
+  ok((await U('DELETE', `/api/cards/${b5}`)).status === 204 && await monthNow() === `card/${b4}/end`, 'the card b5 (no basis card any more) is deleted')
+  const rvSwap = await U('POST', `/api/changes/${swap.id}/revert`, undefined, EN)
+  ok(rvSwap.status === 400 && rvSwap.json?.error === LINK && await monthNow() === `card/${b4}/end`, `reverting the change b5 → b4 after b5 was deleted → ${rvSwap.status} "${rvSwap.json?.error}", the row stays`)
+  ok((await put({ ...BODY, monthBasisCardId: b3 })).status === 200 && (await U('DELETE', `/api/cards/${b4}`)).status === 204 && await monthNow() === `card/${b3}/end`, 'basis: back to card / b3 / end, the card b4 removed')
   // a card kept under another basis is only let go: the basis stays
   ok((await put({ ...BODY, monthBasis: 'pay' })).status === 200 && await monthNow() === `pay/${b3}/end`, 'basis: pay, the card b3 kept')
   const delP = await U('DELETE', `/api/cards/${b3}`)
