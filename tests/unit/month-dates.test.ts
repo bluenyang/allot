@@ -64,7 +64,7 @@ test('monthDates uses the settings and keeps none as before', () => {
   const s = { ...DEFAULT_SETTINGS, payDay: 25, transferDay: 26, billingDay: 14 }
   const plain = monthDates('2026-10', s, off)
   assert.deepEqual([plain.pay.date, plain.transfer.date, plain.billing.date], ['2026-10-25', '2026-10-26', '2026-10-14'])
-  const moved = monthDates('2026-10', { ...s, dayShift: 'before' }, off)
+  const moved = monthDates('2026-10', { ...s, payShift: 'before', transferShift: 'before', billingShift: 'before' }, off)
   assert.equal(moved.pay.date, '2026-10-23') // 10-25 is a Sunday
   assert.equal(moved.pay.shifted, 'before')
 })

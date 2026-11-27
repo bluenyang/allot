@@ -6,7 +6,7 @@ import { accountMonthIn, bankLine, targetsOf, unlinkedTargets } from '../../src/
 import type { AccountState } from '../../src/lib/calc'
 import type { Account, AllocationTarget, Phase, Settings, Spending } from '../../src/data/types'
 
-const S: Settings = { netPay: 3_000_000, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 16, subRound: 10_000, dayShift: 'none', savingSplit: 'amount' }
+const S: Settings = { netPay: 3_000_000, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 16, subRound: 10_000, payShift: 'none', transferShift: 'none', billingShift: 'none', savingSplit: 'amount' }
 const P: Phase = { id: 'p1', label: '', name: 'one', from: '2026-01', to: null, amounts: { tf: 200_000, tg: 50_000 } }
 const acc = (id: string, over: Partial<Account> = {}): Account =>
   ({ id, name: `E2E-${id}`, role: '', inflow: '', outflow: '', buffer: 0, goal: null, annualLimit: null, group: null, amount: 0, ratio: null, from: null, stopFrom: null, goalAck: null, amounts: {}, ...over })

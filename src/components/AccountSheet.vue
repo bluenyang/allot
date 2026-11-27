@@ -13,7 +13,8 @@ import { store } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { offDays } from '../lib/holidays-lazy'
 import { bankLine, targetsOf } from '../lib/accounts'
-import { addYm, bufferGauge, goalMonth, projectAccount, yearContribution, ymLabel, ymOf, ymd } from '../lib/calc'
+import { addYm, bufferGauge, goalMonth, needsHolidays, projectAccount, yearContribution, ymLabel, ymd } from '../lib/calc'
+import { hasPeriod, periodLabel, thisYm } from '../lib/month'
 import { fmtMoney } from '../lib/display'
 import type { Balance } from '../data/types'
 import { localToday } from '../lib/now'
@@ -26,19 +27,21 @@ const acc = computed(() => store.accounts.find((a) => a.id === props.accountId) 
 watch(acc, (a) => { if (!a) emit('close') })
 
 const todayStr = ymd(localToday())
-const now = ymOf(localToday())
+const now = thisYm()
 const balances = computed(() => store.balances.filter((b) => b.accountId === props.accountId).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)))
 
-// Holidays for the day shift, from the month before the last record to after the forecast.
+// Holidays for the day shift, from the month before the last record to after the forecast (a range of dates, by
+// calendar months; the months themselves are read with the store's own list).
 const off = computed<ReadonlySet<string>>(() => {
-  if ((store.settings.dayShift ?? 'none') === 'none') return new Set()
+  if (!needsHolidays(store.settings, store.schedules)) return new Set()
   const first = balances.value[0]?.date.slice(0, 7) ?? now
   const from = first < now ? first : now
   return offDays(store.holidaySets, `${addYm(from, -2)}-01`, `${addYm(now, 14)}-01`) ?? new Set()
 })
 const rows = computed(() => (acc.value ? projectAccount(acc.value, store, off.value, now, 12) : null))
 const goalYm = computed(() => (acc.value && acc.value.goal !== null && acc.value.goal !== undefined ? goalMonth(acc.value, store, off.value) : null))
-const year = Number(now.slice(0, 4))
+// the yearly limit counts a calendar year on every month basis (spec 018 S-3)
+const year = Number(todayStr.slice(0, 4))
 const limit = computed(() => {
   const a = acc.value
   if (!a || a.annualLimit === null || a.annualLimit === undefined) return null
@@ -116,7 +119,7 @@ const balDeposit = computed({
             <thead><tr><th scope="col">{{ t('accounts.detail.colYm') }}</th><th scope="col" class="n">{{ t('accounts.detail.colIn') }}</th><th scope="col" class="n">{{ t('accounts.detail.colOut') }}</th><th scope="col" class="n">{{ t('accounts.detail.colEnd') }}</th></tr></thead>
             <tbody>
               <tr v-for="r in rows" :key="r.ym" :class="{ goal: goalYm === r.ym }">
-                <td class="num">{{ ymLabel(r.ym) }}<span v-if="goalYm === r.ym" class="pill ok gm">{{ t('accounts.detail.goalMark') }}</span></td>
+                <td class="num">{{ ymLabel(r.ym) }}<span v-if="goalYm === r.ym" class="pill ok gm">{{ t('accounts.detail.goalMark') }}</span><span v-if="hasPeriod" class="per" data-testid="forecast-period">{{ periodLabel(r.ym) }}</span></td>
                 <td class="n num">{{ r.inflow ? fmtMoney(r.inflow) : '—' }}</td>
                 <td class="n num">{{ r.outflow ? fmtMoney(r.outflow) : '—' }}</td>
                 <td class="n num amt">{{ fmtMoney(r.end) }}</td>
@@ -143,6 +146,8 @@ td.amt{font-weight:600}
 tr.click{cursor:pointer}
 tr.goal td{background:var(--primary-tint)}
 .gm{margin-left:8px}
+/* a month's dates under its name when a month is not the calendar month (spec 018 S-3) */
+.per{display:block;font-size:11px;font-weight:400;color:var(--muted);white-space:nowrap}
 .gbar{height:8px;border-radius:2px;background:var(--fill);overflow:hidden}
 .gbar div{height:100%;background:var(--primary)}
 .gbar div.bad{background:var(--neg)}

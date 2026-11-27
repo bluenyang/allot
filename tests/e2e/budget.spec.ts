@@ -18,7 +18,7 @@ type Item = Row & { kind: string; payMethod: string; amount: number; from: strin
 type Target = Row & { kind: string; accountId?: string | null; note?: string }
 type Round = { no: number; date: string; amount: number; state: string; edited: boolean }
 type Spend = Row & { how: string; payBy: string; cardId: string | null; refillFrom: string | null; fee: number; count: number; rounds: Round[] }
-type Settings = Record<string, unknown> & { payDay: number; transferDay: number; billingDay: number; dayShift?: string; savingSplit?: string; investSplit?: string }
+type Settings = Record<string, unknown> & { payDay: number; transferDay: number; billingDay: number; payShift?: string; billingShift?: string; savingSplit?: string; investSplit?: string }
 type State = {
   settings: Settings; living: { food: number; transit: number; allowance: number }; livingItems: Item[]; phases: Phase[]; targets: Target[]
   accounts: Row[]; balances: Row[]; cards: Row[]; spendings: Spend[]
@@ -624,7 +624,7 @@ test('(V-10, S-8) 버퍼 사용: the refill rounds on pay days with the odd won 
     expect(got!.rounds.map((r) => r.amount)).toEqual([33_330, 33_330, 33_340])
     expect(got!.refillFrom).toBe(got!.rounds[0]!.date)
     expect(got!.rounds.map((r) => r.date.slice(0, 7))).toEqual([refill0, ymAdd(ym, 2), ymAdd(ym, 3)])
-    if ((st.settings.dayShift ?? 'none') === 'none') expect(got!.rounds.map((r) => +r.date.slice(8))).toEqual([st.settings.payDay, st.settings.payDay, st.settings.payDay])
+    if ((st.settings.payShift ?? 'none') === 'none') expect(got!.rounds.map((r) => +r.date.slice(8))).toEqual([st.settings.payDay, st.settings.payDay, st.settings.payDay])
 
     // the refill comes off that month's remainder
     await simAt(page, refill0)
@@ -737,7 +737,7 @@ test('(V-13, S-13) a card lump sum and installment use the card\'s billing day, 
   const name = `${MARK}-cb`
   const spends = async () => (await state(request)).spendings.filter((x) => x.name.startsWith(name))
   const ym = thisYm()
-  const shift = st.settings.dayShift ?? 'none'
+  const shift = st.settings.billingShift ?? 'none'
   let cardGone = false
   try {
     await page.goto('/')

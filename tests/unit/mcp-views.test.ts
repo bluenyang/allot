@@ -18,7 +18,7 @@ const sub = (over: Partial<Subscription> & { id: string; name: string }): Subscr
 })
 
 const data: Data = {
-  settings: { netPay: 3_000_000, fxRate: 1400, fxBuffer: 5, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, dayShift: 'after' },
+  settings: { netPay: 3_000_000, fxRate: 1400, fxBuffer: 5, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, payShift: 'after', transferShift: 'after', billingShift: 'after' },
   living: { food: 400_000, transit: 100_000, allowance: 200_000 },
   targets: [
     { id: 't-live', name: 'Living account', kind: 'living' },
@@ -230,13 +230,18 @@ test('list_spendings: a payoff round and a merged round are told apart', () => {
   const x = spendingList({ ...data, spendings: [paid] }, NOW).spendings[0]!
   assert.deepEqual([x.progress.paid, x.progress.left, x.progress.merged], [1, 1, 2])
   assert.equal(x.progress.next?.round, 4)
-  const r = overview({ ...data, spendings: [paid] }, '2026-11').spendingRounds
+  // card bills of 11-14 and 11-20: the pay date before both is 10-26 (the 25th is a Sunday, moved after), so October counts them (spec 018 S-5)
+  const r = overview({ ...data, spendings: [paid] }, '2026-10').spendingRounds
   assert.deepEqual(r.map((y) => [y.round, y.of, y.payoff ?? false, y.state]), [[1, 3, false, 'paid'], [4, 3, true, 'left']])
+  assert.deepEqual(overview({ ...data, spendings: [paid] }, '2026-11').spendingRounds, [])
 })
 
 test('overview and schedule: spending rounds are items of their own, not in the subscription charges', () => {
   const o = overview(withSp, '2026-12')
-  assert.deepEqual(o.spendingRounds.map((r) => [r.date, r.name, r.round, r.of, r.amountKrw, r.payBy]), [['2026-12-12', 'Chair', 1, 1, 50_000, 'subs'], ['2026-12-14', 'Laptop', 2, 3, 100_000, 'card']])
+  // December counts the subscription-account round dated in it and the card bill of 2027-01-14, paid with the pay of 12-25;
+  // the card bill of 12-14 is November's (spec 018 S-5)
+  assert.deepEqual(o.spendingRounds.map((r) => [r.date, r.name, r.round, r.of, r.amountKrw, r.payBy]), [['2026-12-12', 'Chair', 1, 1, 50_000, 'subs'], ['2027-01-14', 'Laptop', 3, 3, 100_000, 'card']])
+  assert.deepEqual(overview(withSp, '2026-11').spendingRounds.map((r) => [r.date, r.name, r.round]), [['2026-12-14', 'Laptop', 2]])
   assert.deepEqual(o.payments, overview(data, '2026-12').payments)
   const s = schedule(withSp, '2026-11', 3)
   assert.deepEqual(s.months.map((m) => m.spendingRounds.length), [1, 2, 1])
@@ -258,7 +263,7 @@ const pc: Spending = {
 const bd: Data = {
   ...data,
   // no weekend or holiday shift, no holidays: the calc functions below run with no off days
-  settings: { ...data.settings, dayShift: 'none' },
+  settings: { ...data.settings, payShift: 'none', transferShift: 'none', billingShift: 'none' },
   holidaySets: [{ id: 'kr', name: 'KR', enabled: false, builtin: 'kr', rules: [] }],
   subscriptions: [], planChanges: [],
   living: { food: 300_000, transit: 0, allowance: 0 },
@@ -390,9 +395,14 @@ test('list_accounts: fields, balance records, projection, goal month, yearly con
   assert.deepEqual(liv.projection, projectAccount(livAcc, bst, none, '2026-11', 4)!.map((r) => ({ month: r.ym, inflowKrw: r.inflow, outflowKrw: r.outflow, endKrw: r.end })))
   assert.deepEqual(l.accounts[4]!.targets, [{ id: 't-fix', name: 'Emergency', kind: 'fixed' }])
   assert.deepEqual(l.cards, [
-    { id: 'c1', name: 'E2E-Card', last4: '9876', accountId: 'living-acc', account: 'E2E-living-acc', billingDay: 12, effectiveBillingDay: 12 },
-    { id: 'c2', name: 'E2E-Other', last4: '', accountId: null, account: null, billingDay: null, effectiveBillingDay: 14 },
+    { id: 'c1', name: 'E2E-Card', last4: '9876', accountId: 'living-acc', account: 'E2E-living-acc', billingDay: 12, effectiveBillingDay: 12, usageFrom: null },
+    { id: 'c2', name: 'E2E-Other', last4: '', accountId: null, account: null, billingDay: null, effectiveBillingDay: 14, usageFrom: null },
   ])
+  // a card's usage period (spec 018 S-2): the first day as saved, 1 too; the bill of its buffer use follows it
+  // (bought on November 18th, billing day 12, first day 15: the period ends on December 14th, so the bill is January 12th)
+  const used = accountList({ ...bd, cards: bd.cards!.map((c) => (c.id === 'c1' ? { ...c, usageFrom: 15 } : { ...c, usageFrom: 1 })) }, now, 4)
+  assert.deepEqual(used.cards.map((c) => [c.id, c.usageFrom]), [['c1', 15], ['c2', 1]])
+  assert.deepEqual(used.accounts[3]!.projection!.slice(0, 3).map((r) => [r.month, r.outflowKrw]), [['2026-11', 0], ['2026-12', 0], ['2027-01', 400_000]])
   // the default is twelve months from this month
   assert.equal(accountList(bd, now).accounts[0]!.projection!.length, 12)
   // no balance records or cards in the data: every account without a projection, no cards
@@ -630,6 +640,10 @@ test('get_income: the salary with its receipts, a monthly and a yearly income, t
   assert.deepEqual([bonus.cycle, bonus.yearlyMonth, bonus.expectedKrw, bonus.receivedKrw, bonus.countedKrw, bonus.note], ['yearly', 3, 1_000_000, null, 1_000_000, 'once a year'])
   assert.equal(march.totalKrw, 4_200_000)
   assert.deepEqual(march.later, [])
+  // a yearly income counted in a month carries its calendar date there (review 2 F-5); a monthly one has none
+  assert.match(String(bonus.date), /^2027-03-\d{2}$/)
+  assert.equal(Number(String(bonus.date).slice(8)), bonus.day)
+  assert.equal('date' in g.incomes[1]!, false)
   // no income data: the salary alone, as before
   const plain = incomeView(data, '2026-11')
   assert.deepEqual(plain.incomes.map((r) => [r.name, r.expectedKrw, r.receivedKrw]), [['salary', 3_000_000, null]])

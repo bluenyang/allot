@@ -309,6 +309,48 @@
       "when": 1795626014332,
       "tag": "0043_force_rls_notice_mark",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795706524191,
+      "tag": "0044_date_shift_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795706639314,
+      "tag": "0045_copy_day_shift",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1795707298657,
+      "tag": "0046_drop_day_shift",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795708838595,
+      "tag": "0047_card_usage_from",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1795711273112,
+      "tag": "0048_settings_month_basis",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1795741364651,
+      "tag": "0049_subscription_pay",
+      "breakpoints": true
     }
   ]
 }

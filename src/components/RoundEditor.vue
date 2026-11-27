@@ -7,6 +7,7 @@ import { computed, ref, watch } from 'vue'
 import { t } from '../i18n'
 import { useEditor } from '../lib/useEditor'
 import { monthLong } from '../lib/format'
+import { roundYmOf } from '../lib/month'
 import type { RoundState, Spending, SpendingRound } from '../data/types'
 import DateInput from './DateInput.vue'
 import EditSheet from './EditSheet.vue'
@@ -40,11 +41,13 @@ watch(edit, (v) => { if (!v) emit('close') })
 const label = props.no <= props.spending.count ? t('spending.inst.roundOfLong', { no: props.no, n: props.spending.count }) : t('spending.inst.payoffRound')
 const title = t('spending.inst.round.title', { name: props.spending.name, label })
 const opts = computed(() => [{ id: 'left', label: t('spending.inst.round.left') }, { id: 'paid', label: t('spending.inst.round.paid') }])
-// where the round is counted, by its date (the same rule as the table: card and salary off the remainder, the subscription account onto the transfer)
+// where the round is counted (the same rule as the table: card and salary off the remainder, the subscription account
+// onto the transfer), in the month that counts it: a card bill with the pay before it, any other round by its date (spec 018 S-5)
 const where = computed(() => {
   if (!DATE.test(date.value)) return t('spending.inst.round.whereNone')
-  const month = monthLong(Number(date.value.slice(5, 7)))
-  const year = date.value.slice(0, 4)
+  const ym = roundYmOf(props.spending, { date: date.value })
+  const month = monthLong(Number(ym.slice(5, 7)))
+  const year = ym.slice(0, 4)
   if (props.spending.cancelled && state.value === 'left') return t('spending.inst.round.whereNone')
   return t(props.spending.payBy === 'subs' ? 'spending.inst.round.whereSubs' : 'spending.inst.round.whereRem', { year, month })
 })

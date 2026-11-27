@@ -20,10 +20,11 @@ import Seg from './Seg.vue'
 import CurrencyPick from './CurrencyPick.vue'
 import { currencyCodes, rateFor, rateNum } from '../lib/currency'
 import Tip from './Tip.vue'
-import { addYm, billingDayOf, bufferGauge, cardBillDate, monthDay, num, payDayFrom, planRounds, replan as doReplan, spendingKrw, ymd } from '../lib/calc'
+import { addYm, billingDayOf, bufferGauge, cardBillDate, monthDay, needsHolidays, num, payDayFrom, planRounds, replan as doReplan, shiftOf, spendingKrw, ymd } from '../lib/calc'
 import { fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
 import { store } from '../lib/store'
+import { roundYmOf } from '../lib/month'
 import { useEditor } from '../lib/useEditor'
 import type { Card, Currency, PayBy, Spending, SpendingRound, SpendHow, SpendInterval } from '../data/types'
 import { localToday } from '../lib/now'
@@ -157,23 +158,26 @@ const principal = computed(() => (Number.isFinite(amountN.value) ? spendingKrw(a
 // Holidays for every month a billing date is worked out in: from the purchase month or the first date the user set, whichever is
 // earlier, to the later of them plus the rounds, with the month before and the months after that a moved date can reach (review 8).
 const off = computed<ReadonlySet<string>>(() => {
-  if ((store.settings.dayShift ?? 'none') === 'none' || !DATE.test(bought.value)) return new Set()
+  if (!needsHolidays(store.settings, store.schedules) || !DATE.test(bought.value)) return new Set()
   const n = countOk.value ? countN.value : 1
   const yms = [
     bought.value.slice(0, 7), ...(firstManual.value && DATE.test(firstVal.value) ? [firstVal.value.slice(0, 7)] : []),
     ...(refillManual.value && DATE.test(refillVal.value) ? [refillVal.value.slice(0, 7)] : []),
   ].sort()
-  return offDays(store.holidaySets, `${addYm(yms[0]!, -1)}-01`, `${addYm(yms[yms.length - 1]!, n + 3)}-01`) ?? new Set()
+  // a card with a usage period bills up to two months after the purchase (spec 018 S-2): one month more than before
+  return offDays(store.holidaySets, `${addYm(yms[0]!, -1)}-01`, `${addYm(yms[yms.length - 1]!, n + 4)}-01`) ?? new Set()
 })
-const cardDay = (ym: string) => monthDay(ym, billingDay.value, store.settings.dayShift ?? 'none', off.value).date
-/** The date the first round gets when the user does not set one: a card is billed the month after, the others pay on the day. */
-const defaultFirst = computed(() => (!DATE.test(bought.value) ? '' : how.value !== 'split' && payBy.value === 'card' ? cardDay(addYm(bought.value.slice(0, 7), 1)) : bought.value))
+// a card's billing dates are a run of dates, one in each calendar month: they do not follow the month basis (spec 018 S-3)
+const cardDay = (ym: string) => monthDay(ym, billingDay.value, shiftOf(store.settings, 'billing'), off.value).date
+/** The card bill of the purchase: the first billing date after the card's usage period ends, the month after without one (spec 018 S-2). */
+const billDate = computed(() => (DATE.test(bought.value) ? cardBillDate(bought.value, card.value, store.settings, off.value) : ''))
+/** The date the first round gets when the user does not set one: a card is billed on its bill date, the others pay on the day. */
+const defaultFirst = computed(() => (!DATE.test(bought.value) ? '' : how.value !== 'split' && payBy.value === 'card' ? billDate.value : bought.value))
 const firstVal = ref(storedFirst)
 const firstManual = ref(!!I) // an edit starts from the stored first date; changing what it follows from takes the default again
 const first = computed({ get: () => (firstManual.value ? firstVal.value : defaultFirst.value), set: (v: string) => { firstVal.value = v; firstManual.value = true } })
 watch([bought, how, () => payBy.value === 'card', cardId], () => { firstManual.value = false })
 /** A buffer use: the card bill's date, and the refill start (default: the first pay day on or after the bill, S-8). */
-const billDate = computed(() => (DATE.test(bought.value) ? cardBillDate(bought.value, billingDay.value, store.settings, off.value) : ''))
 const defaultRefill = computed(() => (billDate.value ? payDayFrom(billDate.value, store.settings, off.value) : ''))
 const refillVal = ref(I?.refillFrom ?? '')
 const refillManual = ref(!!I?.refillFrom)
@@ -194,7 +198,7 @@ function planOf(over: { interval?: SpendInterval } = {}): SpendingRound[] {
       bought: bought.value, how: how.value, payBy: payBy.value, count: countN.value, principal: principal.value, fee: feeEff.value,
       interval: sp ? (over.interval ?? interval.value) : null, first: DATE.test(f) ? f : bought.value,
       dates: sp && (over.interval ?? interval.value) === 'custom' ? customDates.value : undefined,
-      billingDay: card.value?.billingDay ?? null,
+      billingDay: card.value?.billingDay ?? null, usageFrom: card.value?.usageFrom ?? null,
     }, store.settings, off.value)
     // a first date the user set: the card goes on from it, month after month, on the billing day
     if (!sp && DATE.test(f) && r[0] && r[0].date !== f) {
@@ -284,7 +288,10 @@ const planHint = computed(() => {
 const whereLine = computed(() => {
   if (how.value === 'lump' && lumpState.value === 'cancelled') return t('spending.inst.reflectNone')
   if (isBuf.value) return t('spending.ed.whereBuffer', { date: md(billDate.value) })
-  const m = live.value[0]?.date ? Number(live.value[0].date.slice(5, 7)) : 0
+  // the month that counts the first round (spec 018 S-5): a card bill with the pay before it, any other round by its date
+  const f = live.value[0]?.date
+  const m = f && DATE.test(f) ? Number(roundYmOf({ how: how.value, payBy: payBy.value }, { date: f }).slice(5, 7)) : 0
+  if (how.value === 'installment' && payBy.value === 'card') return t('spending.ed.whereMultiCard')
   const k = `spending.ed.${multi.value ? 'whereMulti' : 'whereLump'}${payBy.value === 'subs' ? 'Subs' : 'Rem'}` as 'spending.ed.whereLumpRem'
   return t(k, { month: m })
 })

@@ -26,6 +26,13 @@ export const subStatus = z.enum(['active', 'cancelled', 'company'])
 export const payPath = z.enum(['direct', 'google', 'apple', 'telecom'])
 export const category = z.enum(['ai', 'telecom', 'content', 'tool', 'insurance', 'life', 'other'])
 
+/** What a monthly date does on a weekend or holiday (spec 007 S-10; one for each date since spec 018 S-1). */
+export const dayShift = z.enum(['none', 'before', 'after'])
+
+/** What a month is counted by, and which calendar month names a period (spec 018 S-3, S-12). */
+export const monthBasis = z.enum(['calendar', 'card', 'pay'])
+export const monthNaming = z.enum(['auto', 'start', 'end'])
+
 export const settings = z.object({
   netPay: won,
   fxRate: z.number().positive().max(999_999.99),
@@ -34,8 +41,18 @@ export const settings = z.object({
   transferDay: day,
   billingDay: day,
   subRound: z.number().int().positive().max(INT_MAX),
-  // Optional so a client that does not know it keeps the saved value (spec 007 S-10).
-  dayShift: z.enum(['none', 'before', 'after']).optional(),
+  // The rule of each date (spec 018 S-1, S-12). Optional so a client that does not know one keeps the saved value.
+  payShift: dayShift.optional(),
+  transferShift: dayShift.optional(),
+  billingShift: dayShift.optional(),
+  // The one rule for all three dates, as sent up to 0.1.9: still taken, as the value of each rule the body leaves out
+  // or sends back as it is saved (`settingsRow`). It is no column and no answer has it.
+  dayShift: dayShift.optional(),
+  // What a month is (spec 018 S-3, S-12): the basis, its card (one of the user's cards, checked by the foreign key, or
+  // null) and how a period is named. Each is optional: left out, the saved value stays.
+  monthBasis: monthBasis.optional(),
+  monthBasisCardId: text.min(1).nullable().optional(),
+  monthNaming: monthNaming.optional(),
   // The same for the split of the Savings and Investment menus (spec 013 S-3).
   savingSplit: z.enum(['amount', 'ratio']).optional(),
   investSplit: z.enum(['amount', 'ratio']).optional(),
@@ -59,7 +76,31 @@ export const scheduleItem = z.object({
   accountId: text.min(1).nullable(),
   direction: z.enum(['in', 'out']),
   note: optText,
+  // This date's own rule (spec 018 S-1, S-12): left out keeps the saved value ('none' for a new one).
+  shift: dayShift.optional(),
 })
+
+/**
+ * The settings row a body writes (spec 018 S-1): `dayShift`, the one rule of the bodies up to 0.1.9, becomes the rule of
+ * each of the three dates that the body does not name itself; a rule named in the body wins, each on its own. Without
+ * `dayShift` a rule left out is not in the row, so the saved value stays. `dayShift` itself is never written.
+ *
+ * With the saved row (`saved`), a rule the body gives with the very value that is saved counts as not named: a client
+ * of 0.1.9 sends back the whole row it read with only `dayShift` changed, and that rule is what it means (review 1
+ * finding 1, A-21). A rule that differs from the saved one is named and wins.
+ */
+export function settingsRow<T extends { dayShift?: Shift; payShift?: Shift; transferShift?: Shift; billingShift?: Shift }>(input: T, saved?: Partial<Record<ShiftKey, unknown>> | null): Omit<T, 'dayShift'> {
+  const { dayShift: all, ...row } = input
+  if (all === undefined) return row
+  const named: { [K in ShiftKey]?: Shift } = row
+  const rule = (k: ShiftKey): Shift => {
+    const own = named[k]
+    return own === undefined || (saved != null && saved[k] === own) ? all : own
+  }
+  return { ...row, payShift: rule('payShift'), transferShift: rule('transferShift'), billingShift: rule('billingShift') }
+}
+type ShiftKey = 'payShift' | 'transferShift' | 'billingShift'
+type Shift = z.infer<typeof dayShift>
 
 // ── Display settings and holiday sets (spec 007 S-7, S-8, S-9) ──
 const hex = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'hexColor').transform((x) => x.toUpperCase())
@@ -145,7 +186,27 @@ export const subscription = plan.extend({
   path: payPath,
   verified: z.boolean(),
   note: optText,
+  // How it is paid (spec 018 S-8, S-12): a card, an account, or neither. Optional, so a client that does not know them
+  // keeps the stored ones; null clears one. Never both in one body; a body that names one with a value means that one,
+  // and the other is cleared (`payRow`).
+  cardId: text.min(1).nullable().optional(),
+  accountId: text.min(1).nullable().optional(),
+}).superRefine((x, ctx) => {
+  if (x.cardId && x.accountId) ctx.addIssue({ code: 'custom', path: ['accountId'], message: 'payOneOf' satisfies MsgKey })
 })
+
+/**
+ * The way of paying a subscription body writes (spec 018 S-8, S-12): it is one of the two, a card or an account. A body
+ * that names one of them with a value and leaves the other out means "paid this way": the other is written as null,
+ * so a saved account does not stay next to the card the body names (it is not refused — W-7's report, A-37). A body
+ * that names neither, or only clears one (null), leaves the other as it is saved; a body with both values never gets
+ * here (the schema refuses it, `payOneOf`).
+ */
+export function payRow<T extends { cardId?: string | null; accountId?: string | null }>(x: T): T {
+  if (x.cardId && x.accountId === undefined) return { ...x, accountId: null }
+  if (x.accountId && x.cardId === undefined) return { ...x, cardId: null }
+  return x
+}
 
 export const planChange = z.object({
   subId: text.min(1),
@@ -259,6 +320,8 @@ export const card = z.object({
   last4: last4,
   accountId: text.min(1).nullable(),
   billingDay: day.nullable(),
+  // The first day of the usage period (spec 018 S-2, S-12): 1..31 or null. Left out, the saved one stays (server/ops.ts).
+  usageFrom: day.nullable().optional(),
   note: memo,
 })
 

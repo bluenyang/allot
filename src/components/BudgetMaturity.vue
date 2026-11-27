@@ -8,21 +8,21 @@ import { computed } from 'vue'
 import { t } from '../i18n'
 import { fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
-import { addYm, lastBalance, maturityAmount, maturityOf, ymLabel, ymOf } from '../lib/calc'
+import { addYm, lastBalance, maturityAmount, maturityOf, needsHolidays, ymLabel } from '../lib/calc'
+import { thisYm } from '../lib/month'
 import { store } from '../lib/store'
 import type { Account } from '../data/types'
-import { localToday } from '../lib/now'
 
 const props = defineProps<{ items: Account[] }>()
 const emit = defineEmits<{ edit: [id: string] }>()
 
-const now = ymOf(localToday())
+const now = thisYm()
 const read = computed(() => props.items.map((a) => ({ a, m: maturityOf(a) })))
 const unread = computed(() => read.value.filter((x) => !x.m).map((x) => x.a.name))
 /** Holidays from the earliest balance record of a listed item to the month after the last maturity (none without a shift). */
 const off = computed<ReadonlySet<string>>(() => {
   const listed = read.value.filter((x) => x.m)
-  if (!listed.length || (store.settings.dayShift ?? 'none') === 'none') return new Set()
+  if (!listed.length || !needsHolidays(store.settings, store.schedules)) return new Set()
   let first = `${now}-01`
   let last = now
   for (const { a, m } of listed) {
@@ -30,6 +30,7 @@ const off = computed<ReadonlySet<string>>(() => {
     if (rec && rec.date < first) first = rec.date
     if (m!.ym > last) last = m!.ym
   }
+  // a range of dates for the holidays, by calendar months (the months themselves are read with the store's own list)
   return offDays(store.holidaySets, `${addYm(first.slice(0, 7), -1)}-01`, `${addYm(last, 1)}-01`) ?? new Set()
 })
 const rows = computed(() => read.value.filter((x) => x.m).map(({ a, m }) => {

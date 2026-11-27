@@ -30,6 +30,9 @@ export const isDebtMethod = (v: string): v is keyof typeof DEBT_METHOD_KEY => v 
 /** A stored method as shown: one of the three in the current language, anything else as typed. */
 export const debtMethodLabel = (v: string) => (isDebtMethod(v) ? t(`label.debtMethod.${DEBT_METHOD_KEY[v]}` as MessageKey) : v)
 
+/** A card's usage period as the card list shows it (spec 018 S-2): from its first day to the day before it; a first day of 1 is the calendar month. */
+export const usageLabel = (from: number) => (from === 1 ? t('accounts.cards.usageMonth') : t('accounts.cards.usageOf', { from, to: from - 1 }))
+
 /** A debt's rate as shown: a plain number is a percentage, any other text stays as typed (spec 010 EV-35). */
 export const rateText = (rate: string) => (/^\s*\d+(\.\d+)?\s*$/.test(rate) ? `${rate.trim()}%` : rate)
 

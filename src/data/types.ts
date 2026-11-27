@@ -26,6 +26,12 @@ export interface Subscription extends Plan {
   path: PayPath
   verified: boolean // 영수증으로 금액·VAT 확인
   note?: string
+  /**
+   * How it is paid (spec 018 S-8): a card or an account, never both; neither = not said. The balance projection takes
+   * the charges out of the card's paying account on the card's bill date, or out of the account on the charge date.
+   */
+  cardId?: string | null
+  accountId?: string | null
 }
 
 /** 예약된 플랜 전환. effective가 없으면 '날짜 미정'으로 보관만 한다. */
@@ -45,7 +51,21 @@ export interface Settings {
   transferDay: number
   billingDay: number
   subRound: number // 구독 이체 올림 단위
-  dayShift: DayShift // 주말·공휴일이면 (spec 007 S-10)
+  /**
+   * On a weekend or holiday, each date by its own rule (spec 018 S-1; one rule `dayShift` for all up to 0.1.9): the pay
+   * day, the transfer day and the card billing day (a card's own billing day uses the billing rule).
+   */
+  payShift: DayShift
+  transferShift: DayShift
+  billingShift: DayShift
+  /**
+   * What a "month" is (spec 018 S-3); a state saved before 0.1.10 has none of the three: 'calendar', no card, 'auto'.
+   * 'card' counts by the usage period of the card `monthBasisCardId`, 'pay' from one actual pay date to the next.
+   */
+  monthBasis?: MonthBasis
+  monthBasisCardId?: string | null
+  /** Which calendar month a period is named after: the one it starts in, the one it ends in, or by its first day. */
+  monthNaming?: MonthNaming
   /** How the Savings and Investment menus split their total (spec 013 S-3). */
   savingSplit?: SplitMode // default 'amount'
   investSplit?: SplitMode // default 'ratio'
@@ -78,11 +98,18 @@ export interface ScheduleItem {
   accountId: string | null
   direction: 'in' | 'out'
   note?: string
+  /** On a weekend or holiday: this date's own rule (spec 018 S-1). */
+  shift: DayShift
 }
 
 export type SplitMode = 'amount' | 'ratio'
 
 export type DayShift = 'none' | 'before' | 'after'
+
+/** What a month is counted by (spec 018 S-3): the calendar month, a card's usage period, or pay date to pay date. */
+export type MonthBasis = 'calendar' | 'card' | 'pay'
+/** 'auto': a period whose first day is the 15th or earlier is named after the month it starts in, a later one after the month it ends in. */
+export type MonthNaming = 'auto' | 'start' | 'end'
 
 /** 표시 설정과 테마 (spec 007 S-7, S-8). 색이 null이면 기본 색. */
 export interface Preferences {
@@ -270,13 +297,18 @@ export interface IncomeExtra {
   note?: string
 }
 
-/** A card (spec 013 S-13): its bill is paid from `accountId` on `billingDay` (null = the settings' billing day). */
+/**
+ * A card (spec 013 S-13): its bill is paid from `accountId` on `billingDay` (null = the settings' billing day).
+ * `usageFrom` (spec 018 S-2) is the first day of its usage period, 1..31: something bought in a period is billed on the
+ * first billing date after the period ends. Empty = billed on the billing day of the month after the purchase.
+ */
 export interface Card {
   id: string
   name: string
   last4: string
   accountId: string | null
   billingDay: number | null
+  usageFrom?: number | null
   note?: string
 }
 

@@ -40,7 +40,8 @@ export function dayStart(day: string, tz?: string | null): string {
 export const dayAfter = (day: string, tz?: string | null) => dayStart(new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10), tz)
 
 /**
- * The query bounds of a period in the zone `tz`. 이번 달 = from the 1st of this month; 지난 3달 = this month and the
+ * The query bounds of a period in the zone `tz`, by the calendar whatever the month basis is (spec 018 S-3: the change
+ * history's period does not follow it). 이번 달 = from the 1st of this month; 지난 3달 = this month and the
  * two before it; 전체 = none; 직접 = from the start day (inclusive) to the end day (inclusive), either may be left empty.
  */
 export function periodBounds(kind: PeriodKind, now: Date, from = '', to = '', tz?: string | null): { since?: string; until?: string } {

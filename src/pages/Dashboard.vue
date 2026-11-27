@@ -7,6 +7,7 @@ import Icon from '../components/Icon.vue'
 import { pricedSettings, saveItem, store, subName } from '../lib/store'
 import { useEditor } from '../lib/useEditor'
 import { notReady, view } from '../lib/view'
+import { monthDatesOf, periodLabel, periodOfYm, ymOfDay } from '../lib/month'
 import { allocColor } from '../lib/colors'
 import { kindDetail, phaseTag, roundSuffix } from '../lib/labels'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
@@ -16,7 +17,7 @@ import { offDays } from '../lib/holidays-lazy'
 import { whenShort } from '../lib/event-when'
 import { downloadCsv, wonCell, type CsvCell } from '../lib/csv'
 import {
-  addYm, leftoverAfterTransfer, monthDates, monthMoney, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymd, ymOf, ymRange,
+  addYm, leftoverAfterTransfer, monthMoney, needsHolidays, parseDate, paysAfter31, splitRemainder, today, unallocated, upcomingPayments, upcomingSpendRounds, ymd, ymRange,
 } from '../lib/calc'
 import {
   canUndo, changed, decide, fieldName, listFor, loadProposals, money, proposals, proposalTitle, rowFields, rowLabel, rowTitle, shown, summary, tableName, undo, when, worded,
@@ -141,10 +142,11 @@ const why = computed(() => {
 
 // Holidays for the day shift: the month before and after are needed too (a shift moves at most 31 days).
 const off = computed<ReadonlySet<string>>(() => {
-  if (store.settings.dayShift === 'none') return new Set()
+  if (!needsHolidays(store.settings, store.schedules)) return new Set()
   return offDays(store.holidaySets, `${addYm(ym.value, -2)}-01`, `${addYm(ym.value, 3)}-01`) ?? new Set()
 })
-const dates = computed(() => monthDates(ym.value, store.settings, off.value))
+// the pay, transfer and billing date of the month shown: the ones inside its period (spec 018 S-3)
+const dates = computed(() => monthDatesOf(ym.value))
 const mdd = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}(${weekdayShort(d)})`
 const md = (s: string) => mdd(parseDate(s))
 const mdShort = (s: string) => { const d = parseDate(s); return `${d.getMonth() + 1}/${d.getDate()}` }
@@ -168,14 +170,18 @@ const trendTop = computed(() => { const step = Math.max(1, Math.ceil(trendMax.va
 const ticks = computed(() => [3, 2, 1, 0].map((i) => (i ? manText(trendTop.value / 3 * i) : '0')))
 const monthName = computed(() => (lang.value === 'en' ? monthLong(month.value) : month.value))
 const monthTitle = computed(() => t('dashboard.monthText', { year: year.value, month: monthName.value }))
+// the dates the month stands for, shown next to its name when the basis is not the calendar (spec 018 S-3)
+const period = computed(() => periodLabel(ym.value))
 const trendLast = computed(() => trend.value.at(-1)!.ym)
 
 const tab = ref('month')
 const horizon = computed(() => addYm(ym.value, 9))
 const nextChanges = computed(() =>
-  store.planChanges.filter((c) => c.effective && c.effective.slice(0, 7) >= ym.value).sort((a, b) => (a.effective! < b.effective! ? -1 : 1)),
+  // a change belongs to the month whose period holds its date
+  store.planChanges.filter((c) => c.effective && ymOfDay(c.effective) >= ym.value).sort((a, b) => (a.effective! < b.effective! ? -1 : 1)),
 )
 const undated = computed(() => store.planChanges.filter((c) => !c.effective))
+// an event's `when` is a saved month name: it is compared as a name (spec 018 S-4)
 const nextEvents = computed(() => store.events.filter((e) => e.state !== 'done' && e.when.slice(0, 7) <= horizon.value))
 const openChecks = computed(() => store.checks.filter((c) => !c.done).length)
 const tabs = computed(() => [
@@ -187,14 +193,15 @@ const tabs = computed(() => [
 
 function changeDelta(id: string, eff: string) {
   // Same month's spendings on both sides: only the monthly sums are compared here, and they do not carry spendings.
-  const before = monthMoney({ ...store, planChanges: store.planChanges.filter((c) => c.id !== id) }, eff.slice(0, 7)).transfer
-  const after = monthMoney(store, eff.slice(0, 7)).transfer
+  const m = ymOfDay(eff)
+  const before = monthMoney({ ...store, planChanges: store.planChanges.filter((c) => c.id !== id) }, m).transfer
+  const after = monthMoney(store, m).transfer
   return (after.monthlySum + after.yearlyMonthly) - (before.monthlySum + before.yearlyMonthly)
 }
 const signed = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + fmtMoney(Math.abs(n))
 // The first dated plan change inside the six months shown: the note under the trend bars.
 const trendChange = computed(() => {
-  const c = nextChanges.value.find((x) => x.effective!.slice(0, 7) <= trendLast.value)
+  const c = nextChanges.value.find((x) => ymOfDay(x.effective!) <= trendLast.value)
   if (!c) return null
   return { when: mdShort(c.effective!), name: subName(c.subId), plan: c.to.plan ?? '', delta: changeDelta(c.id, c.effective!) }
 })
@@ -228,7 +235,7 @@ const cardMeta = (p: Proposal) => t('pending.meta', { key: p.keyName, at: when(p
 const wcls = (d: Date) => (d.getDay() === 6 ? 'sat' : d.getDay() === 0 ? 'sun' : '')
 // ---------- 내보내기 (spec 013 S-17): the shown month's summary as CSV ----------
 // Distribution rows (target, kind, amount), the subscription transfer, the remainder (and its split), then the
-// month's subscription payments and spending rounds (date, name, amount) in date order.
+// month's subscription payments (the ones dated in it) and the spending rounds it counts (date, name, amount) in date order.
 function exportCsv() {
   const m = ym.value
   const H = (k: string) => t(`dashboard.csv.${k}` as MessageKey)
@@ -242,15 +249,18 @@ function exportCsv() {
     rows.push([H('secRemainder'), d.remainderTarget.name, kindDetail('remainder'), xferDay, wonCell(d.remainder)])
     for (const x of split.value) rows.push([H('secSplit'), x.name, '', xferDay, wonCell(x.amount)])
   } else rows.push([H('secRemainder'), spare.value < 0 ? t('dashboard.short') : t('dashboard.spare'), '', xferDay, wonCell(spare.value)])
-  const first = parseDate(`${m}-01`)
-  const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate() - 1
+  // the charges and rounds dated in the month's period (the calendar month with the calendar basis)
+  const period = periodOfYm(m)
+  const first = parseDate(period.start)
+  const days = Math.round((parseDate(period.end).getTime() - first.getTime()) / 86_400_000)
   const due: { date: string; row: CsvCell[] }[] = []
   for (const p of upcomingPayments(store.subscriptions, store.planChanges, pricedSettings(), first, days)) {
-    due.push({ date: ymd(p.date), row: [H('secPay'), p.sub.name, H('kindSub'), ymd(p.date), wonCell(p.krw)] })
+    if (ymOfDay(ymd(p.date)) === m) due.push({ date: ymd(p.date), row: [H('secPay'), p.sub.name, H('kindSub'), ymd(p.date), wonCell(p.krw)] })
   }
-  // every round of the month that counts (paid or to pay; not merged, not a cancelled spending's open round)
-  for (const s of store.spendings) for (const r of s.rounds) {
-    if (r.state === 'merged' || (s.cancelled && r.state === 'left') || r.date.slice(0, 7) !== m) continue
+  // every round the month counts (paid or to pay; not merged, not a cancelled spending's open round): the rounds its
+  // left over and transfer take (calc monthOutgo). A card bill counts with the pay before it (spec 018 S-5), so its date
+  // may lie after the month's period.
+  for (const { spending: s, round: r } of monthNow.value.spend.items) {
     due.push({ date: r.date, row: [H('secRound'), s.name, roundSuffix(s, r) || t('dashboard.spendOne'), r.date, r.amount] })
   }
   for (const x of due.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))) rows.push(x.row)
@@ -265,11 +275,12 @@ const pillCls = (state: string) => (state === 'doing' ? 'ok' : 'mute')
     <!-- On a phone the header bar is hidden: the month switch and the phase sit here (review 11). -->
     <div class="mnav" role="group" :aria-label="t('dashboard.monthNav')">
       <button class="btn icon ghost" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
-      <div class="mn-c"><b class="num">{{ monthTitle }}</b><small class="hint">{{ dist.phase ? phaseTag(store.phases, dist.phase) : t('shell.outOfPhase') }}</small></div>
+      <div class="mn-c"><b class="num">{{ monthTitle }}</b><small class="hint"><span v-if="period" class="num" data-testid="month-period-phone">{{ period }} · </span>{{ dist.phase ? phaseTag(store.phases, dist.phase) : t('shell.outOfPhase') }}</small></div>
       <button class="btn icon ghost" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
     </div>
     <PageHeader :title="monthTitle" class="dash-ph">
       <template #desc>
+        <span v-if="period" class="num ph-hide" data-testid="home-period">{{ period }} · </span>
         {{ t('calendar.kind.pay') }} <span :title="moved(dates.pay.shifted)">{{ md(dates.pay.date) }}<small v-if="note(dates.pay)">{{ note(dates.pay) }}</small></span>
         · {{ t('calendar.kind.transfer') }} <span :title="moved(dates.transfer.shifted)">{{ md(dates.transfer.date) }}<small v-if="note(dates.transfer)">{{ note(dates.transfer) }}</small></span>
       </template>

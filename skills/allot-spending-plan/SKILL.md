@@ -19,6 +19,12 @@ For the purchase, compare a few ways that fit the user's data, each with what it
 month: pay at once from the pay, card installments (n months), from a buffer (and how long it takes to refill),
 or save up first (lower a target or raise one for a few months with month adjustments). Say plainly when a way
 makes a month's left over negative. Ask the user which they prefer; do not decide for them.
+A card bill (a lump sum or an installment paid by card) counts in the month of the pay before it (`countsIn` in
+`list_spendings`), so with calendar months and a pay day on or after the billing day a card purchase usually comes
+off the left over a month before its bill date (with months that run from pay day to pay day it counts in the month
+that holds the bill's date; a bill dated on the pay date itself is paid with the pay before it). Read `countsIn`
+rather than working the month out. A buffer refill or a split counts by its own date. The bill dates follow the card's usage
+period (`usageFrom` in `list_accounts`).
 
 ## Proposing
 Only the way the user picks: a one-off spending (resource `spendings`, with installments or rounds as

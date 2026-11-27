@@ -6,20 +6,20 @@
 // still sends. 멈추기 writes its stop month (in the database, revertible); 계속 보내기 is kept with the account's bell marks
 // (spec 016 S-1, src/lib/notice-marks.ts: per account and maturity month, not in the change history), so every device agrees.
 import { computed } from 'vue'
-import { addYm, goalAlerts, itemSent, lastBalance, maturityAlerts, monthMoney, ymd, type AccountState, type GoalAlert } from './calc'
+import { addYm, goalAlerts, itemSent, lastBalance, maturityAlerts, monthMoney, needsHolidays, ymd, type AccountState, type GoalAlert } from './calc'
 import { offDays } from './holidays-lazy'
 import { store } from './store'
 import { marks, saveMarks } from './notice-marks'
-import type { Account } from '../data/types'
+import type { Account, ScheduleItem } from '../data/types'
 import { localToday } from './now'
 
 /**
  * The dates the goal check needs holidays for: from the month before the earliest last balance record of an account with a
  * goal (where its projection starts) to three months after `today` (the stop month is this month or the next). Null when no
- * account has a goal and a record, or when dates are not moved for holidays.
+ * account has a goal and a record, or when no rule moves a date for holidays (the three dates' or a schedule item's, `needsHolidays`).
  */
-export function goalOffRange(st: Pick<AccountState, 'accounts' | 'balances' | 'settings'>, todayYmd: string): [string, string] | null {
-  if ((st.settings.dayShift ?? 'none') === 'none') return null
+export function goalOffRange(st: Pick<AccountState, 'accounts' | 'balances' | 'settings'> & { schedules?: readonly ScheduleItem[] }, todayYmd: string): [string, string] | null {
+  if (!needsHolidays(st.settings, st.schedules)) return null
   let first = ''
   for (const a of st.accounts) {
     if (a.goal === null || a.goal === undefined) continue
@@ -82,7 +82,7 @@ export const maturityCards = computed(() => {
   const now = ymd(localToday())
   const s = store.settings
   // only the next transfer month needs the holidays (this month's transfer date)
-  const off: ReadonlySet<string> = (s.dayShift ?? 'none') === 'none' ? new Set()
+  const off: ReadonlySet<string> = !needsHolidays(s, store.schedules) ? new Set()
     : offDays(store.holidaySets, `${addYm(now.slice(0, 7), -1)}-01`, `${addYm(now.slice(0, 7), 3)}-01`) ?? new Set()
   const done = marks.kept
   return maturityAlerts(store, now, off, (id, ym) => done.has(maturityKey(id, ym))).map((alert) => ({ alert, preview: stopPreview(store, alert) }))

@@ -5,7 +5,7 @@ import { canonical, hashState, incomeLine, monthPreview } from '../../server/pre
 import { overview, type Data } from '../../server/mcp/views'
 
 const data: Data = {
-  settings: { netPay: 3_000_000, fxRate: 1400, fxBuffer: 5, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, dayShift: 'after' },
+  settings: { netPay: 3_000_000, fxRate: 1400, fxBuffer: 5, payDay: 25, transferDay: 26, billingDay: 14, subRound: 10_000, payShift: 'after', transferShift: 'after', billingShift: 'after' },
   living: { food: 400_000, transit: 100_000, allowance: 200_000 },
   targets: [
     { id: 't-live', name: 'Living account', kind: 'living' },

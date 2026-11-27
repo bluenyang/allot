@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { SIDE, sideFolded, sideWidth, setSideWidth, toggleSide } from './lib/sidebar'
 import Icon from './components/Icon.vue'
+import MonthPeriod from './components/MonthPeriod.vue'
 import MoreSheet from './components/MoreSheet.vue'
 import NoticeBell from './components/NoticeBell.vue'
 import SearchDialog from './components/SearchDialog.vue'
@@ -12,6 +13,7 @@ import { api } from './lib/api'
 import { status, store } from './lib/store'
 import { toast, hideToast } from './lib/toast'
 import { view } from './lib/view'
+import { monthKey, thisMonthKey } from './lib/month'
 import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
 import { t, type MessageKey } from './i18n'
@@ -58,6 +60,12 @@ const crumbPage = computed(() => (route.value.page === 'settings'
   : label(route.value.page)))
 const spendTab = computed(() => t(`spending.tabs.${route.value.sub}` as MessageKey))
 const phase = computed(() => phaseAt(store.phases, view.ym))
+// A kept page worked out "this month" when it was made. When the user changes what a month is (spec 018 S-3) the pages
+// are made again on their next visit, so none shows the month of the old basis; the settings page, where the change
+// is made, stays as it is. The same when this month itself becomes another one under the same basis — the holiday dates
+// arrived after the first screen, or a holiday set was edited (review 2 F-1). With the calendar basis the key is the
+// page, as before.
+const pageKey = computed(() => (route.value.page === 'settings' || monthKey.value === 'calendar' ? route.value.page : `${route.value.page}|${monthKey.value}|${thisMonthKey.value}`))
 const soonName = (what: string) => `${what} (${t('common.soon')})`
 const logout = () => authClient.signOut()
 const version = __APP_VERSION__
@@ -188,7 +196,7 @@ const onGripKey = (e: KeyboardEvent) => {
       <header class="topbar">
         <div v-if="route.page === 'home' || route.page === 'income'" class="monthnav">
           <button class="btn icon" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" :stroke="2" /></button>
-          <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}</span>
+          <span class="ml">{{ ymLabel(view.ym).replace('.', '. ') }}<MonthPeriod :ym="view.ym" /></span>
           <button class="btn icon" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" :stroke="2" /></button>
           <span class="phasebadge">{{ phase ? phaseTag(store.phases, phase) : t('shell.outOfPhase') }}</span>
         </div>
@@ -206,7 +214,7 @@ const onGripKey = (e: KeyboardEvent) => {
       <Toast v-if="toast.message" :message="toast.message" :action-label="toast.actionLabel || undefined" :error="toast.error" :dismissible="toast.error" @action="toastAction" @dismiss="hideToast" />
       <main class="main">
         <p v-if="status.error" class="save-err" role="alert">{{ status.error }} <button type="button" @click="status.error = ''">{{ t('common.close') }}</button></p>
-        <RouterView v-slot="{ Component }"><KeepAlive><component :is="Component" :key="route.page" /></KeepAlive></RouterView>
+        <RouterView v-slot="{ Component }"><KeepAlive><component :is="Component" :key="pageKey" /></KeepAlive></RouterView>
       </main>
       <footer class="foot-bar">
         <div class="fl"><b>Allot</b><span class="mono">v{{ version }}</span><span aria-hidden="true">·</span><span>{{ t('shell.footerTagline') }}</span></div>

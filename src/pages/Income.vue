@@ -20,13 +20,12 @@ import { view } from '../lib/view'
 import { phaseTag } from '../lib/labels'
 import { fmtDate, fmtMoney, fmtMoneyClass } from '../lib/display'
 import { monthLong, moneyShort, weekdayShort } from '../lib/format'
-import { offDays } from '../lib/holidays-lazy'
-import { addYm, incomeAt, monthDates, monthDay, monthMoney, parseDate, ymd, ymOf, ymRange, type IncomeLine } from '../lib/calc'
+import { addYm, incomeAt, incomeNextYm, monthMoney, parseDate, ymd, ymRange, type IncomeLine } from '../lib/calc'
+import { dayOfYm, monthDatesOf, periodLabel, periodOfYm, thisYm } from '../lib/month'
 import { localToday } from '../lib/now'
 import type { IncomeExtra, IncomeItem, IncomeReceipt } from '../data/types'
 
 const ym = computed(() => view.ym)
-const year = computed(() => Number(view.ym.slice(0, 4)))
 const month = computed(() => Number(view.ym.slice(5, 7)))
 const monthName = computed(() => monthLong(month.value))
 const ymText = (x: string) => t('income.ym', { year: Number(x.slice(0, 4)), month: monthLong(Number(x.slice(5, 7))) })
@@ -37,11 +36,8 @@ const income = computed(() => money.value.income)
 const left = computed(() => money.value.dist.remainder)
 const phase = computed(() => money.value.dist.phase)
 
-// The salary's date after the weekend/holiday shift, as the overview shows it.
-const off = computed<ReadonlySet<string>>(() => {
-  if (store.settings.dayShift === 'none') return new Set()
-  return offDays(store.holidaySets, `${addYm(ym.value, -2)}-01`, `${addYm(ym.value, 3)}-01`) ?? new Set()
-})
+// the dates the month stands for, next to its name when the basis is not the calendar (spec 018 S-3)
+const period = computed(() => periodLabel(ym.value))
 const mdd = (s: string) => { const d = parseDate(s); return `${d.getMonth() + 1}/${d.getDate()}(${weekdayShort(d)})` }
 const signed = (n: number) => `${n > 0 ? '+' : ''}${fmtMoney(n)}`
 const tone = (n: number) => (n > 0 ? 'plus' : n < 0 ? 'minus' : '')
@@ -57,12 +53,14 @@ interface Row { key: string; itemId: string | null; name: string; yearly: boolea
 const rows = computed<Row[]>(() => income.value.rows.map((line) => {
   if (line.key === 'salary') {
     const when = t('income.monthly', { day: store.settings.payDay })
-    const date = monthDates(ym.value, store.settings, off.value).pay.date
+    // the salary's date after the weekend/holiday shift, as the overview shows it: the pay day inside the month's period
+    const date = monthDatesOf(ym.value).pay.date
     return { key: 'salary', itemId: null, name: salaryName.value, yearly: false, line, when, hint: [when, mdd(date)].join(' · ') }
   }
   const it = itemOf(line.key)
   const when = it ? cycleText(it) : ''
-  const date = monthDay(ym.value, line.day, 'none', new Set()).date
+  // a yearly income is a calendar date (the one that falls in this month's period); a monthly one is its day inside the period
+  const date = line.date ?? dayOfYm(ym.value, line.day)
   return { key: line.key, itemId: line.key, name: line.name ?? '', yearly: it?.cycle === 'yearly', line, when, hint: [when, mdd(date), accountName(it?.accountId)].filter(Boolean).join(' · ') }
 }))
 const extras = computed(() => income.value.extras)
@@ -75,10 +73,10 @@ const receivedNote = computed(() => {
 })
 
 // ---------- regular incomes (salary first) ----------
-const nextYm = (i: IncomeItem) => {
-  const m = i.month ?? month.value
-  return `${year.value + (m < month.value ? 1 : 0)}-${String(m).padStart(2, '0')}`
-}
+// A yearly income's next month is the one that counts it: the month shown when its date lies in this month's period,
+// else the month incomeAt's `later` names — the month number alone is another month under a pay or card basis
+// (spec 018 S-4, review 6 finding 3).
+const nextYm = (i: IncomeItem) => incomeNextYm(income.value, i.id, ym.value) ?? ym.value
 const regular = computed(() => store.incomes.map((i) => ({
   item: i,
   hint: [cycleText(i), accountName(i.accountId), i.cycle === 'yearly' ? t('income.next', { ym: ymText(nextYm(i)) }) : ''].filter(Boolean).join(' · '),
@@ -99,7 +97,8 @@ const salaryOpen = ref(false)
 const extraEdit = ref<IncomeExtra | null | undefined>(undefined)
 const newExtraDate = computed(() => {
   const today = localToday()
-  return ymOf(today) === ym.value ? ymd(today) : `${ym.value}-01`
+  // today in this month, else the first day of the month shown (of its period)
+  return thisYm() === ym.value ? ymd(today) : periodOfYm(ym.value).start
 })
 const editRegular = (id: string | null) => {
   if (id === null) salaryOpen.value = true
@@ -136,7 +135,7 @@ function receiptClosed() {
     <!-- On a phone the header bar is hidden: the month switch and the phase sit here, as on the overview. -->
     <div class="mnav" role="group" :aria-label="t('income.monthNav')">
       <button class="btn icon ghost" type="button" :aria-label="t('shell.prevMonth')" @click="view.ym = addYm(view.ym, -1)"><Icon name="prev" /></button>
-      <div class="mn-c"><b class="num">{{ monthTitle }}</b><small class="hint">{{ phase ? phaseTag(store.phases, phase) : t('shell.outOfPhase') }}</small></div>
+      <div class="mn-c"><b class="num">{{ monthTitle }}</b><small class="hint"><span v-if="period" class="num" data-testid="month-period-phone">{{ period }} · </span>{{ phase ? phaseTag(store.phases, phase) : t('shell.outOfPhase') }}</small></div>
       <button class="btn icon ghost" type="button" :aria-label="t('shell.nextMonth')" @click="view.ym = addYm(view.ym, 1)"><Icon name="next" /></button>
     </div>
     <PageHeader :title="t('income.title')" :desc="t('income.desc')" class="inc-ph">

@@ -6,7 +6,7 @@ import { goalAlerts, type AccountState } from '../../src/lib/calc'
 import { accountSendIn, goalOffRange, stopPreview } from '../../src/lib/goals'
 import type { Account, AllocationTarget, Phase, Settings } from '../../src/data/types'
 
-const S: Settings = { netPay: 3_000_000, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 16, subRound: 10_000, dayShift: 'none' }
+const S: Settings = { netPay: 3_000_000, fxRate: 1400, fxBuffer: 0, payDay: 25, transferDay: 26, billingDay: 16, subRound: 10_000, payShift: 'none', transferShift: 'none', billingShift: 'none' }
 const none: ReadonlySet<string> = new Set()
 const P1: Phase = { id: 'p1', label: '', name: 'one', from: '2026-01', to: null, amounts: { tf: 200_000 } }
 const T: AllocationTarget[] = [
@@ -60,7 +60,7 @@ test('the holiday range: only with moved dates, from the month before the earlie
     ],
   })
   assert.equal(goalOffRange(st, '2026-11-23'), null) // dayShift none
-  const moved = { ...st, settings: { ...S, dayShift: 'before' as const } }
+  const moved = { ...st, settings: { ...S, payShift: 'before' as const, transferShift: 'before' as const, billingShift: 'before' as const } }
   // a's last record is September, b's July (c has no goal): from June to three months after November
   assert.deepEqual(goalOffRange(moved, '2026-11-23'), ['2026-06-01', '2027-02-01'])
   // a record after today: still from the month before today

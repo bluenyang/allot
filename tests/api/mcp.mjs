@@ -909,7 +909,7 @@ async function writeMode() {
     const la = (await tool(kRead.key, 'list_accounts', {})).data
     const lc = la?.accounts?.find((a) => a.id === cma?.id)
     const lp = la?.accounts?.find((a) => a.id === pay?.id)
-    const none = new Set() // W's settings shift no date (dayShift none), so no holiday moves one
+    const none = new Set() // W's settings shift no date (every rule is none), so no holiday moves one
     const proj = mjs.projectAccount(st3.accounts.find((a) => a.id === cma?.id), st3, none, ymNow, 12)
     ok(!!lc && lc.lastBalance?.amountKrw === 4_800_000 && JSON.stringify(lc.projection) === JSON.stringify(proj.map((r) => ({ month: r.ym, inflowKrw: r.inflow, outflowKrw: r.outflow, endKrw: r.end }))),
       `list_accounts: the CMA account's last balance and its projection are calc.ts's (${lc?.projection?.[0]?.endKrw})`)

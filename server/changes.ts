@@ -11,7 +11,7 @@ import * as t from './db/schema'
 import { lockFor } from './db/scope'
 import { m, MsgError, type Msg } from './messages'
 import { roundsProblem } from '../src/lib/spending-rules'
-import { plain, same, stillAsLogged, userColumns } from './row-compare'
+import { asNow, basisAsLeft, isBasisDrop, plain, same, stillAsLogged, userColumns } from './row-compare'
 
 export type RowKey = Record<string, string>
 export { same, stillAsLogged }
@@ -127,7 +127,21 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
     if (!table && GONE.has(log.tableName)) throw new Conflict(m('changeGone'), log.tableName, log.rowKey)
     if (!table) throw new Error(`unknown table in change log: ${log.tableName}`)
     const current = await readRow(q, table, uid, log.rowKey)
-    const expected = log.op === 'delete' ? null : log.after
+    // a row logged before a column was replaced reads in today's shape (the settings' dayShift, spec 018 S-1)
+    const before = asNow(log.tableName, log.before)
+    const expected = log.op === 'delete' ? null : asNow(log.tableName, log.after)
+    // The settings row of a basis card's delete (review 2 F-3 a, spec 018 A-26): only its two month keys count. The
+    // card is back already (its delete is logged after this row, so it was replayed first); the basis comes back with
+    // it while the month keys are still what the delete left them, else the settings stay as they are now. Any other
+    // column of the row may have changed since (the daily rate refresh, a save) and keeps its value: no conflict.
+    if (isBasisDrop(log, logs)) {
+      if (basisAsLeft(current, expected!)) {
+        const [written] = await q.update(table).set({ monthBasis: before!.monthBasis, monthBasisCardId: before!.monthBasisCardId } as never)
+          .where(whereKey(table, uid, log.rowKey)).returning()
+        await rec.record(table, log.rowKey, 'update', current, written as Row)
+      }
+      continue
+    }
     if (!stillAsLogged(current, expected)) {
       throw new Conflict(m('changeLater'), log.tableName, log.rowKey)
     }
@@ -139,12 +153,12 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
       await q.delete(table).where(whereKey(table, uid, log.rowKey))
       await rec.record(table, log.rowKey, 'delete', current, null)
     } else if (log.op === 'delete') {
-      const row = { ...userColumns(log.before!), userId: uid }
+      const row = { ...userColumns(before!), userId: uid }
       const ins = hasIdentity(table) ? q.insert(table).overridingSystemValue() : q.insert(table)
       const [written] = await ins.values(row as never).returning()
       await rec.record(table, log.rowKey, 'insert', null, written as Row)
     } else {
-      const { userId: _u, seq: _s, ...set } = userColumns(log.before!) // seq is an identity: never updated
+      const { userId: _u, seq: _s, ...set } = userColumns(before!) // seq is an identity: never updated
       const [written] = await q.update(table).set(set as never).where(whereKey(table, uid, log.rowKey)).returning()
       await rec.record(table, log.rowKey, 'update', current, written as Row)
     }
@@ -158,8 +172,10 @@ export async function revert(q: Db, uid: string, id: string, rec: Recorder) {
  * reverting the insert of a row they point at is a conflict, like a child (review 1 F-11).
  */
 const LINKS = new Map<PgTable, [OwnedTable, PgColumn][]>([
-  [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId], [t.scheduleItem, t.scheduleItem.accountId], [t.incomeItem, t.incomeItem.accountId]]],
-  [t.card, [[t.spending, t.spending.cardId]]],
+  // a subscription paid from the account, or with the card, too (spec 018 S-8, S-12 "되돌리기": approved by the user on 2026-11-27)
+  [t.bankAccount, [[t.card, t.card.accountId], [t.allocationTarget, t.allocationTarget.accountId], [t.scheduleItem, t.scheduleItem.accountId], [t.incomeItem, t.incomeItem.accountId], [t.subscription, t.subscription.accountId]]],
+  // the settings' month basis card too (spec 018 S-3): the foreign key would refuse the delete with a less clear message
+  [t.card, [[t.spending, t.spending.cardId], [t.settings, t.settings.monthBasisCardId], [t.subscription, t.subscription.cardId]]],
 ])
 
 /** Tables that are gone; their logged changes cannot be reverted. */

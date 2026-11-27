@@ -176,6 +176,13 @@ export const tableName = (name: string) => {
 const HIDDEN = new Set(['userId', 'seq', 'id'])
 const targetName = (id: string) => store.targets.find((x) => x.id === id)?.name ?? id
 const phaseName = (id: string) => { const p = store.phases.find((x) => x.id === id); return p ? `${p.label} ${p.name}` : id }
+/**
+ * A card or an account by its name: what a row's `cardId` (a subscription's or a spending's card), `accountId` (the
+ * account of a card, a target, a subscription, …) and the settings' `monthBasisCardId` read as (spec 018 S-8). One that
+ * is gone reads as its id, as a target does.
+ */
+export const cardLabel = (id: string) => store.cards.find((x) => x.id === id)?.name ?? id
+export const accountLabel = (id: string) => store.accounts.find((x) => x.id === id)?.name ?? id
 export const rowLabel = (c: RowChange) => {
   const r = c.after ?? c.before ?? {}
   if (c.table === 'plan_change' && typeof r.subId === 'string') return subName(r.subId)
@@ -235,6 +242,8 @@ export function worded(field: string, v: unknown, row?: Record<string, unknown> 
     case 'deposit': case 'buffer': case 'goal': case 'annualLimit': case 'goalAck': return typeof v === 'number' ? fmtMoney(v) : String(v)
     case 'vat': return `${String(v)}%`
     case 'targetId': return targetName(String(v))
+    case 'cardId': case 'monthBasisCardId': return cardLabel(String(v))
+    case 'accountId': return accountLabel(String(v))
     case 'ym': return typeof v === 'string' && /^\d{4}-\d{2}$/.test(v) ? monthLabel(v) : String(v)
     case 'verified': return v ? t('pending.verifiedYes') : t('pending.verifiedNo')
     case 'done': return v ? t('pending.doneYes') : t('pending.doneNo')

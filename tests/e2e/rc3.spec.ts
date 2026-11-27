@@ -22,9 +22,9 @@ async function api(request: APIRequestContext, method: 'GET' | 'POST' | 'PUT' | 
   return { status: r.status(), json: await r.json().catch(() => null) }
 }
 type Row = Record<string, unknown> & { id: string; name: string }
-type Settings = Record<string, unknown> & { fxRate: number; fxBuffer: number; fxAuto?: boolean; dayShift: string; fxAutoAt?: string | null }
+type Settings = Record<string, unknown> & { fxRate: number; fxBuffer: number; fxAuto?: boolean; fxAutoAt?: string | null }
 type Cur = { id: string; code: string; rate: number; buffer: number; auto: boolean; autoAt?: string | null; autoError?: string | null }
-type Sched = { id: string; name: string; day: number; accountId: string | null; direction: 'in' | 'out'; note?: string | null }
+type Sched = { id: string; name: string; day: number; accountId: string | null; direction: 'in' | 'out'; note?: string | null; shift?: string }
 type State = {
   settings: Settings; preferences: Record<string, unknown> & { timezone?: string | null }; currencies: Cur[]; schedules: Sched[]
   subscriptions: (Row & { currency: string; amount: number; vat: number; cycle: string })[]
@@ -79,7 +79,7 @@ test.describe.serial('V-19 time zone and own monthly dates', () => {
     const name = `${MARK}-own`
     const key = await api(request, 'POST', '/api/keys', { name: `${MARK}-sched-key`, expiresInDays: 30 })
     expect(key.status).toBe(201)
-    expect((await api(request, 'PUT', '/api/settings', { ...s0.settings, dayShift: 'after' })).status).toBe(200)
+    // the date's own rule moves it (spec 018 S-1; the settings' one rule did up to 0.1.9): 미룸 is picked in the sheet below
     try {
       await page.goto('/settings/general')
       await page.getByRole('button', { name: '+ 일정 추가' }).click()
@@ -87,10 +87,14 @@ test.describe.serial('V-19 time zone and own monthly dates', () => {
       await s.getByLabel('이름').fill(name)
       await choose(s.locator('#si-day'), String(sat))
       await s.getByRole('button', { name: '들어오는 돈' }).click()
+      // a new date starts at 그대로
+      const rule = s.getByRole('group', { name: '주말·공휴일이면', exact: true })
+      await expect(rule.getByRole('button', { name: '그대로', exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await rule.getByRole('button', { name: '미룸', exact: true }).click()
       await s.getByLabel('메모').fill('memo')
       await saveSheet(page, '기준 일정 추가')
       const saved = (await state(request)).schedules.find((x) => x.name === name)!
-      expect(saved).toMatchObject({ name, day: sat, direction: 'in', accountId: null, note: 'memo' })
+      expect(saved).toMatchObject({ name, day: sat, direction: 'in', accountId: null, note: 'memo', shift: 'after' })
       // listed under the three fixed days: 매달 N일, no account, this month's date moved to the Monday
       const row = page.locator('li.own', { hasText: name })
       await expect(row).toContainText(`매달 ${sat}일`)
@@ -114,11 +118,13 @@ test.describe.serial('V-19 time zone and own monthly dates', () => {
       await page.getByRole('button', { name: `${name} 수정` }).click()
       const e = sheet(page, '기준 일정 수정')
       await expect(e.getByLabel('이름')).toHaveValue(name)
+      // the sheet shows the saved rule, and an edit of other fields keeps it
+      await expect(e.getByRole('group', { name: '주말·공휴일이면', exact: true }).getByRole('button', { name: '미룸', exact: true })).toHaveAttribute('aria-pressed', 'true')
       await e.getByLabel('이름').fill(`${name}-2`)
       await choose(e.locator('#si-day'), '31')
       await e.getByRole('button', { name: '나가는 돈' }).click()
       await saveSheet(page, '기준 일정 수정')
-      expect((await state(request)).schedules.find((x) => x.id === saved.id)).toMatchObject({ name: `${name}-2`, day: 31, direction: 'out' })
+      expect((await state(request)).schedules.find((x) => x.id === saved.id)).toMatchObject({ name: `${name}-2`, day: 31, direction: 'out', shift: 'after' })
       await expect(page.locator('li.own', { hasText: `${name}-2` })).toContainText('매달 31일')
       await expect(page.locator('li.own', { hasText: `${name}-2` })).toContainText('나감')
       // deleted

@@ -126,7 +126,7 @@ async function writeItemAmounts(q: Db, rec: Recorder, uid: string, table: typeof
   return { amounts: { ...amounts } }
 }
 
-/** Set `col` to null, with logs, in every row of `table` where it is `id` (a card's or a target's account, a spending's card). */
+/** Set `col` to null, with logs, in every row of `table` where it is `id` (a card's or a target's account, a spending's card, a subscription's card or account). */
 async function unlink(q: Db, rec: Recorder, uid: string, table: OwnedTable & { id: PgColumn }, col: PgColumn, id: string) {
   const rows = await q.select().from(table as never).where(and(eq(table.userId, uid), eq(col, id))) as Row[]
   for (const old of rows) {
@@ -136,6 +136,21 @@ async function unlink(q: Db, rec: Recorder, uid: string, table: OwnedTable & { i
   }
 }
 const colName = (table: PgTable, col: PgColumn) => Object.entries(table as unknown as Record<string, unknown>).find(([, c]) => c === col)![0]
+
+/**
+ * The card `cardId` is going: the settings let go of it as the month basis card (spec 018 S-3, S-12), with a log, so the
+ * foreign key never refuses a card's delete. A month counted by that card goes back to the calendar month; another
+ * basis that only kept the card stays as it is. The settings lock is held, as for any write of that row.
+ */
+async function dropBasisCard(q: Db, rec: Recorder, uid: string, cardId: string) {
+  await lockFor(q, 'settings', uid)
+  const old = await readRow(q, t.settings, uid, {})
+  if (!old || old.monthBasisCardId !== cardId) return
+  const [written] = await q.update(t.settings)
+    .set({ monthBasisCardId: null, ...(old.monthBasis === 'card' ? { monthBasis: 'calendar' as const } : {}) })
+    .where(whereKey(t.settings, uid, {})).returning()
+  await rec.record(t.settings, {}, 'update', old, written as Row)
+}
 
 /** Is a buffer use paid through `cardIds` (S-8)? */
 async function bufferUses(q: Db, uid: string, cardIds: string[]) {
@@ -269,11 +284,16 @@ const list = <T extends ListTable, S extends z.ZodType>(table: T, schema: S, o: 
 
 export const RESOURCES = {
   subscriptions: list(t.subscription, v.subscription, {
+    // `cardId` and `accountId` (spec 018 S-8) are not in `optional`: left out of an update they are not in the row that
+    // is written, so the saved way of paying stays (a client in the 0.1.9 shape does not erase it); null clears one,
+    // and one named with a value clears the other (`toRow`).
     optional: ['note'],
     // KRW, USD or a code in the currency list (spec 013 S-23).
     check: (q, uid, x) => currencyProblem(q, uid, x.currency),
-    // KRW items carry no VAT (the same rule the editor applied before).
-    toRow: (s) => ({ ...s, vat: s.currency === 'KRW' ? 0 : s.vat, note: s.note || null }),
+    // KRW items carry no VAT (the same rule the editor applied before). A card or an account, never both (spec 018
+    // S-12): a body with both is refused by the schema; one that names only one with a value clears the other, saved
+    // or not (`payRow`, A-37), so the two are never both set.
+    toRow: (s) => ({ ...v.payRow(s), vat: s.currency === 'KRW' ? 0 : s.vat, note: s.note || null }),
   }),
   'plan-changes': list(t.planChange, v.planChange, {
     check: (q, uid, x) => currencyProblem(q, uid, x.to.currency),
@@ -317,6 +337,8 @@ export const RESOURCES = {
       await unlink(q, rec, uid, t.allocationTarget, t.allocationTarget.accountId, id)
       await unlink(q, rec, uid, t.scheduleItem, t.scheduleItem.accountId, id)
       await unlink(q, rec, uid, t.incomeItem, t.incomeItem.accountId, id)
+      // a subscription paid from it goes back to "not said" (spec 018 S-8, S-12)
+      await unlink(q, rec, uid, t.subscription, t.subscription.accountId, id)
     },
   }),
   // One month's amount of a target (spec 013 S-14): fixed, saving and invest targets only. The check holds the
@@ -351,13 +373,22 @@ export const RESOURCES = {
     toRow: (x) => ({ ...x, note: x.note || null }),
   }),
   cards: list(t.card, v.card, {
+    // `usageFrom` (spec 018 S-2) is not in `optional`: left out of an update it is not in the row that is written, so
+    // the saved value stays (a client in the 0.1.9 shape does not erase it); null clears it; it is answered as null.
     optional: ['note'],
     toRow: (x) => ({ ...x, note: x.note || null }),
     // A card that a buffer use goes through keeps a paying account: clearing it is refused, moving it to another
     // account is not (the buffer use then uses that account's buffer). User, review 1 F-1: "비우기만 거부 (Recommended)".
     check: async (q, uid, x, id) => (id && x.accountId === null && (await bufferUses(q, uid, [id])) ? m('cardBufferInUse') : null),
     beforeDelete: async (q, uid, id) => ((await bufferUses(q, uid, [id])) ? m('cardBufferInUse') : null),
-    onDelete: (q, rec, uid, id) => unlink(q, rec, uid, t.spending, t.spending.cardId, id),
+    // a delete may write the settings row (the month basis card), so a list of operations takes that lock up front
+    alsoLocks: ['settings'],
+    onDelete: async (q, rec, uid, id) => {
+      await unlink(q, rec, uid, t.spending, t.spending.cardId, id)
+      // a subscription paid with it goes back to "not said" (spec 018 S-8, S-12)
+      await unlink(q, rec, uid, t.subscription, t.subscription.cardId, id)
+      await dropBasisCard(q, rec, uid, id)
+    },
   }),
   'living-items': list(t.livingItem, v.livingItem, {
     optional: ['note'],
@@ -438,7 +469,9 @@ const single = <S extends z.ZodType>(table: OwnedTable, schema: S, lockName: str
   ({ kind: 'single', table, schema, lockName, full }) as SingleResource
 
 export const SINGLES = {
-  settings: single(t.settings, v.settings, 'settings', (input, before) => ({ ...input, dayShift: input.dayShift ?? (before?.dayShift as typeof input.dayShift) ?? 'none' })),
+  // A key the body leaves out is not in the row, so its saved value stays; the old `dayShift` fills the three rules
+  // (spec 018 S-1), also the ones the body sends back as they are saved (review 1 finding 1).
+  settings: single(t.settings, v.settings, 'settings', (input, before) => v.settingsRow(input, before)),
   // A client that does not send the language keeps the saved one (spec 008 S-9).
   preferences: single(t.preference, v.preferences, 'preference', (input, before) => ({
     ...input,

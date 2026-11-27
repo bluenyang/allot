@@ -1,0 +1,2 @@
+ALTER TABLE "card" ADD COLUMN "usage_from" smallint;--> statement-breakpoint
+ALTER TABLE "card" ADD CONSTRAINT "card_usage_from" CHECK ("card"."usage_from" is null or "card"."usage_from" between 1 and 31);

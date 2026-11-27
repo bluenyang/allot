@@ -4,7 +4,7 @@
 //   pending   AI proposals, goal cards and maturity cards waiting on 대기 중인 변경
 //   pay       subscription charges and one-off spending rounds in the next `days` days (today included)
 //   budget    this month's remainder short, a yearly limit used 90% or more, a buffer short
-import { bufferGauge, monthMoney, parseDate, priced, upcomingPayments, yearContribution, ymd, type AccountState } from './calc'
+import { bufferGauge, ctxOf, monthMoney, parseDate, priced, upcomingPayments, yearContribution, ymd, ymOfDate, type AccountState } from './calc'
 import type { PayBy, SpendHow } from '../data/types'
 
 export type NoticeGroup = 'pending' | 'pay' | 'budget'
@@ -40,7 +40,8 @@ const plusDays = (d: string, n: number) => { const x = parseDate(d); return ymd(
 
 /**
  * The notifications on `today` (YYYY-MM-DD): pending first, then the charges and rounds by date, then the budget ones.
- * `off` are the holiday dates the yearly contribution needs when dates move off holidays (as list_accounts uses them).
+ * `off` are the holiday dates the yearly contribution needs when dates move off holidays (as list_accounts uses them);
+ * a pay basis also reads them for where this month starts.
  */
 export function buildNotices(st: AccountState, today: string, off: ReadonlySet<string>, pending: PendingInput, days = 3): Notice[] {
   const out: Notice[] = []
@@ -75,9 +76,12 @@ export function buildNotices(st: AccountState, today: string, off: ReadonlySet<s
   out.push(...pay)
 
   // ── this month's remainder, yearly limits, buffers ──
-  const ym = today.slice(0, 7)
-  const remainder = monthMoney(st, ym).dist.remainder
+  // this month is the month of the state's basis that holds today (spec 018 S-3)
+  const ctx = ctxOf(st, off)
+  const ym = ymOfDate(today, ctx)
+  const remainder = monthMoney(st, ym, { ctx }).dist.remainder
   if (remainder < 0) out.push({ kind: 'remainderShort', id: `remainder:${ym}`, group: 'budget', path: '/pay', month: ym, remainder: Math.round(remainder) })
+  // the yearly limit is a calendar year's on every basis (the tax year)
   const year = Number(today.slice(0, 4))
   for (const a of st.accounts) {
     const limit = a.annualLimit ?? null

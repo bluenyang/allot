@@ -10,8 +10,9 @@ import { pathToFileURL } from 'node:url'
 import { and, eq, getTableColumns, inArray, ne, notInArray, sql, type SQL } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import type {
-  Account, AllocationTarget, CheckItem, Debt, Living, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Subscription,
+  Account, AllocationTarget, CheckItem, DayShift, Debt, Living, Phase, PlanChange, PlanEvent, RemainderSplit, Settings, Subscription,
 } from '../../src/data/types'
+import { settingsRow } from '../validation'
 import { db, sqlClient, type Db } from './client'
 import { runMigrations } from './migrate'
 import { hashPassword } from 'better-auth/crypto'
@@ -62,7 +63,10 @@ async function upsert<T extends PgTable & { id: PgColumn; userId: PgColumn }>(tx
 export async function seed(data: SeedData, uid: string, tx: Db = db) {
   await asUser(uid, async (d) => {
     await lockFor(d, 'data', uid)
-    await d.insert(t.settings).values({ userId: uid, ...data.settings }).onConflictDoUpdate({ target: t.settings.userId, set: data.settings })
+    // The same conversion as the API's (spec 018 S-1, review 1 finding 3): a data file written for 0.1.9 has the one
+    // rule `dayShift`, which is no column any more — it becomes the rule of each date the file does not name itself.
+    const settings = settingsRow(data.settings as Settings & { dayShift?: DayShift })
+    await d.insert(t.settings).values({ userId: uid, ...settings }).onConflictDoUpdate({ target: t.settings.userId, set: settings })
     // The old living row is the three coded living items now (spec 013 S-2).
     for (const code of ['food', 'transit', 'allowance'] as const) {
       const li = t.livingItem
@@ -70,6 +74,10 @@ export async function seed(data: SeedData, uid: string, tx: Db = db) {
       if (have) await d.update(li).set({ amount: data.living[code] }).where(and(eq(li.userId, uid), eq(li.id, have.id)))
       else await d.insert(li).values({ userId: uid, id: randomUUID(), name: SEED_LIVING[code], kind: SEED_LIVING[code], amount: data.living[code], code })
     }
+    // The accounts first: a subscription may name one as its way of paying (spec 018 S-8) and a target the account its
+    // money goes to, and the foreign keys hold at once — on a database without rows the order is all there is (review 5
+    // finding 3). A card a subscription names is not in a data file (the seed writes no cards): it is one made in the app.
+    await upsert(d, uid, t.bankAccount, data.accounts as never)
     await upsert(d, uid, t.subscription, data.subscriptions.map((s) => ({ ...s, note: s.note ?? null })))
     await upsert(d, uid, t.planChange, data.planChanges as never)
     // The seed's targets are the target set: others go (their phase amounts cascade).
@@ -87,7 +95,6 @@ export async function seed(data: SeedData, uid: string, tx: Db = db) {
     }
     await upsert(d, uid, t.planEvent, data.events as never)
     await upsert(d, uid, t.checkItem, data.checks as never)
-    await upsert(d, uid, t.bankAccount, data.accounts as never)
     await upsert(d, uid, t.debt, data.debts as never)
     await upsert(d, uid, t.remainderSplit, data.remainderSplit as never)
   }, tx)

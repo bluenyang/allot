@@ -3,9 +3,9 @@
 // so the AI and the screen see the same numbers. No database here: the unit tests run without one.
 // Output is plain JSON: enum values as stored, ISO dates, amounts in KRW as whole numbers.
 import {
-  addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDates, monthlyKrw, monthMoney, nextPayment, parseDate,
-  phaseAt, planAt, priced, projectAccount, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf,
-  type AccountState, type MonthDate,
+  addYm, billingDayOf, bufferGauge, changesIn, chargeKrw, ctxOf, goalAlerts, goalMonth, groupAt, groupValue, lastBalance, livingAt, monthDatesIn, monthlyKrw, monthMoney, monthOutgo, nextPayment, outgoOf, parseDate,
+  periodOf, phaseAt, planAt, planOn, priced, projectAccount, roundYm, shiftOf, spendingIn, spendingKrw, spendState, splitRemainder, transferAt, unallocated, upcomingPayments, yearContribution, ymd, ymOf, ymOfDate,
+  type AccountState, type Distribution, type MonthCtx, type MonthDate, type Outgo, type ShiftDate,
   maturityAlerts, maturityAmount,
 } from '../../src/lib/calc'
 import { enabledSets, holidaysIn } from '../../src/lib/holidays'
@@ -17,7 +17,7 @@ import type {
 } from '../../src/data/types'
 import { maturityOf } from './maturity'
 import { whenSpan } from '../../src/lib/event-when'
-import { scheduleItemsIn } from '../../src/lib/schedule-items'
+import { scheduleItemsOf } from '../../src/lib/schedule-items'
 
 /** The part of GET /api/state the tools read. */
 export interface Data {
@@ -56,7 +56,6 @@ export interface Data {
 }
 
 const krw = (n: number) => Math.round(n)
-const lastDay = (ym: string) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate()
 const firstOf = (ym: string) => `${ym}-01`
 
 /** Holiday dates around a span of months: a monthly date moves up to 31 days, so two months before and after (as the dashboard does). */
@@ -64,33 +63,76 @@ function offDays(d: Data, firstYm: string, lastYm: string): Set<string> {
   return new Set(holidaysIn(enabledSets(d.holidaySets), firstOf(addYm(firstYm, -2)), firstOf(addYm(lastYm, 3))).map((h) => h.date))
 }
 
+// ---------- what a month is (spec 018 S-3) ----------
+/**
+ * The user's month basis with the holidays around months `firstYm` .. `lastYm` (names or calendar months: the two months
+ * before and the three after that `offDays` adds cover a period that starts in the month before its name).
+ */
+const basisOf = (d: Data, firstYm: string, lastYm: string = firstYm): MonthCtx => ctxOf(d, offDays(d, firstYm, lastYm))
+/** The dates of a month, both included: what `month` stands for in an answer. */
+const periodView = (ym: string, ctx: MonthCtx) => { const p = periodOf(ym, ctx); return { from: p.start, to: p.end } }
+/** The month that holds `date` (YYYY-MM-DD) by the user's basis. */
+export function monthOfDate(d: Data, date: string): string {
+  const own = date.slice(0, 7)
+  return ymOfDate(date, basisOf(d, own))
+}
+/** This month: the month of the user's basis that holds `now` — the default month of every tool. */
+export const thisMonth = (d: Data, now: Date): string => monthOfDate(d, ymd(now))
+/** The month's money (calc monthMoney) by the user's basis, with the holidays the month needs. */
+export const moneyOf = (d: Data, ym: string) => monthMoney(d, ym, { ctx: basisOf(d, ym) })
+
 const dateOf = (m: MonthDate) => ({ date: m.date, nominal: m.nominal, shifted: m.shifted, ...(m.unresolved ? { unresolved: true } : {}) })
-function datesOf(d: Data, ym: string, off: ReadonlySet<string>) {
-  const x = monthDates(ym, d.settings, off)
-  return { pay: dateOf(x.pay), transfer: dateOf(x.transfer), billing: dateOf(x.billing) }
+/**
+ * The three dates of a month, each with its own weekend and holiday rule (`shift`, spec 018 S-1) next to what the rule did
+ * (`shifted`): the occurrence of the pay, transfer and billing day in the month's period (spec 018 S-3) — the rule is
+ * applied after that, so a moved date can lie a day or two outside the period (concern 11).
+ */
+function datesOf(d: Data, ym: string, ctx: MonthCtx) {
+  const x = monthDatesIn(ym, d.settings, ctx)
+  const one = (which: ShiftDate) => ({ ...dateOf(x[which]), shift: shiftOf(d.settings, which) })
+  return { pay: one('pay'), transfer: one('transfer'), billing: one('billing') }
 }
 
-/** Charges falling in month `ym`. */
-function paymentsIn(d: Data, ym: string) {
-  const start = parseDate(firstOf(ym))
-  return upcomingPayments(d.subscriptions, d.planChanges, priced(d.settings, d.currencies), start, lastDay(ym) - 1)
-    .filter((p) => ymOf(p.date) === ym)
+/** Charges falling in month `ym`: the ones dated in its period. */
+function paymentsIn(d: Data, ym: string, ctx: MonthCtx) {
+  const { start, end } = periodOf(ym, ctx)
+  const days = Math.round((parseDate(end).getTime() - parseDate(start).getTime()) / 86_400_000)
+  return upcomingPayments(d.subscriptions, d.planChanges, priced(d.settings, d.currencies), parseDate(start), days)
+    .filter((p) => ymOfDate(ymd(p.date), ctx) === ym)
     .map((p) => ({ date: ymd(p.date), subscriptionId: p.sub.id, name: p.sub.name, plan: p.sub.plan, amountKrw: krw(p.krw), cycle: p.sub.cycle }))
 }
 
 /**
- * One-off spending rounds of a month (spec 011 S-8), as items of their own kind and never part of the subscription charges:
- * the rounds the month's transfer and remainder take (paid ones too, cancelled and merged ones not). `of` is the round count
- * of the plan; a round after it (an early payoff's) has `payoff: true`.
+ * One-off spending rounds (spec 011 S-8), as items of their own kind and never part of the subscription charges: paid
+ * ones too, cancelled and merged ones not. `of` is the round count of the plan; a round after it (an early payoff's)
+ * has `payoff: true`.
  */
-function spendRoundsIn(d: Data, ym: string) {
-  return spendingIn(d.spendings ?? [], ym).items
+function roundsView(items: readonly Outgo[]) {
+  return [...items]
     .sort((a, b) => (a.round.date < b.round.date ? -1 : a.round.date > b.round.date ? 1 : a.spending.name.localeCompare(b.spending.name) || a.round.no - b.round.no))
-    .map(({ spending: sp, round }) => ({
+    .map(({ spending: sp, round, ym }) => ({
       date: round.date, spendingId: sp.id, name: sp.name, how: sp.how, payBy: sp.payBy,
       round: round.no, of: sp.count, ...(round.no > sp.count ? { payoff: true } : {}), amountKrw: krw(round.amount), state: round.state,
+      /** the month whose remainder or transfer takes the round (spec 018 S-5) */
+      countsIn: ym,
     }))
 }
+/**
+ * What goes to each paying account in a month (spec 018 S-6, the allocation table's 대금 계좌 이체): per account that a
+ * card or the subscriptions are paid from, the subscription transfer, the card rounds the month counts and the buffer
+ * refills, and their sum.
+ */
+const payoutsView = (d: Data, dist: Distribution) => dist.payouts.map((p) => ({
+  accountId: p.accountId, account: d.accounts.find((a) => a.id === p.accountId)?.name ?? null,
+  subscriptionsKrw: krw(p.subscriptions), cardKrw: krw(p.card), refillKrw: krw(p.refill), totalKrw: krw(p.total),
+}))
+/**
+ * The rounds month `ym` counts: the ones its transfer and remainder take (calc `monthOutgo`). A card bill counts in the
+ * month of the pay before it (spec 018 S-5, A-14, A-32), so its date may lie after the month's period.
+ */
+const spendRoundsIn = (d: Data, ym: string, ctx: MonthCtx) => roundsView(monthOutgo(d, ym, ctx))
+/** The rounds dated in the period of month `ym`, whichever month counts them: what a schedule lists next to the charges of those dates. */
+const spendRoundsDated = (d: Data, ym: string, ctx: MonthCtx) => roundsView(outgoOf(d, ctx).filter((o) => ymOfDate(o.round.date, ctx) === ym))
 
 const changeView = (c: PlanChange, d: Data) => ({
   id: c.id,
@@ -101,12 +143,13 @@ const changeView = (c: PlanChange, d: Data) => ({
   note: c.note,
 })
 
-/** How much the monthly subscription total moves in the month a change takes effect. */
+/** How much the monthly subscription total moves in the month a change takes effect: the month whose period holds its date. */
 function monthlyDelta(d: Data, c: PlanChange): number | null {
   if (!c.effective) return null
-  const ym = c.effective.slice(0, 7)
+  const ctx = basisOf(d, c.effective.slice(0, 7))
+  const ym = ymOfDate(c.effective, ctx)
   const sum = (changes: PlanChange[]) => {
-    const t = transferAt(d.subscriptions, changes, priced(d.settings, d.currencies), ym)
+    const t = transferAt(d.subscriptions, changes, priced(d.settings, d.currencies), ym, 0, ctx)
     return t.monthlySum + t.yearlyMonthly
   }
   return krw(sum(d.planChanges) - sum(d.planChanges.filter((x) => x.id !== c.id)))
@@ -144,16 +187,18 @@ export function currencyList(d: Data) {
 }
 
 export function overview(d: Data, ym: string) {
-  const off = offDays(d, ym, ym)
+  const ctx = basisOf(d, ym)
   // One-off spendings are in the month's transfer and remainder (spec 011 S-5).
-  const { dist, transfer: xfer, spend, income } = monthMoney(d, ym)
+  const { dist, transfer: xfer, spend, income } = monthMoney(d, ym, { ctx })
   const split = dist.remainderTarget ? splitRemainder(dist.remainder, d.remainderSplit) : []
   return {
     month: ym,
+    /** the dates the month stands for by the user's month basis (spec 018 S-3): the calendar month, a card's usage period or pay date to pay date */
+    period: periodView(ym, ctx),
     settings: d.settings,
     /** KRW is the base; these are the foreign currencies with their rates (spec 013 S-23) */
     currencies: currencyList(d),
-    dates: datesOf(d, ym, off),
+    dates: datesOf(d, ym, ctx),
     subscriptionTransfer: {
       monthlyKrw: krw(xfer.monthlySum),
       yearlyAsMonthlyKrw: krw(xfer.yearlyMonthly),
@@ -177,6 +222,8 @@ export function overview(d: Data, ym: string) {
       unallocatedKrw: krw(unallocated(dist)),
       livingKrw: dist.living,
       subscriptionsKrw: dist.subscriptions,
+      /** what goes to each paying account that month, in parts (spec 018 S-6); cardKrw and refillKrw are part of spendingKrw, subscriptionsKrw repeats the subscriptions row */
+      payouts: payoutsView(d, dist),
     },
     /** what comes in that month (spec 014 S-10): expected, what counts (received, else expected; plus money that came in once) and the difference; get_income has the lines */
     income: { expectedKrw: krw(income.expected), totalKrw: krw(income.total), diffKrw: krw(income.diff) },
@@ -185,9 +232,9 @@ export function overview(d: Data, ym: string) {
     remainderSplit: split.map((s) => ({ id: s.id, name: s.name, code: s.code, ratio: s.ratio, amountKrw: s.amount })),
     /** the month's adjustments (spec 013 S-14): they replace the target's phase amount that month (already in distribution) */
     monthAdjusts: adjustsIn(d, ym),
-    payments: paymentsIn(d, ym),
-    spendingRounds: spendRoundsIn(d, ym),
-    planChanges: changesIn(d.planChanges, ym).map((c) => changeView(c, d)),
+    payments: paymentsIn(d, ym, ctx),
+    spendingRounds: spendRoundsIn(d, ym, ctx),
+    planChanges: changesIn(d.planChanges, ym, ctx).map((c) => changeView(c, d)),
   }
 }
 
@@ -200,11 +247,14 @@ export function overview(d: Data, ym: string) {
  * month each comes next.
  */
 export function incomeView(d: Data, ym: string) {
-  const { income, dist } = monthMoney(d, ym)
+  const ctx = basisOf(d, ym)
+  const { income, dist } = monthMoney(d, ym, { ctx })
   const items = d.incomes ?? []
   const receipts = (d.incomeReceipts ?? []).filter((r) => r.ym === ym)
   return {
     month: ym,
+    /** the dates of the month by the user's month basis: money that came in once counts by its date, a receipt by its saved month name */
+    period: periodView(ym, ctx),
     incomes: income.rows.map((r) => {
       const item = r.key === 'salary' ? null : items.find((i) => i.id === r.key) ?? null
       const itemId = item ? item.id : null
@@ -215,6 +265,8 @@ export function incomeView(d: Data, ym: string) {
         cycle: item ? item.cycle : 'monthly' as const,
         ...(item?.cycle === 'yearly' ? { yearlyMonth: item.month ?? null } : {}),
         day: r.day,
+        /** a yearly income counted in this month: its calendar date (yearlyMonth and day), which lies in the month's period */
+        ...(r.date ? { date: r.date } : {}),
         accountId: item ? item.accountId ?? null : null,
         expectedKrw: krw(r.expected),
         /** null = nothing received is written down for it this month */
@@ -250,8 +302,11 @@ export function spendingList(d: Data, now: Date, filter: SpendFilter = {}) {
   const today = ymd(now)
   const yms = all.map((x) => x.bought.slice(0, 7)).sort()
   const off = yms.length ? offDays(d, yms[0]!, addYm(yms[yms.length - 1]!, 1)) : new Set<string>()
+  // the month each round counts in (spec 018 S-5), with the holidays around every round's date: the pay date before a card bill may be a moved one
+  const dated = all.flatMap((x) => x.rounds.map((r) => r.date.slice(0, 7))).filter((m) => /^\d{4}-\d{2}$/.test(m)).sort()
+  const every = dated.length ? basisOf(d, dated[0]!, dated[dated.length - 1]!) : basisOf(d, ymOf(now))
   const rows = all.map((sp) => {
-    const state = spendState(sp, today, d.settings, off)
+    const state = spendState(sp, today, d.settings, off, sp.cardId ? (d.cards ?? []).find((c) => c.id === sp.cardId) : null)
     const live = sp.rounds.filter((r) => r.state !== 'merged')
     const next = sp.cancelled ? undefined : [...live].filter((r) => r.state === 'left').sort((a, b) => a.no - b.no)[0]
     return {
@@ -277,28 +332,48 @@ export function spendingList(d: Data, now: Date, filter: SpendFilter = {}) {
         merged: sp.rounds.filter((r) => r.state === 'merged').length,
         next: next ? { round: next.no, date: next.date, amountKrw: krw(next.amount) } : null,
       },
-      rounds: [...sp.rounds].sort((a, b) => a.no - b.no).map((r) => ({ round: r.no, date: r.date, amountKrw: krw(r.amount), state: r.state, edited: r.edited })),
+      // countsIn: the month whose remainder or transfer takes the round; null for a round that counts nowhere (merged, or left on a cancelled spending)
+      rounds: [...sp.rounds].sort((a, b) => a.no - b.no).map((r) => ({
+        round: r.no, date: r.date, amountKrw: krw(r.amount), state: r.state, edited: r.edited,
+        countsIn: r.state === 'merged' || (sp.cancelled && r.state === 'left') ? null : roundYm(sp, r, every),
+      })),
     }
   })
   const status = filter.status ?? 'all'
   const byStatus = rows.filter((r) => status === 'all'
     || (status === 'cancelled' ? r.cancelled : status === 'done' ? r.state === 'paid' : !r.cancelled && r.state !== 'paid'))
   const month = filter.month
+  // a round is in the month that counts it (calc `roundYm`, spec 018 S-5): a card bill in the month of the last pay
+  // date before it, any other round in the month whose period holds its date
+  const ctx = month ? basisOf(d, month) : null
   const list = month
-    ? byStatus.filter((r) => all.find((x) => x.id === r.id)!.rounds.some((x) => x.state !== 'merged' && x.date.slice(0, 7) === month))
+    ? byStatus.filter((r) => { const sp = all.find((x) => x.id === r.id)!; return sp.rounds.some((x) => x.state !== 'merged' && roundYm(sp, x, ctx!) === month) })
     : byStatus
-  const m = month ? spendingIn(all, month) : null
+  const m = month ? spendingIn(all, month, ctx!) : null
   return {
-    ...(month ? { month, monthTotals: { subscriptionAccountKrw: krw(m!.subs), remainderKrw: krw(m!.remainder) } } : {}),
+    ...(month ? { month, period: periodView(month, ctx!), monthTotals: { subscriptionAccountKrw: krw(m!.subs), remainderKrw: krw(m!.remainder) } } : {}),
     spendings: list,
   }
 }
 
 export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
-  const ym = ymOf(now)
+  // this month by the user's basis: the plan in force is the one of the changes that came in by this month
+  const ctx = basisOf(d, ymOf(now))
+  const ym = ymOfDate(ymd(now), ctx)
+  const s = priced(d.settings, d.currencies)
   const rows = d.subscriptions.map((base) => {
-    const p = planAt(base, d.planChanges, ym)
-    const next = p.status === 'active' ? nextPayment(base, d.planChanges, now) : null
+    const p = planAt(base, d.planChanges, ym, ctx)
+    // A charge goes by the plan in force on its own date (spec 018 S-7), the row by the month's plan. The next payment
+    // is the next charge that will really be made, whatever the row's status is (review 4 finding 2, A-36): a
+    // cancellation dated later this month leaves the charges before its date, and a cancelled plan that comes back
+    // is charged again from the date it comes back — the same answer before and after the cancellation's date. A
+    // plan that never charges again has none.
+    const next = nextPayment(base, d.planChanges, now)
+    const at = next ? planOn(base, d.planChanges, ymd(next)) : null
+    const charge = krw(chargeKrw(p, s))
+    const nextKrw = at ? krw(chargeKrw(at, s)) : null
+    // said only when the next charge is not what the row shows: another plan, another amount, or a row that is not active
+    const differs = at !== null && (at.plan !== p.plan || nextKrw !== charge || p.status !== 'active')
     return {
       id: base.id,
       name: base.name,
@@ -309,15 +384,21 @@ export function subscriptionList(d: Data, now: Date, status?: SubStatus) {
       vat: p.vat,
       cycle: p.cycle,
       status: p.status,
-      chargeKrw: krw(chargeKrw(p, priced(d.settings, d.currencies))),
-      monthlyKrw: krw(monthlyKrw(p, priced(d.settings, d.currencies))),
+      chargeKrw: charge,
+      monthlyKrw: krw(monthlyKrw(p, s)),
       nextPayment: next ? ymd(next) : null,
+      ...(differs ? { nextCharge: { date: ymd(next!), plan: at!.plan, krw: nextKrw! } } : {}),
       payPath: base.path,
+      // how it is paid (spec 018 S-8): one of the user's cards or accounts with its name, or neither (all null)
+      cardId: base.cardId ?? null,
+      card: base.cardId ? (d.cards ?? []).find((c) => c.id === base.cardId)?.name ?? null : null,
+      accountId: base.accountId ?? null,
+      account: base.accountId ? d.accounts.find((a) => a.id === base.accountId)?.name ?? null : null,
       receiptVerified: base.verified,
       ...(base.note ? { note: base.note } : {}),
     }
   })
-  return { month: ym, subscriptions: status ? rows.filter((r) => r.status === status) : rows }
+  return { month: ym, period: periodView(ym, ctx), subscriptions: status ? rows.filter((r) => r.status === status) : rows }
 }
 
 export function planChangeList(d: Data) {
@@ -328,8 +409,16 @@ export function planChangeList(d: Data) {
   }
 }
 
-export function allocation(d: Data) {
+/**
+ * get_allocation: how the salary is split. With `now`, also this month's transfers to the paying accounts (`payouts`,
+ * spec 018 S-6): the tool takes no month, so they are the ones of the month that holds today; get_overview has them for
+ * any month.
+ */
+export function allocation(d: Data, now?: Date) {
+  const month = now ? thisMonth(d, now) : null
+  const ctx = month ? basisOf(d, month) : null
   return {
+    ...(month && ctx ? { payouts: { month, period: periodView(month, ctx), accounts: payoutsView(d, monthMoney(d, month, { ctx }).dist) } } : {}),
     living: d.living,
     targets: d.targets.map((t) => ({ id: t.id, name: t.name, kind: t.kind, ...(t.note ? { note: t.note } : {}), accountId: t.accountId ?? null })),
     phases: d.phases.map((p) => ({
@@ -354,25 +443,30 @@ export function eventMonths(when: string): { from: string; to: string } {
 export function schedule(d: Data, from: string, months: number) {
   const list: string[] = Array.from({ length: months }, (_, i) => addYm(from, i))
   const last = list[list.length - 1]!
-  const off = offDays(d, from, last)
+  const ctx = basisOf(d, from, last)
   return {
     from,
     months: list.map((ym) => ({
       month: ym,
-      dates: datesOf(d, ym, off),
-      // the user's own monthly dates (spec 013 S-22, A-36), moved off weekends and holidays like the dates above; no amount
-      ownDates: scheduleItemsIn(d.schedules ?? [], ym, d.settings.dayShift, off).map(({ item, at }) => ({
-        id: item.id, name: item.name, day: item.day, ...dateOf(at), accountId: item.accountId, direction: item.direction, ...(item.note ? { note: item.note } : {}),
+      /** the dates the month stands for by the user's month basis (spec 018 S-3); everything below is what falls in them */
+      period: periodView(ym, ctx),
+      dates: datesOf(d, ym, ctx),
+      // the user's own monthly dates (spec 013 S-22, A-36), each moved off weekends and holidays by its own rule (spec 018 S-1); no amount
+      ownDates: scheduleItemsOf(d.schedules ?? [], ym, ctx).map(({ item, at }) => ({
+        id: item.id, name: item.name, day: item.day, ...dateOf(at), shift: item.shift ?? 'none', accountId: item.accountId, direction: item.direction, ...(item.note ? { note: item.note } : {}),
       })),
-      payments: paymentsIn(d, ym),
-      spendingRounds: spendRoundsIn(d, ym),
-      planChanges: changesIn(d.planChanges, ym).map((c) => changeView(c, d)),
+      payments: paymentsIn(d, ym, ctx),
+      // a schedule is dates: the rounds dated in the period, like the charges (the month that counts a card bill is the overview's)
+      spendingRounds: spendRoundsDated(d, ym, ctx),
+      planChanges: changesIn(d.planChanges, ym, ctx).map((c) => changeView(c, d)),
+      // plan events are saved by month name and stay with that name (spec 018 S-4)
       planEvents: d.events
         .filter((e) => { const r = eventMonths(e.when); return r.from <= ym && ym <= r.to })
         .map((e) => { const r = eventMonths(e.when); return { id: e.id, when: e.when, from: r.from, to: r.to, kind: e.kind, title: e.title, state: e.state } }),
     })),
     checkItems: d.checks.map((c) => ({ id: c.id, text: c.text, done: c.done })),
-    holidays: holidaysIn(enabledSets(d.holidaySets), firstOf(from), `${last}-${String(lastDay(last)).padStart(2, '0')}`)
+    // the holidays between the first date of the first month and the last date of the last one
+    holidays: holidaysIn(enabledSets(d.holidaySets), periodOf(from, ctx).start, periodOf(last, ctx).end)
       .map((h) => ({ date: h.date, name: h.name, substitute: h.substitute })),
   }
 }
@@ -428,6 +522,7 @@ export function maturitySchedule(d: Data, ym: string) {
     if (!m) return []
     // the screens' rule (calc maturityAmount): the projected balance before the maturity month, or what the plan sends
     const rec = lastBalance(st.balances, a.id)
+    // only the range of the holidays to load: the record's calendar month is close enough (offDays adds two months)
     const recYm = rec?.date.slice(0, 7)
     const lo = recYm && recYm < m.month ? recYm : m.month
     const got = maturityAmount(a, st, offDays(d, lo, m.month), { ym: m.month, months: m.months })
@@ -451,10 +546,13 @@ export function budget(d: Data, ym: string) {
   const items = d.livingItems ?? []
   const living = livingAt(items, d.phases, ym)
   const phase = phaseAt(d.phases, ym)
-  const { dist } = monthMoney(d, ym)
+  const ctx = basisOf(d, ym)
+  const { dist } = monthMoney(d, ym, { ctx })
   const got = new Map(dist.rows.map((r) => [r.key, r.amount]))
   return {
     month: ym,
+    /** the dates of the month by the user's month basis; the items, phases and adjustments go by the month's name */
+    period: periodView(ym, ctx),
     phase: phase ? { id: phase.id, label: phase.label, name: phase.name, from: phase.from, to: phase.to } : null,
     living: {
       items: living.rows.map(({ item: x, amount }) => ({
@@ -485,22 +583,31 @@ const accountState = (d: Data): AccountState => ({ ...d, balances: d.balances ??
 /**
  * list_accounts (S-10, S-13): every account with its balance records and, as the account sheet shows them, the
  * projection from this month, the goal month, this year's contribution against the yearly limit and the buffer gauge;
- * plus every card with its paying account and billing day.
+ * plus every card with its paying account, its billing day and the first day of its usage period (spec 018 S-2).
  */
 export function accountList(d: Data, now: Date, months = 12) {
   const st = accountState(d)
   const today = ymd(now)
-  const ym = ymOf(now)
+  // the yearly limit counts a calendar year on every month basis (the tax year)
   const year = now.getFullYear()
-  const firstRec = st.balances.map((b) => b.date.slice(0, 7)).sort()[0]
-  const off = offDays(d, firstRec && firstRec < ym ? firstRec : ym, addYm(ym, Math.max(months, 12)))
+  // the holidays to load, by calendar months: from the earliest record (or this January, where the year's first
+  // transfer may be moved across the new year) to a year ahead
+  const cal = ymOf(now)
+  const lo = [st.balances.map((b) => b.date.slice(0, 7)).sort()[0] ?? cal, cal, `${year}-01`].sort()[0]!
+  const off = offDays(d, lo, addYm(cal, Math.max(months, 12) + 1))
+  const ctx = ctxOf(st, off)
+  // this month by the user's basis: the projection starts with it
+  const ym = ymOfDate(today, ctx)
   const name = (id: string | null | undefined) => (id ? d.accounts.find((a) => a.id === id)?.name ?? null : null)
   const cardOut = (c: Card) => ({
     id: c.id, name: c.name, last4: c.last4, accountId: c.accountId, account: name(c.accountId),
-    billingDay: c.billingDay, effectiveBillingDay: billingDayOf(c, d.settings), ...(c.note ? { note: c.note } : {}),
+    billingDay: c.billingDay, effectiveBillingDay: billingDayOf(c, d.settings), usageFrom: c.usageFrom ?? null, ...(c.note ? { note: c.note } : {}),
   })
   return {
     month: ym,
+    period: periodView(ym, ctx),
+    /** the months of every projection with the dates each stands for by the user's month basis */
+    projectionMonths: Array.from({ length: months }, (_, i) => addYm(ym, i)).map((m) => ({ month: m, ...periodView(m, ctx) })),
     accounts: d.accounts.map((a) => {
       const recs = st.balances.filter((b) => b.accountId === a.id).sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0))
       const last = lastBalance(st.balances, a.id)
@@ -591,10 +698,13 @@ export function notificationList(d: Data, now: Date, proposals: number, marks: {
   const kept = new Set(marks.maturityKept)
   const st = accountState(d)
   const today = ymd(now)
+  // the holidays to load, by calendar months: from the earliest record or this January to the next January (the yearly
+  // contribution of a card or pay basis counts by date, so both ends of the year need their holidays)
   const ym = ymOf(now)
   const firstRec = st.balances.map((b) => b.date.slice(0, 7)).sort()[0]
   const jan = `${ym.slice(0, 4)}-01`
-  const off = offDays(d, firstRec && firstRec < jan ? firstRec : jan, addYm(ym, 3))
+  const nextJan = `${Number(ym.slice(0, 4)) + 1}-01`
+  const off = offDays(d, firstRec && firstRec < jan ? firstRec : jan, addYm(ym, 3) > nextJan ? addYm(ym, 3) : nextJan)
   const goals = goalAlerts(st, today, off)
   const due = maturityAlerts(st, today, off, (id, ym) => kept.has(`${id}@${ym}`))
   const list = buildNotices(st, today, off, { proposals, goalAccounts: goals.map((g) => g.account.id), maturities: due.map((m) => `${m.account.id}@${m.month}`) })

@@ -15,11 +15,23 @@ async function api(request: APIRequestContext, method: 'GET' | 'POST' | 'PUT' | 
 type Sub = { id: string; name: string; amount: number; currency: string; vat: number; status: string; cycle: string; plan: string; note?: string }
 type Change = { id: string; subId: string; effective: string | null; to: Record<string, unknown>; note: string }
 type Spend = { id: string; name: string }
-type State = { subscriptions: Sub[]; planChanges: Change[]; spendings: Spend[]; preferences: Record<string, unknown>; settings: { billingDay: number } }
+type State = { subscriptions: Sub[]; planChanges: Change[]; spendings: Spend[]; preferences: Record<string, unknown>; settings: { billingDay: number; payDay: number; payShift?: string; monthBasis?: string } }
 const state = async (request: APIRequestContext) => (await api(request, 'GET', '/api/state')).json as State
 
 /** This month in Korea (the page's own "today"). */
 const thisYm = () => new Date().toLocaleString('sv', { timeZone: 'Asia/Seoul' }).slice(0, 7)
+
+/**
+ * The month a card bill counts in (spec 018 S-5): the month of the last pay day strictly before its date — the pay that
+ * pays it. Worked out here for calendar months with no weekend rule on the pay day, which is what the seed leaves;
+ * `plainPay` says whether the settings are so, and the tests that use this check it first.
+ */
+function cardYm(date: string, payDay: number) {
+  const [y, m, d] = [Number(date.slice(0, 4)), Number(date.slice(5, 7)), Number(date.slice(8, 10))]
+  const pay = Math.min(payDay, new Date(Date.UTC(y, m, 0)).getUTCDate())
+  return d > pay ? date.slice(0, 7) : ymAdd(date.slice(0, 7), -1)
+}
+const plainPay = (s: { payShift?: string; monthBasis?: string }) => (s.payShift ?? 'none') === 'none' && (s.monthBasis ?? 'calendar') === 'calendar'
 
 /** A one-off spending in this month: lump sum, one round, `left`. */
 const lump = (name: string, amount: number, payBy: 'salary' | 'card' | 'subs') => ({
@@ -212,7 +224,13 @@ test('(S-6, S-7) the 일반 tab: rows, states, 반영 text, filters, counts and 
   const k0 = await readK(page)
   const labels = ['전체', '예정', '냄', '취소']
   const c0 = await segCounts(page, labels)
-  const billingDay = (await state(request)).settings.billingDay
+  const s0 = (await state(request)).settings
+  const billingDay = s0.billingDay
+  expect(plainPay(s0), 'calendar months and no weekend rule on the pay day').toBe(true)
+  // the month that counts a spending (spec 018 S-5): a card bill with the pay day before it, the others by their date;
+  // a card bill counted in another month than its date's says which month's allocation pays it
+  const counted = (g: G) => (g.payBy === 'card' ? cardYm(g.date, s0.payDay) : g.date.slice(0, 7))
+  const billed = (g: G) => `${mdOf(g.date)} 청구 · ${counted(g) === g.date.slice(0, 7) ? '여유에서' : `${monthOf(counted(g))} 분배에서 냄`}`
   await withSpendings(request, bodies as unknown as ReturnType<typeof lump>[], async () => {
     await page.reload()
     await expect(gCards(page)).toHaveCount(3)
@@ -226,11 +244,12 @@ test('(S-6, S-7) the 일반 tab: rows, states, 반영 text, filters, counts and 
     expect(bill[3]).toBe('KRW 159,000')
     expect(digits(bill[4]!)).toBe(159_000)
     expect(bill[5]).toBe('카드 · 일시불')
-    expect(bill[6]).toContain(monthOf(set.bill!.date))
-    expect(bill[6]).toContain(`${mdOf(set.bill!.date)} 청구 · 여유에서`)
+    expect(bill[6]).toContain(monthOf(counted(set.bill!)))
+    expect(bill[6]).toContain(billed(set.bill!))
     expect(bill[7]).toBe('청구 예정')
     expect((await cells('plan'))[7], 'a card bought after today is only planned').toBe('예정')
-    expect((await cells('plan'))[6]).toContain(`${mdOf(set.plan!.date)} 청구 · 여유에서`)
+    expect((await cells('plan'))[6]).toContain(monthOf(counted(set.plan!)))
+    expect((await cells('plan'))[6]).toContain(billed(set.plan!))
     const paid = await cells('paid')
     expect(paid[5]).toBe('급여 통장')
     expect(paid[6]).toContain(monthOf(set.paid!.date))
@@ -275,10 +294,10 @@ test('(S-6, S-7) the 일반 tab: rows, states, 반영 text, filters, counts and 
     await expect(page.getByText(/^0건 · 결제일 순$/)).toBeVisible()
     await seg.getByRole('button', { name: /^전체/ }).click()
     await choose(page.getByLabel('분류', { exact: true }), { label: '분류 전체' })
-    // the cards: each moves by what the saved spendings put on it (the month of the round decides)
+    // the cards: each moves by what the saved spendings put on it (the month that counts the round decides)
     const k1 = await readK(page)
-    const inMonth = Object.values(set).filter((g) => !g.cancelled && g.date.slice(0, 7) === ym)
-    const later = Object.values(set).filter((g) => !g.cancelled && g.state !== 'paid' && g.date.slice(0, 7) > ym)
+    const inMonth = Object.values(set).filter((g) => !g.cancelled && counted(g) === ym)
+    const later = Object.values(set).filter((g) => !g.cancelled && g.state !== 'paid' && counted(g) > ym)
     const sum = (l: G[]) => l.reduce((a, g) => a + g.krw, 0)
     expect(k1.k1 - k0.k1, 'this month').toBe(sum(inMonth))
     expect(k1.k1n - k0.k1n).toBe(inMonth.length)
@@ -291,7 +310,7 @@ test('(S-6, S-7) the 일반 tab: rows, states, 반영 text, filters, counts and 
     // the edit button opens the editor (W-7)
     await expect(page.getByRole('button', { name: `${names.bill} 수정` })).toBeEnabled()
     // the note under the list names the billing day and links to the 할부 tab
-    await expect(page.locator('.foot')).toContainText(`카드는 청구일(매달 ${billingDay}일)이 속한 달이에요`)
+    await expect(page.locator('.foot')).toContainText(`카드는 청구일(매달 ${billingDay}일) 바로 앞 월급의 달이에요`)
     await page.locator('.foot').getByRole('link', { name: '할부' }).click()
     await expect(page).toHaveURL(/\/spend\/inst$/)
   })
@@ -326,6 +345,12 @@ test('(S-10) the 일반 tab in English: filters, columns, states, the reason and
   expect((await api(request, 'PUT', '/api/preferences', { ...prefs, language: 'en' })).status).toBe(200)
   const set = gSet()
   const names = Object.fromEntries(Object.values(set).map((g) => [g.key, `${MARK}-g${g.key}${g.suffix ?? ''}`]))
+  const s0 = (await state(request)).settings
+  expect(plainPay(s0), 'calendar months and no weekend rule on the pay day').toBe(true)
+  // the month that counts the card bill (spec 018 S-5): when it is not the month of the bill's date, the row names it
+  const billYm = cardYm(set.bill!.date, s0.payDay)
+  const billMonth = new Date(Date.UTC(Number(billYm.slice(0, 4)), Number(billYm.slice(5, 7)) - 1, 1)).toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
+  const billedEn = billYm === set.bill!.date.slice(0, 7) ? 'from left over' : `Paid from ${billMonth}'s allocation`
   try {
     await withSpendings(request, [set.bill!, set.off!].map((g) => gBody(names[g.key]!, g)) as unknown as ReturnType<typeof lump>[], async () => {
       await page.setViewportSize({ width: 1440, height: 900 })
@@ -336,10 +361,12 @@ test('(S-10) the 일반 tab in English: filters, columns, states, the reason and
       const bill = gRow(page, names.bill!)
       await expect(bill).toContainText('Billing due')
       await expect(bill).toContainText('Card · lump sum')
-      await expect(bill).toContainText(`Billed ${mdOf(set.bill!.date)} · from left over`)
+      await expect(bill).toContainText(`Billed ${mdOf(set.bill!.date)} · ${billedEn}`)
       await expect(gRow(page, names.off!)).toContainText('Not counted')
       await expect(page.getByText(/^\d+ items · by payment date$/)).toBeVisible()
       await expect(page.locator('.foot')).toContainText('of each month')
+      // a card bill counts in the month of the pay before it, also when the pay rule dates that pay in another month (spec 018 A-14; review 3 F-5)
+      await expect(page.locator('.foot')).toContainText('For a card, that is the month of the pay before the bill')
       await expect(page.locator('.foot').getByRole('link', { name: 'Installments' })).toBeVisible()
     })
   } finally {
@@ -758,7 +785,7 @@ type FullSpend = {
   id: string; name: string; note: string; category: string; bought: string; amount: number; currency: string; fxRate: number | null
   how: string; payBy: string; count: number; fee: number; interval: string | null; cancelled: boolean; rounds: R[]
 }
-type Cfg = { billingDay: number; dayShift: string; fxRate: number; fxBuffer: number }
+type Cfg = { billingDay: number; billingShift: string; fxRate: number; fxBuffer: number; payDay: number; payShift?: string; monthBasis?: string }
 const cfg = async (request: APIRequestContext) => ((await state(request)) as unknown as { settings: Cfg }).settings
 const mineEd = async (request: APIRequestContext) => ((await state(request)) as unknown as { spendings: FullSpend[] }).spendings.filter((s) => s.name.startsWith(EDM))
 const byName = async (request: APIRequestContext, n: string) => (await mineEd(request)).find((s) => s.name === `${EDM}-${n}`)!
@@ -806,12 +833,14 @@ test('(S-2, S-4, W-7) 지출 추가: a card lump sum is billed on the billing da
     await expect(s.getByLabel('결제 수단', { exact: true })).toContainText(`카드 · 매달 ${c.billingDay}일 청구`)
     const first = await readDate(grp(s, '청구일'))
     expect(first.slice(0, 7), 'the card is billed the month after the purchase').toBe('2031-04')
-    if (c.dayShift === 'none') expect(first.slice(8)).toBe(String(c.billingDay).padStart(2, '0'))
+    if (c.billingShift === 'none') expect(first.slice(8)).toBe(String(c.billingDay).padStart(2, '0'))
     await next(s)
     await expect(s.getByTestId('sp-plan')).toContainText('한 번 · ₩159,000')
     await expect(s.locator('.rl li')).toHaveCount(1)
     await expect(s.locator('.rl li').first()).toContainText(first)
-    await expect(s.getByText('4월 여유에서 빠지고 일반에 들어가요')).toBeVisible()
+    // the bill of April is paid with the pay day before it (spec 018 S-5): that month's left over takes it
+    expect(plainPay(c), 'calendar months and no weekend rule on the pay day').toBe(true)
+    await expect(s.getByText(`${Number(cardYm(first, c.payDay).slice(5, 7))}월 여유에서 빠지고 일반에 들어가요`)).toBeVisible()
     await expect(s.getByText('3/3 · 저장하면 변경 내역에 남아요')).toBeVisible()
     await saveSheet(page, '지출 추가')
     const got = await byName(request, 'lump')
@@ -844,14 +873,14 @@ test('(S-4, W-7) 할부 추가: a card installment with a fee shows 6 rounds wit
     await expect(s.locator('.rl li')).toHaveCount(6)
     await expect(s.locator('.rl li').last()).toContainText('₩220,850')
     await expect(s.getByText('끝전 ₩20은 마지막 회차가 받아요.').first()).toBeVisible()
-    await expect(s.getByText('회차마다 그 달 여유에서 빠지고 할부에 들어가요')).toBeVisible()
+    await expect(s.getByText('회차마다 청구일 바로 앞 월급의 달 여유에서 빠지고 할부에 들어가요')).toBeVisible()
     await saveSheet(page, '할부 추가')
     const got = await byName(request, 'fee')
     expect(got).toMatchObject({ how: 'installment', payBy: 'card', count: 6, fee: 35_000, amount: 1_290_000, interval: null, fxRate: null })
     expect(got.rounds.map((r) => r.amount)).toEqual([220_830, 220_830, 220_830, 220_830, 220_830, 220_850])
     expect(got.rounds.every((r) => r.state === 'left' && !r.edited)).toBe(true)
     expect(got.rounds[0]!.date.slice(0, 7)).toBe('2031-04')
-    if (c.dayShift === 'none') expect(got.rounds.map((r) => r.date.slice(8))).toEqual(Array(6).fill(String(c.billingDay).padStart(2, '0')))
+    if (c.billingShift === 'none') expect(got.rounds.map((r) => r.date.slice(8))).toEqual(Array(6).fill(String(c.billingDay).padStart(2, '0')))
     await expect(page.getByRole('list', { name: '할부 목록' }).getByRole('button', { name: new RegExp(`${EDM}-fee`) })).toBeVisible()
   } finally {
     await cleanEd(request)
@@ -1084,8 +1113,10 @@ test('(S-8, W-7) 기록 추가 › 일회성 지출 › 다음 opens the three-s
   const name = `${EDM}-home`
   const nameS = `${EDM}-hs`
   try {
-    // a split with its first round today, 3 payments: "1/3회"
-    const rs: R[] = [0, 1, 2].map((k) => ({ no: k + 1, date: k === 0 ? today : `${ymAdd(today.slice(0, 7), k)}-28`, amount: 40_000, state: 'left', edited: false }))
+    // a split with its first round today, 3 payments: "1/3회". The later rounds are 40 and 80 days ahead: on any day
+    // of the year that is outside the 31 days the home lists and in a later calendar month than today's. (Next
+    // month's 28th, as this test had it, is inside the 31 days from the 27th or 28th of a month on: two rows then.)
+    const rs: R[] = [0, 1, 2].map((k) => ({ no: k + 1, date: k === 0 ? today : kstDay(40 * k), amount: 40_000, state: 'left', edited: false }))
     expect((await api(request, 'POST', '/api/spendings', instBody(nameS, { how: 'split', payBy: 'salary', amount: 120_000, count: 3, rounds: rs }))).status).toBe(201)
     await go(page, 'home')
     await page.getByRole('button', { name: '기록 추가', exact: true }).click()
@@ -1119,7 +1150,7 @@ test('(S-8, W-7) 기록 추가 › 일회성 지출 › 다음 opens the three-s
     const day = page.locator('.agenda li[data-kind="spend"]')
     await expect(day.filter({ hasText: name })).toContainText('₩77,000')
     await expect(day.filter({ hasText: `${nameS} 1/3회` })).toContainText('₩40,000')
-    await expect(day.filter({ hasText: `${nameS} 2/3회` })).toHaveCount(0) // next month's round is on next month's page
+    await expect(day.filter({ hasText: `${nameS} 2/3회` })).toHaveCount(0) // a later month's round is on that month's page
     // a round marked paid and a cancelled spending leave both places
     await api(request, 'PUT', `/api/spendings/${got.id}`, { ...got, id: undefined, cancelled: true })
     await page.goto('/')
@@ -1294,7 +1325,7 @@ test('(S-4, A-25, review 8, W-7) a first date set a year on: the later billing d
   let setId = ''
   try {
     // billing day 16, a billing date on a closed day moves to the next business day, and 2027-12-16 (a Thursday) is a holiday
-    expect((await api(request, 'PUT', '/api/settings', { ...before, billingDay: 16, dayShift: 'after' })).status).toBe(200)
+    expect((await api(request, 'PUT', '/api/settings', { ...before, billingDay: 16, billingShift: 'after' })).status).toBe(200)
     const made = await api(request, 'POST', '/api/holiday-sets', { name: `${EDM}-hol`, enabled: true, builtin: null, rules: [{ name: `${EDM}-day`, rdate: ['2027-12-16'] }] })
     expect(made.status).toBe(201)
     setId = (made.json as { id: string }).id

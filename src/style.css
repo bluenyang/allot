@@ -465,3 +465,9 @@ pre code{background:none;padding:0;font-size:inherit}
 /* one layer per modal (overlay and content together), so a modal opened later covers an earlier one completely */
 .dlg-layer{position:fixed;inset:0;z-index:50}
 .dlg-ov{position:absolute;inset:0;background:var(--backdrop)}
+
+/* 달의 기준 confirmation (spec 018 S-4): this month before and after, in the confirm dialog (teleported, so not scoped) */
+.cdlg .mask{margin:10px 0;display:grid;gap:6px}
+.cdlg .mask > div{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border-radius:8px;background:var(--surface-2)}
+.cdlg .mask dt{color:var(--muted);font-size:13px}
+.cdlg .mask dd{margin:0;font-weight:600;color:var(--text);text-align:right}

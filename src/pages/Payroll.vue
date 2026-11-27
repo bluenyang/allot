@@ -1,3 +1,8 @@
+<script lang="ts">
+// The tab of a page that is made again while it is on screen, for the page that takes its place (see `takeTab` below).
+let handedTab: string | null = null
+</script>
+
 <script setup lang="ts">
 // 월급 분배 (spec 010 S-8, S-10): the split targets and phases, the month's simulation with the
 // remainder split, and the accounts, living costs and pay settings. Every change goes to the API first
@@ -18,7 +23,7 @@
 // spec 014 S-8 (W-6): the pay is what comes in that month (monthMoney's income: the salary and the other incomes,
 // received or expected), shown as 들어올 돈 with a link to the Income menu; a take-home tried on the screen still wins.
 import { t, tl } from '../i18n'
-import { computed, onActivated, ref, watch } from 'vue'
+import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SubTabs from '../components/SubTabs.vue'
 import EditSheet from '../components/EditSheet.vue'
@@ -35,13 +40,14 @@ import { saveItem, saveSettings, sessionScope, store } from '../lib/store'
 import { accountMonthIn, bankLine, unlinkedTargets } from '../lib/accounts'
 import { useEditor } from '../lib/useEditor'
 import { allocColor } from '../lib/colors'
-import { kindDetail } from '../lib/labels'
+import { kindDetail, usageLabel } from '../lib/labels'
 import { adjustable, adjustOf, adjustPreview } from '../lib/budget-page'
-import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, ymLabel, ymOf, type AllocRow } from '../lib/calc'
+import { addYm, groupAt, livingAt, monthMoney, phaseNumbers, splitOf, splitRemainder, ymLabel, type AllocRow } from '../lib/calc'
+import { monthKey, thisMonthKey, thisYm } from '../lib/month'
+import MonthPeriod from '../components/MonthPeriod.vue'
 import type { Account, AllocationKind, Card, AllocationTarget, BudgetGroup, Settings } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
-import { localToday } from '../lib/now'
 
 const tab = ref('phases')
 const tabs = computed(() => [
@@ -49,7 +55,24 @@ const tabs = computed(() => [
   { id: 'sim', label: t('payroll.tabSim'), icon: 'chart' },
   { id: 'accounts', label: t('payroll.tabAccounts'), icon: 'money' },
 ])
-// the tab a link names (S-16)
+// Saving the basis card's first day of use, or deleting the basis card, here on the 통장·생활비·설정 tab changes what a month
+// is, and the shell then makes the kept pages again (spec 018 A-6, A-24) — this one too, under the user's hands. The page
+// that takes its place opens on the tab the user was on, not on the first one (A-41). Only the tab is handed over: the
+// month looked at and the rest start again, as A-6 means. A page made again while another page is on screen (the basis
+// changed in the settings) starts on its first tab, as before.
+let onScreen = true
+function takeTab() {
+  onScreen = true
+  if (handedTab) tab.value = handedTab
+  handedTab = null
+}
+takeTab()
+onActivated(takeTab) // also a kept page that comes back for the same reason (the basis card deleted: the calendar's page)
+onDeactivated(() => { onScreen = false })
+onUnmounted(() => { handedTab = null })
+// sync: the value is there before the shell renders the page that replaces this one
+watch([monthKey, thisMonthKey], () => { if (onScreen) handedTab = tab.value }, { flush: 'sync' })
+// the tab a link names (S-16): it wins over a tab handed over
 const route = useRoute()
 const TAB_IDS = ['phases', 'sim', 'accounts']
 function tabFromQuery() {
@@ -61,7 +84,7 @@ function tabFromQuery() {
 tabFromQuery()
 onActivated(tabFromQuery)
 watch(() => route.query.tab, tabFromQuery)
-const now = ymOf(localToday())
+const now = thisYm()
 // The month's distribution with its one-off spendings (spec 011 S-5); `pay` is a value tried on this screen. Without one
 // the pay is what comes in that month (spec 014 S-5, S-8): the salary and the other incomes, received or expected.
 const dist = (ym: string, pay?: number) => monthMoney(store, ym, pay === undefined ? {} : { pay }).dist
@@ -141,6 +164,15 @@ const simRows = computed<SimRow[]>(() => {
   return rows
 })
 const simTotal = computed(() => simRows.value.reduce((a, r) => a + r.amount, 0))
+/**
+ * 대금 계좌 이체 (spec 018 S-6): what goes that month to each account a card or the subscriptions are paid from, in parts
+ * (the distribution's `payouts`: the same list the left over and the balance projection read). Zero parts are left out.
+ */
+const PAYOUT_PARTS = ['subscriptions', 'card', 'refill'] as const
+const payouts = computed(() => sim.value.payouts.map((p) => ({
+  id: p.accountId, name: accountName(p.accountId) ?? '—', total: p.total,
+  parts: PAYOUT_PARTS.filter((k) => p[k] !== 0).map((k) => ({ key: k, label: t(`payroll.payouts.${k}`), amount: p[k] })),
+})))
 const simShort = computed(() => sim.value.remainder < 0)
 
 // The pay dialog and the "how it is worked out" dialog.
@@ -409,7 +441,7 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
         <div class="card-hd wrap">
           <div role="group" class="mnav" :aria-label="t('payroll.monthPick')">
             <button class="btn sm ghost sq" type="button" :aria-label="t('shell.prevMonth')" @click="ym = addYm(ym, -1)"><Icon name="prev" /></button>
-            <h2 class="num">{{ t('payroll.monthTitle', { ym: ymLabel(ym) }) }}</h2>
+            <h2 class="num">{{ t('payroll.monthTitle', { ym: ymLabel(ym) }) }}<MonthPeriod :ym="ym" /></h2>
             <button class="btn sm ghost sq" type="button" :aria-label="t('shell.nextMonth')" @click="ym = addYm(ym, 1)"><Icon name="next" /></button>
           </div>
           <span class="sum">
@@ -443,6 +475,19 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
         </div>
         <p v-if="simSpend > 0" class="foot spend-line">{{ t('payroll.spendLine', { amount: fmtMoney(simSpend) }) }}</p>
         <div v-if="simShort" class="callout warn short"><span class="lbl">{{ t('payroll.shortLabel') }}</span><p>{{ t('payroll.shortText', { amount: fmtMoney(-sim.remainder) }) }}</p></div>
+        <!-- 대금 계좌 이체 (spec 018 S-6): per paying account the subscription transfer, the month's card spending and buffer refills, and their sum -->
+        <div v-if="payouts.length" class="pout" data-testid="payouts">
+          <div class="po-h"><h3>{{ t('payroll.payouts.title') }}</h3><span class="hint">{{ t('payroll.payouts.hint') }}</span></div>
+          <ul class="po">
+            <li v-for="p in payouts" :key="p.id" data-testid="payout" :data-account="p.name">
+              <b class="po-n">{{ p.name }}</b>
+              <dl>
+                <div v-for="x in p.parts" :key="x.key" :data-part="x.key"><dt>{{ x.label }}</dt><dd class="num">{{ fmtMoney(x.amount) }}</dd></div>
+                <div class="po-t" data-part="total"><dt>{{ t('payroll.payouts.total') }}</dt><dd class="num">{{ fmtMoney(p.total) }}</dd></div>
+              </dl>
+            </li>
+          </ul>
+        </div>
         <p class="foot">{{ t('payroll.simFoot') }}</p>
       </section>
 
@@ -542,7 +587,7 @@ const share = (v: number) => (livingNow.value.sum > 0 ? Math.round((v / livingNo
                   <td :data-label="t('accounts.cards.colName')"><b>{{ c.name }}</b></td>
                   <td :data-label="t('accounts.cards.colLast4')" class="num">{{ c.last4 }}</td>
                   <td :data-label="t('accounts.cards.colAccount')" :class="accountName(c.accountId) ? '' : 'hint'">{{ accountName(c.accountId) ?? t('accounts.cards.noAccount') }}</td>
-                  <td :data-label="t('accounts.cards.colDay')" :class="c.billingDay ? '' : 'hint'">{{ cardDay(c) }}</td>
+                  <td :data-label="t('accounts.cards.colDay')" :class="c.billingDay ? '' : 'hint'">{{ cardDay(c) }}<small v-if="c.usageFrom" class="cuse" data-testid="card-usage">{{ usageLabel(c.usageFrom) }}</small></td>
                 </tr>
               </tbody>
             </table>
@@ -693,6 +738,19 @@ tr.click{cursor:pointer}
 s.orig{margin-right:6px;color:var(--subtle);font-weight:400}
 .short{margin:12px 18px}
 .foot{margin:0;padding:12px 18px;font-size:12px;color:var(--muted);background:var(--surface-2);border-top:1px solid var(--divider);border-radius:0 0 var(--r-card) var(--r-card)}
+.pout{padding:14px 18px 16px;border-top:1px solid var(--divider)}
+.po-h{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap}
+.po-h h3{margin:0;font-size:14px}
+.po-h .hint{flex:1 1 280px;font-size:12px}
+.po{list-style:none;margin:10px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.po li{min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-ctl);display:flex;flex-direction:column;gap:6px}
+.po-n{font-size:13px;overflow-wrap:anywhere}
+.po dl{margin:0;display:flex;flex-direction:column;gap:4px}
+.po dl > div{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:13px}
+.po dt{color:var(--text-2)}
+.po dd{margin:0;white-space:nowrap}
+.po .po-t{margin-top:2px;padding-top:6px;border-top:1px solid var(--divider);font-weight:600}
+.po .po-t dt{color:var(--text)}
 .foot2{display:flex;flex-direction:column;gap:6px;padding:12px 18px;border-top:1px solid var(--divider)}
 .warnt{font-size:12px;color:var(--accent-text)}
 .empty{margin:0;padding:24px 18px;text-align:center}
@@ -726,6 +784,7 @@ s.orig{margin-right:6px;color:var(--subtle);font-weight:400}
 .shbar div{height:100%;background:var(--primary)}
 .note{margin:0}
 .bank{display:block;font-size:12px;color:var(--subtle)}
+.cuse{display:block;font-size:12px;color:var(--subtle)}
 .stp-p{margin-left:8px}
 .lnk{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:14px 18px 18px;padding:12px 14px;border:1px dashed var(--border-strong);border-radius:var(--r-card);font-size:13px;color:var(--text-2)}
 .lnk span{flex:1 1 260px}
@@ -744,6 +803,7 @@ s.orig{margin-right:6px;color:var(--subtle);font-weight:400}
   .stack td[data-label]::before{content:attr(data-label);display:inline-block;min-width:84px;margin-right:8px;font-size:12px;color:var(--subtle);font-weight:500}
   .stack td:first-child::before{display:none}
   .stack td.act{width:auto}
+  .stack .cuse{display:inline;margin-left:8px}
   .stack td:empty{display:none}
   .stack tr.total td:first-child{font-weight:600}
 }

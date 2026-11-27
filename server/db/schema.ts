@@ -56,8 +56,15 @@ export const settings = pgTable('settings', {
   transferDay: smallint('transfer_day').notNull(),
   billingDay: smallint('billing_day').notNull(),
   subRound: integer('sub_round').notNull().default(10_000),
-  /** Monthly dates on a weekend or holiday: 'none' keeps them, 'before'/'after' move to a business day (spec 007 S-10). */
-  dayShift: text('day_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
+  /**
+   * Monthly dates on a weekend or holiday: 'none' keeps them, 'before'/'after' move to a business day (spec 007 S-10).
+   * One rule for each date (spec 018 S-1): the pay day, the transfer day and the card billing day (a card's own billing
+   * day uses the billing rule). Up to 0.1.9 one column `day_shift` held the rule of all three; migration 0045 copied it
+   * into these and 0046 dropped it.
+   */
+  payShift: text('pay_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
+  transferShift: text('transfer_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
+  billingShift: text('billing_shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
   /** How the Savings and Investment menus split their total (spec 013 S-3). */
   savingSplit: text('saving_split').$type<'amount' | 'ratio'>().notNull().default('amount'),
   investSplit: text('invest_split').$type<'amount' | 'ratio'>().notNull().default('ratio'),
@@ -66,10 +73,27 @@ export const settings = pgTable('settings', {
   /** When the server last refreshed it, and why the last try failed (null after a success). Written by the server only. */
   fxAutoAt: timestamp('fx_auto_at', { withTimezone: true, mode: 'string' }),
   fxAutoError: text('fx_auto_error'),
+  /**
+   * What a "month" is (spec 018 S-3): 'calendar' = the 1st to the last day, 'card' = the usage period of the card
+   * `month_basis_card_id` (calendar when there is no card or the card has no first day), 'pay' = from the actual pay
+   * date to the day before the next one. The card id may stay while another basis is picked.
+   */
+  monthBasis: text('month_basis').$type<'calendar' | 'card' | 'pay'>().notNull().default('calendar'),
+  monthBasisCardId: text('month_basis_card_id'),
+  /** Which calendar month a period is named after: where it starts, where it ends, or 'auto' (start when its first day is the 15th or earlier). */
+  monthNaming: text('month_naming').$type<'auto' | 'start' | 'end'>().notNull().default('auto'),
 }, (t) => [
   userScoped(t.userId),
   check('settings_saving_split', sql`${t.savingSplit} in ('amount', 'ratio')`),
   check('settings_invest_split', sql`${t.investSplit} in ('amount', 'ratio')`),
+  check('settings_pay_shift', sql`${t.payShift} in ('none', 'before', 'after')`),
+  check('settings_transfer_shift', sql`${t.transferShift} in ('none', 'before', 'after')`),
+  check('settings_billing_shift', sql`${t.billingShift} in ('none', 'before', 'after')`),
+  check('settings_month_basis', sql`${t.monthBasis} in ('calendar', 'card', 'pay')`),
+  check('settings_month_naming', sql`${t.monthNaming} in ('auto', 'start', 'end')`),
+  // The basis card is one of the user's own cards (the pattern of spending_card_fk). Deleting that card puts the basis
+  // back first (server/ops.ts), so this never refuses a card delete.
+  foreignKey({ name: 'settings_month_basis_card_fk', columns: [t.userId, t.monthBasisCardId], foreignColumns: [card.userId, card.id] }),
 ])
 
 /**
@@ -148,11 +172,23 @@ export const subscription = pgTable('subscription', {
   path: payPath('path').notNull().default('direct'),
   verified: boolean('verified').notNull().default(false),
   note: text('note'),
+  /**
+   * How it is paid (spec 018 S-8): one of the user's cards, one of their accounts, or neither (both null: not said, as
+   * every subscription was before). The balance projection takes its charges out of the card's paying account on the
+   * card's bill date, or out of the account on the charge date (S-9). `path` (direct, app store, telecom) is another thing.
+   */
+  cardId: text('card_id'),
+  accountId: text('account_id'),
 }, (t) => [
   userScoped(t.userId),
   unique('subscription_user_id_id').on(t.userId, t.id),
   check('subscription_amount_nonneg', sql`${t.amount} >= 0`),
   check('subscription_currency_code', sql`${t.currency} ~ '^[A-Z]{3}$'`),
+  // One of the user's own cards or accounts (the pattern of spending_card_fk and card_account_fk). Deleting the card or
+  // the account unlinks the subscription first (server/ops.ts), so these never refuse a delete.
+  foreignKey({ name: 'subscription_card_fk', columns: [t.userId, t.cardId], foreignColumns: [card.userId, card.id] }),
+  foreignKey({ name: 'subscription_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
+  check('subscription_pay_one_of', sql`${t.cardId} is null or ${t.accountId} is null`),
 ])
 
 export const planChange = pgTable('plan_change', {
@@ -327,7 +363,10 @@ export const incomeExtra = pgTable('income_extra', {
   check('income_extra_amount_nonneg', sql`${t.amount} >= 0`),
 ])
 
-/** A card (spec 013 S-13): the account its bill is paid from, and its billing day (null = the settings' one). */
+/**
+ * A card (spec 013 S-13): the account its bill is paid from, and its billing day (null = the settings' one).
+ * `usage_from` (spec 018 S-2): the first day of its usage period (null = a purchase is billed the month after).
+ */
 export const card = pgTable('card', {
   userId: owner(),
   id: text('id').primaryKey(),
@@ -336,6 +375,7 @@ export const card = pgTable('card', {
   last4: text('last4').notNull().default(''),
   accountId: text('account_id'),
   billingDay: smallint('billing_day'),
+  usageFrom: smallint('usage_from'),
   note: text('note'),
 }, (t) => [
   userScoped(t.userId),
@@ -343,6 +383,7 @@ export const card = pgTable('card', {
   foreignKey({ name: 'card_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
   check('card_last4', sql`${t.last4} = '' or ${t.last4} ~ '^[0-9]{4}$'`),
   check('card_billing_day', sql`${t.billingDay} is null or ${t.billingDay} between 1 and 31`),
+  check('card_usage_from', sql`${t.usageFrom} is null or ${t.usageFrom} between 1 and 31`),
 ])
 
 /**
@@ -359,12 +400,15 @@ export const scheduleItem = pgTable('schedule_item', {
   /** in: money comes into the account · out: money goes out of it */
   direction: text('direction').$type<'in' | 'out'>().notNull(),
   note: text('note'),
+  /** On a weekend or holiday: this date's own rule (spec 018 S-1), as the three dates of `settings` have theirs. */
+  shift: text('shift').$type<'none' | 'before' | 'after'>().notNull().default('none'),
 }, (t) => [
   userScoped(t.userId),
   unique('schedule_item_user_id_id').on(t.userId, t.id),
   foreignKey({ name: 'schedule_item_account_fk', columns: [t.userId, t.accountId], foreignColumns: [bankAccount.userId, bankAccount.id] }),
   check('schedule_item_day', sql`${t.day} between 1 and 31`),
   check('schedule_item_direction', sql`${t.direction} in ('in', 'out')`),
+  check('schedule_item_shift', sql`${t.shift} in ('none', 'before', 'after')`),
 ])
 
 /**

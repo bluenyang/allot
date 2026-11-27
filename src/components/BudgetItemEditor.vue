@@ -18,11 +18,11 @@ import Seg from './Seg.vue'
 import Tip from './Tip.vue'
 import { useEditor } from '../lib/useEditor'
 import { store } from '../lib/store'
-import { addYm, groupAt, phaseNumbers, ymOf } from '../lib/calc'
+import { addYm, groupAt, phaseNumbers } from '../lib/calc'
 import { chipOf, chipValue, fromChoice, fromOf, percentOfRatio, ratioAmount, ratioOfPercent, type Chip, type ChipPick, type FromChoice } from '../lib/budget-page'
 import { wonText } from '../lib/format'
 import type { Account, BudgetGroup, SplitMode } from '../data/types'
-import { localToday } from '../lib/now'
+import { thisYm } from '../lib/month'
 
 const props = defineProps<{
   group: BudgetGroup; initial: Account | null; mode: SplitMode; /** this month's total of the menu (ratio split) */ total: number
@@ -31,7 +31,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: [] }>()
 
-const now = ymOf(localToday())
+const now = thisYm()
 const saving = props.group === 'saving'
 const KIND_IDS = saving ? ['fixed', 'free', 'parking', 'deposit', 'other'] : ['isa', 'pension', 'irp', 'cma', 'stock', 'other']
 /** The annual limits a kind chip fills in when the field is empty (S-5; the user can change them). */

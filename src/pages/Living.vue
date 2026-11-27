@@ -14,12 +14,13 @@ import BudgetHistory from '../components/BudgetHistory.vue'
 import { store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { offDays } from '../lib/holidays-lazy'
-import { addYm, bufferGauge, livingAt, monthDay, nextTransferYm, phaseAt, phaseNumbers, ymd, ymOf } from '../lib/calc'
+import { addYm, bufferGauge, livingAt, nextTransferYm, phaseAt, phaseNumbers, ymd } from '../lib/calc'
+import { monthDatesOf, thisYm } from '../lib/month'
 import { accountLine, baseAmount, itemColor, monthParts, monthPlans, shareOf, type BudgetCell, type BudgetKpi, type BudgetRow } from '../lib/budget-page'
 import type { LivingItem } from '../data/types'
 import { localToday } from '../lib/now'
 
-const now = ymOf(localToday())
+const now = thisYm()
 const todayStr = ymd(localToday())
 const off = computed(() => offDays(store.holidaySets, `${addYm(now, -1)}-01`, `${addYm(now, 3)}-01`) ?? new Set<string>())
 const lv = computed(() => livingAt(store.livingItems, store.phases, now))
@@ -29,7 +30,8 @@ const target = computed(() => store.targets.find((x) => x.kind === 'living') ?? 
 const linked = computed(() => (target.value?.accountId ? store.accounts.find((a) => a.id === target.value!.accountId) ?? null : null))
 const nextDate = computed(() => {
   const s = store.settings
-  return monthDay(nextTransferYm(todayStr, s, off.value), s.transferDay, s.dayShift ?? 'none', off.value).date
+  // the next transfer month by the month basis, and the transfer day inside its period
+  return monthDatesOf(nextTransferYm(todayStr, s, store.off ?? off.value, store.cards)).transfer.date
 })
 
 const cells = computed<BudgetCell[]>(() => {

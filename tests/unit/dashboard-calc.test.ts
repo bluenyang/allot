@@ -54,7 +54,7 @@ test('leftoverAfterTransfer: a transfer that does not cover the window is negati
 
 test('leftoverAfterTransfer: the day shift moves the window, and a plan change applies to its month', () => {
   // 2026-11-26 is a Thursday; shift 'after' with a holiday on it moves the transfer to the Friday
-  const shifted = leftoverAfterTransfer(state([sub({ amount: 12_000, cycle: 'yearly', nextDate: '2026-11-27' })], [], { ...settings, dayShift: 'after' }), '2026-11', new Set(['2026-11-26']))
+  const shifted = leftoverAfterTransfer(state([sub({ amount: 12_000, cycle: 'yearly', nextDate: '2026-11-27' })], [], { ...settings, payShift: 'after', transferShift: 'after', billingShift: 'after' }), '2026-11', new Set(['2026-11-26']))
   assert.equal(shifted.from, '2026-11-27')
   assert.equal(shifted.to, '2026-12-27', '12/26 is a Saturday: the next transfer is Monday 12/28, so the window ends the day before')
   assert.equal(shifted.count, 1)

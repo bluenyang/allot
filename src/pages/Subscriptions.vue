@@ -10,11 +10,13 @@ import { pricedSettings, store } from '../lib/store'
 import { fmtDate, fmtMoney } from '../lib/display'
 import { monthShort, wonText } from '../lib/format'
 import { CATEGORY_IDS, catLabel, cycleLabel, pathLabel, statusLabel } from '../lib/labels'
-import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, ymd, ymOf, ymRange } from '../lib/calc'
+import { addYm, changesIn, monthlyKrw, monthMoney, nextPayment, num, planAt, planOn, ymd, ymRange } from '../lib/calc'
 import { chargeLabel, fxAmount } from '../lib/currency'
 import type { Category, Plan, PlanChange, Subscription } from '../data/types'
 import Select from '../components/Select.vue'
 import MonthInput from '../components/MonthInput.vue'
+import MonthPeriod from '../components/MonthPeriod.vue'
+import { monthBasis, thisYm, ymOfDay } from '../lib/month'
 import { downloadCsv, wonCell, type CsvCell } from '../lib/csv'
 import { localToday } from '../lib/now'
 
@@ -28,7 +30,7 @@ const PlanChangeEditor = defineAsyncComponent(() => import('../components/PlanCh
 // the yearly total (a projection: × 12) is the second row.
 const tab = ref('list')
 const now = localToday()
-const ym = ref(ymOf(now))
+const ym = ref(thisYm())
 const PATH_IDS = ['direct', 'google', 'apple', 'telecom'] as const
 /** The category filter: the six and 기타 (`other`, spec 013 S-18). */
 const CATS: Category[] = [...new Set<Category>([...CATEGORY_IDS, 'other'])]
@@ -49,11 +51,25 @@ const monthly = (p: Plan) => (p.status === 'active' ? monthlyKrw(p, pricedSettin
 const upcoming = (base: Subscription) => nextPayment(base, store.planChanges, now)
 const rows = computed(() =>
   store.subscriptions.map((base) => {
-    const p = planAt(base, store.planChanges, ym.value)
-    const pending = store.planChanges.some((c) => c.subId === base.id && (!c.effective || c.effective.slice(0, 7) > ym.value))
-    return { base, p, monthly: monthly(p), next: p.status === 'active' ? upcoming(base) : null, pending }
+    // the plan of the month shown: the changes whose date lies in its period or before it (spec 018 S-3)
+    const p = planAt(base, store.planChanges, ym.value, monthBasis.value)
+    const pending = store.planChanges.some((c) => c.subId === base.id && (!c.effective || ymOfDay(c.effective) > ym.value))
+    // A charge goes by the plan in force on its own date (spec 018 S-7), the row by the month's plan. The next payment
+    // is the next charge that will really be made, whatever the row's status is, as MCP list_subscriptions names it
+    // (A-36, A-42): a row cancelled later this month may still have a charge before the cancellation's date, and a
+    // cancelled plan that a later change brings back is charged again from the date it comes back. A plan that never
+    // charges again has none.
+    const next = upcoming(base)
+    // The plan that charge is made with, when it is not what the row shows (the month's plan): another plan or another
+    // amount — a change dated after the charge, or a row looked at in another month — or a row that is not active. The
+    // list then says the charge's own plan and amount with its date, as MCP list_subscriptions' nextCharge does (review 4 finding 1).
+    const at = next ? planOn(base, store.planChanges, ymd(next)) : null
+    const nextCharge = at && (at.plan !== p.plan || charge(at) !== charge(p) || p.status !== 'active') ? at : null
+    return { base, p, monthly: monthly(p), next, nextCharge, pending }
   }),
 )
+/** The next charge's own plan and amount ("Basic · KRW 10,000"), for a row whose next charge is not what the row shows. */
+const nextChargeText = (at: Plan) => [firstLine(at.plan), charge(at)].filter(Boolean).join(' · ')
 // The month's transfer with its subscription-account one-offs (spec 011 S-5).
 const xfer = computed(() => monthMoney(store, ym.value).transfer)
 const xferNext = computed(() => monthMoney(store, addYm(ym.value, 1)).transfer)
@@ -85,16 +101,20 @@ const receipt = (r: (typeof rows.value)[number]) => r.p.status !== 'active'
   : r.p.verified ? { cls: 'ok', text: t('subscriptions.verified') } : { cls: 'warn', text: t('subscriptions.unverified') }
 const chargeText = (r: (typeof rows.value)[number]) => (r.p.status === 'company' ? t('subscriptions.companyPays') : charge(r.p))
 const pathText = (r: (typeof rows.value)[number]) => (r.p.status === 'company' ? t('subscriptions.company') : pathLabel(r.p.path))
+/** The card or the account a subscription is paid with (spec 018 S-8), by name; '' when it does not say (or the row it names is gone). */
+const paidWith = (s: Subscription) => (s.cardId ? store.cards.find((c) => c.id === s.cardId)?.name : s.accountId ? store.accounts.find((a) => a.id === s.accountId)?.name : '') ?? ''
 const subsName = computed(() => store.targets.find((x) => x.kind === 'subscriptions')?.name ?? t('subscriptions.transferName'))
 const remainderName = computed(() => store.targets.find((x) => x.kind === 'remainder')?.name ?? '')
 
 // ---------- CSV (spec 013 S-17): the subscriptions the list shows (its filters and base month) ----------
 function exportCsv() {
   const H = (k: string) => t(`subscriptions.csv.${k}` as MessageKey)
-  const rows: CsvCell[][] = [['name', 'category', 'plan', 'amount', 'currency', 'cycle', 'status', 'next', 'monthly'].map(H)]
+  // the last three columns: the next charge's own plan, amount and currency, filled when it is not what the row's plan says (as on the screen)
+  const rows: CsvCell[][] = [['name', 'category', 'plan', 'amount', 'currency', 'cycle', 'status', 'next', 'monthly', 'nextPlan', 'nextAmount', 'nextCurrency'].map(H)]
   for (const r of shown.value) {
     const p = r.p
-    rows.push([p.name, catLabel(p.category), p.plan, p.amount, p.currency, cycleLabel(p.cycle), statusLabel(p.status), r.next ? ymd(r.next) : '', wonCell(r.monthly)])
+    const at = r.nextCharge
+    rows.push([p.name, catLabel(p.category), p.plan, p.amount, p.currency, cycleLabel(p.cycle), statusLabel(p.status), r.next ? ymd(r.next) : '', wonCell(r.monthly), at ? at.plan : '', at ? at.amount : '', at ? at.currency : ''])
   }
   downloadCsv(`allot-subscriptions-${ym.value}.csv`, rows)
 }
@@ -113,9 +133,9 @@ const emit = defineEmits<{ added: [] }>()
 watch(() => props.adding, (on) => { if (on) { openSub(); emit('added') } }, { immediate: true })
 
 // ---------- preview ----------
-const from = ref(ymOf(now))
-const nextDated = computed(() => store.planChanges.filter((c) => c.effective && c.effective.slice(0, 7) > ymOf(now)).map((c) => c.effective!.slice(0, 7)).sort()[0])
-const to = ref(nextDated.value ?? addYm(ymOf(now), 1))
+const from = ref(thisYm())
+const nextDated = computed(() => store.planChanges.filter((c) => c.effective && ymOfDay(c.effective) > thisYm()).map((c) => ymOfDay(c.effective!)).sort()[0])
+const to = ref(nextDated.value ?? addYm(thisYm(), 1))
 const cmp = computed(() => {
   // The comparison shows the plan and price items; each month carries its own one-offs as in the calc cards.
   const a = monthMoney(store, from.value).transfer
@@ -151,10 +171,10 @@ const changeRows = computed(() =>
       let effect: number | null = null
       let title = base?.name ?? c.subId
       if (base && c.effective) {
-        const m = c.effective.slice(0, 7)
+        const m = ymOfDay(c.effective)
         const others = store.planChanges.filter((x) => x.id !== c.id)
-        const before = planAt(base, others, m)
-        const after = planAt(base, store.planChanges, m)
+        const before = planAt(base, others, m, monthBasis.value)
+        const after = planAt(base, store.planChanges, m, monthBasis.value)
         effect = monthly(after) - monthly(before)
         if (firstLine(before.plan) !== firstLine(after.plan)) title = `${base.name} · ${firstLine(before.plan) || '—'} → ${firstLine(after.plan) || '—'}`
       }
@@ -174,15 +194,15 @@ function describe(c: PlanChange) {
 }
 
 // ---------- calc: 12-month chart and per-subscription share ----------
-const chartFrom = ref(ymOf(now))
+const chartFrom = ref(thisYm())
 const series = computed(() =>
   ymRange(chartFrom.value, 12).map((m) => ({
     ym: m,
     value: monthMoney(store, m).transfer.needed,
-    changed: changesIn(store.planChanges, m).length > 0,
+    changed: changesIn(store.planChanges, m, monthBasis.value).length > 0,
   })),
 )
-const pick = ref(ymOf(now))
+const pick = ref(thisYm())
 const shares = computed(() => {
   const x = monthMoney(store, pick.value).transfer
   const total = x.monthlySum + x.yearlyMonthly
@@ -193,7 +213,7 @@ const shares = computed(() => {
 const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
   const x = i === 0 ? xfer.value : xferNext.value
   return {
-    m, title: `${t('subscriptions.ymTitle', { y: m.slice(0, 4), m: Number(m.slice(5, 7)) })}${changesIn(store.planChanges, m).length ? ` ${t('subscriptions.withChange')}` : ''}`,
+    m, title: `${t('subscriptions.ymTitle', { y: m.slice(0, 4), m: Number(m.slice(5, 7)) })}${changesIn(store.planChanges, m, monthBasis.value).length ? ` ${t('subscriptions.withChange')}` : ''}`,
     lines: [
       { k: t('subscriptions.monthlyTotal'), v: fmtMoney(x.monthlySum + x.yearlyMonthly) },
       { k: otherForeign.value ? t('currency.fxBufferEach') : t('subscriptions.fxBuffer', { pct: store.settings.fxBuffer }), v: `+${fmtMoney(x.buffer)}` },
@@ -246,7 +266,7 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
             <label class="fsearch"><Icon name="search" /><input v-model="q" type="search" :aria-label="t('subscriptions.searchLabel')" :placeholder="t('subscriptions.searchPh')"></label>
             <Select v-model="cat" class="fsel" :aria-label="t('subscriptions.category')" :options="[{ value: '', label: t('subscriptions.allCategories') }, ...CATS.map((k) => ({ value: k, label: catLabel(k) }))]" />
             <Select v-model="path" class="fsel" :aria-label="t('subscriptions.path')" :options="[{ value: '', label: t('subscriptions.allPaths') }, ...PATH_IDS.map((k) => ({ value: k, label: pathLabel(k) }))]" />
-            <label class="fmonth">{{ t('subscriptions.baseMonth') }}<MonthInput v-model="ym" /></label>
+            <label class="fmonth">{{ t('subscriptions.baseMonth') }}<MonthInput v-model="ym" /></label><MonthPeriod :ym="ym" />
             <span class="hint count">{{ t('subscriptions.count', { n: shown.length }) }}</span>
           </div>
 
@@ -270,8 +290,8 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
                   <td class="c cell2">{{ cycleLabel(r.p.cycle) }}</td>
                   <td class="n mono cell2">{{ chargeText(r) }}</td>
                   <td class="n amt">{{ r.p.status === 'active' ? fmtMoney(r.monthly) : '—' }}</td>
-                  <td class="mono">{{ r.next ? fmtDate(r.next) : '—' }}</td>
-                  <td class="c cell2">{{ pathText(r) }}</td>
+                  <td class="mono">{{ r.next ? fmtDate(r.next) : '—' }}<small v-if="r.nextCharge" class="hint nextc" data-testid="sub-next-charge">{{ nextChargeText(r.nextCharge) }}</small></td>
+                  <td class="c cell2">{{ pathText(r) }}<small v-if="paidWith(r.base)" class="hint paid">{{ paidWith(r.base) }}</small></td>
                   <td class="c"><span class="pill" :class="receipt(r).cls">{{ receipt(r).text }}</span></td>
                   <td class="n"><button class="btn sm ghost" type="button" :aria-label="t('common.editLabel', { name: r.p.name })" @click="openSub(r.base)">{{ t('common.edit') }}</button></td>
                 </tr>
@@ -282,8 +302,8 @@ const calcs = computed(() => [ym.value, addYm(ym.value, 1)].map((m, i) => {
           <ul class="mlist">
             <li v-for="r in shown" :key="r.base.id" class="mcard" :class="{ off: r.p.status === 'cancelled' }">
               <div class="m1"><span class="m-name"><b>{{ r.p.name }}</b> <small class="hint">{{ firstLine(r.p.plan) || '—' }}</small></span><b class="num m-amt">{{ r.p.status === 'active' ? fmtMoney(r.monthly) : '—' }}</b></div>
-              <div class="m2"><span>{{ catLabel(r.p.category) }} · {{ cycleLabel(r.p.cycle) }} · {{ pathText(r) }}</span><span class="pill" :class="receipt(r).cls">{{ receipt(r).text }}</span></div>
-              <div class="m3"><span class="mono hint">{{ r.next ? fmtDate(r.next) : '—' }} · {{ chargeText(r) }}</span><button class="btn sm" type="button" :aria-label="t('common.editLabel', { name: r.p.name })" @click="openSub(r.base)">{{ t('common.edit') }}</button></div>
+              <div class="m2"><span>{{ catLabel(r.p.category) }} · {{ cycleLabel(r.p.cycle) }} · {{ pathText(r) }}<template v-if="paidWith(r.base)"> · <span class="paid">{{ paidWith(r.base) }}</span></template></span><span class="pill" :class="receipt(r).cls">{{ receipt(r).text }}</span></div>
+              <div class="m3"><span class="mono hint">{{ r.next ? fmtDate(r.next) : '—' }} · <span v-if="r.nextCharge" data-testid="sub-next-charge-phone">{{ nextChargeText(r.nextCharge) }}</span><template v-else>{{ chargeText(r) }}</template></span><button class="btn sm" type="button" :aria-label="t('common.editLabel', { name: r.p.name })" @click="openSub(r.base)">{{ t('common.edit') }}</button></div>
             </li>
           </ul>
 

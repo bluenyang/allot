@@ -3,22 +3,56 @@
 // the billing day (empty = the settings' billing day), note. EditSheet + useEditor; the API decides what
 // is valid (last 4 digits, day 1–31) and its message is shown. Delete is refused while a buffer use goes
 // through the card; otherwise the spendings that named it lose the card (their rounds stay as saved).
-import { computed, watch } from 'vue'
+// The first day of the usage period (spec 018 S-2) is optional: with it, a purchase is billed on the first billing
+// day after the period that holds it ends; the line under the field shows the period of today and its bill.
+import { computed, ref, watch } from 'vue'
 import { t } from '../i18n'
 import EditSheet from './EditSheet.vue'
+import MonthChangeDialog from './MonthChangeDialog.vue'
+import { monthChange } from '../lib/month'
 import Select from './Select.vue'
 import { useEditor } from '../lib/useEditor'
 import { store } from '../lib/store'
+import { addYm, cardBillDate, needsHolidays, usagePeriod, ymd } from '../lib/calc'
+import { offDays } from '../lib/holidays-lazy'
+import { localToday } from '../lib/now'
 import type { Card } from '../data/types'
 
 const props = defineProps<{ initial: Card | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const blank = (): Card => ({ id: '', name: '', last4: '', accountId: null, billingDay: null, note: '' })
-const { item: edit, error, busy, open, close, save, remove } = useEditor('cards', blank, (c) => (!c.name.trim() ? t('accounts.cardEditor.needName') : null))
+const blank = (): Card => ({ id: '', name: '', last4: '', accountId: null, billingDay: null, usageFrom: null, note: '' })
+const check = (c: Card) => (!c.name.trim() ? t('accounts.cardEditor.needName') : null)
+const { item: edit, error, busy, open, close, save, remove } = useEditor('cards', blank, check)
 open(props.initial ?? undefined)
 watch(edit, (v) => { if (!v) emit('close') })
 const title = props.initial ? t('accounts.cardEditor.editTitle') : t('accounts.cardEditor.addTitle')
+
+// The card the month basis counts by (설정 › 달의 기준 › 카드 집계): its first day of use is what a month is, so a save
+// that changes it, and deleting the card (the basis goes back to the calendar month), are asked first with the same
+// question as a change of the basis (spec 018 S-4, review 2 F-2). Any other card, and a save that leaves the months as
+// they are, goes straight through. Cancelled, nothing is saved or deleted and the editor stays open. A save is asked
+// only for a card the editor would send: what the fields lack (the name) is said first, with no question (review 6
+// finding 4).
+const ask = ref<{ before: string; after: string; run: () => Promise<unknown> } | null>(null)
+function askOr(cards: (id: string) => Parameters<typeof monthChange>[0]['cards'], run: () => Promise<unknown>) {
+  const c = edit.value
+  const change = c?.id ? monthChange({ cards: cards(c.id) }) : null
+  if (change) ask.value = { ...change, run }
+  else void run()
+}
+function saveAsked() {
+  const problem = edit.value ? check(edit.value) : null
+  if (problem) return (error.value = problem)
+  askOr((id) => store.cards.map((x) => (x.id === id ? edit.value! : x)), save)
+}
+const removeAsked = () => askOr((id) => store.cards.filter((x) => x.id !== id), remove)
+async function confirmAsk() {
+  const a = ask.value
+  if (!a) return
+  ask.value = null
+  await a.run()
+}
 
 // '' in a select is "none" (null).
 const account = computed({
@@ -34,12 +68,32 @@ const dayOpts = computed(() => [
   { value: '', label: t('accounts.cardEditor.dayDefault', { n: store.settings.billingDay }) },
   ...Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: t('accounts.cards.dayOf', { n: i + 1 }) })),
 ])
+const usage = computed({
+  get: () => edit.value?.usageFrom ?? '',
+  set: (v: number | '') => { edit.value!.usageFrom = v === '' ? null : v },
+})
+const usageOpts = computed(() => [
+  { value: '', label: t('accounts.cardEditor.usageNone') },
+  ...Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: t('accounts.cards.dayOf', { n: i + 1 }) })),
+])
+/** The usage period that holds today and the bill it goes to, with the days picked here (not saved yet). */
+const usageNow = computed(() => {
+  const c = edit.value
+  if (!c?.usageFrom) return ''
+  const today = ymd(localToday())
+  // the card's own usage period and bill, by dates: they do not follow the month basis (the calendar month only sets the holiday range)
+  const ym = today.slice(0, 7)
+  const off = needsHolidays(store.settings, store.schedules) ? offDays(store.holidaySets, `${addYm(ym, -1)}-01`, `${addYm(ym, 4)}-01`) ?? new Set<string>() : new Set<string>()
+  const p = usagePeriod(today, c.usageFrom)
+  const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
+  return t('accounts.cardEditor.usageNow', { start: md(p.start), end: md(p.end), bill: md(cardBillDate(today, c, store.settings, off)) })
+})
 </script>
 
 <template>
   <EditSheet
     v-if="edit" :title="title" :desc="t('accounts.cardEditor.desc')" :error="error" :busy="busy"
-    :can-delete="!!edit.id" :delete-name="edit.name" @save="save" @cancel="close" @delete="remove"
+    :can-delete="!!edit.id" :delete-name="edit.name" @save="saveAsked" @cancel="close" @delete="removeAsked"
   >
     <div class="field">
       <label for="cd-name">{{ t('accounts.cardEditor.name') }} <span class="star" aria-hidden="true">*</span></label>
@@ -60,13 +114,22 @@ const dayOpts = computed(() => [
       <span class="hint">{{ t('accounts.cardEditor.dayHint') }}</span>
     </div>
     <div class="field">
+      <label for="cd-usage">{{ t('accounts.cardEditor.usage') }} <span class="opt">{{ t('common.optional') }}</span></label>
+      <Select id="cd-usage" v-model="usage" :options="usageOpts" />
+      <span class="hint">{{ t('accounts.cardEditor.usageHint') }}</span>
+      <span v-if="usageNow" class="hint now" data-testid="cd-usage-now">{{ usageNow }}</span>
+      <span class="hint">{{ t('accounts.cardEditor.usageNote') }}</span>
+    </div>
+    <div class="field">
       <label for="cd-note">{{ t('accounts.cardEditor.note') }} <span class="opt">{{ t('common.optional') }}</span></label>
       <input id="cd-note" v-model="edit.note" class="in" autocomplete="off">
     </div>
   </EditSheet>
+  <MonthChangeDialog v-if="ask" :before="ask.before" :after="ask.after" :busy="busy" @confirm="confirmAsk" @cancel="ask = null" />
 </template>
 
 <style scoped>
 .opt{font-weight:400;color:var(--subtle)}
 .hint{font-size:12px;color:var(--subtle);margin:0}
+.hint.now{color:var(--text-2)}
 </style>

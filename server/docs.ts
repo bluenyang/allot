@@ -75,14 +75,21 @@ const BODIES: Record<string, z.ZodType> = {
 
 /** What a data resource holds, where its name alone does not say it; added to its create line. */
 const RESOURCE_NOTES: Partial<Record<ListName, string>> = {
-  schedules: 'Your own monthly dates (spec 013 S-22): name, day 1..31, accountId or null, direction in or out, note; no amount.',
+  subscriptions: 'How it is paid (spec 018 S-8), each optional: cardId (one of your cards) or accountId (one of your accounts), or null. Left out keeps the saved value; never both with a value in one body (400); naming one with a value and leaving the other out clears the other. The balance projection then takes each charge out: of the account on the charge date, or of the card\'s paying account on the card\'s bill date for it — only the charges that leave after the account\'s last balance record, and none earlier than one billing cycle before nextDate. Each charge uses the plan in force on its own date (S-7).',
+  'plan-changes': 'A scheduled plan change (spec 018 S-7): subId, effective (YYYY-MM-DD, or null = no date yet), to (the plan fields that change), note. A charge dated on effective or later uses it; the monthly cost and the transfer use it from the month whose period holds that date.',
+  cards: 'Cards (spec 013 S-13): name, last4, accountId (the account its bill is paid from) or null, billingDay 1..31 or null (= the settings billingDay), note, and usageFrom (spec 018 S-2; optional, left out keeps the saved value): 1..31 or null, the first day of the card\'s usage period — a purchase is billed on the first billing day after the period that holds it ends; null = on the billing day of the month after the purchase. Deleting a card unlinks the spendings and the subscriptions paid with it (their cardId becomes null) and, when it is the month basis card of the settings, clears monthBasisCardId and puts a card month basis back to calendar; it is refused while a buffer use is paid through the card.',
+  schedules: 'Your own monthly dates (spec 013 S-22): name, day 1..31, accountId or null, direction in or out, note; no amount. shift (spec 018 S-1; optional): this date\'s own weekend and holiday rule — before, none or after; left out keeps the saved value (none for a new date).',
   incomes: 'Regular incomes besides the salary (spec 014 S-2): name, cycle monthly or yearly, month 1..12 (yearly only), day 1..31, amount (expected, whole KRW), accountId or null, note. The salary is the settings netPay on payDay. Deleting one deletes its money-received rows.',
   'income-receipts': 'Money received for an income in a month (spec 014 S-3): itemId (null = the salary), ym, amount, date or null, note. Several in one month add up; with none the month counts the expected amount.',
-  'income-extras': 'Money that came in once (spec 014 S-4): date, name, amount, note; it counts in the month of its date.',
+  'income-extras': 'Money that came in once (spec 014 S-4): date, name, amount, note; it counts in the month whose period holds its date (spec 018 S-3).',
   currencies: 'Foreign currencies other than KRW and USD (spec 013 S-23): code, rate, buffer 0..100, auto; one in use by a subscription, plan change or spending cannot be deleted or renamed. The USD rate is in the settings (fxRate, fxBuffer, fxAuto).',
 }
 
 const SINGLE_PATHS = { '/api/settings': 'settings', '/api/living': 'living', '/api/preferences': 'preferences' } as const
+/** What a single record holds, where its body alone does not say it; added to its line. */
+const SINGLE_NOTES: Partial<Record<(typeof SINGLE_PATHS)[keyof typeof SINGLE_PATHS], string>> = {
+  settings: 'Since spec 018, each optional (left out keeps the saved value): payShift, transferShift and billingShift — what the pay day, the transfer day and the card billing day each do on a weekend or holiday: before, none or after (S-1). dayShift, the one rule of the bodies up to 0.1.9, is still taken: it sets each of the three rules the body leaves out or sends back as it is saved; no answer has it any more. monthBasis (calendar, card or pay), monthBasisCardId (the id of one of your cards, or null) and monthNaming (auto, start or end): what a month is — the calendar month, that card\'s usage period, or one actual pay date to the day before the next — and which calendar month such a period is named after (S-3).',
+}
 
 /** The data resource of a path (`/api/<resource>` or `/api/<resource>/:id`), if it is one. */
 function resourceOf(path: string): { name: ListName; item: boolean } | null {
@@ -94,7 +101,10 @@ function resourceOf(path: string): { name: ListName; item: boolean } | null {
 export function describeRoute(r: RouteInfo): string | null {
   const key = `${r.method} ${r.path}`
   if (ROUTES[key]) return ROUTES[key]
-  if (r.method === 'PUT' && r.path in SINGLE_PATHS) return `Replace the ${SINGLE_PATHS[r.path as keyof typeof SINGLE_PATHS]} record (the whole record; body below).`
+  if (r.method === 'PUT' && r.path in SINGLE_PATHS) {
+    const name = SINGLE_PATHS[r.path as keyof typeof SINGLE_PATHS]
+    return `Replace the ${name} record (the whole record; body below).${SINGLE_NOTES[name] ? ` ${SINGLE_NOTES[name]}` : ''}`
+  }
   const res = resourceOf(r.path)
   if (!res) return null
   if (r.method === 'POST' && !res.item) return `Create a ${res.name} row; the server assigns the id and answers with the row (body below).${RESOURCE_NOTES[res.name] ? ` ${RESOURCE_NOTES[res.name]}` : ''}`
