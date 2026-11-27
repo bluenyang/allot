@@ -131,9 +131,14 @@ try {
   ok(wins.status === 200 && three(wins.json) === 'after/none/none', `a named rule wins over dayShift, which fills the others (${three(wins.json)})`)
   const all = await put({ ...BODY, payShift: 'before', transferShift: 'none', billingShift: 'after' })
   ok(all.status === 200 && three(all.json) === 'before/none/after' && three((await state()).settings) === 'before/none/after', `the three rules are saved and read back (${three(all.json)})`)
-  // the screen sends the whole row it read: the three rules it holds win over a dayShift sent with them
+  // a client of 0.1.9 sends the whole row it read with dayShift changed: the three rules it sends back as they are
+  // saved are not named, so dayShift sets them (review 1 finding 1, A-21); a rule it changes with it wins
   const whole = await put({ ...(await state()).settings, dayShift: 'after' })
-  ok(whole.status === 200 && three(whole.json) === 'before/none/after', `a body with the three rules and dayShift keeps the three (${three(whole.json)})`)
+  ok(whole.status === 200 && three(whole.json) === 'after/after/after' && !('dayShift' in whole.json), `the whole row read back with another dayShift → the three rules take it (${three(whole.json)})`)
+  const mixed = await put({ ...(await state()).settings, billingShift: 'before', dayShift: 'none' })
+  ok(mixed.status === 200 && three(mixed.json) === 'none/none/before', `the same with one rule changed: that rule wins, the others take dayShift (${three(mixed.json)})`)
+  const asSent = await put({ ...BODY, payShift: 'before', transferShift: 'none', billingShift: 'after' })
+  ok(asSent.status === 200 && three(asSent.json) === 'before/none/after', `the three rules alone are saved as sent (${three(asSent.json)})`)
   ok(whole.json.payDay === 25 && whole.json.transferDay === 26 && whole.json.billingDay === 14 && whole.json.netPay === 3_000_000, 'the other settings are saved as before')
   for (const k of ['payShift', 'transferShift', 'billingShift', 'dayShift']) {
     const bad = await put({ ...BODY, [k]: 'sideways' })

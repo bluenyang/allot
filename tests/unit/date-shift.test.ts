@@ -132,6 +132,32 @@ test('a rule the body names wins over dayShift, each on its own', () => {
   assert.deepEqual([all.payShift, all.transferShift, all.billingShift], ['none', 'after', 'none'])
 })
 
+// Review 1 finding 1: a client of 0.1.9 reads the state, changes `dayShift` and sends the whole row back — with the
+// three rules it read. A rule sent back as it is saved is not a rule the body names.
+test('with the saved row, a rule sent back as it is saved gives way to dayShift; a rule that differs wins', () => {
+  const saved = { payShift: 'before', transferShift: 'none', billingShift: 'after' }
+  const sent = (body: Record<string, unknown>) => {
+    const got = settingsRow(settings.parse({ ...BODY, ...body }), saved) as Record<string, unknown>
+    assert.equal('dayShift' in got, false, 'dayShift is no column')
+    return [got.payShift, got.transferShift, got.billingShift]
+  }
+  // the whole row read back, only dayShift changed: the three rules take it
+  assert.deepEqual(sent({ ...saved, dayShift: 'after' }), ['after', 'after', 'after'])
+  assert.deepEqual(sent({ ...saved, dayShift: 'none' }), ['none', 'none', 'none'])
+  // one rule changed with it: that one wins, the two sent back as saved take dayShift
+  assert.deepEqual(sent({ ...saved, payShift: 'none', dayShift: 'after' }), ['none', 'after', 'after'])
+  // all three differ from the saved ones: all three win
+  assert.deepEqual(sent({ payShift: 'none', transferShift: 'after', billingShift: 'before', dayShift: 'before' }), ['none', 'after', 'before'])
+  // dayShift alone, and the new keys alone, are as without a saved row
+  assert.deepEqual(sent({ dayShift: 'before' }), ['before', 'before', 'before'])
+  assert.deepEqual(sent({ ...saved }), ['before', 'none', 'after'])
+  assert.deepEqual(sent({ transferShift: 'after' }), [undefined, 'after', undefined])
+  assert.deepEqual(sent({}), [undefined, undefined, undefined])
+  // no saved row yet (a first save): a named rule wins, as before
+  const first = settingsRow(settings.parse({ ...BODY, dayShift: 'before', payShift: 'none' }), null) as Record<string, unknown>
+  assert.deepEqual([first.payShift, first.transferShift, first.billingShift], ['none', 'before', 'before'])
+})
+
 test('without dayShift a rule left out is not in the row, so the saved value stays', () => {
   const plain = row(BODY)
   assert.equal('payShift' in plain || 'transferShift' in plain || 'billingShift' in plain || 'dayShift' in plain, false)

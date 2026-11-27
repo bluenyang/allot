@@ -46,7 +46,7 @@ export const settings = z.object({
   transferShift: dayShift.optional(),
   billingShift: dayShift.optional(),
   // The one rule for all three dates, as sent up to 0.1.9: still taken, as the value of each rule the body leaves out
-  // (`settingsRow`). It is no column and no answer has it.
+  // or sends back as it is saved (`settingsRow`). It is no column and no answer has it.
   dayShift: dayShift.optional(),
   // What a month is (spec 018 S-3, S-12): the basis, its card (one of the user's cards, checked by the foreign key, or
   // null) and how a period is named. Each is optional: left out, the saved value stays.
@@ -84,12 +84,22 @@ export const scheduleItem = z.object({
  * The settings row a body writes (spec 018 S-1): `dayShift`, the one rule of the bodies up to 0.1.9, becomes the rule of
  * each of the three dates that the body does not name itself; a rule named in the body wins, each on its own. Without
  * `dayShift` a rule left out is not in the row, so the saved value stays. `dayShift` itself is never written.
+ *
+ * With the saved row (`saved`), a rule the body gives with the very value that is saved counts as not named: a client
+ * of 0.1.9 sends back the whole row it read with only `dayShift` changed, and that rule is what it means (review 1
+ * finding 1, A-21). A rule that differs from the saved one is named and wins.
  */
-export function settingsRow<T extends { dayShift?: Shift; payShift?: Shift; transferShift?: Shift; billingShift?: Shift }>(input: T): Omit<T, 'dayShift'> {
+export function settingsRow<T extends { dayShift?: Shift; payShift?: Shift; transferShift?: Shift; billingShift?: Shift }>(input: T, saved?: Partial<Record<ShiftKey, unknown>> | null): Omit<T, 'dayShift'> {
   const { dayShift: all, ...row } = input
   if (all === undefined) return row
-  return { ...row, payShift: row.payShift ?? all, transferShift: row.transferShift ?? all, billingShift: row.billingShift ?? all }
+  const named: { [K in ShiftKey]?: Shift } = row
+  const rule = (k: ShiftKey): Shift => {
+    const own = named[k]
+    return own === undefined || (saved != null && saved[k] === own) ? all : own
+  }
+  return { ...row, payShift: rule('payShift'), transferShift: rule('transferShift'), billingShift: rule('billingShift') }
 }
+type ShiftKey = 'payShift' | 'transferShift' | 'billingShift'
 type Shift = z.infer<typeof dayShift>
 
 // ── Display settings and holiday sets (spec 007 S-7, S-8, S-9) ──
