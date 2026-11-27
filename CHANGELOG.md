@@ -4,7 +4,8 @@
 
 The calculation fixes found in real use: a weekend and holiday rule for each date, a card's usage period, what a month
 is, the month a card bill counts in, charges at the plan in force on their date, and how a subscription is paid. Spec
-018 (`.agents/intent/018_real-use-fixes/spec.md`). The version carries a hyphen, so the image is
+018 (`.agents/intent/018_real-use-fixes/spec.md`). Released as a prerelease after the merge (PR #74, merged on the
+user's word: "머지는 해도 될 것 같아."); it is the first of the five stages of 0.1.10. The version carries a hyphen, so the image is
 `ghcr.io/bluenyang/allot:0.1.10-rc.1` and `latest` does not move. Migrations 0044–0049 run at start: three rule columns
 on the settings and one on each own monthly date (0044), a copy of the old rule into them (0045), the drop of
 `settings.day_shift` (0046), `card.usage_from` (0047), the month basis on the settings (0048) and a subscription's card
