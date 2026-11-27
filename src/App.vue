@@ -13,7 +13,7 @@ import { api } from './lib/api'
 import { status, store } from './lib/store'
 import { toast, hideToast } from './lib/toast'
 import { view } from './lib/view'
-import { monthKey } from './lib/month'
+import { monthKey, thisMonthKey } from './lib/month'
 import { addYm, phaseAt, ymLabel } from './lib/calc'
 import { authClient } from './lib/auth-client'
 import { t, type MessageKey } from './i18n'
@@ -62,8 +62,10 @@ const spendTab = computed(() => t(`spending.tabs.${route.value.sub}` as MessageK
 const phase = computed(() => phaseAt(store.phases, view.ym))
 // A kept page worked out "this month" when it was made. When the user changes what a month is (spec 018 S-3) the pages
 // are made again on their next visit, so none shows the month of the old basis; the settings page, where the change
-// is made, stays as it is. With the calendar basis the key is the page, as before.
-const pageKey = computed(() => (route.value.page === 'settings' || monthKey.value === 'calendar' ? route.value.page : `${route.value.page}|${monthKey.value}`))
+// is made, stays as it is. The same when this month itself becomes another one under the same basis — the holiday dates
+// arrived after the first screen, or a holiday set was edited (review 2 F-1). With the calendar basis the key is the
+// page, as before.
+const pageKey = computed(() => (route.value.page === 'settings' || monthKey.value === 'calendar' ? route.value.page : `${route.value.page}|${monthKey.value}|${thisMonthKey.value}`))
 const soonName = (what: string) => `${what} (${t('common.soon')})`
 const logout = () => authClient.signOut()
 const version = __APP_VERSION__

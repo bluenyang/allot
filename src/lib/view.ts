@@ -4,7 +4,7 @@
 import { reactive, watch } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import { showToast } from './toast'
-import { monthKey, thisYm } from './month'
+import { monthKey, thisMonthKey, thisYm } from './month'
 import { status } from './store'
 
 export const view = reactive({ ym: thisYm() })
@@ -17,6 +17,11 @@ watch(() => status.loaded, (loaded) => { if (loaded) view.ym = thisYm() }, { flu
 // When the user changes what a month is (spec 018 S-3, S-4), the month looked at goes back to this month: the name of
 // today's month may be another one now.
 watch(monthKey, () => { if (status.loaded) view.ym = thisYm() }, { flush: 'sync' })
+// The holiday dates come after the first screen (their code is loaded lazily) and a holiday set can be edited: with a
+// pay basis whose pay date a holiday moves, this month can then be another month than the one worked out before
+// (review 2 F-1). The month looked at follows it as long as it still is what "this month" was; a month the user moved
+// to stays.
+watch(thisMonthKey, (_now, was) => { if (status.loaded && view.ym === was.slice(0, 7)) view.ym = thisYm() }, { flush: 'sync' })
 
 /** Say that a control is not there yet (it is drawn as in the design). `what` is a message key. */
 export function notReady(what: MessageKey) {

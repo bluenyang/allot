@@ -39,6 +39,18 @@ export const thisYm = (): string => ymOfDay(ymd(localToday()))
 /** The dates of month `ym`, both included. */
 export const periodOfYm = (ym: string) => periodOf(ym, monthBasis.value)
 
+/**
+ * This month as the basis has it now, as one word: its name and its dates ('calendar' for the calendar month). It
+ * changes with `monthKey`, and also when the holiday dates change under a basis that reads them — they arrive after the
+ * first screen (the holiday code is loaded lazily, `store.off` is empty until then), and a holiday set can be edited.
+ * A pay date moved by a holiday can make "this month" another month than the one a screen fixed before (review 2 F-1).
+ */
+export const thisMonthKey = computed(() => {
+  if (monthKey.value === 'calendar') return 'calendar'
+  const p = periodOfYm(thisYm())
+  return `${p.ym}:${p.start}:${p.end}`
+})
+
 /** Pay, transfer and card billing date of month `ym`: the ones inside its period, each moved by its own rule. */
 export const monthDatesOf = (ym: string) => monthDatesIn(ym, store.settings, monthBasis.value)
 
